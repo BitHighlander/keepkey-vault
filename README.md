@@ -1,122 +1,49 @@
 # KeepKey Vault
 
-<div align="center">
-  <img src="public/images/kk-icon-gold.png" alt="KeepKey Logo" width="200"/>
-  <h1>KeepKey Vault</h1>
-  <p>An open-source interface for the KeepKey hardware wallet built on the Pioneer SDK</p>
-</div>
-
-## Overview
-
-KeepKey Vault is a modern, secure, and user-friendly interface for managing your KeepKey hardware wallet. Built with Next.js and powered by the Pioneer SDK, it provides a seamless experience for managing your digital assets while maintaining the highest security standards.
-
-<div align="center">
-  <img src="public/gif/kk.gif" alt="KeepKey Demo" width="600"/>
-</div>
+A modern web application for managing KeepKey wallet assets, built with Next.js and Chakra UI 3.0.
 
 ## Features
 
-- 🔒 **Secure**: Direct integration with your KeepKey hardware wallet
-- 🌐 **Multi-Chain Support**: Manage assets across multiple blockchains
-- 💼 **Portfolio Management**: Track and manage your digital assets in one place
-- 🔄 **Real-Time Updates**: Live price updates and portfolio tracking
-- 🎨 **Modern UI**: Clean, intuitive interface with dark mode support
-- 🛠 **Open Source**: Transparent, community-driven development
+- View and manage assets across multiple blockchain networks
+- Send and receive cryptocurrency
+- Real-time transaction status updates
+- Support for multiple addresses and networks
+- Modern, responsive UI optimized for desktop and mobile
 
-## Getting Started
+## Tech Stack
 
-### Prerequisites
-
-- Node.js 16.x or later
-- A KeepKey hardware wallet
-- Yarn or npm package manager
-
-### Installation
-
-1. Clone the repository:
-\`\`\`bash
-git clone https://github.com/yourusername/keepkey-vault.git
-cd keepkey-vault
-\`\`\`
-
-2. Install dependencies:
-\`\`\`bash
-yarn install
-# or
-npm install
-\`\`\`
-
-3. Set up environment variables:
-\`\`\`bash
-cp .env.example .env.local
-\`\`\`
-
-4. Start the development server:
-\`\`\`bash
-yarn dev
-# or
-npm run dev
-\`\`\`
-
-## Usage
-
-<div align="center">
-  <img src="public/images/hold-and-connect.svg" alt="Connect Instructions" width="400"/>
-  <p>Connect your KeepKey device and get started</p>
-</div>
-
-1. Connect your KeepKey device to your computer
-2. Launch KeepKey Vault
-3. Follow the on-screen instructions to initialize or restore your wallet
-4. Start managing your digital assets!
-
-## Security
-
-<div align="center">
-  <img src="public/images/hold-and-release.svg" alt="Security Instructions" width="400"/>
-</div>
-
-- All sensitive operations require physical confirmation on your KeepKey device
-- Your private keys never leave your KeepKey hardware wallet
-- Open-source code allows for community security audits
-- Built on the battle-tested Pioneer SDK
+- Next.js 15
+- React 19
+- Chakra UI 3.0
+- TypeScript
+- Pioneer SDK for cryptocurrency operations
 
 ## Development
 
-### Architecture
+This project uses pnpm as the package manager.
 
-The application is built with:
-- Next.js 13+ (App Router)
-- TypeScript
-- Chakra UI
-- Pioneer SDK
-- @coinmasters/pioneer-react
+```bash
+# Install dependencies
+pnpm install
 
-### Environment Variables
+# Run development server
+pnpm dev
 
-Required environment variables:
-\`\`\`
-NEXT_PUBLIC_PIONEER_URL=http://127.0.0.1:9001/spec/swagger.json
-NEXT_PUBLIC_PIONEER_WSS=ws://127.0.0.1:9001
-\`\`\`
+# Build for production
+pnpm build
 
-## Contributing
+# Start production server
+pnpm start
+```
 
-We welcome contributions! Please feel free to submit a Pull Request.
+## Deployment
+
+This project is optimized for deployment on Vercel with Node.js 22.x.
+
+## Branch Structure
+
+This repository uses `master` as the default branch.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-If you need help or have questions:
-- Open an issue on GitHub
-- Join our community Discord
-- Visit our [support portal](https://keepkey.com/support)
-
----
-
-<div align="center">
-  Made with ❤️ by the KeepKey community
-</div>
+Copyright © KeepKey. All rights reserved.

@@ -54,6 +54,28 @@
       "severity": "warning",
       "message": "Use native <select> element or implement a custom Select using Chakra UI 3.0 components",
       "replacement": "use native <select> with styling"
+    },
+    {
+      "name": "Prefer master branch over main",
+      "description": "Always use 'master' as the default branch name instead of 'main'",
+      "pattern": "\\bmain\\b",
+      "severity": "error",
+      "message": "Use 'master' instead of 'main' for the default branch",
+      "replacement": "master"
+    },
+    {
+      "name": "Avoid using turbopack",
+      "description": "Avoid using turbopack for better Vercel compatibility",
+      "pattern": "--turbopack",
+      "severity": "error",
+      "message": "Avoid using turbopack for better Vercel compatibility"
+    },
+    {
+      "name": "Set Node version for Vercel",
+      "description": "Ensure Node version is compatible with Vercel (max v22.x)",
+      "pattern": "\"node\":\\s*\"[^\"]*23[^\"]*\"",
+      "severity": "error",
+      "message": "Vercel only supports up to Node.js 22.x. Please use a supported version."
     }
   ]
 } 
