@@ -28,10 +28,12 @@ const theme = {
 
 interface AssetProps {
   onBackClick?: () => void;
+  onSendClick?: () => void;
+  onReceiveClick?: () => void;
 }
 
-export const Asset = ({ onBackClick }: AssetProps) => {
-  const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
+export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) => {
+  // State for managing the component's loading status
   const [loading, setLoading] = useState(true);
   
   // Access pioneer context in the same way as the Dashboard component
@@ -145,6 +147,8 @@ export const Asset = ({ onBackClick }: AssetProps) => {
         alignItems="center" 
         justifyContent="center"
         flexDirection="column"
+        width="100%" 
+        mx="auto"
       >
         <Spinner color={theme.gold} size="xl" mb={4} />
         <Text color="gray.400">Loading asset data...</Text>
@@ -158,7 +162,7 @@ export const Asset = ({ onBackClick }: AssetProps) => {
     
     // Show a user-friendly error message with a back button
     return (
-      <Box height="600px" bg={theme.bg}>
+      <Box height="600px" bg={theme.bg} width="100%" mx="auto">
         <Box 
           borderBottom="1px" 
           borderColor={theme.border}
@@ -227,7 +231,7 @@ export const Asset = ({ onBackClick }: AssetProps) => {
   };
 
   return (
-    <Box height="600px" bg={theme.bg}>
+    <Box height="600px" bg={theme.bg} width="100%" mx="auto">
       {/* Header */}
       <Box 
         borderBottom="1px" 
@@ -326,7 +330,7 @@ export const Asset = ({ onBackClick }: AssetProps) => {
                 bg: 'rgba(255, 215, 0, 0.1)',
                 borderColor: theme.gold,
               }}
-              onClick={() => setActiveTab('send')}
+              onClick={onSendClick}
             >
               Send
             </Button>
@@ -341,7 +345,7 @@ export const Asset = ({ onBackClick }: AssetProps) => {
                 bg: 'rgba(255, 215, 0, 0.1)',
                 borderColor: theme.gold,
               }}
-              onClick={() => setActiveTab('receive')}
+              onClick={onReceiveClick}
             >
               Receive
             </Button>

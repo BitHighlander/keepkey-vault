@@ -8,10 +8,12 @@ import {
   Stack,
   Flex,
   Input,
-  Spinner,
+  IconButton,
 } from '@chakra-ui/react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
-import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet } from 'react-icons/fa'
+import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy } from 'react-icons/fa'
+import Confetti from 'react-confetti'
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -38,6 +40,26 @@ const TENDERMINT_SUPPORT = [
 // Other networks with special tag fields
 const OTHER_SUPPORT = ['ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144']
 
+// TypeScript interfaces for transaction data
+interface SendPayload {
+  caip: string;
+  to: string;
+  amount: string;
+  feeLevel: number;
+  isMax: boolean;
+  memo?: string;
+}
+
+interface TransactionState {
+  method: string;
+  caip: string;
+  params: SendPayload;
+  unsignedTx: any;
+  signedTx: any;
+  state: string;
+  context: any;
+}
+
 const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Dialog state
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -46,29 +68,66 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   
   const pioneer = usePioneerContext()
   const { state } = pioneer
-  const { asset } = state
+  const { app } = state
+  const assetContext = app?.assetContext
 
   // State for input fields
   const [amount, setAmount] = useState<string>('')
   const [recipient, setRecipient] = useState<string>('')
   const [memo, setMemo] = useState<string>('')
-  const [loading, setLoading] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(true)
   const [balance, setBalance] = useState<string>('0')
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
+  
+  // Transaction state
+  const [txHash, setTxHash] = useState<string>('')
+  const [txSuccess, setTxSuccess] = useState<boolean>(false)
+  const [isMax, setIsMax] = useState<boolean>(false)
+  const [unsignedTx, setUnsignedTx] = useState<any>(null)
+  const [signedTx, setSignedTx] = useState<any>(null)
+  const [transactionStep, setTransactionStep] = useState<'build' | 'sign' | 'broadcast' | 'success'>('build')
+  const [estimatedFee, setEstimatedFee] = useState<string>('0.0001')
+  
+  // Add a state to track if asset data has loaded
+  const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
+  
+  // Manual copy to clipboard implementation
+  const [hasCopied, setHasCopied] = useState(false)
+  const copyToClipboard = () => {
+    if (txHash) {
+      navigator.clipboard.writeText(txHash)
+        .then(() => {
+          setHasCopied(true)
+          setTimeout(() => setHasCopied(false), 2000)
+        })
+        .catch(err => {
+          console.error('Error copying to clipboard:', err)
+        })
+    }
+  }
 
   // Calculate total balance
   useEffect(() => {
-    if (asset) {
+    if (assetContext) {
       try {
-        setBalance(asset.balance || '0')
-        setTotalBalanceUsd(parseFloat(asset.balance || '0') * (asset.priceUsd || 0))
+        setBalance(assetContext.balance || '0')
+        setTotalBalanceUsd(parseFloat(assetContext.balance || '0') * (assetContext.priceUsd || 0))
+        setAssetLoaded(true)
+        setLoading(false)
       } catch (e) {
         console.error('Error setting balance:', e)
         setBalance('0')
         setTotalBalanceUsd(0)
+        setLoading(false)
       }
+    } else {
+      // Check if context is available after a short delay
+      const timer = setTimeout(() => {
+        if (!assetLoaded) setLoading(false)
+      }, 3000)
+      return () => clearTimeout(timer)
     }
-  }, [asset])
+  }, [assetContext, assetLoaded])
 
   // Format USD value
   const formatUsd = (value: number) => {
@@ -84,12 +143,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Allow only numbers and a single decimal point
     if (/^[0-9]*\.?[0-9]*$/.test(value) || value === '') {
       setAmount(value)
+      setIsMax(false)
     }
   }
 
   // Set max amount (full balance)
   const handleSetMax = () => {
     setAmount(balance)
+    setIsMax(true)
   }
 
   // Handle send transaction
@@ -102,6 +163,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     setLoading(true)
     try {
       // Show confirmation dialog
+      setTransactionStep('build')
       openConfirmation()
     } catch (error) {
       console.error('Error preparing transaction:', error)
@@ -110,291 +172,602 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   }
 
-  // Confirm and execute transaction
-  const confirmTransaction = async () => {
-    closeConfirmation()
+  // Build transaction
+  const buildTransaction = async () => {
     setLoading(true)
     try {
-      // In a real implementation, this would call the API to send the transaction
-      // For now, we'll simulate a successful transaction
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Use the Pioneer SDK to build the transaction
+      const caip = assetContext?.caip || assetContext?.assetId
+      
+      if (!caip) {
+        throw new Error('Missing asset CAIP')
+      }
+      
+      const sendPayload: SendPayload = {
+        caip,
+        to: recipient,
+        amount,
+        feeLevel: 5, // Default fee level
+        isMax,
+      }
+      
+      if (memo && supportsMemo) {
+        sendPayload.memo = memo
+      }
+      
+      console.log('Build TX Payload:', sendPayload)
+      
+      // Call the SDK's buildTx method
+      const unsignedTxResult = await app.buildTx(sendPayload)
+      console.log('Unsigned TX Result:', unsignedTxResult)
+      
+      // Store the unsigned transaction
+      const transactionState: TransactionState = {
+        method: 'transfer',
+        caip,
+        params: sendPayload,
+        unsignedTx: unsignedTxResult,
+        signedTx: null,
+        state: 'unsigned',
+        context: assetContext,
+      }
+      
+      setUnsignedTx(transactionState)
+      setTransactionStep('sign')
+      
+      // For demo purposes, automatically proceed to signing
+      return transactionState
+    } catch (error) {
+      console.error('Transaction build error:', error)
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  // Sign transaction
+  const signTransaction = async (txState: TransactionState) => {
+    setLoading(true)
+    try {
+      const caip = assetContext?.caip || assetContext?.assetId
+      
+      if (!txState?.unsignedTx) {
+        throw new Error('No unsigned transaction to sign')
+      }
+      
+      console.log('Signing TX:', txState.unsignedTx)
+      
+      // Call the SDK's signTx method
+      const signedTxResult = await app.signTx({ 
+        caip, 
+        unsignedTx: txState.unsignedTx 
+      })
+      
+      console.log('Signed TX Result:', signedTxResult)
+      setSignedTx(signedTxResult)
+      setTransactionStep('broadcast')
+      
+      return signedTxResult
+    } catch (error) {
+      console.error('Transaction signing error:', error)
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  // Broadcast transaction
+  const broadcastTransaction = async (signedTxData: any) => {
+    setLoading(true)
+    try {
+      const caip = assetContext?.caip || assetContext?.assetId
+      
+      if (!signedTxData) {
+        throw new Error('No signed transaction to broadcast')
+      }
+      
+      console.log('Broadcasting TX:', signedTxData)
+      
+      // Call the SDK's broadcastTx method
+      const broadcastResult = await app.broadcastTx(caip, signedTxData)
+      
+      console.log('Broadcast Result:', broadcastResult)
+      
+      // Extract the transaction hash from the result
+      const finalTxHash = broadcastResult.txHash || broadcastResult.txid || ''
+      setTxHash(finalTxHash)
+      setTxSuccess(true)
+      setTransactionStep('success')
+      
+      return broadcastResult
+    } catch (error) {
+      console.error('Transaction broadcast error:', error)
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Confirm and execute transaction
+  const confirmTransaction = async () => {
+    setLoading(true)
+    try {
+      // Step 1: Build the transaction
+      const builtTx = await buildTransaction()
+      
+      // Step 2: Sign the transaction
+      const signedTxData = await signTransaction(builtTx)
+      
+      // Step 3: Broadcast the transaction
+      await broadcastTransaction(signedTxData)
       
       console.log('Transaction sent successfully')
-      
-      // Reset form
-      setAmount('')
-      setRecipient('')
-      setMemo('')
     } catch (error) {
       console.error('Transaction error:', error)
     } finally {
       setLoading(false)
     }
   }
+  
+  // Function to handle viewing transaction on explorer
+  const viewOnExplorer = () => {
+    if (!txHash) return
+    
+    const explorerUrl = assetContext?.explorerTxLink 
+      ? `${assetContext.explorerTxLink}${txHash}`
+      : `https://explorer.keepkey.com/tx/${txHash}`
+    
+    window.open(explorerUrl, '_blank', 'noopener,noreferrer')
+  }
+  
+  // Reset the form after completing a transaction
+  const resetForm = () => {
+    setAmount('')
+    setRecipient('')
+    setMemo('')
+    setTxHash('')
+    setTxSuccess(false)
+    setUnsignedTx(null)
+    setSignedTx(null)
+    setTransactionStep('build')
+    setShowConfirmation(false)
+  }
 
-  if (!asset) {
+  if (!assetContext) {
     return (
-      <Box p={6} textAlign="center">
-        <Spinner size="xl" color={theme.gold} />
-        <Text mt={4}>Loading asset information...</Text>
+      <Box p={6}>
+        <Stack gap={4}>
+          <Skeleton height="60px" width="100%" />
+          <Skeleton height="40px" width="70%" />
+          <Skeleton height="80px" width="100%" />
+          <Skeleton height="40px" width="90%" />
+          <Skeleton height="50px" width="100%" />
+          <Text color="gray.400" textAlign="center" mt={2}>
+            Loading asset information...
+          </Text>
+        </Stack>
       </Box>
     )
   }
 
-  const networkColor = asset.networkColor || '#3182CE'
+  const networkColor = assetContext.color || '#3182CE'
+  
+  // Network supports memo
+  const supportsMemo = TENDERMINT_SUPPORT.includes(assetContext.assetId) || OTHER_SUPPORT.includes(assetContext.assetId);
 
   // Render confirmation overlay if needed
   if (showConfirmation) {
+    // Transaction success screen
+    if (transactionStep === 'success' && txSuccess) {
+      return (
+        <Box 
+          height="600px"
+          bg={theme.bg}
+          overflow="hidden"
+        >
+          {/* Show confetti animation */}
+          <Confetti 
+            width={375}
+            height={600}
+            recycle={false}
+            numberOfPieces={200}
+          />
+          
+          <Box 
+            bg={theme.cardBg}
+            borderColor={theme.border}
+            borderWidth="1px"
+            borderRadius="md"
+            width="100%"
+            height="100%"
+            display="flex"
+            flexDirection="column"
+            overflow="hidden"
+          >
+            {/* Header */}
+            <Box 
+              borderBottom="1px" 
+              borderColor={theme.border}
+              p={4}
+              bg={theme.cardBg}
+            >
+              <Flex justify="space-between" align="center">
+                <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
+                  Transaction Complete
+                </Text>
+                <IconButton
+                  aria-label="Close"
+                  onClick={resetForm}
+                  size="sm"
+                  variant="ghost"
+                  color={theme.gold}
+                >
+                  <FaTimes />
+                </IconButton>
+              </Flex>
+            </Box>
+            
+            {/* Main Content */}
+            <Box 
+              flex="1" 
+              p={4} 
+              overflowY="auto"
+            >
+              <Stack gap={6} align="center">
+                <Box 
+                  borderRadius="full" 
+                  bg="green.500" 
+                  color="white" 
+                  width="70px" 
+                  height="70px" 
+                  display="flex" 
+                  alignItems="center" 
+                  justifyContent="center"
+                  fontSize="3xl"
+                  mt={2}
+                >
+                  <FaCheck />
+                </Box>
+                
+                <Text fontSize="xl" fontWeight="bold" color="white" textAlign="center">
+                  Transaction Sent Successfully!
+                </Text>
+                
+                <Box width="100%">
+                  <Text color="gray.500" fontSize="sm">Amount</Text>
+                  <Text fontSize="xl" fontWeight="bold" color="white">
+                    {amount} {assetContext.symbol}
+                  </Text>
+                  <Text color="gray.500" fontSize="sm" mt={1}>
+                    ≈ {formatUsd(parseFloat(amount) * (assetContext.priceUsd || 0))}
+                  </Text>
+                </Box>
+                
+                <Box as="hr" borderColor="gray.700" opacity={0.2} my={2} width="100%" />
+                
+                <Box width="100%">
+                  <Text color="gray.500" fontSize="sm">Transaction Hash</Text>
+                  <Flex align="center" mt={1}>
+                    <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" flex="1">
+                      {txHash}
+                    </Text>
+                    <IconButton
+                      aria-label="Copy to clipboard"
+                      onClick={copyToClipboard}
+                      size="sm"
+                      variant="ghost"
+                      color={hasCopied ? "green.400" : "gray.400"}
+                    >
+                      {hasCopied ? <FaCheck /> : <FaCopy />}
+                    </IconButton>
+                  </Flex>
+                </Box>
+              </Stack>
+            </Box>
+            
+            {/* Footer with Action Buttons */}
+            <Box 
+              borderTop="1px" 
+              borderColor={theme.border}
+              p={4}
+            >
+              <Stack gap={3}>
+                <Button
+                  width="100%"
+                  bg={theme.gold}
+                  color="black"
+                  _hover={{
+                    bg: theme.goldHover,
+                  }}
+                  onClick={viewOnExplorer}
+                >
+                  <Flex gap={2} align="center">
+                    <FaExternalLinkAlt />
+                    <Text>View on Explorer</Text>
+                  </Flex>
+                </Button>
+                
+                <Button
+                  width="100%"
+                  variant="outline"
+                  color={theme.gold}
+                  borderColor={theme.border}
+                  _hover={{
+                    bg: 'rgba(255, 215, 0, 0.1)',
+                    borderColor: theme.gold,
+                  }}
+                  onClick={resetForm}
+                >
+                  Close
+                </Button>
+              </Stack>
+            </Box>
+          </Box>
+        </Box>
+      );
+    }
+    
+    // Transaction in progress
     return (
       <Box 
-        position="fixed" 
-        top="0" 
-        left="0" 
-        right="0" 
-        bottom="0" 
-        bg="rgba(0,0,0,0.8)" 
-        zIndex={999}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        p={4}
+        height="600px"
+        bg={theme.bg}
+        overflow="hidden"
       >
         <Box 
-          bg={theme.cardBg} 
-          borderRadius="xl" 
-          maxW="500px" 
-          w="100%" 
-          p={0}
-          position="relative"
-          overflow="hidden"
-          borderWidth="1px"
+          bg={theme.cardBg}
           borderColor={theme.border}
+          borderWidth="1px"
+          borderRadius="md"
+          width="100%"
+          height="100%"
+          display="flex"
+          flexDirection="column"
+          overflow="hidden"
         >
           {/* Header */}
           <Box 
-            p={4} 
-            borderBottomWidth="1px" 
-            borderBottomColor={theme.border}
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
+            borderBottom="1px" 
+            borderColor={theme.border}
+            p={4}
+            bg={theme.cardBg}
           >
-            <Text fontWeight="bold" fontSize="lg">Confirm Transaction</Text>
-            <Button size="sm" variant="ghost" onClick={closeConfirmation}>
-              <FaTimes />
-            </Button>
+            <Flex justify="space-between" align="center">
+              <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
+                Confirm Transaction
+              </Text>
+              <IconButton
+                aria-label="Close"
+                onClick={closeConfirmation}
+                size="sm"
+                variant="ghost"
+                color={theme.gold}
+              >
+                <FaTimes />
+              </IconButton>
+            </Flex>
           </Box>
           
-          {/* Body */}
-          <Box p={5}>
-            <Stack gap={4}>
-              <Box p={4} bg="blackAlpha.300" borderRadius="md">
-                <Text>You are about to send:</Text>
-                <Text fontSize="xl" fontWeight="bold">
-                  {amount} {asset.symbol}
-                  <Text as="span" fontSize="md" color="gray.400" ml={2}>
-                    ({formatUsd(parseFloat(amount) * (asset.priceUsd || 0))})
-                  </Text>
+          {/* Main Content */}
+          <Box 
+            flex="1" 
+            p={4} 
+            overflowY="auto"
+          >
+            <Stack gap={6}>
+              <Box>
+                <Text color="gray.500" fontSize="sm">You are sending</Text>
+                <Text fontSize="xl" fontWeight="bold" color="white">
+                  {amount} {assetContext.symbol}
+                </Text>
+                <Text color="gray.500" fontSize="sm" mt={1}>
+                  ≈ {formatUsd(parseFloat(amount) * (assetContext.priceUsd || 0))}
                 </Text>
               </Box>
               
               <Box>
-                <Text color="gray.400">To address:</Text>
-                <Text fontWeight="medium" wordBreak="break-all">{recipient}</Text>
+                <Text color="gray.500" fontSize="sm">To address</Text>
+                <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all">
+                  {recipient}
+                </Text>
               </Box>
-
-              {memo && (
+              
+              {supportsMemo && memo && (
                 <Box>
-                  <Text color="gray.400">Memo:</Text>
-                  <Text>{memo}</Text>
+                  <Text color="gray.500" fontSize="sm">
+                    {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'}
+                  </Text>
+                  <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all">
+                    {memo}
+                  </Text>
                 </Box>
               )}
 
-              <Box p={4} bg="yellow.900" borderRadius="md" opacity={0.8}>
-                <Flex gap={2} align="center">
-                  <Box as={FaWallet} />
-                  <Text>Please verify all details before confirming.</Text>
+              <Box as="hr" borderColor="gray.700" opacity={0.2} my={2} />
+              
+              <Box>
+                <Text color="gray.500" fontSize="sm">Network</Text>
+                <Flex align="center" gap={2} mt={1}>
+                  <Box 
+                    width="10px" 
+                    height="10px" 
+                    borderRadius="full" 
+                    bg={networkColor} 
+                  />
+                  <Text color="white" fontSize="sm">
+                    {assetContext.networkId || 'Unknown Network'}
+                  </Text>
                 </Flex>
+              </Box>
+
+              <Box>
+                <Text color="gray.500" fontSize="sm">Estimated fee</Text>
+                <Text color="white" fontSize="sm">
+                  {estimatedFee} {assetContext.symbol}
+                </Text>
               </Box>
             </Stack>
           </Box>
           
-          {/* Footer */}
+          {/* Footer with Action Buttons */}
           <Box 
-            p={4} 
-            borderTopWidth="1px" 
-            borderTopColor={theme.border}
-            display="flex"
-            justifyContent="flex-end"
-            gap={3}
+            borderTop="1px" 
+            borderColor={theme.border}
+            p={4}
           >
-            <Button variant="outline" onClick={closeConfirmation}>
-              Cancel
-            </Button>
-            <Button 
-              colorScheme="yellow"
-              bg={theme.gold}
-              color="black"
-              onClick={confirmTransaction}
-              loading={loading}
-            >
-              <Flex gap={2} align="center">
-                <Box as={FaArrowRight} />
-                <span>Confirm Send</span>
-              </Flex>
-            </Button>
+            <Stack gap={3}>
+              <Button
+                width="100%"
+                bg={theme.gold}
+                color="black"
+                _hover={{
+                  bg: theme.goldHover,
+                }}
+                onClick={confirmTransaction}
+                loading={loading}
+              >
+                Confirm & Send
+              </Button>
+              
+              <Button
+                width="100%"
+                variant="outline"
+                color={theme.gold}
+                borderColor={theme.border}
+                _hover={{
+                  bg: 'rgba(255, 215, 0, 0.1)',
+                  borderColor: theme.gold,
+                }}
+                onClick={closeConfirmation}
+              >
+                Cancel
+              </Button>
+            </Stack>
           </Box>
         </Box>
       </Box>
-    )
+    );
   }
 
+  // Normal send form
   return (
-    <Box height="100%" bg={theme.bg} p={4}>
-      {/* Header with back button */}
-      <Flex justify="space-between" align="center" mb={4}>
-        <Button
-          variant="ghost"
-          color={theme.gold}
-          onClick={onBackClick}
-          _hover={{ color: theme.goldHover }}
-        >
-          <Flex gap={2} align="center">
-            <Box as={FaTimes} />
-            <span>Back</span>
-          </Flex>
-        </Button>
-        <Text fontSize="xl" fontWeight="bold" color={theme.gold}>
-          Send {asset.symbol}
-        </Text>
-        <Box w="40px"></Box> {/* Empty box for alignment */}
-      </Flex>
-
-      {/* Asset information */}
-      <Box
-        borderRadius="xl"
-        bg={theme.cardBg}
-        p={4}
-        mb={4}
-        borderWidth="1px"
-        borderColor={`${networkColor}40`}
-        boxShadow={`0 4px 20px ${networkColor}20, inset 0 0 20px ${networkColor}10`}
-      >
-        <Flex gap={4}>
-          <Box 
-            borderRadius="full" 
-            overflow="hidden" 
-            boxSize="48px"
-            bg={networkColor}
-          >
-            <img 
-              src={asset.icon} 
-              alt={asset.symbol} 
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          </Box>
-          <Box>
-            <Text fontWeight="bold" fontSize="lg">
-              {asset.name} 
-              <Box as="span" ml={2} px={2} py={1} bg="blue.800" color="blue.200" borderRadius="md" fontSize="xs">
-                {asset.network}
-              </Box>
+    <Box height="600px" bg={theme.bg}>
+      {/* Header - omitted in dialog mode since header is provided by dialog */}
+      
+      {/* Main Content */}
+      <Box p={4}>
+        <Stack gap={6}>
+          <Stack>
+            <Text color="gray.400" fontSize="sm">
+              Balance: {balance} {assetContext.symbol}
             </Text>
-            <Text>{balance} {asset.symbol}</Text>
-            <Text color="gray.400">
-              ({formatUsd(totalBalanceUsd)})
+            <Text color={theme.gold} fontSize="sm">
+              {formatUsd(totalBalanceUsd)}
             </Text>
-          </Box>
-        </Flex>
-      </Box>
-
-      {/* Send form */}
-      <Box
-        borderRadius="xl"
-        bg={theme.cardBg}
-        p={5}
-        borderWidth="1px"
-        borderColor={theme.border}
-      >
-        <Stack gap={4}>
-          {/* Amount input */}
-          <Box>
-            <Text mb={2} fontWeight="medium">Amount</Text>
-            <Box position="relative">
+          </Stack>
+          
+          {/* Amount */}
+          <Stack gap={2}>
+            <Text color="white" fontWeight="medium">Amount</Text>
+            <Flex>
               <Input
                 value={amount}
                 onChange={handleAmountChange}
                 placeholder="0.00"
+                color="white"
                 borderColor={theme.border}
-                bg="blackAlpha.300"
-                paddingRight="70px"
+                _hover={{ borderColor: theme.goldHover }}
+                _focus={{ borderColor: theme.gold }}
+                flex="1"
               />
-              <Button 
-                position="absolute"
-                right="2px"
-                top="50%"
-                transform="translateY(-50%)"
-                h="1.75rem" 
-                size="sm" 
+              <Button
+                ml={2}
+                bg={theme.cardBg}
+                color={theme.gold}
+                borderColor={theme.border}
+                borderWidth="1px"
+                _hover={{
+                  bg: 'rgba(255, 215, 0, 0.1)',
+                  borderColor: theme.gold,
+                }}
                 onClick={handleSetMax}
               >
-                Max
+                MAX
               </Button>
-            </Box>
-            {amount && (
-              <Text fontSize="sm" color="gray.400" mt={1}>
-                ≈ {formatUsd(parseFloat(amount) * (asset.priceUsd || 0))}
-              </Text>
-            )}
-          </Box>
-
-          {/* Recipient address */}
-          <Box>
-            <Text mb={2} fontWeight="medium">Recipient</Text>
+            </Flex>
+            <Text fontSize="sm" color="gray.500">
+              ≈ {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}
+            </Text>
+          </Stack>
+          
+          {/* Recipient */}
+          <Stack gap={2}>
+            <Text color="white" fontWeight="medium">Recipient</Text>
             <Input
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
-              placeholder={`Enter ${asset.symbol} address`}
+              placeholder={`${assetContext.symbol} Address`}
+              color="white"
               borderColor={theme.border}
-              bg="blackAlpha.300"
+              _hover={{ borderColor: theme.goldHover }}
+              _focus={{ borderColor: theme.gold }}
             />
-          </Box>
-
-          {/* Optional memo */}
-          <Box>
-            <Text mb={2} fontWeight="medium">Memo (Optional)</Text>
-            <Input
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="Add a note to this transaction"
-              borderColor={theme.border}
-              bg="blackAlpha.300"
-              h="auto"
-              py={2}
-              minH="80px"
-            />
-          </Box>
-
-          {/* Send button */}
+          </Stack>
+          
+          {/* Memo/Tag (only for supported networks) */}
+          {supportsMemo && (
+            <Stack gap={2}>
+              <Text color="white" fontWeight="medium">
+                {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'} (Optional)
+              </Text>
+              <Input
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
+                color="white"
+                borderColor={theme.border}
+                _hover={{ borderColor: theme.goldHover }}
+                _focus={{ borderColor: theme.gold }}
+              />
+            </Stack>
+          )}
+          
+          {/* Send Button */}
           <Button
-            colorScheme="yellow"
+            mt={4}
+            width="100%"
             bg={theme.gold}
             color="black"
-            size="lg"
+            _hover={{
+              bg: theme.goldHover,
+            }}
             onClick={handleSend}
-            loading={loading}
-            _hover={{ bg: theme.goldHover }}
-            mt={4}
+            disabled={!amount || !recipient}
           >
             <Flex gap={2} align="center">
-              <Box as={FaPaperPlane} />
-              <span>Send {asset.symbol}</span>
+              <FaPaperPlane />
+              <Text>Send {assetContext.symbol}</Text>
             </Flex>
+          </Button>
+          
+          {/* Cancel Button */}
+          <Button
+            width="100%"
+            variant="outline"
+            color={theme.gold}
+            borderColor={theme.border}
+            _hover={{
+              bg: 'rgba(255, 215, 0, 0.1)',
+              borderColor: theme.gold,
+            }}
+            onClick={onBackClick}
+          >
+            Cancel
           </Button>
         </Stack>
       </Box>
     </Box>
-  )
-}
+  );
+};
 
-export default Send 
+export default Send; 

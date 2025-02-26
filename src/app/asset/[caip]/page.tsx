@@ -12,6 +12,8 @@ import {
   Text,
   Spinner
 } from '@chakra-ui/react'
+import Send from '@/components/send/Send'
+import Receive from '@/components/receive/Receive'
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -22,11 +24,17 @@ const theme = {
   border: '#222222',
 };
 
+// Define view types
+type ViewType = 'asset' | 'send' | 'receive';
+
 export default function AssetPage() {
   const params = useParams()
   const [isAppReady, setIsAppReady] = useState(false)
   const [appCheckAttempts, setAppCheckAttempts] = useState(0)
   const [decodedCaip, setDecodedCaip] = useState<string | null>(null)
+  
+  // Track the current view instead of dialog state
+  const [currentView, setCurrentView] = useState<ViewType>('asset')
   
   // Decode the parameter - it might be both URL-encoded AND Base64 encoded
   useEffect(() => {
@@ -235,10 +243,16 @@ export default function AssetPage() {
     }
   }, [isAppReady, decodedCaip, app, router])
 
-  // Add back button functionality
+  // Handle navigation functions
   const handleBack = () => {
-    console.log('🔙 [AssetPage] Navigating back to dashboard')
-    router.push('/') // Go back to dashboard as we don't have a network page anymore
+    if (currentView !== 'asset') {
+      // If in send or receive view, go back to asset view
+      setCurrentView('asset')
+    } else {
+      // If already in asset view, go back to dashboard
+      console.log('🔙 [AssetPage] Navigating back to dashboard')
+      router.push('/') 
+    }
   }
 
   // Render skeleton while waiting for app to be ready
@@ -279,7 +293,7 @@ export default function AssetPage() {
     )
   }
 
-  // Render the Asset component which will use the asset context
+  // Render the current view based on state
   return (
     <Flex 
       minH="100vh" 
@@ -298,7 +312,21 @@ export default function AssetPage() {
         border="1px solid"
         borderColor="gray.800"
       >
-        <Asset onBackClick={handleBack} />
+        {currentView === 'asset' && (
+          <Asset 
+            onBackClick={handleBack} 
+            onSendClick={() => setCurrentView('send')}
+            onReceiveClick={() => setCurrentView('receive')}
+          />
+        )}
+        
+        {currentView === 'send' && (
+          <Send onBackClick={handleBack} />
+        )}
+        
+        {currentView === 'receive' && (
+          <Receive onBackClick={handleBack} />
+        )}
       </Box>
     </Flex>
   )

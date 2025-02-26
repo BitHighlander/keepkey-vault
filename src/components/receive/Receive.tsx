@@ -7,14 +7,9 @@ import {
   Text, 
   Stack, 
   Flex,
-  Spinner,
-  Avatar,
-  Badge,
-  Card,
-  CardBody,
-  Divider,
-  Select,
 } from '@chakra-ui/react';
+import { Skeleton, SkeletonCircle } from '@/components/ui/skeleton';
+import { Avatar } from '@/components/ui/avatar';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import QRCode from 'qrcode';
 import { FaArrowLeft, FaCopy } from 'react-icons/fa';
@@ -158,7 +153,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
   // Loading state
   if (loading) {
     return (
-      <Box height="600px" bg={theme.bg}>
+      <Box height="600px" bg={theme.bg} width="100%">
         {/* Header */}
         <Box 
           borderBottom="1px" 
@@ -186,14 +181,14 @@ export function Receive({ onBackClick }: ReceiveProps) {
           </Flex>
         </Box>
         
-        <Spinner 
-          position="absolute" 
-          top="50%" 
-          left="50%" 
-          transform="translate(-50%, -50%)" 
-          color={theme.gold}
-          size="xl"
-        />
+        <Box p={6}>
+          <Stack gap={4}>
+            <SkeletonCircle size="150px" mx="auto" />
+            <Skeleton height="40px" width="100%" />
+            <Skeleton height="60px" width="100%" />
+            <Skeleton height="40px" width="80%" mx="auto" />
+          </Stack>
+        </Box>
       </Box>
     );
   }
@@ -201,7 +196,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
   // No asset context or pubkeys
   if (!assetContext || !assetContext.pubkeys || assetContext.pubkeys.length === 0) {
     return (
-      <Box height="600px" bg={theme.bg}>
+      <Box height="600px" bg={theme.bg} width="100%">
         {/* Header */}
         <Box 
           borderBottom="1px" 
@@ -249,7 +244,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
   }
 
   return (
-    <Box height="600px" bg={theme.bg}>
+    <Box height="600px" bg={theme.bg} width="100%">
       {/* Header */}
       <Box 
         borderBottom="1px" 
@@ -271,143 +266,117 @@ export function Receive({ onBackClick }: ReceiveProps) {
             </Flex>
           </Button>
           <Text color={theme.gold} fontWeight="bold">
-            Receive {assetContext.name}
+            Receive {assetContext?.name || 'Asset'}
           </Text>
           <Box w="20px"></Box> {/* Spacer for alignment */}
         </Flex>
       </Box>
 
-      {/* Main Content */}
-      <Box 
-        height="calc(100% - 60px)" 
-        overflowY="auto" 
-        p={4}
-      >
-        <Stack direction="column" gap={6} align="center">
-          {/* Avatar and Title */}
-          <Avatar 
-            size="xl" 
-            src={assetContext.icon} 
-            bg={theme.cardBg}
-            p={2}
-            borderWidth="1px"
-            borderColor={theme.border}
-            borderRadius="full"
-          />
-          
-          <Text fontSize="xl" fontWeight="bold" color="white" textAlign="center">
-            Receive {assetContext.name}
-          </Text>
+      <Stack direction="column" gap={6} align="center" p={6}>
+        {/* Avatar and Title */}
+        <Avatar 
+          size="xl" 
+          src={assetContext.icon} 
+          bg={theme.cardBg}
+          p={2}
+          borderWidth="1px"
+          borderColor={theme.border}
+          borderRadius="full"
+        />
+        
+        <Text fontSize="xl" fontWeight="bold" color="white" textAlign="center">
+          Receive {assetContext.name}
+        </Text>
 
-          {/* Network Badge */}
-          <Badge 
-            bg="blue.800" 
-            color="blue.200" 
-            fontSize="md" 
-            p={2} 
-            borderRadius="md"
-          >
-            {formatWithEllipsis(assetContext.networkId || '', 20)}
-          </Badge>
+        {/* Network Badge - replacing with a styled Box */}
+        <Box 
+          bg="blue.800" 
+          color="blue.200" 
+          fontSize="md" 
+          p={2} 
+          borderRadius="md"
+        >
+          {formatWithEllipsis(assetContext.networkId || '', 20)}
+        </Box>
 
-          {/* Address Selection Card */}
-          <Card bg={theme.cardBg} borderColor={theme.border} borderWidth="1px" width="100%">
-            <CardBody>
-              <Stack direction="column" gap={4} align="stretch">
-                <Text fontWeight="bold" fontSize="sm" color="blue.200">
-                  SELECT ADDRESS
-                </Text>
-                
-                <Select
-                  value={selectedAddress}
-                  onChange={handleAddressChange}
-                  fontSize="sm"
-                  fontFamily="mono"
-                  bg="rgba(0,0,0,0.3)"
-                  color="white"
-                  borderColor={theme.border}
-                  _hover={{ borderColor: theme.goldHover }}
-                >
-                  {assetContext.pubkeys.map((pubkey: Pubkey, index: number) => {
-                    const address = pubkey.address || pubkey.master || '';
-                    if (!address) return null;
-                    return (
-                      <option key={index} value={address} style={{ background: '#2D3748' }}>
-                        {formatWithEllipsis(address, 30)}
-                      </option>
-                    );
-                  })}
-                </Select>
+        {/* Address Selection - replacing Card with Box */}
+        <Box bg={theme.cardBg} borderColor={theme.border} borderWidth="1px" width="100%" borderRadius="md" p={4}>
+          <Stack direction="column" gap={4} align="stretch">
+            <Text fontWeight="bold" color="white">Select Address</Text>
+            
+            {/* Replace Select with a styled Box + styled native select */}
+            <Box position="relative">
+              <select
+                value={selectedAddress}
+                onChange={handleAddressChange}
+                style={{
+                  backgroundColor: theme.cardBg,
+                  color: 'white',
+                  borderColor: theme.border,
+                  borderWidth: '1px',
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem',
+                  width: '100%',
+                }}
+              >
+                {assetContext.pubkeys.map((pubkey: Pubkey) => {
+                  const address = pubkey.address || pubkey.master || '';
+                  return (
+                    <option key={address} value={address}>
+                      {pubkey.note || formatWithEllipsis(address)}
+                    </option>
+                  );
+                })}
+              </select>
+            </Box>
+          </Stack>
+        </Box>
 
-                {selectedPubkey && (
-                  <>
-                    <Divider borderColor="gray.700" opacity={0.2} />
-                    
-                    <Box>
-                      <Text fontSize="sm" color="blue.200" mb={1} fontWeight="bold">
-                        ADDRESS TYPE
-                      </Text>
-                      <Text fontSize="sm" fontWeight="medium" color="white">
-                        {selectedPubkey.note}
-                      </Text>
-                    </Box>
-                    
-                    <Box>
-                      <Text fontSize="sm" color="blue.200" mb={1} fontWeight="bold">
-                        DERIVATION PATH
-                      </Text>
-                      <Text fontSize="sm" fontFamily="mono" fontWeight="medium" color="white">
-                        {selectedPubkey.pathMaster}
-                      </Text>
-                    </Box>
-                  </>
-                )}
-              </Stack>
-            </CardBody>
-          </Card>
-
-          {/* QR Code and Address Display */}
-          {selectedAddress && (
-            <Card bg={theme.cardBg} borderColor={theme.border} borderWidth="1px" width="100%">
-              <CardBody>
-                <Stack direction="column" gap={4}>
-                  {qrCodeDataUrl ? (
-                    <Box p={4} bg="white" borderRadius="md">
-                      <img src={qrCodeDataUrl} alt="QR Code" style={{ margin: 'auto' }} />
-                    </Box>
-                  ) : (
-                    <Spinner color={theme.gold} />
-                  )}
-
-                  <Box width="100%">
-                    <Text fontSize="sm" color="blue.200" mb={1} fontWeight="bold">
-                      ADDRESS
-                    </Text>
-                    <Text wordBreak="break-all" fontSize="sm" fontFamily="mono" color="white">
-                      {selectedAddress}
-                    </Text>
-                  </Box>
-
-                  <Button 
-                    width="full" 
-                    bg={theme.cardBg}
-                    color={theme.gold}
-                    borderColor={theme.border}
-                    borderWidth="1px"
-                    onClick={copyToClipboard}
-                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                  >
-                    <Flex align="center" gap={2}>
-                      <FaCopy />
-                      {hasCopied ? 'Copied!' : 'Copy Address'}
-                    </Flex>
-                  </Button>
-                </Stack>
-              </CardBody>
-            </Card>
+        {/* QR Code */}
+        <Box
+          bg="white"
+          p={4}
+          borderRadius="md"
+          boxSize="180px"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          {qrCodeDataUrl ? (
+            <Box as="div">
+              <img src={qrCodeDataUrl} alt="QR Code" />
+            </Box>
+          ) : (
+            <SkeletonCircle size="150px" />
           )}
-        </Stack>
-      </Box>
+        </Box>
+
+        {/* Address */}
+        <Box bg={theme.cardBg} borderColor={theme.border} borderWidth="1px" width="100%" borderRadius="md" p={4}>
+          <Stack direction="column" gap={2}>
+            <Text color="gray.400" fontSize="sm">Address</Text>
+            <Text color="white" fontFamily="mono" fontSize="sm" wordBreak="break-all">
+              {selectedAddress}
+            </Text>
+          </Stack>
+        </Box>
+
+        {/* Copy Button */}
+        <Button
+          width="100%"
+          bg={hasCopied ? 'green.700' : theme.gold}
+          color={hasCopied ? 'green.100' : 'black'}
+          _hover={{
+            bg: hasCopied ? 'green.600' : theme.goldHover,
+          }}
+          onClick={copyToClipboard}
+        >
+          <Flex align="center" gap={2}>
+            <FaCopy />
+            <Text>{hasCopied ? 'Copied!' : 'Copy Address'}</Text>
+          </Flex>
+        </Button>
+      </Stack>
     </Box>
   );
 }
