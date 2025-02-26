@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "Use Chakra UI 3.0 Dialog components",
+      "description": "Always use Chakra UI 3.0 Dialog components from @/components/ui/dialog instead of legacy modals",
+      "pattern": "import.*Modal.*from.*@chakra-ui/react",
+      "severity": "warning",
+      "message": "Use Chakra UI 3.0 Dialog components from @/components/ui/dialog instead of legacy Modal components",
+      "replacement": "import { DialogRoot, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogCloseTrigger } from \"@/components/ui/dialog\""
+    },
+    {
+      "name": "Use useDisclosure with Dialog",
+      "description": "Do not use useDisclosure directly with Modal, use it with Dialog components",
+      "pattern": "useDisclosure\\(\\).*Modal",
+      "severity": "warning",
+      "message": "Use the Dialog open/onOpenChange pattern instead of useDisclosure with Modal components"
+    },
+    {
+      "name": "Prefer Dialog pattern over legacy Modal",
+      "description": "Use Dialog components with the open/onOpenChange pattern",
+      "pattern": "<Modal\\s",
+      "severity": "warning",
+      "message": "Use <DialogRoot open={isOpen} onOpenChange={handleOpenChange}> instead of <Modal>"
+    },
+    {
+      "name": "Avoid using Divider component",
+      "description": "Divider component is removed in Chakra UI 3.0. Use <Box as=\"hr\"> instead",
+      "pattern": "import.*Divider.*from.*@chakra-ui/react|<Divider",
+      "severity": "error",
+      "message": "Divider component doesn't exist in Chakra UI 3.0. Use <Box as=\"hr\" borderColor=\"gray.700\" opacity={0.2} my={3} /> instead",
+      "replacement": "Box"
+    },
+    {
+      "name": "Use Skeleton instead of Spinner",
+      "description": "Always use Skeleton components for loading states instead of Spinners for better UX",
+      "pattern": "import.*Spinner.*from.*@chakra-ui/react|<Spinner",
+      "severity": "error",
+      "message": "Prefer using Skeleton components instead of Spinners for loading states. Import from @/components/ui/skeleton",
+      "replacement": "import { Skeleton, SkeletonCircle, SkeletonText } from \"@/components/ui/skeleton\""
+    },
+    {
+      "name": "Avoid using Card component",
+      "description": "Card component is removed in Chakra UI 3.0. Use Box with styling instead",
+      "pattern": "import.*Card.*from.*@chakra-ui/react|<Card",
+      "severity": "warning",
+      "message": "Card component doesn't exist in Chakra UI 3.0. Use <Box borderWidth=\"1px\" borderRadius=\"md\" p={4} bg=\"cardBg\"> instead",
+      "replacement": "Box"
+    },
+    {
+      "name": "Avoid using Select component",
+      "description": "Select component is changed in Chakra UI 3.0. Use native select or a custom component",
+      "pattern": "import.*Select.*from.*@chakra-ui/react|<Select",
+      "severity": "warning",
+      "message": "Use native <select> element or implement a custom Select using Chakra UI 3.0 components",
+      "replacement": "use native <select> with styling"
+    }
+  ]
+} 
