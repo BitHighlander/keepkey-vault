@@ -1,0 +1,13 @@
+# Cursor Rules for KeepKey-Vault
+
+# Package Manager Rules
+# Always use pnpm for package management
+PACKAGE_MANAGER: pnpm
+
+# Usage Notes:
+# - Use 'pnpm install' instead of 'npm install'
+# - Use 'pnpm add [package]' instead of 'npm install [package]'
+# - Use 'pnpm remove [package]' instead of 'npm uninstall [package]'
+# - Use 'pnpm run [script]' instead of 'npm run [script]'
+
+# Additional project-specific rules can be added here 

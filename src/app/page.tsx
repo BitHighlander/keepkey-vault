@@ -2,7 +2,6 @@
 
 import { Box, Flex, Spinner } from "@chakra-ui/react"
 import Dashboard from '@/components/dashboard/Dashboard'
-import Asset from '@/components/asset/Asset'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { useState, useEffect } from 'react'
 import {
@@ -13,7 +12,6 @@ import {
   DialogBody,
   DialogFooter,
   DialogCloseTrigger,
-  type OpenChangeDetails,
 } from "@/components/ui/dialog"
 import Settings from '@/components/settings/Settings'
 import AddBlockchain from '@/components/blockchain/AddBlockchain'
@@ -21,9 +19,8 @@ import AddBlockchain from '@/components/blockchain/AddBlockchain'
 export default function Home() {
   const { 
     app, 
-    isTransitioning, 
-    currentView,
-    handleViewTransition 
+    isTransitioning,
+    currentView 
   } = usePioneerContext();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -43,11 +40,11 @@ export default function Home() {
     });
   }, [currentView, isTransitioning, app?.assetContext]);
 
-  const handleSettingsOpenChange = (details: OpenChangeDetails) => {
+  const handleSettingsOpenChange = (details: { open: boolean }) => {
     setIsSettingsOpen(details.open);
   };
 
-  const handleAddBlockchainOpenChange = (details: OpenChangeDetails) => {
+  const handleAddBlockchainOpenChange = (details: { open: boolean }) => {
     setIsAddBlockchainOpen(details.open);
   };
 
@@ -94,67 +91,49 @@ export default function Home() {
           transform={isTransitioning ? 'scale(0.98)' : 'scale(1)'}
           transition="all 0.3s ease"
         >
-          {currentView === 'asset' ? (
-            <Asset key={`asset-${app?.assetContext?.networkId}`} />
-          ) : (
-            <Dashboard 
-              key={`dashboard-${Date.now()}`}
-              onSettingsClick={() => setIsSettingsOpen(true)}
-              onAddNetworkClick={() => setIsAddBlockchainOpen(true)}
-            />
-          )}
+          <Dashboard 
+            key={`dashboard-${Date.now()}`}
+            onSettingsClick={() => setIsSettingsOpen(true)}
+            onAddNetworkClick={() => setIsAddBlockchainOpen(true)}
+          />
         </Box>
       </Box>
 
       {/* Settings Dialog */}
-      <DialogRoot 
-        open={isSettingsOpen} 
-        onOpenChange={handleSettingsOpenChange}
-        modal={true}
-        size="md"
-      >
-        <DialogContent
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '90%',
-            maxWidth: '400px'
-          }}
-        >
+      <DialogRoot open={isSettingsOpen} onOpenChange={handleSettingsOpenChange}>
+        <DialogContent className="bg-black border border-zinc-800 w-[375px] rounded-xl shadow-lg">
           <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
+            <DialogTitle className="text-zinc-100">Settings</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <Settings onClose={() => setIsSettingsOpen(false)} />
           </DialogBody>
-          <DialogCloseTrigger />
+          <DialogFooter>
+            <DialogCloseTrigger asChild>
+              <button className="px-4 py-2 bg-zinc-800 text-zinc-100 rounded-md hover:bg-zinc-700 transition-colors">
+                Close
+              </button>
+            </DialogCloseTrigger>
+          </DialogFooter>
         </DialogContent>
       </DialogRoot>
 
       {/* Add Blockchain Dialog */}
-      <DialogRoot 
-        open={isAddBlockchainOpen} 
-        onOpenChange={handleAddBlockchainOpenChange}
-        modal={true}
-        size="lg"
-      >
-        <DialogContent
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)'
-          }}
-        >
+      <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
+        <DialogContent className="bg-black border border-zinc-800 w-[375px] rounded-xl shadow-lg">
           <DialogHeader>
-            <DialogTitle>Add Network</DialogTitle>
+            <DialogTitle className="text-zinc-100">Add Network</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <AddBlockchain onClose={() => setIsAddBlockchainOpen(false)} />
           </DialogBody>
-          <DialogCloseTrigger />
+          <DialogFooter>
+            <DialogCloseTrigger asChild>
+              <button className="px-4 py-2 bg-zinc-800 text-zinc-100 rounded-md hover:bg-zinc-700 transition-colors">
+                Close
+              </button>
+            </DialogCloseTrigger>
+          </DialogFooter>
         </DialogContent>
       </DialogRoot>
     </Flex>

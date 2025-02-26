@@ -17,6 +17,7 @@ import {
 import { Skeleton, SkeletonCircle } from "@/components/ui/skeleton"
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
+import { useRouter } from 'next/navigation';
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -99,10 +100,11 @@ const NetworkSkeleton = () => (
 const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSliceIndex, setActiveSliceIndex] = useState<number | undefined>(undefined);
+  const [activeSliceIndex, setActiveSliceIndex] = useState<number | undefined>(0);
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
+  const router = useRouter();
 
   // Format balance for display
   const formatBalance = (balance: string) => {
@@ -130,6 +132,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     });
   };
 
+  // Add a utility function for middle ellipsis
+  const middleEllipsis = (text: string, visibleChars = 16) => {
+    if (!text) return '';
+    if (text.length <= visibleChars) return text;
+    
+    const charsToShow = Math.floor(visibleChars / 2);
+    return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
+  };
+
   useEffect(() => {
     console.log('📊 [Dashboard] Component mounted');
     fetchDashboard();
@@ -153,6 +164,26 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         const dashboard = app.dashboard;
         console.log('📊 [Dashboard] Dashboard data received:', dashboard);
         setDashboard(dashboard);
+        
+        // Set activeSliceIndex to the index of the top asset (with highest value)
+        if (dashboard.networks && dashboard.networks.length > 0) {
+          const sortedNetworks = [...dashboard.networks]
+            .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+            .sort((a, b) => b.totalValueUsd - a.totalValueUsd);
+            
+          if (sortedNetworks.length > 0) {
+            // Find the index of the top asset in the original filtered data
+            const topAsset = sortedNetworks[0];
+            const topAssetIndex = dashboard.networks
+              .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+              .findIndex((network: Network) => network.networkId === topAsset.networkId);
+              
+            if (topAssetIndex >= 0) {
+              console.log('📊 [Dashboard] Setting active slice to top asset:', topAsset.gasAssetSymbol);
+              setActiveSliceIndex(topAssetIndex);
+            }
+          }
+        }
       } else {
         console.log('📊 [Dashboard] No dashboard data available');
       }
@@ -175,7 +206,31 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
   // Handle slice or legend hover
   const handleHover = (index: number | null) => {
-    setActiveSliceIndex(index === null ? undefined : index);
+    // Only update if hovering over a different asset or returning to the default
+    if (index === null) {
+      // Find the top asset index again when mouse leaves
+      if (dashboard?.networks && dashboard.networks.length > 0) {
+        const sortedNetworks = [...dashboard.networks]
+          .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+          .sort((a, b) => b.totalValueUsd - a.totalValueUsd);
+          
+        if (sortedNetworks.length > 0) {
+          const topAsset = sortedNetworks[0];
+          const topAssetIndex = dashboard.networks
+            .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+            .findIndex((network: Network) => network.networkId === topAsset.networkId);
+            
+          if (topAssetIndex >= 0) {
+            setActiveSliceIndex(topAssetIndex);
+            return;
+          }
+        }
+      }
+      // Fallback to first item if we can't find top asset
+      setActiveSliceIndex(0);
+    } else if (index !== activeSliceIndex) {
+      setActiveSliceIndex(index);
+    }
   };
 
   return (
@@ -292,8 +347,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 <>
                   <Box 
                     width="100%"
-                    maxWidth="300px" 
-                    height="300px" 
+                    maxWidth="210px"  
+                    height="210px" 
                     mx="auto"
                     display="flex"
                     justifyContent="center"
@@ -302,15 +357,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     <DonutChart 
                       data={chartData} 
                       formatValue={(value) => formatUsd(value)}
-                      height={300}
-                      width={300}
+                      height={210}
+                      width={210}
                       activeIndex={activeSliceIndex}
                       onHoverSlice={handleHover}
                     />
                   </Box>
                   <Box 
                     width="100%"
-                    maxWidth="500px"
+                    maxWidth="400px"
                     pt={2}
                     mt={1}
                     mx="auto"
@@ -342,7 +397,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               <HStack gap={2}>
                 <Text fontSize="md" color="gray.400">Your Assets</Text>
                 <Text fontSize="xs" color="gray.600">
-                  ({dashboard?.networks.filter(n => parseFloat(n.totalNativeBalance) > 0).length || 0})
+                  ({dashboard?.networks.length || 0})
                 </Text>
               </HStack>
               <Button
@@ -364,7 +419,6 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 </>
               ) : (
                 dashboard?.networks
-                  .filter(network => parseFloat(network.totalNativeBalance) > 0)
                   .map((network) => {
                     const { integer, largePart, smallPart } = formatBalance(network.totalNativeBalance);
                     const percentage = dashboard.networkPercentages.find(
@@ -419,42 +473,21 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           cursor: 'pointer'
                         }}
                         onClick={() => {
-                          if (app?.setAssetContext) {
-                            console.log('Setting AssetContext from network:', network);
-                            const assetContextData = {
-                              networkId: network.networkId,
-                              chainId: network.networkId,
-                              assetId: network.gasAssetCaip,
-                              caip: network.gasAssetCaip,
-                              name: network.gasAssetSymbol,
-                              networkName: network.networkId.split(':').pop() || '',
-                              symbol: network.gasAssetSymbol,
-                              icon: network.icon,
-                              color: network.color,
-                              balance: network.totalNativeBalance,
-                              value: network.totalValueUsd,
-                              precision: 18,
-                              priceUsd: network.totalValueUsd / parseFloat(network.totalNativeBalance),
-                              explorer: network.networkId.startsWith('eip155') 
-                                ? `https://${network.networkId.split(':').pop()?.toLowerCase()}.etherscan.io`
-                                : network.networkId.startsWith('cosmos')
-                                ? `https://www.mintscan.io/${network.networkId.split(':')[1]}`
-                                : `https://explorer.pioneers.dev/${network.networkId}`,
-                              explorerAddressLink: network.networkId.startsWith('eip155')
-                                ? `https://${network.networkId.split(':').pop()?.toLowerCase()}.etherscan.io/address/`
-                                : network.networkId.startsWith('cosmos')
-                                ? `https://www.mintscan.io/${network.networkId.split(':')[1]}/account/`
-                                : `https://explorer.pioneers.dev/${network.networkId}/address/`,
-                              explorerTxLink: network.networkId.startsWith('eip155')
-                                ? `https://${network.networkId.split(':').pop()?.toLowerCase()}.etherscan.io/tx/`
-                                : network.networkId.startsWith('cosmos')
-                                ? `https://www.mintscan.io/${network.networkId.split(':')[1]}/txs/`
-                                : `https://explorer.pioneers.dev/${network.networkId}/tx/`,
-                              pubkeys: (app.pubkeys as Pubkey[] || []).filter(p => p.networks.includes(network.networkId))
-                            };
-                            console.log('AssetContext data being set:', assetContextData);
-                            app.setAssetContext(assetContextData);
-                          }
+                          console.log('📋 [Dashboard] Navigating to asset page:', network);
+                          
+                          // We always use the full CAIP from gasAssetCaip for navigation
+                          const caip = network.gasAssetCaip;
+                          
+                          console.log('📋 [Dashboard] Using CAIP for navigation:', caip);
+                          console.log('📋 [Dashboard] Network object:', network);
+                          
+                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
+                          const encodedCaip = btoa(caip);
+                          
+                          console.log('📋 [Dashboard] Encoded parameters:', { encodedCaip });
+                          
+                          // Navigate using encoded parameters to the simplified route
+                          router.push(`/asset/${encodedCaip}`);
                         }}
                         role="button"
                         aria-label={`Select ${network.gasAssetSymbol} network`}
@@ -489,6 +522,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             <Stack gap={0.5}>
                               <Text fontSize="md" fontWeight="bold" color={network.color}>
                                 {network.gasAssetSymbol}
+                              </Text>
+                              <Text 
+                                fontSize="xs" 
+                                color="gray.500" 
+                                mb={1}
+                                title={network.gasAssetCaip || network.networkId} // Show full value on hover
+                                cursor="help"
+                                _hover={{
+                                  textDecoration: 'underline',
+                                  textDecorationStyle: 'dotted'
+                                }}
+                              >
+                                {middleEllipsis(network.gasAssetCaip || network.networkId, 14)}
                               </Text>
                               <HStack gap={2} align="center">
                                 <Text fontSize="sm" color="gray.300">

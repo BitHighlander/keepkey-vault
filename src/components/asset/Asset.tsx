@@ -11,9 +11,11 @@ import {
   VStack,
   HStack,
   IconButton,
+  Spinner,
 } from '@chakra-ui/react';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { FaTimes } from 'react-icons/fa';
+import { useRouter } from 'next/navigation';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -24,48 +26,199 @@ const theme = {
   border: '#222222',
 };
 
-export const Asset = () => {
-  const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
-  const [isClearing, setIsClearing] = useState(false);
-  const { app, handleViewTransition } = usePioneerContext();
-  const assetContext = app?.assetContext;
+interface AssetProps {
+  onBackClick?: () => void;
+}
 
-  // Add component mount/unmount logging
+export const Asset = ({ onBackClick }: AssetProps) => {
+  const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Access pioneer context in the same way as the Dashboard component
+  const pioneer = usePioneerContext();
+  const { state } = pioneer;
+  const { app } = state;
+  const assetContext = app?.assetContext;
+  
+  const router = useRouter();
+
+  // Add component mount/unmount logging and handle loading state
   useEffect(() => {
     console.log('🎯 [Asset] Component mounted with context:', assetContext);
+    
+    // For debugging - log the Pioneer context
+    console.log('🎯 [Asset] Pioneer context:', { 
+      app,
+      hasApp: !!app,
+      hasAssetContext: !!app?.assetContext,
+      hasSetAssetContext: !!app?.setAssetContext
+    });
+    
+    // Check if asset context is already available
+    if (assetContext) {
+      console.log('✅ [Asset] AssetContext already available on mount');
+      setLoading(false);
+      return;
+    }
+    
+    // Set a timeout to wait for assetContext to be populated
+    let checkCount = 0;
+    const maxChecks = 10;
+    
+    const checkAssetContext = () => {
+      // Re-access the latest context values
+      const currentApp = pioneer?.state?.app;
+      const currentAssetContext = currentApp?.assetContext;
+      
+      if (currentAssetContext) {
+        console.log('✅ [Asset] AssetContext became available on check', checkCount);
+        setLoading(false);
+        return true;
+      }
+      
+      checkCount++;
+      if (checkCount >= maxChecks) {
+        console.log('❌ [Asset] AssetContext still null after', maxChecks, 'checks');
+        console.log('❌ [Asset] Current app state:', {
+          hasApp: !!currentApp,
+          hasAssetContext: !!currentApp?.assetContext,
+          hasSetAssetContext: !!currentApp?.setAssetContext,
+          isDashboardAvailable: !!currentApp?.dashboard
+        });
+        setLoading(false);
+        return true;
+      }
+      
+      return false;
+    };
+    
+    // Immediately check once
+    if (checkAssetContext()) return;
+    
+    // Then set up an interval for repeated checks
+    const timer = setInterval(() => {
+      if (checkAssetContext()) {
+        clearInterval(timer);
+      }
+    }, 500); // Check every 500ms
+    
     return () => {
       console.log('👋 [Asset] Component unmounting');
+      clearInterval(timer);
     };
-  }, [assetContext]);
+  }, [app, assetContext, pioneer]);
 
-  const handleTransition = async () => {
-    if (isClearing) return; // Prevent multiple transitions
-    
-    try {
-      console.log('🔄 [Asset] Starting view transition to dashboard');
-      setIsClearing(true);
-      await handleViewTransition('dashboard');
-      console.log('✅ [Asset] View transition complete');
-    } catch (error) {
-      console.error('❌ [Asset] Error during transition:', error);
-    } finally {
-      setIsClearing(false);
+  const handleBack = () => {
+    if (onBackClick) {
+      // Use the provided onBackClick handler if available
+      console.log('🔙 [Asset] Using custom back handler');
+      onBackClick();
+    } else {
+      // Default behavior - navigate to dashboard
+      console.log('🔙 [Asset] Back button clicked, navigating to dashboard');
+      router.push('/');
     }
   };
 
-  const handleBack = () => {
-    console.log('🔙 [Asset] Back button clicked');
-    handleTransition();
+  const handleClose = () => {
+    // Close button always goes to dashboard regardless of back button behavior
+    console.log('❌ [Asset] Close button clicked, navigating to dashboard');
+    router.push('/');
   };
 
-  const handleClose = () => {
-    console.log('❌ [Asset] Close button clicked');
-    handleTransition();
+  // Add a utility function for middle ellipsis
+  const middleEllipsis = (text: string, visibleChars = 16) => {
+    if (!text) return '';
+    if (text.length <= visibleChars) return text;
+    
+    const charsToShow = Math.floor(visibleChars / 2);
+    return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
   };
+
+  if (loading) {
+    // Show loading state while waiting for context
+    return (
+      <Box 
+        height="600px" 
+        bg={theme.bg} 
+        display="flex" 
+        alignItems="center" 
+        justifyContent="center"
+        flexDirection="column"
+      >
+        <Spinner color={theme.gold} size="xl" mb={4} />
+        <Text color="gray.400">Loading asset data...</Text>
+      </Box>
+    );
+  }
 
   if (!assetContext) {
     console.log('❌ [Asset] AssetContext is null or undefined');
-    return null;
+    console.log('❌ [Asset] This may indicate an issue with the context provider or URL parameters');
+    
+    // Show a user-friendly error message with a back button
+    return (
+      <Box height="600px" bg={theme.bg}>
+        <Box 
+          borderBottom="1px" 
+          borderColor={theme.border}
+          p={4}
+          bg={theme.cardBg}
+        >
+          <HStack justify="space-between" align="center">
+            <Button
+              size="sm"
+              variant="ghost"
+              color={theme.gold}
+              onClick={handleBack}
+              _hover={{ color: theme.goldHover }}
+            >
+              <Text>Back</Text>
+            </Button>
+          </HStack>
+        </Box>
+        
+        <Box 
+          p={8} 
+          textAlign="center" 
+          display="flex" 
+          flexDirection="column" 
+          alignItems="center" 
+          justifyContent="center"
+          height="400px"
+        >
+          <Box 
+            w="80px" 
+            h="80px" 
+            borderRadius="full" 
+            bg="rgba(254, 215, 226, 0.1)" 
+            display="flex" 
+            alignItems="center" 
+            justifyContent="center"
+            mb={4}
+          >
+            <FaTimes color="#FC8181" size="32px" />
+          </Box>
+          
+          <Text fontSize="xl" fontWeight="bold" color="white" mb={2}>
+            Asset Data Not Found
+          </Text>
+          
+          <Text color="gray.400" maxWidth="sm" mb={6}>
+            We couldn't load the asset data. This could be due to an invalid URL or a connection issue.
+          </Text>
+          
+          <Button
+            variant="outline"
+            color={theme.gold}
+            borderColor={theme.gold}
+            onClick={handleBack}
+          >
+            Return to Previous Page
+          </Button>
+        </Box>
+      </Box>
+    );
   }
 
   const formatBalance = (balance: string | number) => {
@@ -225,9 +378,35 @@ export const Asset = () => {
                   </Text>
                 </HStack>
                 <HStack justify="space-between">
+                  <Text color="gray.400">CAIP</Text>
+                  <Text 
+                    color="white" 
+                    fontSize="sm" 
+                    fontFamily="mono"
+                    title={assetContext.caip || assetContext.assetId}
+                    cursor="help"
+                    _hover={{
+                      textDecoration: 'underline',
+                      textDecorationStyle: 'dotted'
+                    }}
+                  >
+                    {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
+                  </Text>
+                </HStack>
+                <HStack justify="space-between">
                   <Text color="gray.400">Asset ID</Text>
-                  <Text color="white" fontSize="sm" fontFamily="mono">
-                    {assetContext.assetId}
+                  <Text 
+                    color="white" 
+                    fontSize="sm" 
+                    fontFamily="mono"
+                    title={assetContext.assetId}
+                    cursor="help"
+                    _hover={{
+                      textDecoration: 'underline',
+                      textDecorationStyle: 'dotted'
+                    }}
+                  >
+                    {middleEllipsis(assetContext.assetId, 16)}
                   </Text>
                 </HStack>
               </VStack>
