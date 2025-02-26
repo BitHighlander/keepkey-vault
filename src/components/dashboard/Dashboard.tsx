@@ -10,10 +10,13 @@ import {
   Button,
   Image,
   VStack,
+  Grid,
+  GridItem,
+  useDisclosure,
 } from '@chakra-ui/react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Label } from 'recharts';
 import { Skeleton, SkeletonCircle } from "@/components/ui/skeleton"
 import { usePioneerContext } from '@/components/providers/pioneer'
+import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -80,15 +83,15 @@ interface DashboardProps {
 }
 
 const NetworkSkeleton = () => (
-  <HStack gap="4" p={4} bg={theme.cardBg} borderRadius="2xl" boxShadow="lg">
-    <SkeletonCircle size="8" />
+  <HStack gap="4" p={5} bg={theme.cardBg} borderRadius="2xl" boxShadow="lg">
+    <SkeletonCircle size="12" />
     <Stack flex="1">
-      <Skeleton height="4" width="120px" />
-      <Skeleton height="3" width="80px" />
+      <Skeleton height="5" width="120px" />
+      <Skeleton height="4" width="80px" />
     </Stack>
     <Stack align="flex-end">
-      <Skeleton height="4" width="60px" />
-      <Skeleton height="3" width="40px" />
+      <Skeleton height="5" width="70px" />
+      <Skeleton height="4" width="40px" />
     </Stack>
   </HStack>
 );
@@ -96,6 +99,7 @@ const NetworkSkeleton = () => (
 const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeSliceIndex, setActiveSliceIndex] = useState<number | undefined>(undefined);
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
@@ -169,8 +173,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       color: network.color,
     })) || [];
 
+  // Handle slice or legend hover
+  const handleHover = (index: number | null) => {
+    setActiveSliceIndex(index === null ? undefined : index);
+  };
+
   return (
-    <Box height="600px" bg={theme.bg}>
+    <Box height="800px" bg={theme.bg}>
       {/* Header */}
       <Box 
         borderBottom="1px" 
@@ -221,13 +230,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         height="calc(100% - 60px)" 
         overflowY="auto" 
         overflowX="hidden"
-        p={4}
+        p={6}
         {...scrollbarStyles}
       >
-        <VStack gap={6} align="stretch">
+        <VStack gap={8} align="stretch">
           {/* Portfolio Overview with Chart */}
           <Box 
-            p={6} 
+            p={8} 
             borderRadius="2xl" 
             boxShadow={!loading && dashboard && chartData.length > 0 
               ? `0 4px 20px ${chartData[0].color}20, inset 0 0 20px ${chartData[0].color}10`
@@ -265,95 +274,73 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               zIndex: 1,
             }}
           >
-            <Flex direction={{ base: 'column', sm: 'row' }} gap={6} align="center" position="relative" zIndex={2}>
-              {/* Portfolio Value */}
-              <Stack gap={1} flex="1">
-                {loading ? (
-                  <>
-                    <Skeleton height="4" width="140px" />
-                    <Skeleton height="8" width="180px" />
-                  </>
-                ) : (
-                  <>
-                    <Text fontSize="sm" color={chartData.length > 0 ? `${chartData[0].color}80` : "gray.400"}>
-                      Total Portfolio Value
-                    </Text>
-                    <Text fontSize="3xl" fontWeight="bold" color={chartData.length > 0 ? chartData[0].color : theme.gold}>
-                      ${formatUsd(dashboard?.totalValueUsd)}
-                    </Text>
-                  </>
-                )}
-              </Stack>
-
-              {/* Donut Chart */}
-              {!loading && dashboard && (
-                <Box width="120px" height="120px">
-                  <ResponsiveContainer>
-                    <PieChart>
-                      <Pie
-                        data={chartData}
-                        innerRadius={35}
-                        outerRadius={55}
-                        paddingAngle={2}
-                        dataKey="value"
-                        nameKey="name"
-                        label={({ name, value, cx, cy, midAngle, innerRadius, outerRadius }) => {
-                          const RADIAN = Math.PI / 180;
-                          const radius = innerRadius + (outerRadius - innerRadius) * 1.4;
-                          const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                          const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                          const percent = ((value / dashboard.totalValueUsd) * 100).toFixed(0);
-                          
-                          return (
-                            <text
-                              x={x}
-                              y={y}
-                              fill={theme.gold}
-                              textAnchor={x > cx ? 'start' : 'end'}
-                              dominantBaseline="central"
-                              fontSize="10"
-                              fontWeight="bold"
-                            >
-                              {name} ({percent}%)
-                            </text>
-                          );
-                        }}
-                        labelLine={{
-                          stroke: theme.gold,
-                          strokeWidth: 1,
-                          strokeOpacity: 0.5,
-                        }}
-                      >
-                        {chartData.map((entry, index) => (
-                          <Cell 
-                            key={`cell-${index}`}
-                            fill={entry.color}
-                            stroke={theme.cardBg}
-                            strokeWidth={2}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: number) => [`$${formatUsd(value)}`, 'Value']}
-                        contentStyle={{
-                          backgroundColor: theme.cardBg,
-                          borderColor: theme.border,
-                          borderRadius: '8px',
-                          color: 'white'
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </Box>
+            <Flex 
+              justify="center" 
+              align="center" 
+              position="relative" 
+              zIndex={2}
+              direction="column"
+              gap={6}
+              width="100%"
+            >
+              {loading ? (
+                <Flex direction="column" align="center" justify="center" py={6} width="100%">
+                  <SkeletonCircle size="180px" />
+                  <Skeleton height="4" width="140px" mt={4} />
+                </Flex>
+              ) : dashboard ? (
+                <>
+                  <Box 
+                    width="100%"
+                    maxWidth="300px" 
+                    height="300px" 
+                    mx="auto"
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
+                  >
+                    <DonutChart 
+                      data={chartData} 
+                      formatValue={(value) => formatUsd(value)}
+                      height={300}
+                      width={300}
+                      activeIndex={activeSliceIndex}
+                      onHoverSlice={handleHover}
+                    />
+                  </Box>
+                  <Box 
+                    width="100%"
+                    maxWidth="500px"
+                    pt={2}
+                    mt={1}
+                    mx="auto"
+                    height="40px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    borderTop="1px solid"
+                    borderColor="whiteAlpha.100"
+                  >
+                    <ChartLegend 
+                      data={chartData} 
+                      total={dashboard.totalValueUsd}
+                      formatValue={(value) => formatUsd(value)}
+                      activeIndex={activeSliceIndex}
+                      onHoverItem={handleHover}
+                    />
+                  </Box>
+                </>
+              ) : (
+                <Text color={theme.gold}>No portfolio data available</Text>
               )}
             </Flex>
           </Box>
 
           {/* Network List */}
           <Box>
-            <HStack justify="space-between" mb={4}>
+            <HStack justify="space-between" mb={5}>
               <HStack gap={2}>
-                <Text fontSize="sm" color="gray.400">Your Assets</Text>
+                <Text fontSize="md" color="gray.400">Your Assets</Text>
                 <Text fontSize="xs" color="gray.600">
                   ({dashboard?.networks.filter(n => parseFloat(n.totalNativeBalance) > 0).length || 0})
                 </Text>
@@ -368,7 +355,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               </Button>
             </HStack>
             
-            <VStack gap={2}>
+            <VStack gap={4}>
               {loading || !dashboard ? (
                 <>
                   <NetworkSkeleton />
@@ -388,7 +375,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                       <Box 
                         key={network.networkId}
                         w="100%"
-                        p={4}
+                        p={5}
                         borderRadius="2xl"
                         borderWidth="1px"
                         borderColor={`${network.color}40`}
@@ -473,11 +460,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         aria-label={`Select ${network.gasAssetSymbol} network`}
                       >
                         <Flex align="center" justify="space-between">
-                          <HStack gap={3}>
+                          <HStack gap={4}>
                             <Box 
                               borderRadius="full" 
                               overflow="hidden" 
-                              boxSize="32px"
+                              boxSize="44px"
                               bg={network.color}
                               boxShadow={`lg, inset 0 0 10px ${network.color}40`}
                               position="relative"
@@ -495,12 +482,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               <Image 
                                 src={network.icon} 
                                 alt={network.networkId}
-                                boxSize="32px"
+                                boxSize="44px"
                                 objectFit="cover"
                               />
                             </Box>
-                            <Stack gap={0}>
-                              <Text fontSize="sm" fontWeight="bold" color={network.color}>
+                            <Stack gap={0.5}>
+                              <Text fontSize="md" fontWeight="bold" color={network.color}>
                                 {network.gasAssetSymbol}
                               </Text>
                               <HStack gap={2} align="center">
@@ -516,8 +503,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               </HStack>
                             </Stack>
                           </HStack>
-                          <Stack align="flex-end" gap={0}>
-                            <Text fontSize="sm" color={network.color}>
+                          <Stack align="flex-end" gap={0.5}>
+                            <Text fontSize="md" color={network.color}>
                               ${formatUsd(network.totalValueUsd)}
                             </Text>
                             <Text fontSize="xs" color={`${network.color}80`}>
@@ -534,7 +521,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
           {/* Add Network Button */}
           <Box
-            p={4}
+            p={6}
             borderRadius="2xl"
             borderStyle="dashed"
             borderWidth="2px"
@@ -562,16 +549,20 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             cursor="pointer"
             onClick={onAddNetworkClick}
           >
-            <Flex justify="center" align="center">
+            <Flex justify="center" align="center" py={2}>
               <Button
                 variant="ghost"
                 color={theme.gold}
+                size="lg"
                 _hover={{ bg: 'transparent', color: theme.goldHover }}
               >
                 Add Network
               </Button>
             </Flex>
           </Box>
+          
+          {/* Add some padding at the bottom for better scrolling */}
+          <Box height="20px" />
         </VStack>
       </Box>
     </Box>

@@ -8,6 +8,7 @@ import { Provider as ChakraProvider } from "@/components/ui/provider"
 import { LogoIcon } from '@/components/logo'
 import { keyframes } from '@emotion/react'
 import { Flex } from '@chakra-ui/react'
+import { ConnectionError } from '@/components/error'
 // //@ts-ignore
 // import { defaultConfig } from '@saas-ui-pro/react';
 
@@ -22,8 +23,8 @@ const scale = keyframes`
 `
 
 // Get environment variables with fallbacks
-const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'http://127.0.0.1:9001/spec/swagger.json'
-const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'ws://127.0.0.1:9001'
+const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL
+const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS
 // Create a wrapper component to handle Pioneer initialization
 
 function PioneerInitializer({ children, onPioneerReady }: {
@@ -33,32 +34,47 @@ function PioneerInitializer({ children, onPioneerReady }: {
   const pioneer = usePioneer()
   const [isInitialized, setIsInitialized] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [connectionError, setConnectionError] = useState(false)
+
+  const initPioneer = async () => {
+    if (isInitialized) return
+
+    try {
+      setIsLoading(true)
+      setConnectionError(false)
+      const pioneerSetup = {
+        appName: 'KeepKey Portfolio',
+        appIcon: 'https://pioneers.dev/coins/keepkey.png',
+        spec: PIONEER_URL,
+        wss: PIONEER_WSS,
+      }
+      console.log('pioneerSetup: ',pioneerSetup)
+      await pioneer.onStart([], pioneerSetup)
+      setIsInitialized(true)
+      onPioneerReady(pioneer)
+    } catch (e) {
+      console.error('Pioneer initialization error:', e)
+      // Check if the error is related to a connection failure
+      if (e instanceof Error && (
+        e.message.includes('Failed to fetch') || 
+        e.message.includes('NetworkError') ||
+        e.message.includes('Network Error') ||
+        e.message.includes('Connection refused')
+      )) {
+        setConnectionError(true)
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const initPioneer = async () => {
-      if (isInitialized) return
-
-      try {
-        setIsLoading(true)
-        const pioneerSetup = {
-          appName: 'KeepKey Portfolio',
-          appIcon: 'https://pioneers.dev/coins/keepkey.png',
-          spec: PIONEER_URL,
-          wss: PIONEER_WSS,
-        }
-        console.log('pioneerSetup: ',pioneerSetup)
-        await pioneer.onStart([], pioneerSetup)
-        setIsInitialized(true)
-        onPioneerReady(pioneer)
-      } catch (e) {
-        console.error('Pioneer initialization error:', e)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     initPioneer()
   }, [pioneer, isInitialized, onPioneerReady])
+
+  if (connectionError) {
+    return <ConnectionError onRetry={initPioneer} />
+  }
 
   if (isLoading) {
     return (
