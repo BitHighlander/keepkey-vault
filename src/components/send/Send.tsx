@@ -360,11 +360,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Transaction success screen
     if (transactionStep === 'success' && txSuccess) {
       return (
-        <Box 
-          height="600px"
-          bg={theme.bg}
-          overflow="hidden"
-        >
+        <Box height="100vh" bg={theme.bg}>
           {/* Show confetti animation */}
           <Confetti 
             width={375}
@@ -509,11 +505,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     
     // Transaction in progress
     return (
-      <Box 
-        height="600px"
-        bg={theme.bg}
-        overflow="hidden"
-      >
+      <Box height="100vh" bg={theme.bg}>
         <Box 
           bg={theme.cardBg}
           borderColor={theme.border}
@@ -651,8 +643,30 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Normal send form
   return (
-    <Box height="600px" bg={theme.bg}>
-      {/* Header - omitted in dialog mode since header is provided by dialog */}
+    <Box height="100vh" bg={theme.bg}>
+      {/* Header */}
+      <Box 
+        borderBottom="1px" 
+        borderColor={theme.border}
+        p={4}
+        bg={theme.cardBg}
+        backdropFilter="blur(10px)"
+      >
+        <Flex justify="space-between" align="center">
+          <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
+            Send {assetContext.symbol}
+          </Text>
+          <IconButton
+            aria-label="Close"
+            onClick={onBackClick}
+            size="sm"
+            variant="ghost"
+            color={theme.gold}
+          >
+            <FaTimes />
+          </IconButton>
+        </Flex>
+      </Box>
       
       {/* Main Content */}
       <Box p={4}>
@@ -748,21 +762,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <FaPaperPlane />
               <Text>Send {assetContext.symbol}</Text>
             </Flex>
-          </Button>
-          
-          {/* Cancel Button */}
-          <Button
-            width="100%"
-            variant="outline"
-            color={theme.gold}
-            borderColor={theme.border}
-            _hover={{
-              bg: 'rgba(255, 215, 0, 0.1)',
-              borderColor: theme.gold,
-            }}
-            onClick={onBackClick}
-          >
-            Cancel
           </Button>
         </Stack>
       </Box>

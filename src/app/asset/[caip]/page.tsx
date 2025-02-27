@@ -258,7 +258,7 @@ export default function AssetPage() {
   // Render skeleton while waiting for app to be ready
   if (!isAppReady) {
     return (
-      <Box height="600px" bg={theme.bg} p={4}>
+      <Box height="100vh" bg={theme.bg} p={4}>
         <Box 
           borderBottom="1px" 
           borderColor={theme.border}
@@ -303,7 +303,7 @@ export default function AssetPage() {
     >
       <Box 
         width="375px" 
-        height="600px"
+        height="100vh"
         bg="black" 
         overflow="hidden"
         position="relative"

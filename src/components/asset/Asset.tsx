@@ -231,7 +231,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
   };
 
   return (
-    <Box height="600px" bg={theme.bg} width="100%" mx="auto">
+    <Box height="100vh" bg={theme.bg} width="100%" mx="auto">
       {/* Header */}
       <Box 
         borderBottom="1px" 

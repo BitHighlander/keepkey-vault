@@ -234,7 +234,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   return (
-    <Box height="800px" bg={theme.bg}>
+    <Box height="100vh" bg={theme.bg}>
       {/* Header */}
       <Box 
         borderBottom="1px" 
