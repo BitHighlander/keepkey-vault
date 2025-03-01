@@ -1,0 +1,21 @@
+{
+  "name": "KeepKey Vault",
+  "short_name": "KeepKey",
+  "description": "Secure cryptocurrency wallet management with KeepKey hardware wallet",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#FFD700",
+  "icons": [
+    {
+      "src": "/images/kk-icon-gold.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/logos/keepkey-logo-square.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+} 
