@@ -3,6 +3,7 @@
 import React from 'react';
 import { Box, HStack, Text, Circle, Flex } from '@chakra-ui/react';
 import { DonutChartItem } from './DonutChart';
+import CountUp from 'react-countup';
 
 // Theme colors - matching dashboard theme
 const theme = {
@@ -72,7 +73,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
             {percent}%
           </Text>
           <Text fontSize="xs" color="gray.300">
-            ${formatValue(activeItem.value)}
+            $<CountUp 
+              end={activeItem.value} 
+              decimals={2}
+              duration={1}
+              separator=","
+            />
           </Text>
         </HStack>
       </Flex>

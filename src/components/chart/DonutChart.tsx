@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { pie, arc, PieArcDatum } from 'd3';
 import AnimatedSlice from './AnimatedSlice';
 import { Box } from '@chakra-ui/react';
+import CountUp from 'react-countup';
 
 // Theme colors - matching dashboard theme
 const theme = {
@@ -110,21 +111,38 @@ const DonutChart: React.FC<DonutChartProps> = ({
               strokeWidth="1"
               strokeOpacity="0.3"
             />
-            <text
-              textAnchor="middle"
-              fill={theme.gold}
-              fontSize={radius * 0.16}
-              fontWeight="bold"
-              opacity="0.95"
-              filter="drop-shadow(0px 0px 1px rgba(0,0,0,0.8))"
+            <foreignObject
+              x={-innerRadius * 0.7}
+              y={-innerRadius * 0.4}
+              width={innerRadius * 1.4}
+              height={innerRadius * 0.8}
             >
-              <tspan x="0" dy="-0.6em">
-                Portfolio
-              </tspan>
-              <tspan x="0" dy="1.2em">
-                ${formatValue(total)}
-              </tspan>
-            </text>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  color: theme.gold,
+                  fontSize: `${radius * 0.16}px`,
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  filter: 'drop-shadow(0px 0px 1px rgba(0,0,0,0.8))',
+                }}
+              >
+                <div>Portfolio</div>
+                <div style={{ marginTop: '0.5em' }}>
+                  $<CountUp 
+                    end={total} 
+                    decimals={2}
+                    duration={1.5}
+                    separator=","
+                  />
+                </div>
+              </div>
+            </foreignObject>
           </g>
         )}
       </svg>

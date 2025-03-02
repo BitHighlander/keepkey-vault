@@ -16,6 +16,7 @@ import {
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { FaTimes } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
+import CountUp from 'react-countup';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -35,6 +36,7 @@ interface AssetProps {
 export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) => {
   // State for managing the component's loading status
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<number>(Date.now());
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -43,6 +45,17 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
   const assetContext = app?.assetContext;
   
   const router = useRouter();
+
+  // Format USD value
+  const formatUsd = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return '0.00';
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(numValue)) return '0.00';
+    return numValue.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
 
   // Add component mount/unmount logging and handle loading state
   useEffect(() => {
@@ -109,6 +122,31 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
       clearInterval(timer);
     };
   }, [app, assetContext, pioneer]);
+
+  // Set up interval to sync market data every 15 seconds
+  useEffect(() => {
+    if (!app) return;
+    
+    const intervalId = setInterval(() => {
+      app
+        .syncMarket()
+        .then(() => {
+          console.log("📊 [Asset] syncMarket called from Asset component");
+          // Artificially adjust values by +0.01 for testing animation
+          if (app.assetContext && app.assetContext.value !== undefined) {
+            const oldVal = parseFloat(app.assetContext.value.toString() || '0');
+            const newVal = oldVal + 0.01;
+            app.assetContext.value = newVal;
+          }
+          setLastSync(Date.now());
+        })
+        .catch((error: any) => {
+          console.error("❌ [Asset] Error in syncMarket:", error);
+        });
+    }, 15000);
+
+    return () => clearInterval(intervalId);
+  }, [app]);
 
   const handleBack = () => {
     if (onBackClick) {
@@ -230,6 +268,16 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
     return numBalance.toFixed(8);
   };
 
+  // Calculate the USD value
+  const usdValue = (assetContext.value !== undefined && assetContext.value !== null) 
+    ? assetContext.value 
+    : (assetContext.balance && assetContext.priceUsd) 
+      ? parseFloat(assetContext.balance) * assetContext.priceUsd 
+      : 0;
+
+  // Calculate the price
+  const priceUsd = assetContext.priceUsd || 0;
+
   return (
     <Box height="100vh" bg={theme.bg} width="100%" mx="auto">
       {/* Header */}
@@ -308,7 +356,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                   {assetContext.symbol}
                 </Text>
                 <Text fontSize="3xl" fontWeight="bold" color={theme.gold}>
-                  ${assetContext.value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  $<CountUp 
+                    key={`value-${lastSync}`}
+                    end={usdValue} 
+                    decimals={2}
+                    duration={1.5}
+                    separator=","
+                  />
                 </Text>
                 <Text fontSize="md" color="white">
                   {formatBalance(assetContext.balance)} {assetContext.symbol}
@@ -433,7 +487,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                 <HStack justify="space-between">
                   <Text color="gray.400">Price</Text>
                   <Text color="white">
-                    ${assetContext.priceUsd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    $<CountUp 
+                      key={`price-${lastSync}`}
+                      end={priceUsd} 
+                      decimals={2}
+                      duration={1.5}
+                      separator=","
+                    />
                   </Text>
                 </HStack>
               </VStack>
