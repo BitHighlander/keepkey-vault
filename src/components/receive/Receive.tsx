@@ -7,9 +7,8 @@ import {
   Text, 
   Stack, 
   Flex,
-  Badge,
+  Badge
 } from '@chakra-ui/react';
-import { createDisclosure } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { Skeleton, SkeletonCircle } from '@/components/ui/skeleton';
 import { Avatar } from '@/components/ui/avatar';
@@ -66,7 +65,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
   const [loading, setLoading] = useState(true);
   const [hasCopied, setHasCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
-  const { open, onOpen, onClose } = createDisclosure();
 
   // Use the Pioneer context to get asset context
   const pioneer = usePioneerContext();
@@ -215,10 +213,10 @@ export function Receive({ onBackClick }: ReceiveProps) {
           transition={{ duration: 0.5 }}
         >
           <Stack gap={4}>
-            <SkeletonCircle size="150px" mx="auto" startColor="gray.700" endColor="gray.900" speed={1.2} />
-            <Skeleton height="40px" width="100%" startColor="gray.700" endColor="gray.900" speed={1.2} />
-            <Skeleton height="60px" width="100%" startColor="gray.700" endColor="gray.900" speed={1.2} />
-            <Skeleton height="40px" width="80%" mx="auto" startColor="gray.700" endColor="gray.900" speed={1.2} />
+            <SkeletonCircle size="150px" mx="auto" />
+            <Skeleton height="40px" width="100%" />
+            <Skeleton height="60px" width="100%" />
+            <Skeleton height="40px" width="80%" mx="auto" />
           </Stack>
         </MotionBox>
       </Box>
@@ -366,20 +364,25 @@ export function Receive({ onBackClick }: ReceiveProps) {
               stiffness: 260,
               damping: 20
             }}
-            sx={{
-              '&::after': {
-                content: '""',
-                position: 'absolute',
-                top: '-4px',
-                left: '-4px',
-                right: '-4px',
-                bottom: '-4px',
-                borderRadius: 'full',
-                border: '1px solid',
-                borderColor: 'rgba(255, 215, 0, 0.3)',
-                animation: `${pulseRing} 2s infinite`
-              }
+            style={{
+              position: 'relative',
+              zIndex: 1
             }}
+          />
+          
+          {/* Add the pulse ring effect as a separate element */}
+          <Box
+            position="absolute"
+            top="-4px"
+            left="-4px"
+            right="-4px"
+            bottom="-4px"
+            borderRadius="full"
+            border="1px solid"
+            borderColor="rgba(255, 215, 0, 0.3)"
+            animation={`${pulseRing} 2s infinite`}
+            pointerEvents="none"
+            zIndex={0}
           />
           
           {/* Network Badge positioned over avatar */}
@@ -393,6 +396,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
             boxShadow="dark-lg"
             px={2}
             py={1}
+            zIndex={2}
           >
             {assetContext.networkId?.split('/')[0]?.split(':')[1] || ''}
           </Badge>
@@ -440,51 +444,49 @@ export function Receive({ onBackClick }: ReceiveProps) {
           transition={{ delay: 0.4, duration: 0.5 }}
         >
           <Stack direction="column" gap={4} align="stretch">
-            <FormControl>
-              <FormLabel fontWeight="bold" color="white">Select Address</FormLabel>
-              
-              {/* Replace Select with a styled Box + styled native select */}
-              <Box 
-                position="relative"
-                _after={{
-                  content: '""',
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  borderLeft: '5px solid transparent',
-                  borderRight: '5px solid transparent',
-                  borderTop: `5px solid ${theme.gold}`,
-                  pointerEvents: 'none'
+            <Text fontWeight="bold" color="white">Select Address</Text>
+            
+            {/* Replace Select with a styled Box + styled native select */}
+            <Box 
+              position="relative"
+              _after={{
+                content: '""',
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                borderLeft: '5px solid transparent',
+                borderRight: '5px solid transparent',
+                borderTop: `5px solid ${theme.gold}`,
+                pointerEvents: 'none'
+              }}
+            >
+              <select
+                value={selectedAddress}
+                onChange={handleAddressChange}
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                  color: 'white',
+                  borderColor: theme.border,
+                  borderWidth: '1px',
+                  borderRadius: '0.375rem',
+                  padding: '0.75rem',
+                  width: '100%',
+                  appearance: 'none',
+                  transition: 'all 0.2s',
+                  boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.3)'
                 }}
               >
-                <select
-                  value={selectedAddress}
-                  onChange={handleAddressChange}
-                  style={{
-                    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                    color: 'white',
-                    borderColor: theme.border,
-                    borderWidth: '1px',
-                    borderRadius: '0.375rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    appearance: 'none',
-                    transition: 'all 0.2s',
-                    boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.3)'
-                  }}
-                >
-                  {assetContext.pubkeys.map((pubkey: Pubkey) => {
-                    const address = pubkey.address || pubkey.master || '';
-                    return (
-                      <option key={address} value={address}>
-                        {pubkey.note || formatWithEllipsis(address)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </Box>
-            </FormControl>
+                {assetContext.pubkeys.map((pubkey: Pubkey) => {
+                  const address = pubkey.address || pubkey.master || '';
+                  return (
+                    <option key={address} value={address}>
+                      {pubkey.note || formatWithEllipsis(address)}
+                    </option>
+                  );
+                })}
+              </select>
+            </Box>
           </Stack>
           
           {/* Subtle gradient overlay */}
@@ -575,7 +577,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
             color={hasCopied ? 'green.100' : 'black'}
             _hover={{
               bg: hasCopied ? 'green.600' : theme.goldHover,
-              boxShadow: '0 5px 15px rgba(0, 0, 0, 0.2)'
+              boxShadow: '0 5px 15px rgba(0, 0, 0, 0.2)',
             }}
             _active={{
               bg: hasCopied ? 'green.800' : 'orange.400',
@@ -586,23 +588,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
             boxShadow="0 4px 10px rgba(0, 0, 0, 0.2)"
             position="relative"
             overflow="hidden"
-            _before={{
-              content: '""',
-              position: 'absolute',
-              top: '0',
-              left: '0',
-              right: '0',
-              bottom: '0',
-              background: 'linear-gradient(45deg, transparent 65%, rgba(255,255,255,0.2) 70%, transparent 75%)',
-              backgroundSize: '200% 200%',
-              backgroundPosition: '100% 100%',
-              transition: 'all 0.6s ease',
-            }}
-            _hover={{
-              _before: {
-                backgroundPosition: '0 0',
-              }
-            }}
           >
             <Flex align="center" gap={2}>
               {hasCopied ? <FaCheck /> : <FaCopy />}

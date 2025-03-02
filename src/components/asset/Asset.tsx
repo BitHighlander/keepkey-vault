@@ -12,9 +12,11 @@ import {
   HStack,
   IconButton,
   Spinner,
+  useDisclosure,
+  Icon,
 } from '@chakra-ui/react';
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 
@@ -37,6 +39,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
   // State for managing the component's loading status
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<number>(Date.now());
+  // Add state for tracking expanded/collapsed state of asset details
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -173,6 +177,11 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
     
     const charsToShow = Math.floor(visibleChars / 2);
     return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
+  };
+
+  // Toggle details expanded/collapsed state
+  const toggleDetails = () => {
+    setIsDetailsExpanded(!isDetailsExpanded);
   };
 
   if (loading) {
@@ -405,7 +414,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
             </Button>
           </VStack>
 
-          {/* Asset Details Section */}
+          {/* Asset Details Section - Now Collapsible */}
           <Box 
             bg={theme.cardBg}
             borderRadius="2xl"
@@ -413,142 +422,147 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
             borderColor={theme.border}
             borderWidth="1px"
           >
-            <Box p={4} borderBottom="1px" borderColor={theme.border}>
+            {/* Clickable header */}
+            <Flex 
+              p={4} 
+              borderBottom={isDetailsExpanded ? "1px" : "none"} 
+              borderColor={theme.border}
+              justifyContent="space-between"
+              alignItems="center"
+              onClick={toggleDetails}
+              cursor="pointer"
+              _hover={{
+                bg: 'rgba(255, 215, 0, 0.05)',
+              }}
+              transition="background 0.2s"
+            >
               <Text color={theme.gold} fontSize="lg" fontWeight="bold">
                 Asset Details
               </Text>
-            </Box>
+              <Icon 
+                as={isDetailsExpanded ? FaChevronUp : FaChevronDown} 
+                color={theme.gold}
+                boxSize={4}
+              />
+            </Flex>
             
-            <VStack align="stretch" p={4} gap={4}>
-              {/* Network Info */}
-              <VStack align="stretch" gap={3}>
-                <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                  Network Information
-                </Text>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Network</Text>
-                  <Text color="white">{assetContext.networkName || assetContext.networkId?.split(':').pop()}</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Chain ID</Text>
-                  <Text color="white" fontSize="sm" fontFamily="mono">
-                    {assetContext.chainId}
-                  </Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text color="gray.400">CAIP</Text>
-                  <Text 
-                    color="white" 
-                    fontSize="sm" 
-                    fontFamily="mono"
-                    title={assetContext.caip || assetContext.assetId}
-                    cursor="help"
-                    _hover={{
-                      textDecoration: 'underline',
-                      textDecorationStyle: 'dotted'
-                    }}
-                  >
-                    {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
-                  </Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Asset ID</Text>
-                  <Text 
-                    color="white" 
-                    fontSize="sm" 
-                    fontFamily="mono"
-                    title={assetContext.assetId}
-                    cursor="help"
-                    _hover={{
-                      textDecoration: 'underline',
-                      textDecorationStyle: 'dotted'
-                    }}
-                  >
-                    {middleEllipsis(assetContext.assetId, 16)}
-                  </Text>
-                </HStack>
-              </VStack>
-
-              {/* Asset Info */}
-              <VStack align="stretch" gap={3}>
-                <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                  Asset Information
-                </Text>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Type</Text>
-                  <Text color="white">
-                    {assetContext.networkId?.includes('eip155') ? 'Token' : 'Native Asset'}
-                  </Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Precision</Text>
-                  <Text color="white">{assetContext.precision}</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Price</Text>
-                  <Text color="white">
-                    $<CountUp 
-                      key={`price-${lastSync}`}
-                      end={priceUsd} 
-                      decimals={2}
-                      duration={1.5}
-                      separator=","
-                    />
-                  </Text>
-                </HStack>
-              </VStack>
-
-              {/* Address Info */}
-              {assetContext.pubkeys?.[0] && (
+            {/* Collapsible content */}
+            {isDetailsExpanded && (
+              <VStack align="stretch" p={4} gap={4}>
+                {/* Network Info */}
                 <VStack align="stretch" gap={3}>
                   <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                    Wallet Information
+                    Network Information
                   </Text>
-                  <VStack align="stretch" gap={2}>
-                    <Text color="gray.400" fontSize="sm">Address</Text>
-                    <Box 
-                      p={3}
-                      bg={theme.bg}
-                      borderRadius="lg"
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                    >
-                      <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                        {assetContext.pubkeys[0].address}
-                      </Text>
-                    </Box>
-                    <HStack justify="space-between" mt={1}>
-                      <Text color="gray.400" fontSize="xs">Path</Text>
-                      <Text color="white" fontSize="xs" fontFamily="mono">
-                        {assetContext.pubkeys[0].path}
-                      </Text>
-                    </HStack>
-                  </VStack>
-                </VStack>
-              )}
-
-              {/* Explorer Links */}
-              {assetContext.explorer && (
-                <VStack align="stretch" gap={3}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                    Explorer Links
-                  </Text>
-                  <HStack gap={2}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      color={theme.gold}
-                      borderColor={theme.border}
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Network</Text>
+                    <Text color="white">{assetContext.networkName || assetContext.networkId?.split(':').pop()}</Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Chain ID</Text>
+                    <Text color="white" fontSize="sm" fontFamily="mono">
+                      {assetContext.chainId}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">CAIP</Text>
+                    <Text 
+                      color="white" 
+                      fontSize="sm" 
+                      fontFamily="mono"
+                      title={assetContext.caip || assetContext.assetId}
+                      cursor="help"
                       _hover={{
-                        bg: 'rgba(255, 215, 0, 0.1)',
-                        borderColor: theme.gold,
+                        textDecoration: 'underline',
+                        textDecorationStyle: 'dotted'
                       }}
-                      onClick={() => window.open(assetContext.explorer, '_blank')}
-                      flex="1"
                     >
-                      View Explorer
-                    </Button>
-                    {assetContext.pubkeys?.[0] && (
+                      {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Asset ID</Text>
+                    <Text 
+                      color="white" 
+                      fontSize="sm" 
+                      fontFamily="mono"
+                      title={assetContext.assetId}
+                      cursor="help"
+                      _hover={{
+                        textDecoration: 'underline',
+                        textDecorationStyle: 'dotted'
+                      }}
+                    >
+                      {middleEllipsis(assetContext.assetId, 16)}
+                    </Text>
+                  </HStack>
+                </VStack>
+
+                {/* Asset Info */}
+                <VStack align="stretch" gap={3}>
+                  <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                    Asset Information
+                  </Text>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Type</Text>
+                    <Text color="white">
+                      {assetContext.networkId?.includes('eip155') ? 'Token' : 'Native Asset'}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Precision</Text>
+                    <Text color="white">{assetContext.precision}</Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Price</Text>
+                    <Text color="white">
+                      $<CountUp 
+                        key={`price-${lastSync}`}
+                        end={priceUsd} 
+                        decimals={2}
+                        duration={1.5}
+                        separator=","
+                      />
+                    </Text>
+                  </HStack>
+                </VStack>
+
+                {/* Address Info */}
+                {assetContext.pubkeys?.[0] && (
+                  <VStack align="stretch" gap={3}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                      Wallet Information
+                    </Text>
+                    <VStack align="stretch" gap={2}>
+                      <Text color="gray.400" fontSize="sm">Address</Text>
+                      <Box 
+                        p={3}
+                        bg={theme.bg}
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor={theme.border}
+                      >
+                        <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                          {assetContext.pubkeys[0].address}
+                        </Text>
+                      </Box>
+                      <HStack justify="space-between" mt={1}>
+                        <Text color="gray.400" fontSize="xs">Path</Text>
+                        <Text color="white" fontSize="xs" fontFamily="mono">
+                          {assetContext.pubkeys[0].path}
+                        </Text>
+                      </HStack>
+                    </VStack>
+                  </VStack>
+                )}
+
+                {/* Explorer Links */}
+                {assetContext.explorer && (
+                  <VStack align="stretch" gap={3}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                      Explorer Links
+                    </Text>
+                    <HStack gap={2}>
                       <Button
                         size="sm"
                         variant="outline"
@@ -558,16 +572,32 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                           bg: 'rgba(255, 215, 0, 0.1)',
                           borderColor: theme.gold,
                         }}
-                        onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
+                        onClick={() => window.open(assetContext.explorer, '_blank')}
                         flex="1"
                       >
-                        View Address
+                        View Explorer
                       </Button>
-                    )}
-                  </HStack>
-                </VStack>
-              )}
-            </VStack>
+                      {assetContext.pubkeys?.[0] && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          color={theme.gold}
+                          borderColor={theme.border}
+                          _hover={{
+                            bg: 'rgba(255, 215, 0, 0.1)',
+                            borderColor: theme.gold,
+                          }}
+                          onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
+                          flex="1"
+                        >
+                          View Address
+                        </Button>
+                      )}
+                    </HStack>
+                  </VStack>
+                )}
+              </VStack>
+            )}
           </Box>
         </VStack>
       </Box>

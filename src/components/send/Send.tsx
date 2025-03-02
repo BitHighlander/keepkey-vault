@@ -9,6 +9,8 @@ import {
   Flex,
   Input,
   IconButton,
+  VStack,
+  Image,
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
@@ -22,6 +24,8 @@ const theme = {
   gold: '#FFD700',
   goldHover: '#FFE135',
   border: '#222222',
+  formPadding: '16px', // Added for consistent form padding
+  borderRadius: '12px', // Added for consistent border radius
 }
 
 interface SendProps {
@@ -78,6 +82,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [loading, setLoading] = useState<boolean>(true)
   const [balance, setBalance] = useState<string>('0')
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
+  
+  // Add state to track if we're entering amount in USD
+  const [isUsdInput, setIsUsdInput] = useState<boolean>(false)
   
   // Transaction state
   const [txHash, setTxHash] = useState<string>('')
@@ -137,6 +144,37 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     })
   }
 
+  // Convert USD to native token amount
+  const usdToNative = (usdAmount: string): string => {
+    if (!usdAmount || !assetContext.priceUsd || parseFloat(assetContext.priceUsd) === 0) return '0';
+    const nativeAmount = parseFloat(usdAmount) / parseFloat(assetContext.priceUsd);
+    // Return formatted with appropriate decimal places
+    return nativeAmount.toFixed(8);
+  }
+
+  // Convert native token amount to USD
+  const nativeToUsd = (nativeAmount: string): string => {
+    if (!nativeAmount || !assetContext.priceUsd) return '0';
+    const usdAmount = parseFloat(nativeAmount) * parseFloat(assetContext.priceUsd);
+    // Return with 2 decimal places for USD
+    return usdAmount.toFixed(2);
+  }
+
+  // Toggle between USD and native input
+  const toggleInputMode = () => {
+    if (amount) {
+      // Convert the current amount when switching modes
+      if (isUsdInput) {
+        // Converting from USD to native
+        setAmount(usdToNative(amount));
+      } else {
+        // Converting from native to USD
+        setAmount(nativeToUsd(amount));
+      }
+    }
+    setIsUsdInput(!isUsdInput);
+  }
+
   // Handle amount input change
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -149,8 +187,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Set max amount (full balance)
   const handleSetMax = () => {
-    setAmount(balance)
-    setIsMax(true)
+    if (isUsdInput) {
+      // If in USD mode, set max as the USD value of the balance
+      setAmount(nativeToUsd(balance));
+    } else {
+      // In native mode, set the native balance
+      setAmount(balance);
+    }
+    setIsMax(true);
   }
 
   // Handle send transaction
@@ -159,6 +203,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.error('Missing fields')
       return
     }
+
+    // Convert amount to native token if in USD mode
+    const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
 
     setLoading(true)
     try {
@@ -183,10 +230,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Missing asset CAIP')
       }
       
+      // Convert amount to native token if in USD mode
+      const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+      
       const sendPayload: SendPayload = {
         caip,
         to: recipient,
-        amount,
+        amount: nativeAmount,
         feeLevel: 5, // Default fee level
         isMax,
       }
@@ -273,8 +323,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       
       console.log('Broadcast Result:', broadcastResult)
       
-      // Extract the transaction hash from the result
-      const finalTxHash = broadcastResult.txHash || broadcastResult.txid || ''
+      // Extract the transaction hash from the result - handle different result formats
+      const finalTxHash = typeof broadcastResult === 'string' 
+        ? broadcastResult 
+        : broadcastResult?.txHash || broadcastResult?.txid || broadcastResult || '';
+      
+      console.log('Final TX Hash:', finalTxHash);
       setTxHash(finalTxHash)
       setTxSuccess(true)
       setTransactionStep('success')
@@ -311,13 +365,50 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   
   // Function to handle viewing transaction on explorer
   const viewOnExplorer = () => {
-    if (!txHash) return
+    if (!txHash) {
+      console.error('No transaction hash available');
+      return;
+    }
     
-    const explorerUrl = assetContext?.explorerTxLink 
-      ? `${assetContext.explorerTxLink}${txHash}`
-      : `https://explorer.keepkey.com/tx/${txHash}`
+    console.log('Viewing transaction on explorer:', txHash);
+    console.log('Asset context:', assetContext);
     
-    window.open(explorerUrl, '_blank', 'noopener,noreferrer')
+    let explorerUrl;
+    
+    // First try to use the explorer link from asset context
+    if (assetContext?.explorerTxLink) {
+      // Check if the URL already ends with a slash
+      const baseUrl = assetContext.explorerTxLink.endsWith('/') 
+        ? assetContext.explorerTxLink
+        : `${assetContext.explorerTxLink}/`;
+      
+      explorerUrl = `${baseUrl}${txHash}`;
+    } 
+    // Fallback for different network types
+    else if (assetContext?.networkId) {
+      // Bitcoin and similar chains
+      if (assetContext.networkId.includes('bitcoin') || assetContext.networkId.includes('litecoin') || assetContext.networkId.includes('dogecoin')) {
+        explorerUrl = `https://blockchair.com/${assetContext.networkId.split(':')[0]}/transaction/${txHash}`;
+      }
+      // Ethereum and EVM chains
+      else if (assetContext.networkId.includes('ethereum') || assetContext.networkId.includes('polygon')) {
+        explorerUrl = `https://etherscan.io/tx/${txHash}`;
+      }
+      // Cosmos chains
+      else if (assetContext.networkId.includes('cosmos')) {
+        explorerUrl = `https://mintscan.io/${assetContext.networkId.split(':')[1].split('/')[0]}/txs/${txHash}`;
+      }
+      // Default explorer
+      else {
+        explorerUrl = `https://explorer.keepkey.com/tx/${txHash}`;
+      }
+    } else {
+      // Last resort, default explorer
+      explorerUrl = `https://explorer.keepkey.com/tx/${txHash}`;
+    }
+    
+    console.log('Opening explorer URL:', explorerUrl);
+    window.open(explorerUrl, '_blank', 'noopener,noreferrer');
   }
   
   // Reset the form after completing a transaction
@@ -363,10 +454,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         <Box height="100vh" bg={theme.bg}>
           {/* Show confetti animation */}
           <Confetti 
-            width={375}
-            height={600}
+            width={typeof window !== 'undefined' ? window.innerWidth : 375}
+            height={typeof window !== 'undefined' ? window.innerHeight : 600}
             recycle={false}
-            numberOfPieces={200}
+            numberOfPieces={300}
+            gravity={0.2}
+            colors={['#FFD700', '#FFFFFF', '#E5C100', '#FFF8D9']}
           />
           
           <Box 
@@ -384,7 +477,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Box 
               borderBottom="1px" 
               borderColor={theme.border}
-              p={4}
+              p={5}
               bg={theme.cardBg}
             >
               <Flex justify="space-between" align="center">
@@ -406,57 +499,102 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             {/* Main Content */}
             <Box 
               flex="1" 
-              p={4} 
+              p={5} 
               overflowY="auto"
             >
               <Stack gap={6} align="center">
+                {/* Success Icon */}
                 <Box 
                   borderRadius="full" 
                   bg="green.500" 
                   color="white" 
-                  width="70px" 
-                  height="70px" 
+                  width="90px" 
+                  height="90px" 
                   display="flex" 
                   alignItems="center" 
                   justifyContent="center"
-                  fontSize="3xl"
-                  mt={2}
+                  fontSize="4xl"
+                  mt={3}
+                  boxShadow="0px 0px 20px rgba(56, 178, 72, 0.5)"
                 >
                   <FaCheck />
                 </Box>
                 
-                <Text fontSize="xl" fontWeight="bold" color="white" textAlign="center">
+                <Text fontSize="2xl" fontWeight="bold" color="white" textAlign="center">
                   Transaction Sent Successfully!
                 </Text>
                 
-                <Box width="100%">
-                  <Text color="gray.500" fontSize="sm">Amount</Text>
-                  <Text fontSize="xl" fontWeight="bold" color="white">
-                    {amount} {assetContext.symbol}
+                {/* Asset Icon and Info */}
+                <Box 
+                  borderRadius="full" 
+                  overflow="hidden" 
+                  boxSize="60px"
+                  bg={theme.cardBg}
+                  boxShadow="lg"
+                  p={2}
+                  borderWidth="1px"
+                  borderColor={assetContext.color || theme.border}
+                >
+                  <Image 
+                    src={assetContext.icon}
+                    alt={`${assetContext.name} Icon`}
+                    boxSize="100%"
+                    objectFit="contain"
+                  />
+                </Box>
+                
+                <Box width="100%" textAlign="center">
+                  <Text color="gray.500" fontSize="sm">Amount Sent</Text>
+                  <Text fontSize="2xl" fontWeight="bold" color="white">
+                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
                   </Text>
-                  <Text color="gray.500" fontSize="sm" mt={1}>
-                    ≈ {formatUsd(parseFloat(amount) * (assetContext.priceUsd || 0))}
+                  <Text color="gray.500" fontSize="md" mt={1}>
+                    ≈ {formatUsd(parseFloat(isUsdInput ? usdToNative(amount) : amount) * (assetContext.priceUsd || 0))}
                   </Text>
                 </Box>
                 
                 <Box as="hr" borderColor="gray.700" opacity={0.2} my={2} width="100%" />
                 
                 <Box width="100%">
-                  <Text color="gray.500" fontSize="sm">Transaction Hash</Text>
-                  <Flex align="center" mt={1}>
-                    <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" flex="1">
-                      {txHash}
+                  <Text color="gray.500" fontSize="sm" mb={2}>Transaction Hash</Text>
+                  <Box
+                    p={3}
+                    bg={theme.bg}
+                    borderRadius="md"
+                    borderWidth="1px"
+                    borderColor={theme.border}
+                  >
+                    <Flex align="center">
+                      <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" flex="1">
+                        {txHash ? txHash : 'Transaction hash pending...'}
+                      </Text>
+                      <IconButton
+                        aria-label="Copy to clipboard"
+                        onClick={copyToClipboard}
+                        size="sm"
+                        variant="ghost"
+                        color={hasCopied ? "green.400" : "gray.400"}
+                        ml={1}
+                        disabled={!txHash}
+                      >
+                        {hasCopied ? <FaCheck /> : <FaCopy />}
+                      </IconButton>
+                    </Flex>
+                  </Box>
+                  {txHash && (
+                    <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
+                      <Box 
+                        as="span" 
+                        cursor="pointer" 
+                        _hover={{ color: theme.goldHover }}
+                        onClick={viewOnExplorer}
+                        display="inline-flex"
+                        alignItems="center"
+                      >
+                        View on Explorer <FaExternalLinkAlt size="0.7em" style={{ marginLeft: '4px' }} />
+                      </Box>
                     </Text>
-                    <IconButton
-                      aria-label="Copy to clipboard"
-                      onClick={copyToClipboard}
-                      size="sm"
-                      variant="ghost"
-                      color={hasCopied ? "green.400" : "gray.400"}
-                    >
-                      {hasCopied ? <FaCheck /> : <FaCopy />}
-                    </IconButton>
-                  </Flex>
+                  )}
                 </Box>
               </Stack>
             </Box>
@@ -465,9 +603,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Box 
               borderTop="1px" 
               borderColor={theme.border}
-              p={4}
+              p={5}
             >
-              <Stack gap={3}>
+              <Stack gap={4}>
                 <Button
                   width="100%"
                   bg={theme.gold}
@@ -476,8 +614,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     bg: theme.goldHover,
                   }}
                   onClick={viewOnExplorer}
+                  height="56px"
                 >
-                  <Flex gap={2} align="center">
+                  <Flex gap={3} align="center">
                     <FaExternalLinkAlt />
                     <Text>View on Explorer</Text>
                   </Flex>
@@ -493,8 +632,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     borderColor: theme.gold,
                   }}
                   onClick={resetForm}
+                  height="56px"
                 >
-                  Close
+                  Return to Dashboard
                 </Button>
               </Stack>
             </Box>
@@ -521,7 +661,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Box 
             borderBottom="1px" 
             borderColor={theme.border}
-            p={4}
+            p={5}
             bg={theme.cardBg}
           >
             <Flex justify="space-between" align="center">
@@ -543,60 +683,94 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           {/* Main Content */}
           <Box 
             flex="1" 
-            p={4} 
+            p={5} 
             overflowY="auto"
           >
-            <Stack gap={6}>
-              <Box>
+            <Stack gap={6} align="center">
+              {/* Asset Avatar */}
+              <Box 
+                borderRadius="full" 
+                overflow="hidden" 
+                boxSize="70px"
+                bg={theme.cardBg}
+                boxShadow="lg"
+                p={2}
+                borderWidth="1px"
+                borderColor={assetContext.color || theme.border}
+              >
+                <Image 
+                  src={assetContext.icon}
+                  alt={`${assetContext.name} Icon`}
+                  boxSize="100%"
+                  objectFit="contain"
+                />
+              </Box>
+              
+              <Box width="100%">
                 <Text color="gray.500" fontSize="sm">You are sending</Text>
-                <Text fontSize="xl" fontWeight="bold" color="white">
-                  {amount} {assetContext.symbol}
-                </Text>
-                <Text color="gray.500" fontSize="sm" mt={1}>
-                  ≈ {formatUsd(parseFloat(amount) * (assetContext.priceUsd || 0))}
-                </Text>
-              </Box>
-              
-              <Box>
-                <Text color="gray.500" fontSize="sm">To address</Text>
-                <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all">
-                  {recipient}
-                </Text>
-              </Box>
-              
-              {supportsMemo && memo && (
-                <Box>
-                  <Text color="gray.500" fontSize="sm">
-                    {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'}
+                <Flex align="center" justify="center" direction="column" mt={2}>
+                  <Text fontSize="2xl" fontWeight="bold" color="white">
+                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
                   </Text>
-                  <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all">
-                    {memo}
-                  </Text>
-                </Box>
-              )}
-
-              <Box as="hr" borderColor="gray.700" opacity={0.2} my={2} />
-              
-              <Box>
-                <Text color="gray.500" fontSize="sm">Network</Text>
-                <Flex align="center" gap={2} mt={1}>
-                  <Box 
-                    width="10px" 
-                    height="10px" 
-                    borderRadius="full" 
-                    bg={networkColor} 
-                  />
-                  <Text color="white" fontSize="sm">
-                    {assetContext.networkId || 'Unknown Network'}
+                  <Text color="gray.500" fontSize="md" mt={1}>
+                    ≈ {formatUsd(parseFloat(isUsdInput ? usdToNative(amount) : amount) * (assetContext.priceUsd || 0))}
                   </Text>
                 </Flex>
               </Box>
+              
+              <Box 
+                width="100%" 
+                bg={theme.bg} 
+                borderRadius={theme.borderRadius}
+                p={4}
+                borderWidth="1px"
+                borderColor={theme.border}
+              >
+                <Stack gap={4}>
+                  <Box>
+                    <Text color="gray.500" fontSize="sm">To address</Text>
+                    <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" mt={1} p={2}>
+                      {recipient}
+                    </Text>
+                  </Box>
+                  
+                  {supportsMemo && memo && (
+                    <Box>
+                      <Text color="gray.500" fontSize="sm">
+                        {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'}
+                      </Text>
+                      <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" mt={1} p={2}>
+                        {memo}
+                      </Text>
+                    </Box>
+                  )}
+                </Stack>
+              </Box>
 
-              <Box>
-                <Text color="gray.500" fontSize="sm">Estimated fee</Text>
-                <Text color="white" fontSize="sm">
-                  {estimatedFee} {assetContext.symbol}
-                </Text>
+              <Box as="hr" borderColor="gray.700" opacity={0.2} my={2} width="100%" />
+              
+              <Box width="100%">
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text color="gray.500" fontSize="sm">Network</Text>
+                  <Flex align="center" gap={2}>
+                    <Box 
+                      width="10px" 
+                      height="10px" 
+                      borderRadius="full" 
+                      bg={networkColor} 
+                    />
+                    <Text color="white" fontSize="sm">
+                      {assetContext.networkName || assetContext.networkId?.split(':').pop() || 'Unknown Network'}
+                    </Text>
+                  </Flex>
+                </Flex>
+
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text color="gray.500" fontSize="sm">Estimated fee</Text>
+                  <Text color="white" fontSize="sm">
+                    {estimatedFee} {assetContext.symbol}
+                  </Text>
+                </Flex>
               </Box>
             </Stack>
           </Box>
@@ -605,7 +779,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Box 
             borderTop="1px" 
             borderColor={theme.border}
-            p={4}
+            p={5}
           >
             <Stack gap={3}>
               <Button
@@ -617,6 +791,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 }}
                 onClick={confirmTransaction}
                 loading={loading}
+                height="56px"
+                fontSize="lg"
+                boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
               >
                 Confirm & Send
               </Button>
@@ -631,6 +808,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   borderColor: theme.gold,
                 }}
                 onClick={closeConfirmation}
+                height="56px"
               >
                 Cancel
               </Button>
@@ -648,14 +826,25 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       <Box 
         borderBottom="1px" 
         borderColor={theme.border}
-        p={4}
+        p={5}  // Increased padding
         bg={theme.cardBg}
         backdropFilter="blur(10px)"
       >
         <Flex justify="space-between" align="center">
-          <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
-            Send {assetContext.symbol}
-          </Text>
+          <Flex gap={3} align="center">
+            <IconButton
+              aria-label="Back"
+              onClick={onBackClick}
+              size="sm"
+              variant="ghost"
+              color={theme.gold}
+            >
+              <FaArrowRight transform="rotate(180)" />
+            </IconButton>
+            <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
+              Send {assetContext.symbol}
+            </Text>
+          </Flex>
           <IconButton
             aria-label="Close"
             onClick={onBackClick}
@@ -669,82 +858,203 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       </Box>
       
       {/* Main Content */}
-      <Box p={4}>
-        <Stack gap={6}>
-          <Stack>
-            <Text color="gray.400" fontSize="sm">
-              Balance: {balance} {assetContext.symbol}
-            </Text>
-            <Text color={theme.gold} fontSize="sm">
-              {formatUsd(totalBalanceUsd)}
-            </Text>
-          </Stack>
+      <Box p={5}>
+        <Stack gap={6} align="center">
+          {/* Asset Avatar and Info */}
+          <Box 
+            bg={theme.cardBg} 
+            p={5} 
+            borderRadius={theme.borderRadius}
+            boxShadow="lg"
+            border="1px solid"
+            borderColor={theme.border}
+            width="100%"
+          >
+            <VStack align="center" gap={4}>
+              <Box 
+                borderRadius="full" 
+                overflow="hidden" 
+                boxSize="70px"
+                bg={theme.cardBg}
+                boxShadow="lg"
+                p={2}
+                borderWidth="1px"
+                borderColor={assetContext.color || theme.border}
+              >
+                <Image 
+                  src={assetContext.icon}
+                  alt={`${assetContext.name} Icon`}
+                  boxSize="100%"
+                  objectFit="contain"
+                />
+              </Box>
+              <Stack align="center" gap={1}>
+                <Text fontSize="xl" fontWeight="bold" color="white">
+                  {assetContext.name}
+                </Text>
+                <Stack>
+                  <Text color="gray.400" fontSize="sm" textAlign="center">
+                    Balance: {balance} {assetContext.symbol}
+                  </Text>
+                  <Text color={theme.gold} fontSize="md" textAlign="center" fontWeight="medium">
+                    {formatUsd(totalBalanceUsd)}
+                  </Text>
+                </Stack>
+              </Stack>
+            </VStack>
+          </Box>
           
           {/* Amount */}
-          <Stack gap={2}>
-            <Text color="white" fontWeight="medium">Amount</Text>
-            <Flex>
+          <Box 
+            width="100%" 
+            bg={theme.cardBg} 
+            borderRadius={theme.borderRadius} 
+            p={theme.formPadding}
+            borderWidth="1px"
+            borderColor={theme.border}
+          >
+            <Stack gap={3}>
+              <Text color="white" fontWeight="medium">Amount</Text>
+              <Flex>
+                <Flex 
+                  position="relative" 
+                  flex="1"
+                  align="center"
+                >
+                  {isUsdInput && (
+                    <Box position="absolute" left="12px" zIndex="1">
+                      <Text color={theme.gold} fontWeight="bold">$</Text>
+                    </Box>
+                  )}
+                  <Input
+                    value={amount}
+                    onChange={handleAmountChange}
+                    placeholder="0.00"
+                    color="white"
+                    borderColor={theme.border}
+                    _hover={{ borderColor: theme.goldHover }}
+                    _focus={{ borderColor: theme.gold }}
+                    p={3}
+                    pl={isUsdInput ? "28px" : "12px"}
+                    height="50px"
+                    fontSize="lg"
+                    flex="1"
+                  />
+                  {!isUsdInput && (
+                    <Box position="absolute" right="12px" zIndex="1">
+                      <Text color="gray.500" fontWeight="medium">{assetContext.symbol}</Text>
+                    </Box>
+                  )}
+                </Flex>
+                <Button
+                  ml={3}
+                  bg={theme.cardBg}
+                  color={theme.gold}
+                  borderColor={theme.border}
+                  borderWidth="1px"
+                  height="50px"
+                  px={4}
+                  _hover={{
+                    bg: 'rgba(255, 215, 0, 0.1)',
+                    borderColor: theme.gold,
+                  }}
+                  onClick={handleSetMax}
+                >
+                  MAX
+                </Button>
+              </Flex>
+              <Text 
+                fontSize="sm" 
+                color="gray.500" 
+                ml={2} 
+                cursor="pointer" 
+                _hover={{ color: theme.goldHover }}
+                onClick={toggleInputMode}
+                display="flex"
+                alignItems="center"
+              >
+                {isUsdInput ? (
+                  <>≈ {amount ? parseFloat(usdToNative(amount)).toFixed(8) : '0'} {assetContext.symbol}</>
+                ) : (
+                  <>≈ {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}</>
+                )}
+                <Box as="span" ml={1} fontSize="xs">(click to switch)</Box>
+              </Text>
+            </Stack>
+          </Box>
+          
+          {/* Recipient */}
+          <Box 
+            width="100%" 
+            bg={theme.cardBg} 
+            borderRadius={theme.borderRadius} 
+            p={theme.formPadding}
+            borderWidth="1px"
+            borderColor={theme.border}
+          >
+            <Stack gap={3}>
+              <Text color="white" fontWeight="medium">Recipient</Text>
               <Input
-                value={amount}
-                onChange={handleAmountChange}
-                placeholder="0.00"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder={`${assetContext.symbol} Address`}
                 color="white"
                 borderColor={theme.border}
                 _hover={{ borderColor: theme.goldHover }}
                 _focus={{ borderColor: theme.gold }}
-                flex="1"
+                p={3}
+                height="50px"
+                fontSize="md"
               />
-              <Button
-                ml={2}
-                bg={theme.cardBg}
-                color={theme.gold}
-                borderColor={theme.border}
-                borderWidth="1px"
-                _hover={{
-                  bg: 'rgba(255, 215, 0, 0.1)',
-                  borderColor: theme.gold,
-                }}
-                onClick={handleSetMax}
-              >
-                MAX
-              </Button>
-            </Flex>
-            <Text fontSize="sm" color="gray.500">
-              ≈ {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}
-            </Text>
-          </Stack>
-          
-          {/* Recipient */}
-          <Stack gap={2}>
-            <Text color="white" fontWeight="medium">Recipient</Text>
-            <Input
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder={`${assetContext.symbol} Address`}
-              color="white"
-              borderColor={theme.border}
-              _hover={{ borderColor: theme.goldHover }}
-              _focus={{ borderColor: theme.gold }}
-            />
-          </Stack>
+            </Stack>
+          </Box>
           
           {/* Memo/Tag (only for supported networks) */}
           {supportsMemo && (
-            <Stack gap={2}>
-              <Text color="white" fontWeight="medium">
-                {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'} (Optional)
-              </Text>
-              <Input
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
-                color="white"
-                borderColor={theme.border}
-                _hover={{ borderColor: theme.goldHover }}
-                _focus={{ borderColor: theme.gold }}
-              />
-            </Stack>
+            <Box 
+              width="100%" 
+              bg={theme.cardBg} 
+              borderRadius={theme.borderRadius} 
+              p={theme.formPadding}
+              borderWidth="1px"
+              borderColor={theme.border}
+            >
+              <Stack gap={3}>
+                <Text color="white" fontWeight="medium">
+                  {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'} (Optional)
+                </Text>
+                <Input
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
+                  color="white"
+                  borderColor={theme.border}
+                  _hover={{ borderColor: theme.goldHover }}
+                  _focus={{ borderColor: theme.gold }}
+                  p={3}
+                  height="50px"
+                  fontSize="md"
+                />
+              </Stack>
+            </Box>
           )}
+          
+          {/* Fee Estimate */}
+          <Box 
+            width="100%" 
+            bg="rgba(255, 215, 0, 0.05)" 
+            borderRadius={theme.borderRadius} 
+            p={theme.formPadding}
+            borderWidth="1px"
+            borderColor="rgba(255, 215, 0, 0.2)"
+          >
+            <Flex justify="space-between" align="center">
+              <Text color="gray.400">Estimated Fee</Text>
+              <Text color={theme.gold} fontWeight="medium">
+                {estimatedFee} {assetContext.symbol}
+              </Text>
+            </Flex>
+          </Box>
           
           {/* Send Button */}
           <Button
@@ -757,8 +1067,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             }}
             onClick={handleSend}
             disabled={!amount || !recipient}
+            height="56px"
+            fontSize="lg"
+            boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
           >
-            <Flex gap={2} align="center">
+            <Flex gap={3} align="center" justify="center">
               <FaPaperPlane />
               <Text>Send {assetContext.symbol}</Text>
             </Flex>
