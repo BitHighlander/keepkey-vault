@@ -5,17 +5,23 @@ import { motion } from 'framer-motion';
 
 interface AnimatedSliceProps {
   index?: number;
+  isActive?: boolean;
   children: React.ReactNode;
 }
 
 export function AnimatedSlice({
   index = 0,
+  isActive = false,
   children,
 }: AnimatedSliceProps) {
   return (
     <motion.g
       initial={{ opacity: 0, scale: 0.25, transformOrigin: 'center' }}
-      animate={{ opacity: 1, scale: 1, transformOrigin: 'center' }}
+      animate={{ 
+        opacity: 1, 
+        scale: isActive ? 1.03 : 1, 
+        transformOrigin: 'center' 
+      }}
       whileHover={{ 
         scale: 1.05,
         filter: 'brightness(1.15)', 

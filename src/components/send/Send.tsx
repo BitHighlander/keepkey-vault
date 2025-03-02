@@ -44,6 +44,23 @@ const TENDERMINT_SUPPORT = [
 // Other networks with special tag fields
 const OTHER_SUPPORT = ['ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144']
 
+// Add network classification constants at the top after existing constants
+const UTXO_NETWORKS = [
+  'bip122:000000000019d6689c085ae165831e93', // Bitcoin
+  'bip122:12a765e31ffd4059bada1e25190f6e98', // Litecoin
+  'bip122:000000000933ea01ad0ee984209779ba', // Dogecoin
+  'bip122:000000000000000000651ef99cb9fcbe', // Bitcoin Cash
+]
+
+const EVM_NETWORKS = [
+  'eip155:1',    // Ethereum
+  'eip155:56',   // BSC
+  'eip155:137',  // Polygon
+  'eip155:43114', // Avalanche
+  'eip155:8453', // Base
+  'eip155:10',   // Optimism
+]
+
 // TypeScript interfaces for transaction data
 interface SendPayload {
   caip: string;
@@ -92,10 +109,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [isMax, setIsMax] = useState<boolean>(false)
   const [unsignedTx, setUnsignedTx] = useState<any>(null)
   const [signedTx, setSignedTx] = useState<any>(null)
-  const [transactionStep, setTransactionStep] = useState<'build' | 'sign' | 'broadcast' | 'success'>('build')
+  const [transactionStep, setTransactionStep] = useState<'review' | 'sign' | 'broadcast' | 'success'>('review')
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001')
   // Add state for fee in USD
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<string>('0.00')
+  
+  // Add states for fee adjustment and transaction details
+  const [showTxDetails, setShowTxDetails] = useState<boolean>(false)
+  const [selectedFeeLevel, setSelectedFeeLevel] = useState<'slow' | 'average' | 'fastest'>('average')
+  const [customFeeOption, setCustomFeeOption] = useState<boolean>(false)
+  const [customFeeAmount, setCustomFeeAmount] = useState<string>('')
+  const [feeOptions, setFeeOptions] = useState<{
+    slow: string;
+    average: string;
+    fastest: string;
+  }>({ slow: '0.0001', average: '0.0002', fastest: '0.0005' })
   
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
@@ -126,6 +154,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         
         // Also update fee in USD when asset context changes
         updateFeeInUsd(estimatedFee);
+        
+        // Fetch fee rates for the current blockchain
+        fetchFeeRates();
       } catch (e) {
         console.error('Error setting balance:', e)
         setBalance('0')
@@ -175,11 +206,22 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     try {
       let feeValue = parseFloat(feeInNative);
       
-      // Special handling for EVM chains - if fee is too large, it's likely in gwei
-      if (assetContext.networkId?.startsWith('eip155:') && feeValue > 1) {
+      // Get network type for proper unit conversion
+      const networkId = assetContext.networkId || '';
+      const networkType = getNetworkType(networkId);
+      
+      // Special handling based on network type
+      if (networkType === 'EVM' && feeValue > 1) {
         // Convert from gwei to ETH equivalent
         const gweiToEth = 0.000000001;
         feeValue = feeValue * gweiToEth;
+      } else if (networkType === 'UTXO') {
+        // For UTXO chains, the API might return fee in satoshis
+        // Check if the fee seems too large (likely in satoshis)
+        if (feeValue > 0.1) {
+          // Convert from satoshis to full coin value (1 BCH = 100,000,000 satoshis)
+          feeValue = feeValue / 100000000;
+        }
       }
       
       const feeUsd = feeValue * parseFloat(assetContext.priceUsd);
@@ -187,6 +229,245 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     } catch (error) {
       console.error('Error calculating fee in USD:', error);
       setEstimatedFeeUsd('0.00');
+    }
+  };
+
+  // Add helper function to classify the network type
+  const getNetworkType = (networkId: string): 'UTXO' | 'EVM' | 'TENDERMINT' | 'OTHER' => {
+    if (UTXO_NETWORKS.some(id => networkId.startsWith(id)) || networkId.startsWith('bip122:')) {
+      return 'UTXO';
+    }
+    if (EVM_NETWORKS.some(id => networkId.startsWith(id)) || networkId.startsWith('eip155:')) {
+      return 'EVM';
+    }
+    if (TENDERMINT_SUPPORT.some(id => networkId.startsWith(id)) || networkId.startsWith('cosmos:')) {
+      return 'TENDERMINT';
+    }
+    return 'OTHER';
+  };
+
+  // Update fetchFeeRates to handle network-specific fee formats
+  const fetchFeeRates = async () => {
+    if (!assetContext?.networkId) return;
+    
+    try {
+      // Get the blockchain type
+      const networkId = assetContext.networkId;
+      const networkType = getNetworkType(networkId);
+      
+      // Network-specific default fees - much more accurate than generic defaults
+      const networkSpecificDefaults: Record<string, {slow: string, average: string, fastest: string}> = {
+        // EVM chains use gwei
+        'eip155:1': { slow: '20', average: '40', fastest: '80' }, // Ethereum
+        'eip155:56': { slow: '5', average: '7', fastest: '10' }, // BSC
+        'eip155:137': { slow: '30', average: '50', fastest: '100' }, // Polygon
+        'eip155:43114': { slow: '25', average: '35', fastest: '50' }, // Avalanche
+        'eip155:8453': { slow: '0.05', average: '0.1', fastest: '0.2' }, // Base
+        'eip155:10': { slow: '0.001', average: '0.01', fastest: '0.1' }, // Optimism
+        
+        // UTXO chains use sat/byte
+        'bip122:000000000019d6689c085ae165831e93': { slow: '2', average: '5', fastest: '10' }, // Bitcoin
+        'bip122:12a765e31ffd4059bada1e25190f6e98': { slow: '1', average: '2', fastest: '5' }, // Litecoin
+        'bip122:000000000933ea01ad0ee984209779ba': { slow: '1', average: '2', fastest: '4' }, // Dogecoin
+        'bip122:000000000000000000651ef99cb9fcbe': { slow: '1', average: '3', fastest: '6' }, // Bitcoin Cash - sat/byte
+        
+        // Tendermint chains use flat fees
+        'cosmos:cosmoshub-4/slip44:118': { slow: '0.005', average: '0.005', fastest: '0.005' },
+        'cosmos:osmosis-1/slip44:118': { slow: '0.035', average: '0.035', fastest: '0.035' },
+        'cosmos:thorchain-mainnet-v1/slip44:931': { slow: '0.02', average: '0.02', fastest: '0.02' },
+        'cosmos:mayachain-mainnet-v1/slip44:931': { slow: '0.2', average: '0.2', fastest: '0.2' },
+        
+        // Other chains
+        'ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144': { slow: '0.000012', average: '0.000012', fastest: '0.000012' }, // XRP
+      };
+      
+      // Start with reasonable type-specific defaults if we don't have network-specific ones
+      let defaultFees;
+      switch (networkType) {
+        case 'EVM':
+          defaultFees = { slow: '30', average: '50', fastest: '80' }; // gwei
+          break;
+        case 'UTXO':
+          defaultFees = { slow: '3', average: '5', fastest: '10' }; // sat/byte
+          break;
+        case 'TENDERMINT':
+          defaultFees = { slow: '0.01', average: '0.01', fastest: '0.01' }; // native token
+          break;
+        default:
+          defaultFees = { slow: '0.001', average: '0.005', fastest: '0.01' }; // generic fallback
+      }
+      
+      // Use network-specific defaults if available
+      if (networkSpecificDefaults[networkId]) {
+        defaultFees = networkSpecificDefaults[networkId];
+      } else {
+        // Try to match by chain type
+        const chainTypeMatch = Object.keys(networkSpecificDefaults).find(key => networkId.startsWith(key.split(':')[0]));
+        if (chainTypeMatch) {
+          console.log(`Using defaults from similar chain type: ${chainTypeMatch}`);
+          defaultFees = networkSpecificDefaults[chainTypeMatch];
+        }
+      }
+
+      // Special handling for BCH - ensure fees are shown in proper units
+      if (networkId.includes('bitcoincash') || networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
+        // These are sat/byte rates for BCH, but converted to show as BCH in the UI
+        // For BCH transaction size of ~250 bytes, this gives reasonable fee range
+        defaultFees = { 
+          slow: '0.00000250',    // 1 sat/byte * ~250 bytes / 100,000,000
+          average: '0.00000750', // 3 sat/byte * ~250 bytes / 100,000,000
+          fastest: '0.00001500'  // 6 sat/byte * ~250 bytes / 100,000,000
+        };
+        console.log('🔧 Using BCH-specific fee defaults:', defaultFees);
+      }
+      
+      console.log(`Using default fees for network ${networkId}:`, defaultFees);
+      
+      // Try to get fee rates from the API
+      try {
+        if (app?.pioneer) {
+          const feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
+          console.log('Fee rates from API:', feeRates);
+          
+          if (feeRates?.data) {
+            // Only update if API returned valid values
+            if (feeRates.data.slow && feeRates.data.average && feeRates.data.fastest) {
+              // Process fee rates based on network type
+              switch(networkType) {
+                case 'EVM':
+                  // Convert to gwei if necessary
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+                  break;
+                case 'UTXO':
+                  // UTXO chains use sats/byte for fee rates
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+                  break;
+                case 'TENDERMINT':
+                  // Tendermint chains often have fixed fees
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+                  break;
+                default:
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+              }
+              console.log('Updated fees from API:', defaultFees);
+            } else {
+              console.warn('API returned incomplete fee data, using defaults');
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch fee rates from API, using network-specific defaults', error);
+      }
+      
+      // Set the fee options
+      setFeeOptions(defaultFees);
+      
+      // Set the estimatedFee based on selected fee level
+      setEstimatedFee(defaultFees[selectedFeeLevel]);
+      updateFeeInUsd(defaultFees[selectedFeeLevel]);
+    } catch (error) {
+      console.error('Error fetching fee rates:', error);
+    }
+  };
+  
+  // Get fee unit based on network type
+  const getFeeUnit = (): string => {
+    if (!assetContext?.networkId) return '';
+    
+    const networkType = getNetworkType(assetContext.networkId);
+    
+    switch (networkType) {
+      case 'EVM':
+        return 'GWEI';
+      case 'UTXO':
+        return 'sats/byte';
+      case 'TENDERMINT':
+        return assetContext.symbol || '';
+      case 'OTHER':
+        if (assetContext.networkId.includes('ripple')) {
+          return 'XRP';
+        }
+        return assetContext.symbol || '';
+      default:
+        return assetContext.symbol || '';
+    }
+  };
+  
+  // Format fee display based on network type
+  const formatFeeDisplay = (fee: string): string => {
+    if (!assetContext?.networkId) return fee;
+    
+    const networkId = assetContext.networkId;
+    const networkType = getNetworkType(networkId);
+    
+    try {
+      const feeValue = parseFloat(fee);
+      
+      switch (networkType) {
+        case 'EVM': {
+          // For EVM chains, we're storing the fee in GWEI but display in native token for consistency
+          return fee;
+        }
+        case 'UTXO': {
+          // For UTXO chains, check if we need to convert from satoshis
+          if (feeValue > 0.1) {
+            // If fee is large (likely in satoshis), convert and display in the main unit
+            return (feeValue / 100000000).toFixed(8);
+          }
+          // Otherwise, it's already in the correct unit
+          return fee;
+        }
+        case 'TENDERMINT': {
+          // For Tendermint chains, show in native token
+          return fee;
+        }
+        default:
+          return fee;
+      }
+    } catch (error) {
+      console.error('Error formatting fee display:', error);
+      return fee;
+    }
+  };
+
+  // Handle fee selection change
+  const handleFeeSelectionChange = (feeLevel: 'slow' | 'average' | 'fastest') => {
+    setSelectedFeeLevel(feeLevel);
+    setCustomFeeOption(false);
+    
+    // Update the estimated fee
+    const newFee = feeOptions[feeLevel];
+    setEstimatedFee(newFee);
+    updateFeeInUsd(newFee);
+  };
+  
+  // Handle custom fee input
+  const handleCustomFeeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Allow only numbers and a single decimal point
+    if (/^[0-9]*\.?[0-9]*$/.test(value) || value === '') {
+      setCustomFeeAmount(value);
+      
+      if (value) {
+        setEstimatedFee(value);
+        updateFeeInUsd(value);
+      }
     }
   };
 
@@ -239,9 +520,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     setLoading(true)
     try {
-      // Show confirmation dialog
-      setTransactionStep('build')
-      openConfirmation()
+      // Build the transaction first
+      setTransactionStep('review')
+      const builtTx = await buildTransaction()
+      
+      // Then show confirmation dialog with the built transaction
+      if (builtTx) {
+        openConfirmation()
+      }
     } catch (error) {
       console.error('Error preparing transaction:', error)
     } finally {
@@ -260,52 +546,263 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Missing asset CAIP')
       }
       
+      // Get network type
+      const networkId = assetContext?.networkId || '';
+      const networkType = getNetworkType(networkId);
+      
+      // Add BCH-specific debugging
+      const isBCH = networkId.includes('bitcoincash') || networkId.includes('bip122:000000000000000000651ef99cb9fcbe');
+      if (isBCH) {
+        console.log('🔍 Building Bitcoin Cash transaction:', {
+          networkId,
+          networkType,
+          caip,
+          assetContext
+        });
+      }
+      
       // Convert amount to native token if in USD mode
       const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+      
+      // Map fee levels to SDK fee level values
+      const feeLevelMap = {
+        slow: 1,
+        average: 5,
+        fastest: 9
+      };
       
       const sendPayload: SendPayload = {
         caip,
         to: recipient,
         amount: nativeAmount,
-        feeLevel: 5, // Default fee level
+        feeLevel: customFeeOption ? 5 : feeLevelMap[selectedFeeLevel], // Use selected or custom fee level
         isMax,
       }
       
+      // Add network-specific parameters based on chain type
+      switch (networkType) {
+        case 'EVM': {
+          // For EVM chains, we might need to specify gas settings
+          if (customFeeOption && customFeeAmount) {
+            // Add custom gas price for EVM chains
+            // @ts-ignore - Adding custom property for EVM
+            sendPayload.gasPrice = customFeeAmount;
+          }
+          break;
+        }
+        
+        case 'UTXO': {
+          // For UTXO chains, we might need to specify fee rate
+          if (customFeeOption && customFeeAmount) {
+            // Add custom fee rate for UTXO chains (sats/byte)
+            // @ts-ignore - Adding custom property for UTXO
+            sendPayload.feeRate = customFeeAmount;
+          }
+          
+          // Add BCH-specific parameters
+          if (isBCH) {
+            // BCH often requires explicit address format specification
+            // @ts-ignore - Adding custom property for BCH
+            sendPayload.addressFormat = 'cashaddr';
+            console.log('🔧 Added BCH-specific parameters to payload');
+          }
+          break;
+        }
+        
+        case 'TENDERMINT': {
+          // For Tendermint chains, add memo if provided
+          if (memo) {
+            sendPayload.memo = memo;
+          }
+          break;
+        }
+        
+        case 'OTHER': {
+          // Handle other chains like Ripple
+          if (networkId.includes('ripple') && memo) {
+            // In Ripple, this might be a "destination tag" instead of a memo
+            sendPayload.memo = memo;
+          }
+          break;
+        }
+      }
+      
+      // Add memo for supported chains if provided
       if (memo && supportsMemo) {
-        sendPayload.memo = memo
+        sendPayload.memo = memo;
       }
       
       console.log('Build TX Payload:', sendPayload)
       
       // Call the SDK's buildTx method
-      const unsignedTxResult = await app.buildTx(sendPayload)
-      console.log('Unsigned TX Result:', unsignedTxResult)
+      let unsignedTxResult;
+      try {
+        unsignedTxResult = await app.buildTx(sendPayload);
+        console.log('Unsigned TX Result:', unsignedTxResult);
+        
+        // Add BCH-specific debug logging
+        if (isBCH) {
+          console.log('🔍 BCH Transaction built successfully:', {
+            resultType: typeof unsignedTxResult,
+            hasInputs: unsignedTxResult?.inputs ? 'Yes' : 'No',
+            hasOutputs: unsignedTxResult?.outputs ? 'Yes' : 'No'
+          });
+        }
+      } catch (buildError) {
+        console.error('Transaction build error:', buildError);
+        if (isBCH) {
+          console.error('🚨 BCH Transaction build failed:', buildError);
+          
+          // Attempt a fallback approach for BCH
+          console.log('🔄 Attempting fallback approach for BCH...');
+          
+          // Try with a simpler payload or alternative approach
+          const simplifiedPayload = {
+            ...sendPayload,
+            // Force using specific fee level for BCH
+            feeLevel: 5
+          };
+          
+          console.log('🔄 Using simplified BCH payload:', simplifiedPayload);
+          unsignedTxResult = await app.buildTx(simplifiedPayload);
+          console.log('🔄 BCH Fallback transaction result:', unsignedTxResult);
+        } else {
+          throw buildError; // Re-throw for non-BCH chains
+        }
+      }
+      
+      if (!unsignedTxResult) {
+        throw new Error('Failed to build transaction: No result returned');
+      }
       
       // Extract fee from unsigned transaction result if available
       try {
         // Different chains have different formats for fee information
-        let feeValue = '0.0001'; // Default fallback
+        let feeValue = estimatedFee; // Use current estimate as fallback
         
         if (unsignedTxResult && typeof unsignedTxResult === 'object') {
-          // Try to extract fee from common patterns in transaction response
-          if (unsignedTxResult.fee) {
-            if (typeof unsignedTxResult.fee === 'string') {
-              feeValue = unsignedTxResult.fee;
-            } else if (typeof unsignedTxResult.fee === 'object') {
-              // Fee might be in an object with amount property
-              feeValue = unsignedTxResult.fee.amount || unsignedTxResult.fee.value || feeValue;
+          // Extract fee based on network type
+          switch (networkType) {
+            case 'EVM': {
+              // For EVM chains, fee is gasPrice * gasLimit
+              if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
+                const gasPrice = parseFloat(unsignedTxResult.gasPrice);
+                const gasLimit = parseFloat(unsignedTxResult.gasLimit);
+                
+                // Convert from wei to native token
+                const gweiToEth = 0.000000001;
+                feeValue = (gasPrice * gasLimit * gweiToEth).toFixed(8);
+              } else if (unsignedTxResult.maxFeePerGas && unsignedTxResult.gasLimit) {
+                // For EIP-1559 transactions
+                const maxFeePerGas = parseFloat(unsignedTxResult.maxFeePerGas);
+                const gasLimit = parseFloat(unsignedTxResult.gasLimit);
+                
+                // Convert from wei to native token
+                const gweiToEth = 0.000000001;
+                feeValue = (maxFeePerGas * gasLimit * gweiToEth).toFixed(8);
+              }
+              break;
             }
-          } else if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
-            // For EVM chains, calculate fee as gasPrice * gasLimit
-            const gasPrice = parseFloat(unsignedTxResult.gasPrice);
-            const gasLimit = parseFloat(unsignedTxResult.gasLimit);
-            const gweiToEth = 0.000000001; // For EVM chains
-            feeValue = (gasPrice * gasLimit * gweiToEth).toFixed(8);
+            
+            case 'UTXO': {
+              // For UTXO chains, fee might be directly specified
+              if (unsignedTxResult.fee) {
+                feeValue = typeof unsignedTxResult.fee === 'string' 
+                  ? unsignedTxResult.fee 
+                  : unsignedTxResult.fee.toString();
+                
+                // Validate fee for UTXO chains to prevent unreasonable values
+                const parsedFee = parseFloat(feeValue);
+                const txAmount = parseFloat(nativeAmount);
+                
+                // Sanity check: Fee shouldn't be greater than 10% of tx amount unless extremely small tx
+                if (parsedFee > txAmount * 0.1 && txAmount > 0.001) {
+                  console.warn('⚠️ Fee is suspiciously high, likely in satoshis. Adjusting:', parsedFee);
+                  
+                  // For BCH and other UTXO chains, if fee seems too large, it's likely in satoshis
+                  // A typical BCH fee should be a very small fraction of a BCH
+                  if (parsedFee > 0.1) {
+                    // Convert from satoshis to full coin (1 BCH = 100,000,000 satoshis)
+                    feeValue = (parsedFee / 100000000).toFixed(8);
+                    console.log('🔄 Adjusted fee to BCH units:', feeValue);
+                  }
+                }
+              } else if (unsignedTxResult.feeValue) {
+                feeValue = unsignedTxResult.feeValue.toString();
+                
+                // Apply same validation to feeValue
+                const parsedFee = parseFloat(feeValue);
+                if (parsedFee > 0.1) {
+                  feeValue = (parsedFee / 100000000).toFixed(8);
+                }
+              }
+              
+              // Special handling for BCH - add double-check for reasonable fee values
+              if (isBCH) {
+                const parsedFee = parseFloat(feeValue);
+                
+                // If fee still seems unreasonably high for BCH (greater than 0.01 BCH), force a reasonable value
+                if (parsedFee > 0.01) {
+                  console.warn('⚠️ BCH fee still too high after adjustment, forcing reasonable value');
+                  feeValue = '0.00001'; // Set a reasonable BCH fee
+                }
+              }
+              break;
+            }
+            
+            case 'TENDERMINT': {
+              // For Tendermint chains, check common fee patterns
+              if (unsignedTxResult.fee) {
+                if (typeof unsignedTxResult.fee === 'string') {
+                  feeValue = unsignedTxResult.fee;
+                } else if (typeof unsignedTxResult.fee === 'object') {
+                  if (unsignedTxResult.fee.amount && Array.isArray(unsignedTxResult.fee.amount) && unsignedTxResult.fee.amount.length > 0) {
+                    // Cosmos format: fee.amount is an array of {denom, amount}
+                    feeValue = unsignedTxResult.fee.amount[0].amount || feeValue;
+                  } else {
+                    feeValue = unsignedTxResult.fee.amount || unsignedTxResult.fee.value || feeValue;
+                  }
+                }
+              }
+              break;
+            }
+            
+            case 'OTHER': {
+              // For other chains, try common patterns
+              if (unsignedTxResult.fee) {
+                feeValue = typeof unsignedTxResult.fee === 'string' 
+                  ? unsignedTxResult.fee 
+                  : unsignedTxResult.fee.toString();
+              }
+              break;
+            }
+          }
+        }
+        
+        // Final sanity check for all chains
+        const parsedFee = parseFloat(feeValue);
+        const txAmount = parseFloat(nativeAmount);
+        
+        // If fee is more than 20% of the transaction amount and > 0.1 native units,
+        // it's likely an incorrect value (except for very small transactions)
+        if (parsedFee > txAmount * 0.2 && parsedFee > 0.1 && txAmount > 0.001) {
+          console.warn('⚠️ Fee unreasonably high after all checks, using default');
+          
+          // Use a reasonable default based on network type
+          switch (networkType) {
+            case 'UTXO':
+              feeValue = '0.00001';
+              break;
+            case 'EVM':
+              feeValue = '0.001';
+              break;
+            default:
+              feeValue = '0.001';
           }
         }
         
         // Update fee state
-        console.log('Extracted fee:', feeValue);
+        console.log('Final extracted fee:', feeValue);
         setEstimatedFee(feeValue);
         
         // Calculate and update fee in USD
@@ -328,9 +825,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
       
       setUnsignedTx(transactionState)
-      setTransactionStep('sign')
       
-      // For demo purposes, automatically proceed to signing
       return transactionState
     } catch (error) {
       console.error('Transaction build error:', error)
@@ -411,13 +906,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const confirmTransaction = async () => {
     setLoading(true)
     try {
-      // Step 1: Build the transaction
-      const builtTx = await buildTransaction()
+      // Step 1: Sign the transaction
+      setTransactionStep('sign')
+      const signedTxData = await signTransaction(unsignedTx)
       
-      // Step 2: Sign the transaction
-      const signedTxData = await signTransaction(builtTx)
-      
-      // Step 3: Broadcast the transaction
+      // Step 2: Broadcast the transaction
       await broadcastTransaction(signedTxData)
       
       console.log('Transaction sent successfully')
@@ -428,6 +921,117 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   }
   
+  // Add a new function to format transaction details for display
+  const formatTransactionDetails = (tx: any): React.ReactNode => {
+    if (!tx) return null;
+    
+    // Get network type for formatting
+    const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
+    const isBCH = assetContext?.networkId?.includes('bitcoincash') || 
+                  assetContext?.networkId?.includes('bip122:000000000000000000651ef99cb9fcbe');
+    
+    // Different formatting based on network type
+    switch (networkType) {
+      case 'UTXO': {
+        return (
+          <Box width="100%">
+            <Text color="gray.500" fontSize="sm" mb={1}>Transaction Details</Text>
+            {tx.inputs && tx.inputs.length > 0 && (
+              <Box mb={3}>
+                <Text color="gray.500" fontSize="xs">Inputs ({tx.inputs.length})</Text>
+                <Box maxH="100px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
+                  {tx.inputs.map((input: any, idx: number) => (
+                    <Text key={idx} fontFamily="mono" color="white" fontSize="10px" mb={1}>
+                      {input.txid?.substring(0, 8)}...{input.txid?.substring(input.txid.length - 8)} : {input.vout} 
+                      {input.value && ` (${input.value} sats)`}
+                    </Text>
+                  ))}
+                </Box>
+              </Box>
+            )}
+            
+            {tx.outputs && tx.outputs.length > 0 && (
+              <Box>
+                <Text color="gray.500" fontSize="xs">Outputs ({tx.outputs.length})</Text>
+                <Box maxH="100px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
+                  {tx.outputs.map((output: any, idx: number) => (
+                    <Text key={idx} fontFamily="mono" color="white" fontSize="10px" mb={1} wordBreak="break-all">
+                      {output.address ? (
+                        <>
+                          {output.address?.substring(0, 8)}...{output.address?.substring(output.address.length - 8)}
+                          {output.amount && ` (${output.amount} sats)`}
+                        </>
+                      ) : (
+                        <>
+                          Change output
+                          {output.amount && ` (${output.amount} sats)`}
+                        </>
+                      )}
+                    </Text>
+                  ))}
+                </Box>
+              </Box>
+            )}
+            
+            {tx.fee && (
+              <Flex justify="space-between" mt={2}>
+                <Text color="gray.500" fontSize="xs">Transaction Fee</Text>
+                <Text color="white" fontSize="xs">{tx.fee} sats</Text>
+              </Flex>
+            )}
+          </Box>
+        );
+      }
+      
+      case 'EVM': {
+        return (
+          <Box width="100%">
+            <Text color="gray.500" fontSize="sm" mb={1}>Transaction Details</Text>
+            <Box maxH="150px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
+              {tx.to && (
+                <Flex justify="space-between" mb={1}>
+                  <Text color="gray.500">To:</Text>
+                  <Text color="white" fontFamily="mono" wordBreak="break-all">{tx.to}</Text>
+                </Flex>
+              )}
+              {tx.value && (
+                <Flex justify="space-between" mb={1}>
+                  <Text color="gray.500">Value:</Text>
+                  <Text color="white" fontFamily="mono">{tx.value}</Text>
+                </Flex>
+              )}
+              {tx.gasLimit && (
+                <Flex justify="space-between" mb={1}>
+                  <Text color="gray.500">Gas Limit:</Text>
+                  <Text color="white" fontFamily="mono">{tx.gasLimit}</Text>
+                </Flex>
+              )}
+              {tx.gasPrice && (
+                <Flex justify="space-between" mb={1}>
+                  <Text color="gray.500">Gas Price:</Text>
+                  <Text color="white" fontFamily="mono">{tx.gasPrice} Gwei</Text>
+                </Flex>
+              )}
+            </Box>
+          </Box>
+        );
+      }
+      
+      default:
+        // For other chains, just show the JSON structure
+        return (
+          <Box width="100%">
+            <Text color="gray.500" fontSize="sm" mb={1}>Transaction Details</Text>
+            <Box maxH="150px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
+              <Text color="white" fontFamily="mono" wordBreak="break-all">
+                {JSON.stringify(tx, null, 2)}
+              </Text>
+            </Box>
+          </Box>
+        );
+    }
+  };
+
   // Function to handle viewing transaction on explorer
   const viewOnExplorer = () => {
     if (!txHash) {
@@ -451,29 +1055,80 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     } 
     // Fallback for different network types
     else if (assetContext?.networkId) {
-      // Bitcoin and similar chains
-      if (assetContext.networkId.includes('bitcoin') || assetContext.networkId.includes('litecoin') || assetContext.networkId.includes('dogecoin')) {
-        explorerUrl = `https://blockchair.com/${assetContext.networkId.split(':')[0]}/transaction/${txHash}`;
-      }
-      // Ethereum and EVM chains
-      else if (assetContext.networkId.includes('ethereum') || assetContext.networkId.includes('polygon')) {
-        explorerUrl = `https://etherscan.io/tx/${txHash}`;
-      }
-      // Cosmos chains
-      else if (assetContext.networkId.includes('cosmos')) {
-        explorerUrl = `https://mintscan.io/${assetContext.networkId.split(':')[1].split('/')[0]}/txs/${txHash}`;
-      }
-      // Default explorer
-      else {
-        explorerUrl = `https://explorer.keepkey.com/tx/${txHash}`;
+      const networkId = assetContext.networkId;
+      const networkType = getNetworkType(networkId);
+      
+      switch (networkType) {
+        case 'UTXO': {
+          if (networkId.includes('bitcoin')) {
+            explorerUrl = `https://blockstream.info/tx/${txHash}`;
+          } else if (networkId.includes('litecoin')) {
+            explorerUrl = `https://blockchair.com/litecoin/transaction/${txHash}`;
+          } else if (networkId.includes('dogecoin')) {
+            explorerUrl = `https://blockchair.com/dogecoin/transaction/${txHash}`;
+          } else if (networkId.includes('bitcoincash')) {
+            explorerUrl = `https://blockchair.com/bitcoin-cash/transaction/${txHash}`;
+          } else {
+            explorerUrl = `https://blockchair.com/${networkId.split(':')[0]}/transaction/${txHash}`;
+          }
+          break;
+        }
+        
+        case 'EVM': {
+          if (networkId.includes('eip155:1')) {
+            explorerUrl = `https://etherscan.io/tx/${txHash}`;
+          } else if (networkId.includes('eip155:56')) {
+            explorerUrl = `https://bscscan.com/tx/${txHash}`;
+          } else if (networkId.includes('eip155:137')) {
+            explorerUrl = `https://polygonscan.com/tx/${txHash}`;
+          } else if (networkId.includes('eip155:43114')) {
+            explorerUrl = `https://snowtrace.io/tx/${txHash}`;
+          } else if (networkId.includes('eip155:8453')) {
+            explorerUrl = `https://basescan.org/tx/${txHash}`;
+          } else if (networkId.includes('eip155:10')) {
+            explorerUrl = `https://optimistic.etherscan.io/tx/${txHash}`;
+          } else {
+            explorerUrl = `https://blockscan.com/tx/${txHash}`;
+          }
+          break;
+        }
+        
+        case 'TENDERMINT': {
+          if (networkId.includes('cosmos:cosmoshub')) {
+            explorerUrl = `https://www.mintscan.io/cosmos/tx/${txHash}`;
+          } else if (networkId.includes('cosmos:osmosis')) {
+            explorerUrl = `https://www.mintscan.io/osmosis/tx/${txHash}`;
+          } else if (networkId.includes('cosmos:thorchain')) {
+            explorerUrl = `https://viewblock.io/thorchain/tx/${txHash}`;
+          } else if (networkId.includes('cosmos:mayachain')) {
+            explorerUrl = `https://www.mintscan.io/mayachain/tx/${txHash}`;
+          } else {
+            explorerUrl = `https://www.mintscan.io/${networkId.split(':')[1].split('/')[0]}/tx/${txHash}`;
+          }
+          break;
+        }
+        
+        case 'OTHER': {
+          if (networkId.includes('ripple')) {
+            explorerUrl = `https://xrpscan.com/tx/${txHash}`;
+          } else {
+            explorerUrl = `https://blockchair.com/search?q=${txHash}`;
+          }
+          break;
+        }
+        
+        default:
+          explorerUrl = `https://blockchair.com/search?q=${txHash}`;
       }
     } else {
-      // Last resort, default explorer
-      explorerUrl = `https://explorer.keepkey.com/tx/${txHash}`;
+      // Generic fallback
+      explorerUrl = `https://blockchair.com/search?q=${txHash}`;
     }
     
-    console.log('Opening explorer URL:', explorerUrl);
-    window.open(explorerUrl, '_blank', 'noopener,noreferrer');
+    // Open the explorer in a new tab
+    if (explorerUrl) {
+      window.open(explorerUrl, '_blank');
+    }
   }
   
   // Reset the form after completing a transaction
@@ -485,7 +1140,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     setTxSuccess(false)
     setUnsignedTx(null)
     setSignedTx(null)
-    setTransactionStep('build')
+    setTransactionStep('review')
     setShowConfirmation(false)
   }
 
@@ -731,7 +1386,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           >
             <Flex justify="space-between" align="center">
               <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
-                Confirm Transaction
+                {transactionStep === 'review' ? 'Review Transaction' : 'Confirm Transaction'}
               </Text>
               <IconButton
                 aria-label="Close"
@@ -751,97 +1406,143 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             p={5} 
             overflowY="auto"
           >
-            <Stack gap={6} align="center">
-              {/* Asset Avatar */}
-              <Box 
-                borderRadius="full" 
-                overflow="hidden" 
-                boxSize="70px"
-                bg={theme.cardBg}
-                boxShadow="lg"
-                p={2}
-                borderWidth="1px"
-                borderColor={assetContext.color || theme.border}
-              >
-                <Image 
-                  src={assetContext.icon}
-                  alt={`${assetContext.name} Icon`}
-                  boxSize="100%"
-                  objectFit="contain"
-                />
-              </Box>
-              
-              <Box width="100%">
-                <Text color="gray.500" fontSize="sm">You are sending</Text>
-                <Flex align="center" justify="center" direction="column" mt={2}>
-                  <Text fontSize="2xl" fontWeight="bold" color="white">
-                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
+            <Stack gap={5}>
+              {/* Asset Information */}
+              <Flex align="center" gap={3} width="100%">
+                <Box 
+                  borderRadius="full" 
+                  overflow="hidden" 
+                  boxSize="40px"
+                  p={1}
+                  bg={theme.cardBg}
+                  border="1px solid"
+                  borderColor={theme.border}
+                >
+                  <Image 
+                    src={assetContext.icon}
+                    alt={`${assetContext.name} Icon`}
+                    boxSize="100%"
+                    objectFit="contain"
+                  />
+                </Box>
+                <Box>
+                  <Text fontWeight="bold" color="white">
+                    {amount} {assetContext.symbol}
                   </Text>
-                  <Text color="gray.500" fontSize="md" mt={1}>
-                    ≈ {formatUsd(parseFloat(isUsdInput ? usdToNative(amount) : amount) * (assetContext.priceUsd || 0))}
+                  <Text color="gray.400" fontSize="sm">
+                    {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}
                   </Text>
-                </Flex>
-              </Box>
+                </Box>
+              </Flex>
               
+              {/* Recipient Details */}
               <Box 
-                width="100%" 
-                bg={theme.bg} 
-                borderRadius={theme.borderRadius}
                 p={4}
-                borderWidth="1px"
+                bg={theme.bg}
+                border="1px solid"
                 borderColor={theme.border}
+                borderRadius="md"
+                width="100%"
               >
-                <Stack gap={4}>
-                  <Box>
-                    <Text color="gray.500" fontSize="sm">To address</Text>
-                    <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" mt={1} p={2}>
-                      {recipient}
+                <Text fontSize="sm" color="gray.400" mb={1}>
+                  Recipient
+                </Text>
+                <Text color="white" wordBreak="break-all" fontSize="sm">
+                  {recipient}
+                </Text>
+                
+                {memo && (
+                  <>
+                    <Text fontSize="sm" color="gray.400" mt={3} mb={1}>
+                      Memo/Tag
+                    </Text>
+                    <Text color="white" wordBreak="break-all" fontSize="sm">
+                      {memo}
+                    </Text>
+                  </>
+                )}
+              </Box>
+              
+              {/* Fee Details */}
+              <Box 
+                p={4}
+                bg={theme.bg}
+                border="1px solid"
+                borderColor={theme.border}
+                borderRadius="md"
+                width="100%"
+              >
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="sm" color="gray.400">
+                    Network Fee
+                  </Text>
+                  <Box textAlign="right">
+                    <Text color="white" fontSize="sm">
+                      {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
+                    </Text>
+                    <Text color="gray.400" fontSize="xs">
+                      {estimatedFeeUsd}
                     </Text>
                   </Box>
+                </Flex>
+                
+                <Flex justify="space-between" align="center" mt={3}>
+                  <Text fontSize="sm" color="gray.400">
+                    Total
+                  </Text>
+                  <Box textAlign="right">
+                    <Text color="white" fontWeight="bold" fontSize="sm">
+                      {isMax ? 
+                        balance : 
+                        (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(8)} {assetContext.symbol}
+                    </Text>
+                    <Text color="gray.400" fontSize="xs">
+                      {formatUsd((parseFloat(amount || '0') + parseFloat(estimatedFee)) * (assetContext.priceUsd || 0))}
+                    </Text>
+                  </Box>
+                </Flex>
+              </Box>
+              
+              {/* Transaction Details */}
+              {unsignedTx && (
+                <Box width="100%" mt={4}>
+                  <Box 
+                    as="button" 
+                    onClick={() => setShowTxDetails(!showTxDetails)}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    width="100%"
+                    p={2}
+                    bg="transparent"
+                    border="1px solid"
+                    borderColor={theme.border}
+                    borderRadius="md"
+                    color="white"
+                    _hover={{ borderColor: theme.gold }}
+                  >
+                    <Text fontSize="sm">
+                      {showTxDetails ? 'Hide Transaction Details' : 'Show Transaction Details'}
+                    </Text>
+                    <Box transform={showTxDetails ? 'rotate(180deg)' : 'none'} transition="transform 0.2s">
+                      <FaArrowRight transform="rotate(90deg)" />
+                    </Box>
+                  </Box>
                   
-                  {supportsMemo && memo && (
-                    <Box>
-                      <Text color="gray.500" fontSize="sm">
-                        {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'}
-                      </Text>
-                      <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" mt={1} p={2}>
-                        {memo}
-                      </Text>
+                  {showTxDetails && (
+                    <Box 
+                      mt={3} 
+                      p={3} 
+                      borderRadius="md" 
+                      bg={theme.bg} 
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                    >
+                      {formatTransactionDetails(unsignedTx?.unsignedTx)}
                     </Box>
                   )}
-                </Stack>
-              </Box>
-
-              <Box as="hr" borderColor="gray.700" opacity={0.2} my={2} width="100%" />
-              
-              <Box width="100%">
-                <Flex justify="space-between" align="center" mb={2}>
-                  <Text color="gray.500" fontSize="sm">Network</Text>
-                  <Flex align="center" gap={2}>
-                    <Box 
-                      width="10px" 
-                      height="10px" 
-                      borderRadius="full" 
-                      bg={networkColor} 
-                    />
-                    <Text color="white" fontSize="sm">
-                      {assetContext.networkName || assetContext.networkId?.split(':').pop() || 'Unknown Network'}
-                    </Text>
-                  </Flex>
-                </Flex>
-
-                <Flex justify="space-between" align="center" mb={2}>
-                  <Text color="gray.500" fontSize="sm">Estimated fee</Text>
-                  <Text color="white" fontSize="sm">
-                    {estimatedFee} {assetContext.symbol}
-                    {parseFloat(estimatedFeeUsd) > 0 && (
-                      <Text as="span" color="gray.500" ml={1}>
-                        (≈ ${estimatedFeeUsd})
-                      </Text>
-                    )}
-                  </Text>
-                </Flex>
-              </Box>
+                </Box>
+              )}
             </Stack>
           </Box>
           
@@ -865,7 +1566,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 fontSize="lg"
                 boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
               >
-                Confirm & Send
+                Sign & Send
               </Button>
               
               <Button
@@ -891,39 +1592,36 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Normal send form
   return (
-    <Box height="100vh" bg={theme.bg}>
-      {/* Header */}
+    <Box 
+      width="100%" 
+      position="relative"
+      pb={8} // Add bottom padding to ensure content doesn't get cut off
+    >
       <Box 
         borderBottom="1px" 
         borderColor={theme.border}
-        p={5}  // Increased padding
+        p={4}
         bg={theme.cardBg}
-        backdropFilter="blur(10px)"
+        position="sticky"
+        top={0}
+        zIndex={10}
       >
         <Flex justify="space-between" align="center">
-          <Flex gap={3} align="center">
-            <IconButton
-              aria-label="Back"
-              onClick={onBackClick}
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-            >
-              <FaArrowRight transform="rotate(180)" />
-            </IconButton>
-            <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
-              Send {assetContext.symbol}
-            </Text>
-          </Flex>
-          <IconButton
-            aria-label="Close"
-            onClick={onBackClick}
+          <Button
             size="sm"
             variant="ghost"
             color={theme.gold}
+            onClick={onBackClick}
+            _hover={{ color: theme.goldHover }}
           >
-            <FaTimes />
-          </IconButton>
+            <Flex align="center" gap={2}>
+              <Text>Back</Text>
+            </Flex>
+          </Button>
+          <Text color={theme.gold} fontWeight="bold">
+            Send {assetContext?.name || 'Asset'}
+          </Text>
+          <Box w="20px"></Box> {/* Spacer for alignment */}
         </Flex>
       </Box>
       
@@ -1122,7 +1820,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Text color="gray.400">Estimated Fee</Text>
               <Stack gap={0} align="flex-end">
                 <Text color={theme.gold} fontWeight="medium">
-                  {estimatedFee} {assetContext.symbol}
+                  {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
                 </Text>
                 {parseFloat(estimatedFeeUsd) > 0 && (
                   <Text color="gray.500" fontSize="xs">

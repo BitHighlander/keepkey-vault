@@ -7,14 +7,17 @@ import {
   Text, 
   Stack, 
   Flex,
-  Badge
+  Badge,
+  VStack,
+  Image,
+  IconButton
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { Skeleton, SkeletonCircle } from '@/components/ui/skeleton';
 import { Avatar } from '@/components/ui/avatar';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import QRCode from 'qrcode';
-import { FaArrowLeft, FaCopy, FaCheck, FaWallet } from 'react-icons/fa';
+import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 
 // Define animation keyframes
@@ -322,42 +325,34 @@ export function Receive({ onBackClick }: ReceiveProps) {
 
   return (
     <Box 
-      width="100%"
-      bg={theme.bg}
+      width="100%" 
       position="relative"
-      height="100vh"
-      display="flex"
-      flexDirection="column"
-      overflow="hidden"
+      pb={8}
     >
-      {/* Header - Fixed at top */}
       <Box 
         borderBottom="1px" 
         borderColor={theme.border}
         p={4}
         bg={theme.cardBg}
-        backdropFilter="blur(10px)"
         position="sticky"
-        top="0"
-        zIndex="10"
+        top={0}
+        zIndex={10}
       >
         <Flex justify="space-between" align="center">
-          <MotionBox whileHover={{ x: -3 }} whileTap={{ scale: 0.95 }}>
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              onClick={handleBack}
-              _hover={{ color: theme.goldHover }}
-            >
-              <Flex align="center" gap={2}>
-                <FaArrowLeft />
-                Back
-              </Flex>
-            </Button>
-          </MotionBox>
+          <Button
+            size="sm"
+            variant="ghost"
+            color={theme.gold}
+            onClick={handleBack}
+            _hover={{ color: theme.goldHover }}
+          >
+            <Flex align="center" gap={2}>
+              <FaArrowLeft />
+              <Text>Back</Text>
+            </Flex>
+          </Button>
           <Text color={theme.gold} fontWeight="bold">
-            Receive {assetContext?.name || 'Asset'}
+            Receive {assetContext.name}
           </Text>
           <Box w="20px"></Box> {/* Spacer for alignment */}
         </Flex>
@@ -367,10 +362,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
       <Box
         p={6}
         width="100%"
-        flex="1"
-        overflowY="auto"
-        className="scrollable-content"
-        pb="100px"
       >
         <Box 
           width="100%" 
@@ -412,296 +403,190 @@ export function Receive({ onBackClick }: ReceiveProps) {
               borderRadius="full"
               border="1px solid"
               borderColor="rgba(255, 215, 0, 0.3)"
-              animation={`${pulseRing} 2s infinite`}
-              pointerEvents="none"
-              zIndex={0}
+              animation={`${pulseRing} 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite`}
             />
-            
-            {/* Network Badge positioned over avatar */}
           </Box>
           
+          <Text fontSize="lg" fontWeight="bold" color="white" mt={4} textAlign="center">
+            {assetContext.name} ({assetContext.symbol})
+          </Text>
+          
+          <Badge 
+            colorScheme="orange" 
+            variant="solid" 
+            bg={theme.gold} 
+            color="black" 
+            mt={2} 
+            mb={4}
+            px={3} 
+            py={1} 
+            borderRadius="full"
+          >
+            {assetContext.networkName || assetContext.networkId?.split(':').pop() || 'Network'}
+          </Badge>
+          
+          {/* QR Code Section */}
           <MotionBox
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            mt={6}
+            mb={6}
           >
-            <Text fontSize="xl" fontWeight="bold" color="white" textAlign="center">
-              Receive {assetContext.name}
-            </Text>
-          </MotionBox>
-
-          {/* Address Selection - replacing Card with Box */}
-          <MotionBox 
-            bg="rgba(17, 17, 17, 0.7)"
-            backdropFilter="blur(10px)"
-            borderColor="rgba(255, 215, 0, 0.2)"
-            borderWidth="1px"
-            width="100%"
-            borderRadius="lg"
-            p={4}
-            boxShadow="0 8px 32px rgba(0, 0, 0, 0.2)"
-            overflow="hidden"
-            position="relative"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
-          >
-            <Stack direction="column" gap={4} align="stretch">
-              <Text fontWeight="bold" color="white">Select Address</Text>
-              
-              {/* Replace Select with a styled Box + styled native select */}
-              <Box 
-                position="relative"
-                _after={{
-                  content: '""',
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  borderLeft: '5px solid transparent',
-                  borderRight: '5px solid transparent',
-                  borderTop: `5px solid ${theme.gold}`,
-                  pointerEvents: 'none'
-                }}
-              >
-                <select
-                  value={selectedAddress}
-                  onChange={handleAddressChange}
-                  style={{
-                    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                    color: 'white',
-                    borderColor: theme.border,
-                    borderWidth: '1px',
-                    borderRadius: '0.375rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    appearance: 'none',
-                    transition: 'all 0.2s',
-                    boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.3)'
-                  }}
-                >
-                  {assetContext.pubkeys.map((pubkey: Pubkey) => {
-                    const address = pubkey.address || pubkey.master || '';
-                    return (
-                      <option key={address} value={address}>
-                        {pubkey.note || formatWithEllipsis(address)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </Box>
-            </Stack>
-            
-            {/* Subtle gradient overlay */}
             <Box
-              position="absolute"
-              top="0"
-              left="0"
-              right="0"
-              bottom="0"
-              bgGradient={theme.glassGradient}
-              pointerEvents="none"
-              zIndex="-1"
-            />
-          </MotionBox>
-
-          {/* QR Code */}
-          <MotionBox
-            bg="white"
-            p={4}
-            borderRadius="md"
-            boxSize="180px"
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            boxShadow="0 10px 25px rgba(0, 0, 0, 0.4)"
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.5, duration: 0.5 }}
-            whileHover={{ scale: 1.05, transition: { duration: 0.2 } }}
-          >
-            {qrCodeDataUrl ? (
-              <Box as="div">
-                <img src={qrCodeDataUrl} alt="QR Code" />
-              </Box>
-            ) : (
-              <SkeletonCircle size="150px" />
-            )}
-          </MotionBox>
-
-          {/* Address */}
-          <MotionBox 
-            bg="rgba(17, 17, 17, 0.7)"
-            backdropFilter="blur(10px)"
-            borderColor="rgba(255, 215, 0, 0.2)"
-            borderWidth="1px"
-            width="100%"
-            borderRadius="lg"
-            p={4}
-            boxShadow="0 8px 32px rgba(0, 0, 0, 0.2)"
-            overflow="hidden"
-            position="relative"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.6, duration: 0.5 }}
-          >
-            <Stack direction="column" gap={2}>
-              <Text color="gray.400" fontSize="sm">Address</Text>
-              <Text color="white" fontFamily="mono" fontSize="sm" wordBreak="break-all">
-                {selectedAddress}
-              </Text>
-            </Stack>
-            
-            {/* Subtle gradient overlay */}
-            <Box
-              position="absolute"
-              top="0"
-              left="0"
-              right="0"
-              bottom="0"
-              bgGradient={theme.glassGradient}
-              pointerEvents="none"
-              zIndex="-1"
-            />
-          </MotionBox>
-
-          {/* Show Advanced Button - For All Assets */}
-          <MotionBox
-            width="100%"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.65, duration: 0.5 }}
-          >
-            <Button
-              width="100%"
-              variant="outline"
-              bg="transparent"
-              color={theme.gold}
-              borderColor={theme.border}
-              _hover={{
-                bg: 'rgba(255, 215, 0, 0.1)',
-              }}
-              height="40px"
-              fontSize="sm"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-              <Flex align="center" gap={2}>
-                <Box>{showAdvanced ? '▲' : '▼'}</Box>
-                <Text>{showAdvanced ? 'Hide Advanced' : 'Show Advanced'}</Text>
-              </Flex>
-            </Button>
-          </MotionBox>
-
-          {/* Advanced Details Section (Collapsible) - For All Assets */}
-          {showAdvanced && selectedPubkey && (
-            <MotionBox 
-              bg="rgba(17, 17, 17, 0.7)"
-              backdropFilter="blur(10px)"
-              borderColor="rgba(255, 215, 0, 0.2)"
+              bg={theme.cardBg}
+              borderRadius="xl"
               borderWidth="1px"
+              borderColor={theme.border}
+              overflow="hidden"
+              p={6}
               width="100%"
-              borderRadius="lg"
-              p={4}
-              boxShadow="0 8px 32px rgba(0, 0, 0, 0.2)"
-              overflow="visible"
-              position="relative"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
+              maxW="sm"
+              boxShadow="lg"
+              backdropFilter="blur(10px)"
+              bgGradient={theme.glassGradient}
             >
-              <Stack direction="column" gap={3}>
-                <Text color="gray.400" fontSize="sm" fontWeight="bold">Advanced Details</Text>
-                
-                {/* Derivation Path */}
-                <Box>
-                  <Text color="gray.400" fontSize="xs">Derivation Path</Text>
-                  <Text color="white" fontFamily="mono" fontSize="sm">
-                    {selectedPubkey.pathMaster}
-                  </Text>
+              <VStack gap={4} align="center">
+                {/* QR Code */}
+                <Box
+                  bg="white"
+                  p={4}
+                  borderRadius="xl"
+                  width="200px"
+                  height="200px"
+                  position="relative"
+                >
+                  {qrCodeDataUrl ? (
+                    <Image src={qrCodeDataUrl} alt="QR Code" width="100%" height="100%" />
+                  ) : (
+                    <Skeleton width="100%" height="100%" />
+                  )}
                 </Box>
                 
-                {/* Master Public Key (if available) */}
-                {selectedPubkey.master && (
-                  <Box>
-                    <Text color="gray.400" fontSize="xs">XPUB</Text>
-                    <Text color="white" fontFamily="mono" fontSize="xs" wordBreak="break-all">
-                      {formatWithEllipsis(selectedPubkey.master, 60)}
+                {/* Address */}
+                <VStack width="100%" gap={2}>
+                  <Text color="gray.400" fontSize="sm">Address</Text>
+                  <Box 
+                    bg="rgba(0, 0, 0, 0.3)" 
+                    p={3}
+                    borderRadius="md"
+                    width="100%"
+                    position="relative"
+                    borderWidth="1px"
+                    borderColor={theme.border}
+                  >
+                    <Text 
+                      color="white" 
+                      fontSize="sm" 
+                      fontFamily="mono" 
+                      wordBreak="break-all"
+                    >
+                      {selectedAddress}
                     </Text>
+                    
+                    <Box position="absolute" top={2} right={2}>
+                      <MotionBox
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <IconButton
+                          aria-label="Copy address"
+                          onClick={copyToClipboard}
+                          size="sm"
+                          colorScheme={hasCopied ? "green" : "gray"}
+                          variant="ghost"
+                        >
+                          {hasCopied ? <FaCheck /> : <FaCopy />}
+                        </IconButton>
+                      </MotionBox>
+                    </Box>
                   </Box>
-                )}
-                
-                {/* Note */}
-                {selectedPubkey.note && (
-                  <Box>
-                    <Text color="gray.400" fontSize="xs">Note</Text>
-                    <Text color="white" fontSize="sm">
-                      {selectedPubkey.note}
-                    </Text>
-                  </Box>
-                )}
-                
-                {/* Supported Networks */}
-                {selectedPubkey.networks && selectedPubkey.networks.length > 0 && (
-                  <Box>
-                    <Text color="gray.400" fontSize="xs">Compatible Networks</Text>
-                    <Flex gap={2} flexWrap="wrap">
-                      {selectedPubkey.networks.map((network, index) => (
-                        <Badge key={index} colorScheme="blue" variant="subtle">
-                          {network}
-                        </Badge>
-                      ))}
-                    </Flex>
-                  </Box>
-                )}
-              </Stack>
-              
-              {/* Subtle gradient overlay */}
+                </VStack>
+              </VStack>
+            </Box>
+          </MotionBox>
+                  
+          {/* Show/Hide Details */}
+          <Button
+            variant="ghost"
+            size="sm"
+            mt={4}
+            color={theme.gold}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+          >
+            <Flex align="center" gap={2}>
+              <Text>{showAdvanced ? "Hide Details" : "Show Details"}</Text>
+              <Box transform={showAdvanced ? "rotate(180deg)" : "rotate(0deg)"}>
+                <FaChevronDown />
+              </Box>
+            </Flex>
+          </Button>
+          
+          {/* Advanced Details Section */}
+          {showAdvanced && (
+            <MotionBox
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              overflow="hidden"
+              width="100%"
+              maxW="sm"
+              mt={4}
+            >
               <Box
-                position="absolute"
-                top="0"
-                left="0"
-                right="0"
-                bottom="0"
+                bg={theme.cardBg}
+                borderRadius="xl"
+                borderWidth="1px"
+                borderColor={theme.border}
+                overflow="hidden"
+                p={6}
+                boxShadow="lg"
+                backdropFilter="blur(10px)"
                 bgGradient={theme.glassGradient}
-                pointerEvents="none"
-                zIndex="-1"
-              />
+              >
+                <VStack gap={4} align="stretch">
+                  {selectedPubkey && (
+                    <>
+                      {/* Path */}
+                      <Box>
+                        <Text color="gray.400" fontSize="sm" mb={1}>Derivation Path</Text>
+                        <Text color="white" fontSize="sm" fontFamily="mono">
+                          {selectedPubkey.pathMaster || 'Unknown'}
+                        </Text>
+                      </Box>
+                      
+                      {/* Network Info */}
+                      <Box>
+                        <Text color="gray.400" fontSize="sm" mb={1}>Network ID</Text>
+                        <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                          {assetContext.networkId}
+                        </Text>
+                      </Box>
+                      
+                      {/* Asset Info */}
+                      <Box>
+                        <Text color="gray.400" fontSize="sm" mb={1}>Asset ID</Text>
+                        <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                          {assetContext.assetId}
+                        </Text>
+                      </Box>
+                      
+                      {/* Note */}
+                      {selectedPubkey.note && (
+                        <Box>
+                          <Text color="gray.400" fontSize="sm" mb={1}>Note</Text>
+                          <Text color="white" fontSize="sm">
+                            {selectedPubkey.note}
+                          </Text>
+                        </Box>
+                      )}
+                    </>
+                  )}
+                </VStack>
+              </Box>
             </MotionBox>
           )}
-
-          {/* Copy Button */}
-          <MotionBox
-            width="100%"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.7, duration: 0.5 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Button
-              width="100%"
-              bg={hasCopied ? 'green.700' : theme.gold}
-              color={hasCopied ? 'green.100' : 'black'}
-              _hover={{
-                bg: hasCopied ? 'green.600' : theme.goldHover,
-                boxShadow: '0 5px 15px rgba(0, 0, 0, 0.2)',
-              }}
-              _active={{
-                bg: hasCopied ? 'green.800' : 'orange.400',
-              }}
-              height="50px"
-              fontSize="md"
-              onClick={copyToClipboard}
-              boxShadow="0 4px 10px rgba(0, 0, 0, 0.2)"
-              position="relative"
-              overflow="hidden"
-            >
-              <Flex align="center" gap={2}>
-                {hasCopied ? <FaCheck /> : <FaCopy />}
-                <Text>{hasCopied ? 'Copied!' : 'Copy Address'}</Text>
-              </Flex>
-            </Button>
-          </MotionBox>
         </Box>
       </Box>
     </Box>

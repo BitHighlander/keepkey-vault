@@ -15,6 +15,23 @@ import {
 import Send from '@/components/send/Send'
 import Receive from '@/components/receive/Receive'
 
+// Custom scrollbar styles
+const scrollbarStyles = {
+  css: {
+    '&::-webkit-scrollbar': {
+      width: '4px',
+    },
+    '&::-webkit-scrollbar-track': {
+      width: '6px',
+      background: 'transparent',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: '#4A5568',
+      borderRadius: '24px',
+    },
+  }
+};
+
 // Theme colors - matching our dashboard theme
 const theme = {
   bg: '#000000',
@@ -312,21 +329,28 @@ export default function AssetPage() {
         border="1px solid"
         borderColor="gray.800"
       >
-        {currentView === 'asset' && (
-          <Asset 
-            onBackClick={handleBack} 
-            onSendClick={() => setCurrentView('send')}
-            onReceiveClick={() => setCurrentView('receive')}
-          />
-        )}
-        
-        {currentView === 'send' && (
-          <Send onBackClick={handleBack} />
-        )}
-        
-        {currentView === 'receive' && (
-          <Receive onBackClick={handleBack} />
-        )}
+        <Box 
+          height="100%" 
+          overflowY="auto" 
+          overflowX="hidden"
+          {...scrollbarStyles}
+        >
+          {currentView === 'asset' && (
+            <Asset 
+              onBackClick={handleBack} 
+              onSendClick={() => setCurrentView('send')}
+              onReceiveClick={() => setCurrentView('receive')}
+            />
+          )}
+          
+          {currentView === 'send' && (
+            <Send onBackClick={handleBack} />
+          )}
+          
+          {currentView === 'receive' && (
+            <Receive onBackClick={handleBack} />
+          )}
+        </Box>
       </Box>
     </Flex>
   )

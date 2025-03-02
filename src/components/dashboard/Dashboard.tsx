@@ -247,27 +247,38 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const handleHover = (index: number | null) => {
     // Only update if hovering over a different asset or returning to the default
     if (index === null) {
-      // Find the top asset index again when mouse leaves
+      // If we're currently not hovering over anything, maintain the current selection
+      // or revert to the top asset
+      
+      // Only reset if we actually have dashboard data
       if (dashboard?.networks && dashboard.networks.length > 0) {
-        const sortedNetworks = [...dashboard.networks]
-          .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
-          .sort((a, b) => b.totalValueUsd - a.totalValueUsd);
-          
-        if (sortedNetworks.length > 0) {
-          const topAsset = sortedNetworks[0];
-          const topAssetIndex = dashboard.networks
-            .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
-            .findIndex((network: Network) => network.networkId === topAsset.networkId);
-            
-          if (topAssetIndex >= 0) {
-            setActiveSliceIndex(topAssetIndex);
-            return;
+        // Use a slight delay for smoother transitions between hover states
+        // This prevents flickering when moving between elements
+        setTimeout(() => {
+          // Only apply the reset if we're still not hovering over anything
+          if (activeSliceIndex === null) {
+            const sortedNetworks = [...dashboard.networks]
+              .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+              .sort((a, b) => b.totalValueUsd - a.totalValueUsd);
+              
+            if (sortedNetworks.length > 0) {
+              const topAsset = sortedNetworks[0];
+              const topAssetIndex = dashboard.networks
+                .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+                .findIndex((network: Network) => network.networkId === topAsset.networkId);
+                
+              if (topAssetIndex >= 0) {
+                setActiveSliceIndex(topAssetIndex);
+                return;
+              }
+            }
+            // Fallback to first item if we can't find top asset
+            setActiveSliceIndex(0);
           }
-        }
+        }, 50);
       }
-      // Fallback to first item if we can't find top asset
-      setActiveSliceIndex(0);
     } else if (index !== activeSliceIndex) {
+      // Immediate update when hovering over a specific slice
       setActiveSliceIndex(index);
     }
   };
@@ -490,6 +501,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           background: `linear-gradient(135deg, ${network.color}40 0%, ${network.color}20 100%)`,
                           opacity: 0.6,
                           borderRadius: "inherit",
+                          pointerEvents: "none",
                         }}
                         _after={{
                           content: '""',
@@ -501,6 +513,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
                           opacity: 0.5,
                           borderRadius: "inherit",
+                          pointerEvents: "none",
                         }}
                         _hover={{ 
                           transform: 'translateY(-2px)',
@@ -514,8 +527,17 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           _after: {
                             opacity: 0.7,
                           },
-                          cursor: 'pointer'
                         }}
+                        _active={{
+                          transform: 'scale(0.98) translateY(-1px)',
+                          boxShadow: `0 2px 12px ${network.color}20`,
+                          transition: 'all 0.1s ease-in-out',
+                        }}
+                        _focus={{
+                          outline: 'none',
+                          boxShadow: `0 0 0 2px ${network.color}, 0 8px 24px ${network.color}30`,
+                        }}
+                        cursor="pointer"
                         onClick={() => {
                           console.log('📋 [Dashboard] Navigating to asset page:', network);
                           
@@ -535,8 +557,16 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         role="button"
                         aria-label={`Select ${network.gasAssetSymbol} network`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            router.push(`/asset/${btoa(network.gasAssetCaip)}`);
+                          }
+                        }}
+                        transition="all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
                       >
-                        <Flex align="center" justify="space-between">
+                        <Flex align="center" justify="space-between" position="relative" zIndex={1}>
                           <HStack gap={4}>
                             <Box 
                               borderRadius="full" 
@@ -554,6 +584,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 bottom: 0,
                                 background: `linear-gradient(135deg, ${network.color}40 0%, transparent 100%)`,
                                 opacity: 0.6,
+                                pointerEvents: "none",
                               }}
                             >
                               <Image 
@@ -571,7 +602,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 fontSize="xs" 
                                 color="gray.500" 
                                 mb={1}
-                                title={network.gasAssetCaip || network.networkId} // Show full value on hover
+                                title={network.gasAssetCaip || network.networkId}
                                 cursor="help"
                                 _hover={{
                                   textDecoration: 'underline',
@@ -593,8 +624,24 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               </HStack>
                             </Stack>
                           </HStack>
-                          <Stack align="flex-end" gap={0.5}>
-                            <Text fontSize="md" color={network.color}>
+                          <Stack 
+                            align="flex-end" 
+                            gap={0.5}
+                            p={1}
+                            borderRadius="md"
+                            position="relative"
+                            zIndex={2}
+                            transition="all 0.15s ease-in-out"
+                            _hover={{
+                              bg: `${network.color}30`,
+                              boxShadow: `0 0 8px ${network.color}40`,
+                            }}
+                          >
+                            <Text 
+                              fontSize="md" 
+                              color={network.color}
+                              fontWeight="medium"
+                            >
                               $<CountUp 
                                 key={`network-${network.networkId}-${lastSync}`}
                                 end={network.totalValueUsd} 
@@ -603,7 +650,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 separator=","
                               />
                             </Text>
-                            <Text fontSize="xs" color={`${network.color}80`}>
+                            <Text 
+                              fontSize="xs" 
+                              color={`${network.color}80`}
+                              fontWeight="medium"
+                              px={1}
+                              py={0.5}
+                              borderRadius="sm"
+                              bg={`${network.color}20`}
+                            >
                               {percentage.toFixed(1)}%
                             </Text>
                           </Stack>

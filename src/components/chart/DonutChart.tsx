@@ -67,6 +67,12 @@ const DonutChart: React.FC<DonutChartProps> = ({
     .innerRadius(innerRadius * 0.98)
     .outerRadius(outerRadius * 1.03)
     .cornerRadius(lightStrokeEffect);
+    
+  // Create an invisible hit area that's slightly larger for better interaction
+  const hitAreaGenerator = arc<PieArcDatum<DonutChartItem>>()
+    .innerRadius(innerRadius * 0.6)
+    .outerRadius(outerRadius * 1.1)
+    .cornerRadius(0);
 
   const arcs = pieLayout(data);
 
@@ -84,16 +90,24 @@ const DonutChart: React.FC<DonutChartProps> = ({
           const arcGen = isActive ? hoverArcGenerator : arcGenerator;
           
           return (
-            <AnimatedSlice key={i} index={i}>
+            <AnimatedSlice key={i} index={i} isActive={isActive}>
+              {/* Visible slice */}
               <path
                 stroke="#ffffff22" // Lighter stroke for a 3D effect
                 strokeWidth={lightStrokeEffect}
                 fill={d.data.color || theme.gold}
                 d={arcGen(d) || ''}
-                opacity={activeIndex !== null && !isActive ? 0.7 : 1}
+                opacity={activeIndex !== undefined && activeIndex !== null && !isActive ? 0.7 : 1}
+                style={{ transition: 'all 0.15s ease-in-out' }}
+              />
+              
+              {/* Invisible hit area for better hover detection */}
+              <path
+                d={hitAreaGenerator(d) || ''}
+                fill="transparent"
                 onMouseEnter={() => onHoverSlice && onHoverSlice(i)}
                 onMouseLeave={() => onHoverSlice && onHoverSlice(null)}
-                style={{ cursor: 'pointer', transition: 'all 0.15s ease-in-out' }}
+                style={{ cursor: 'pointer' }}
               />
             </AnimatedSlice>
           );
