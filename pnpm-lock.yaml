@@ -18,8 +18,8 @@ importers:
         specifier: ^2.0.6
         version: 2.0.6(react@19.0.0)
       '@coinmasters/pioneer-react':
-        specifier: ^0.8.32
-        version: 0.8.32
+        specifier: ^0.8.33
+        version: 0.8.33
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.0.10)(react@19.0.0)
@@ -183,20 +183,20 @@ packages:
       react: '>=18'
       react-dom: '>=18'
 
-  '@coinmasters/api@3.8.14':
-    resolution: {integrity: sha512-c/Py0W9K5Sn8Bjz+83y/PwJ+f73/FQSBqiqmngkuwsezVsb9eRzFmvzfxRRc1UlSoXgl+XYIUJxDpWUzykOoow==}
+  '@coinmasters/api@3.8.15':
+    resolution: {integrity: sha512-ikRDBlAlCAXT+HsBYbaqrdKkeNzgVFnGTWkdVvhoblWLi43qgSD9lvWkobYzoetqqG/4nuJVKWqwW/qUR0aVfQ==}
 
-  '@coinmasters/pioneer-react@0.8.32':
-    resolution: {integrity: sha512-D4JhgUYWFQgfyYrp1sR7i/vG/mn143A3aij+curVnsg7EbmcGJ9MllgqDUPLtsMpSVMnarpRtWJwJLRFo7fcQQ==}
+  '@coinmasters/pioneer-react@0.8.33':
+    resolution: {integrity: sha512-/bLMgUkmmkaMKp+46bd0HHzlOwMW7kvaUrHz/uYvYUgUNlzKNl8R0aHnNWaselKkwXlkMxyPosCcLV8PQbJ9AQ==}
 
-  '@coinmasters/pioneer-sdk@4.8.33':
-    resolution: {integrity: sha512-q5nru/JU4zcKlONud1HxHq4ItC//9B9YTTJsAg9WKq3v+NI8nca/HwddxPzmAFGhspUxKtORaLkYSMlNEhc3OQ==}
+  '@coinmasters/pioneer-sdk@4.8.34':
+    resolution: {integrity: sha512-NhMQGXjbhjX6d7tcAHgo1lG7Qk/p6837ZDZZGiTUrv/oSUmmqdsP+7uj39pyA/XzHnMgguiOdrIL02DZ598xXQ==}
 
-  '@coinmasters/tokens@3.8.14':
-    resolution: {integrity: sha512-UvG913mNig0PQ9i8UhWIFU3nVz71qNqYAdqw3N54UNiU0QXF6EaeOOlor/Ycrk9ENXupz6PZBmg+PLmxNjRTHQ==}
+  '@coinmasters/tokens@3.8.15':
+    resolution: {integrity: sha512-sRuWF8uAj7KS9QTOqWg2T/9Fpw8MiFbvy1NAJcyOazmp1MWt9EzsfjyacDEbNYGNYEryaz/hkiPwHXyCxBhpCg==}
 
-  '@coinmasters/types@4.8.14':
-    resolution: {integrity: sha512-aEewoiZNB5LPHUaWoiNn+0Y4rJezUZ6RC/kNPjhMQGBXZNjVd2etIwCFwzoLeNEQLCAufOyLaCoOX5ZaaV34fA==}
+  '@coinmasters/types@4.8.15':
+    resolution: {integrity: sha512-sLpMJ5oFlhw2jANJoO/BPFNJK9J2PQMUpqJJ0IJoWj6C82TDDiMs+fdnbWMdRXiZXsp2TOPb8KJn7nSEZKbvxA==}
 
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
@@ -3484,15 +3484,15 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
-  '@coinmasters/api@3.8.14':
+  '@coinmasters/api@3.8.15':
     dependencies:
-      '@coinmasters/types': 4.8.14
+      '@coinmasters/types': 4.8.15
       ky: 1.1.3
 
-  '@coinmasters/pioneer-react@0.8.32':
+  '@coinmasters/pioneer-react@0.8.33':
     dependencies:
-      '@coinmasters/pioneer-sdk': 4.8.33(@types/node@18.15.13)
-      '@coinmasters/types': 4.8.14
+      '@coinmasters/pioneer-sdk': 4.8.34(@types/node@18.15.13)
+      '@coinmasters/types': 4.8.15
       '@pioneer-platform/pioneer-caip': 9.2.38
       '@pioneer-platform/pioneer-coins': 9.2.26(@types/node@18.15.13)
       '@types/node': 18.15.13
@@ -3526,11 +3526,11 @@ snapshots:
       - utf-8-validate
       - webdriverio
 
-  '@coinmasters/pioneer-sdk@4.8.33(@types/node@18.15.13)':
+  '@coinmasters/pioneer-sdk@4.8.34(@types/node@18.15.13)':
     dependencies:
-      '@coinmasters/api': 3.8.14
-      '@coinmasters/tokens': 3.8.14
-      '@coinmasters/types': 4.8.14
+      '@coinmasters/api': 3.8.15
+      '@coinmasters/tokens': 3.8.15
+      '@coinmasters/types': 4.8.15
       '@keepkey/keepkey-sdk': 0.2.62
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.15.13)
       '@pioneer-platform/pioneer-caip': 9.2.38
@@ -3548,9 +3548,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@coinmasters/tokens@3.8.14': {}
+  '@coinmasters/tokens@3.8.15': {}
 
-  '@coinmasters/types@4.8.14': {}
+  '@coinmasters/types@4.8.15': {}
 
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
@@ -3958,8 +3958,8 @@ snapshots:
 
   '@pioneer-platform/pioneer-discovery@0.0.15(@types/node@18.15.13)':
     dependencies:
-      '@coinmasters/tokens': 3.8.14
-      '@coinmasters/types': 4.8.14
+      '@coinmasters/tokens': 3.8.15
+      '@coinmasters/types': 4.8.15
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.15.13)
       '@pioneer-platform/pioneer-caip': 9.2.38
     transitivePeerDependencies:

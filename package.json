@@ -15,7 +15,7 @@
   "dependencies": {
     "@chakra-ui/react": "^3.8.0",
     "@chakra-ui/react-types": "^2.0.6",
-    "@coinmasters/pioneer-react": "^0.8.32",
+    "@coinmasters/pioneer-react": "^0.8.33",
     "@emotion/react": "^11.14.0",
     "@types/d3": "^7.4.3",
     "@types/qrcode": "^1.5.5",
