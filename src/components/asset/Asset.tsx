@@ -15,8 +15,20 @@ import {
   useDisclosure,
   Icon,
 } from '@chakra-ui/react';
+
+// Add sound effect imports
+const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
+
+// Play sound utility function
+const playSound = (sound: HTMLAudioElement | null) => {
+  if (sound) {
+    sound.currentTime = 0; // Reset to start
+    sound.play().catch(err => console.error('Error playing sound:', err));
+  }
+};
+
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 
@@ -41,6 +53,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
   const [lastSync, setLastSync] = useState<number>(Date.now());
   // Add state for tracking expanded/collapsed state of asset details
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  // Add state to track previous balance for comparison
+  const [previousBalance, setPreviousBalance] = useState<string>('0');
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -76,6 +90,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
     // Check if asset context is already available
     if (assetContext) {
       console.log('✅ [Asset] AssetContext already available on mount');
+      // Initialize previousBalance when asset context is available
+      if (assetContext.balance) {
+        setPreviousBalance(assetContext.balance);
+      }
       setLoading(false);
       return;
     }
@@ -131,17 +149,37 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
   useEffect(() => {
     if (!app) return;
     
+    // Initialize previousBalance when component mounts
+    if (app.assetContext?.balance) {
+      setPreviousBalance(app.assetContext.balance);
+    }
+    
     const intervalId = setInterval(() => {
       app
         .syncMarket()
         .then(() => {
           console.log("📊 [Asset] syncMarket called from Asset component");
-          // Artificially adjust values by +0.01 for testing animation
-          if (app.assetContext && app.assetContext.value !== undefined) {
-            const oldVal = parseFloat(app.assetContext.value.toString() || '0');
-            const newVal = oldVal + 0.01;
-            app.assetContext.value = newVal;
+          
+          // Check if balance has increased
+          if (app.assetContext?.balance) {
+            const currentBalance = app.assetContext.balance;
+            const prevBalance = previousBalance;
+            
+            console.log("💰 [Asset] Balance comparison:", { 
+              previous: prevBalance, 
+              current: currentBalance,
+              increased: parseFloat(currentBalance) > parseFloat(prevBalance)
+            });
+            
+            if (parseFloat(currentBalance) > parseFloat(prevBalance)) {
+              console.log("🎵 [Asset] Balance increased! Playing chaching sound");
+              playSound(chachingSound);
+            }
+            
+            // Update previous balance for next comparison
+            setPreviousBalance(currentBalance);
           }
+          
           setLastSync(Date.now());
         })
         .catch((error: any) => {
@@ -150,7 +188,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [app]);
+  }, [app, previousBalance]);
 
   const handleBack = () => {
     if (onBackClick) {
@@ -390,7 +428,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
             }}
             onClick={onSendClick}
           >
-            Send
+            <Flex gap={2} align="center">
+              <FaPaperPlane />
+              <Text>Send</Text>
+            </Flex>
           </Button>
           <Button
             width="100%"
@@ -405,7 +446,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
             }}
             onClick={onReceiveClick}
           >
-            Receive
+            <Flex gap={2} align="center">
+              <FaQrcode />
+              <Text>Receive</Text>
+            </Flex>
           </Button>
         </VStack>
 

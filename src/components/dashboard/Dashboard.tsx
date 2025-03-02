@@ -20,6 +20,17 @@ import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 
+// Add sound effect imports
+const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
+
+// Play sound utility function
+const playSound = (sound: HTMLAudioElement | null) => {
+  if (sound) {
+    sound.currentTime = 0; // Reset to start
+    sound.play().catch(err => console.error('Error playing sound:', err));
+  }
+};
+
 // Custom scrollbar styles
 const scrollbarStyles = {
   css: {
@@ -101,8 +112,9 @@ const NetworkSkeleton = () => (
 const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSliceIndex, setActiveSliceIndex] = useState<number | undefined>(0);
+  const [activeSliceIndex, setActiveSliceIndex] = useState<number>(0);
   const [lastSync, setLastSync] = useState<number>(Date.now());
+  const [previousTotalValue, setPreviousTotalValue] = useState<number>(0);
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
@@ -167,23 +179,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         .syncMarket()
         .then(() => {
           console.log("📊 [Dashboard] syncMarket called from Dashboard");
-          // Artificially adjust all balances by +0.01 for testing
-          if (app.dashboard?.networks && Array.isArray(app.dashboard.networks)) {
-            app.dashboard.networks = app.dashboard.networks.map((network: any) => {
-              const oldVal = parseFloat(network.totalValueUsd || 0);
-              const newVal = oldVal + 0.01;
-              return { ...network, totalValueUsd: newVal };
-            });
-            
-            // Update total portfolio value
-            if (app.dashboard) {
-              const total = app.dashboard.networks.reduce(
-                (sum: number, network: any) => sum + network.totalValueUsd, 
-                0
-              );
-              app.dashboard.totalValueUsd = total;
-            }
-          }
+          // We now track real balance changes instead of artificial adjustments
           setLastSync(Date.now());
           fetchDashboard();
         })
@@ -202,6 +198,23 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       if(app && app.dashboard) {
         const dashboard = app.dashboard;
         console.log('📊 [Dashboard] Dashboard data received:', dashboard);
+        
+        // Compare new total value with previous total value
+        const newTotalValue = dashboard.totalValueUsd || 0;
+        const prevTotalValue = previousTotalValue;
+        
+        // Check if portfolio value has increased
+        if (newTotalValue > prevTotalValue && prevTotalValue > 0) {
+          console.log("💰 [Dashboard] Portfolio value increased!", { 
+            previous: prevTotalValue, 
+            current: newTotalValue 
+          });
+          playSound(chachingSound);
+        }
+        
+        // Update previous total value for next comparison
+        setPreviousTotalValue(newTotalValue);
+        
         setDashboard(dashboard);
         
         // Set activeSliceIndex to the index of the top asset (with highest value)

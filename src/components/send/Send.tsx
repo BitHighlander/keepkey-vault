@@ -11,11 +11,28 @@ import {
   IconButton,
   VStack,
   Image,
+  Textarea,
+  Spinner,
+  CloseButton,
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy } from 'react-icons/fa'
 import Confetti from 'react-confetti'
+import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
+import { keyframes } from '@emotion/react'
+
+// Add sound effect imports
+const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
+const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
+
+// Play sound utility function
+const playSound = (sound: HTMLAudioElement | null) => {
+  if (sound) {
+    sound.currentTime = 0; // Reset to start
+    sound.play().catch(err => console.error('Error playing sound:', err));
+  }
+};
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -27,6 +44,13 @@ const theme = {
   formPadding: '16px', // Added for consistent form padding
   borderRadius: '12px', // Added for consistent border radius
 }
+
+// Define animation keyframes
+const scale = keyframes`
+  0% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0.5; }
+`
 
 interface SendProps {
   onBackClick?: () => void
@@ -119,14 +143,20 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [selectedFeeLevel, setSelectedFeeLevel] = useState<'slow' | 'average' | 'fastest'>('average')
   const [customFeeOption, setCustomFeeOption] = useState<boolean>(false)
   const [customFeeAmount, setCustomFeeAmount] = useState<string>('')
+  // Add state for raw transaction dialog
+  const [showRawTxDialog, setShowRawTxDialog] = useState<boolean>(false)
+  const [rawTxJson, setRawTxJson] = useState<string>('')
+  const [editedRawTxJson, setEditedRawTxJson] = useState<string>('')
+  
+  // Add a state to track if asset data has loaded
+  const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
+  
+  // Add state for fee options
   const [feeOptions, setFeeOptions] = useState<{
     slow: string;
     average: string;
     fastest: string;
   }>({ slow: '0.0001', average: '0.0002', fastest: '0.0005' })
-  
-  // Add a state to track if asset data has loaded
-  const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
   
   // Manual copy to clipboard implementation
   const [hasCopied, setHasCopied] = useState(false)
@@ -143,14 +173,31 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   }
 
+  // Add state for TX building loading indicators
+  const [isBuildingTx, setIsBuildingTx] = useState<boolean>(false)
+
+  // Add state for error handling
+  const [error, setError] = useState<string | null>(null)
+  const [showErrorDialog, setShowErrorDialog] = useState<boolean>(false)
+
   // Calculate total balance
   useEffect(() => {
     if (assetContext) {
       try {
-        setBalance(assetContext.balance || '0')
-        setTotalBalanceUsd(parseFloat(assetContext.balance || '0') * (assetContext.priceUsd || 0))
+        // Store previous balance for comparison
+        const prevBalance = balance;
+        const newBalance = assetContext.balance || '0';
+        
+        setBalance(newBalance)
+        setTotalBalanceUsd(parseFloat(newBalance) * (assetContext.priceUsd || 0))
         setAssetLoaded(true)
         setLoading(false)
+        
+        // Play chaching sound if balance increased
+        if (prevBalance && newBalance && parseFloat(newBalance) > parseFloat(prevBalance)) {
+          playSound(chachingSound);
+          console.log('Balance increased! 💰', { previous: prevBalance, new: newBalance });
+        }
         
         // Also update fee in USD when asset context changes
         updateFeeInUsd(estimatedFee);
@@ -518,7 +565,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Convert amount to native token if in USD mode
     const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
 
+    // Show loading spinner while building transaction
+    setIsBuildingTx(true)
     setLoading(true)
+    
     try {
       // Build the transaction first
       setTransactionStep('review')
@@ -531,6 +581,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     } catch (error) {
       console.error('Error preparing transaction:', error)
     } finally {
+      setIsBuildingTx(false)
       setLoading(false)
     }
   }
@@ -857,9 +908,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setSignedTx(signedTxResult)
       setTransactionStep('broadcast')
       
+      // Play woosh sound when transaction is signed successfully
+      playSound(wooshSound);
+      
       return signedTxResult
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transaction signing error:', error)
+      // Set error message and show error dialog
+      setError(error.message || 'Failed to sign transaction')
+      setShowErrorDialog(true)
+      // Reset transaction step
+      setTransactionStep('review')
       throw error
     } finally {
       setLoading(false)
@@ -894,8 +953,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setTransactionStep('success')
       
       return broadcastResult
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transaction broadcast error:', error)
+      // Set error message and show error dialog
+      setError(error.message || 'Failed to broadcast transaction')
+      setShowErrorDialog(true)
+      // Reset transaction step
+      setTransactionStep('review')
       throw error
     } finally {
       setLoading(false)
@@ -916,12 +980,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('Transaction sent successfully')
     } catch (error) {
       console.error('Transaction error:', error)
+      // Error is already handled in the respective functions
     } finally {
       setLoading(false)
     }
   }
   
-  // Add a new function to format transaction details for display
+  // Format transaction details for display
   const formatTransactionDetails = (tx: any): React.ReactNode => {
     if (!tx) return null;
     
@@ -1030,6 +1095,44 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           </Box>
         );
     }
+  };
+
+  // Function to open raw transaction dialog
+  const openRawTxDialog = () => {
+    if (unsignedTx?.unsignedTx) {
+      const formattedJson = JSON.stringify(unsignedTx.unsignedTx, null, 2);
+      setRawTxJson(formattedJson);
+      setEditedRawTxJson(formattedJson);
+      setShowRawTxDialog(true);
+    }
+  };
+
+  // Function to handle editing of raw transaction JSON
+  const handleRawTxJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditedRawTxJson(e.target.value);
+  };
+
+  // Function to apply edited JSON to the transaction
+  const applyEditedJson = () => {
+    try {
+      const parsedJson = JSON.parse(editedRawTxJson);
+      // Create a new transaction state with the edited unsigned transaction
+      const updatedTxState = {
+        ...unsignedTx,
+        unsignedTx: parsedJson
+      };
+      setUnsignedTx(updatedTxState);
+      setShowRawTxDialog(false);
+      // Show a success message or toast here
+    } catch (error) {
+      console.error('Invalid JSON format:', error);
+      // Show an error message or toast here
+    }
+  };
+
+  // Function to close the dialog without applying changes
+  const closeRawTxDialog = () => {
+    setShowRawTxDialog(false);
   };
 
   // Function to handle viewing transaction on explorer
@@ -1142,6 +1245,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     setSignedTx(null)
     setTransactionStep('review')
     setShowConfirmation(false)
+  }
+
+  // Close error dialog
+  const closeErrorDialog = () => {
+    setShowErrorDialog(false)
+    setError(null)
   }
 
   if (!assetContext) {
@@ -1386,7 +1495,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           >
             <Flex justify="space-between" align="center">
               <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
-                {transactionStep === 'review' ? 'Review Transaction' : 'Confirm Transaction'}
+                {transactionStep === 'review' ? 'Review Transaction' : 
+                 transactionStep === 'sign' ? 'Signing Transaction' : 
+                 transactionStep === 'broadcast' ? 'Broadcasting Transaction' : 'Confirm Transaction'}
               </Text>
               <IconButton
                 aria-label="Close"
@@ -1394,6 +1505,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 size="sm"
                 variant="ghost"
                 color={theme.gold}
+                disabled={loading}
               >
                 <FaTimes />
               </IconButton>
@@ -1406,6 +1518,59 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             p={5} 
             overflowY="auto"
           >
+            {/* Loading overlay for signing and broadcasting */}
+            {(loading && (transactionStep === 'sign' || transactionStep === 'broadcast')) && (
+              <Box
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                bg="rgba(0, 0, 0, 0.8)"
+                zIndex={1000}
+                display="flex"
+                flexDirection="column"
+                justifyContent="center"
+                alignItems="center"
+                p={4}
+              >
+                {transactionStep === 'sign' ? (
+                  <>
+                    <Image 
+                      src="/images/hold-and-release.svg"
+                      alt="Hold and Release Button on KeepKey"
+                      width="200px"
+                      mb={6}
+                    />
+                    <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
+                      Check Your KeepKey Device
+                    </Text>
+                    <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px" mb={2}>
+                      Please review the transaction details on your KeepKey
+                    </Text>
+                    <Text color="gray.400" fontSize="md" textAlign="center">
+                      Hold the button to confirm or release to cancel
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <KeepKeyUiGlyph
+                      boxSize="80px"
+                      color={theme.gold}
+                      animation={`${scale} 2s ease-in-out infinite`}
+                      mb={6}
+                    />
+                    <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
+                      Broadcasting Transaction...
+                    </Text>
+                    <Text color="gray.400" fontSize="md" textAlign="center">
+                      Submitting transaction to the network
+                    </Text>
+                  </>
+                )}
+              </Box>
+            )}
+            
             <Stack gap={5}>
               {/* Asset Information */}
               <Flex align="center" gap={3} width="100%">
@@ -1481,7 +1646,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
                     </Text>
                     <Text color="gray.400" fontSize="xs">
-                      {estimatedFeeUsd}
+                      ≈ ${estimatedFeeUsd} USD
                     </Text>
                   </Box>
                 </Flex>
@@ -1539,8 +1704,129 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       borderColor={theme.border}
                     >
                       {formatTransactionDetails(unsignedTx?.unsignedTx)}
+                      
+                      {/* Add Raw Transaction Button */}
+                      <Button
+                        mt={3}
+                        size="sm"
+                        variant="outline"
+                        width="100%"
+                        borderColor={theme.border}
+                        color={theme.gold}
+                        _hover={{ borderColor: theme.gold, bg: 'rgba(255, 215, 0, 0.1)' }}
+                        onClick={openRawTxDialog}
+                      >
+                        Edit Raw Transaction JSON
+                      </Button>
                     </Box>
                   )}
+                </Box>
+              )}
+              
+              {/* Raw Transaction Dialog */}
+              {showRawTxDialog && (
+                <Box
+                  position="fixed"
+                  top="0"
+                  left="0"
+                  right="0"
+                  bottom="0"
+                  bg="rgba(0, 0, 0, 0.8)"
+                  zIndex="1000"
+                  display="flex"
+                  justifyContent="center"
+                  alignItems="center"
+                  p={4}
+                >
+                  <Box
+                    bg={theme.cardBg}
+                    borderRadius="md"
+                    borderWidth="1px"
+                    borderColor={theme.border}
+                    width="90%"
+                    maxWidth="800px"
+                    maxHeight="90vh"
+                    overflow="hidden"
+                    display="flex"
+                    flexDirection="column"
+                  >
+                    <Box
+                      p={4}
+                      borderBottom="1px"
+                      borderColor={theme.border}
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
+                      <Text color={theme.gold} fontWeight="bold" fontSize="lg">
+                        Raw Transaction JSON
+                      </Text>
+                      <IconButton
+                        aria-label="Close"
+                        size="sm"
+                        variant="ghost"
+                        color={theme.gold}
+                        onClick={closeRawTxDialog}
+                      >
+                        <FaTimes />
+                      </IconButton>
+                    </Box>
+                    
+                    <Box
+                      p={4}
+                      flex="1"
+                      overflowY="auto"
+                    >
+                      <Text color="gray.400" fontSize="sm" mb={2}>
+                        Edit the transaction JSON below:
+                      </Text>
+                      <Textarea
+                        value={editedRawTxJson}
+                        onChange={handleRawTxJsonChange}
+                        p={3}
+                        height="300px"
+                        width="100%"
+                        fontFamily="mono"
+                        fontSize="sm"
+                        color="white"
+                        bg={theme.bg}
+                        border="1px solid"
+                        borderColor={theme.border}
+                        borderRadius="md"
+                        resize="vertical"
+                        _focus={{
+                          borderColor: theme.gold,
+                          outline: "none"
+                        }}
+                      />
+                    </Box>
+                    
+                    <Box
+                      p={4}
+                      borderTop="1px"
+                      borderColor={theme.border}
+                      display="flex"
+                      justifyContent="flex-end"
+                      gap={3}
+                    >
+                      <Button
+                        variant="outline"
+                        color="gray.400"
+                        borderColor={theme.border}
+                        onClick={closeRawTxDialog}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        bg={theme.gold}
+                        color="black"
+                        _hover={{ bg: theme.goldHover }}
+                        onClick={applyEditedJson}
+                      >
+                        Apply Changes
+                      </Button>
+                    </Box>
+                  </Box>
                 </Box>
               )}
             </Stack>
@@ -1597,6 +1883,106 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
     >
+      {/* Transaction Building Overlay */}
+      {isBuildingTx && (
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          bg="rgba(0, 0, 0, 0.85)"
+          zIndex={1000}
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+          backdropFilter="blur(2px)"
+        >
+          <KeepKeyUiGlyph
+            boxSize="80px"
+            color={theme.gold}
+            animation={`${scale} 2s ease-in-out infinite`}
+            mb={6}
+          />
+          <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
+            Building Transaction...
+          </Text>
+          <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px">
+            Please wait while we prepare your transaction details
+          </Text>
+        </Box>
+      )}
+      
+      {/* Error Dialog */}
+      {showErrorDialog && (
+        <Box
+          position="fixed"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          bg="rgba(0, 0, 0, 0.8)"
+          zIndex={2000}
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          p={4}
+        >
+          <Box
+            bg={theme.cardBg}
+            borderRadius="md"
+            borderWidth="1px"
+            borderColor="red.500"
+            width="90%"
+            maxWidth="500px"
+            overflow="hidden"
+            boxShadow="0px 4px 20px rgba(0, 0, 0, 0.5)"
+          >
+            <Box
+              bg="red.500"
+              py={4}
+              px={6}
+              textAlign="center"
+            >
+              <Flex justify="center" align="center" mb={2}>
+                <Box fontSize="24px" mr={2}>
+                  <FaTimes />
+                </Box>
+              </Flex>
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                Transaction Error
+              </Text>
+              <Text fontSize="md" color="white" mt={1}>
+                {error || 'An error occurred during transaction signing.'}
+              </Text>
+            </Box>
+            
+            <Box p={5}>
+              <Text color="white" mb={4}>
+                There was a problem signing your transaction with KeepKey. Please check your device and try again.
+              </Text>
+              <Text color="gray.400" fontSize="sm" mb={4}>
+                Error details: {error || 'Unknown error'}
+              </Text>
+              
+              <Button
+                width="100%"
+                bg={theme.gold}
+                color="black"
+                _hover={{
+                  bg: theme.goldHover,
+                }}
+                onClick={closeErrorDialog}
+                height="45px"
+              >
+                Close
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      )}
+    
       <Box 
         borderBottom="1px" 
         borderColor={theme.border}
@@ -1822,11 +2208,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Text color={theme.gold} fontWeight="medium">
                   {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
                 </Text>
-                {parseFloat(estimatedFeeUsd) > 0 && (
-                  <Text color="gray.500" fontSize="xs">
-                    ≈ ${estimatedFeeUsd} USD
-                  </Text>
-                )}
+                <Text color="gray.500" fontSize="xs">
+                  ≈ ${estimatedFeeUsd} USD
+                </Text>
               </Stack>
             </Flex>
           </Box>
