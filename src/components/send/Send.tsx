@@ -94,6 +94,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [signedTx, setSignedTx] = useState<any>(null)
   const [transactionStep, setTransactionStep] = useState<'build' | 'sign' | 'broadcast' | 'success'>('build')
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001')
+  // Add state for fee in USD
+  const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<string>('0.00')
   
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
@@ -121,6 +123,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         setTotalBalanceUsd(parseFloat(assetContext.balance || '0') * (assetContext.priceUsd || 0))
         setAssetLoaded(true)
         setLoading(false)
+        
+        // Also update fee in USD when asset context changes
+        updateFeeInUsd(estimatedFee);
       } catch (e) {
         console.error('Error setting balance:', e)
         setBalance('0')
@@ -134,7 +139,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }, 3000)
       return () => clearTimeout(timer)
     }
-  }, [assetContext, assetLoaded])
+  }, [assetContext, assetLoaded, estimatedFee])
 
   // Format USD value
   const formatUsd = (value: number) => {
@@ -159,6 +164,31 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Return with 2 decimal places for USD
     return usdAmount.toFixed(2);
   }
+
+  // Calculate fee in USD
+  const updateFeeInUsd = (feeInNative: string) => {
+    if (!feeInNative || !assetContext?.priceUsd) {
+      setEstimatedFeeUsd('0.00');
+      return;
+    }
+    
+    try {
+      let feeValue = parseFloat(feeInNative);
+      
+      // Special handling for EVM chains - if fee is too large, it's likely in gwei
+      if (assetContext.networkId?.startsWith('eip155:') && feeValue > 1) {
+        // Convert from gwei to ETH equivalent
+        const gweiToEth = 0.000000001;
+        feeValue = feeValue * gweiToEth;
+      }
+      
+      const feeUsd = feeValue * parseFloat(assetContext.priceUsd);
+      setEstimatedFeeUsd(feeUsd.toFixed(2));
+    } catch (error) {
+      console.error('Error calculating fee in USD:', error);
+      setEstimatedFeeUsd('0.00');
+    }
+  };
 
   // Toggle between USD and native input
   const toggleInputMode = () => {
@@ -250,6 +280,41 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Call the SDK's buildTx method
       const unsignedTxResult = await app.buildTx(sendPayload)
       console.log('Unsigned TX Result:', unsignedTxResult)
+      
+      // Extract fee from unsigned transaction result if available
+      try {
+        // Different chains have different formats for fee information
+        let feeValue = '0.0001'; // Default fallback
+        
+        if (unsignedTxResult && typeof unsignedTxResult === 'object') {
+          // Try to extract fee from common patterns in transaction response
+          if (unsignedTxResult.fee) {
+            if (typeof unsignedTxResult.fee === 'string') {
+              feeValue = unsignedTxResult.fee;
+            } else if (typeof unsignedTxResult.fee === 'object') {
+              // Fee might be in an object with amount property
+              feeValue = unsignedTxResult.fee.amount || unsignedTxResult.fee.value || feeValue;
+            }
+          } else if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
+            // For EVM chains, calculate fee as gasPrice * gasLimit
+            const gasPrice = parseFloat(unsignedTxResult.gasPrice);
+            const gasLimit = parseFloat(unsignedTxResult.gasLimit);
+            const gweiToEth = 0.000000001; // For EVM chains
+            feeValue = (gasPrice * gasLimit * gweiToEth).toFixed(8);
+          }
+        }
+        
+        // Update fee state
+        console.log('Extracted fee:', feeValue);
+        setEstimatedFee(feeValue);
+        
+        // Calculate and update fee in USD
+        updateFeeInUsd(feeValue);
+      } catch (feeError) {
+        console.error('Error extracting fee from transaction:', feeError);
+        // If we can't extract fee, we still have the default value
+        updateFeeInUsd(estimatedFee);
+      }
       
       // Store the unsigned transaction
       const transactionState: TransactionState = {
@@ -769,6 +834,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <Text color="gray.500" fontSize="sm">Estimated fee</Text>
                   <Text color="white" fontSize="sm">
                     {estimatedFee} {assetContext.symbol}
+                    {parseFloat(estimatedFeeUsd) > 0 && (
+                      <Text as="span" color="gray.500" ml={1}>
+                        (≈ ${estimatedFeeUsd})
+                      </Text>
+                    )}
                   </Text>
                 </Flex>
               </Box>
@@ -1050,9 +1120,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           >
             <Flex justify="space-between" align="center">
               <Text color="gray.400">Estimated Fee</Text>
-              <Text color={theme.gold} fontWeight="medium">
-                {estimatedFee} {assetContext.symbol}
-              </Text>
+              <Stack gap={0} align="flex-end">
+                <Text color={theme.gold} fontWeight="medium">
+                  {estimatedFee} {assetContext.symbol}
+                </Text>
+                {parseFloat(estimatedFeeUsd) > 0 && (
+                  <Text color="gray.500" fontSize="xs">
+                    ≈ ${estimatedFeeUsd} USD
+                  </Text>
+                )}
+              </Stack>
             </Flex>
           </Box>
           
