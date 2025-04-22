@@ -185,18 +185,29 @@ packages:
 
   '@coinmasters/api@3.8.15':
     resolution: {integrity: sha512-ikRDBlAlCAXT+HsBYbaqrdKkeNzgVFnGTWkdVvhoblWLi43qgSD9lvWkobYzoetqqG/4nuJVKWqwW/qUR0aVfQ==}
+    deprecated: 'SECURITY NOTICE: This version was published without authorization on March 2, 2025. Please update to a verified version.'
 
   '@coinmasters/pioneer-react@0.8.33':
     resolution: {integrity: sha512-/bLMgUkmmkaMKp+46bd0HHzlOwMW7kvaUrHz/uYvYUgUNlzKNl8R0aHnNWaselKkwXlkMxyPosCcLV8PQbJ9AQ==}
+    deprecated: 'SECURITY NOTICE: This version was published without authorization on March 2, 2025. Please update to a verified version.'
 
   '@coinmasters/pioneer-sdk@4.8.34':
     resolution: {integrity: sha512-NhMQGXjbhjX6d7tcAHgo1lG7Qk/p6837ZDZZGiTUrv/oSUmmqdsP+7uj39pyA/XzHnMgguiOdrIL02DZ598xXQ==}
+    deprecated: 'SECURITY NOTICE: This version was published without authorization on March 2, 2025. Please update to a verified version.'
+
+  '@coinmasters/tokens@3.10.1':
+    resolution: {integrity: sha512-lzT7SVdhT2pRhFjQau87Xod2D0iJqvt9epOnpUYriF5+wBSVhGDdBWVIAUiALtRnT3vk9Z+ctcOddBylTXRThA==}
 
   '@coinmasters/tokens@3.8.15':
     resolution: {integrity: sha512-sRuWF8uAj7KS9QTOqWg2T/9Fpw8MiFbvy1NAJcyOazmp1MWt9EzsfjyacDEbNYGNYEryaz/hkiPwHXyCxBhpCg==}
+    deprecated: 'SECURITY NOTICE: This version was published without authorization on March 2, 2025. Please update to a verified version.'
+
+  '@coinmasters/types@4.10.1':
+    resolution: {integrity: sha512-Ri5PU5PROfv95p7BbQPVAd8qtBViXIsOcAz8r02Bu1EY8A/rssosWBBkjG1JfEZLow0b/W71PUs/oznCPXyycA==}
 
   '@coinmasters/types@4.8.15':
     resolution: {integrity: sha512-sLpMJ5oFlhw2jANJoO/BPFNJK9J2PQMUpqJJ0IJoWj6C82TDDiMs+fdnbWMdRXiZXsp2TOPb8KJn7nSEZKbvxA==}
+    deprecated: 'SECURITY NOTICE: This version was published without authorization on March 2, 2025. Please update to a verified version.'
 
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
@@ -2483,6 +2494,7 @@ packages:
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
+    deprecated: Use your platform's native DOMException instead
 
   node-fetch-commonjs@3.3.2:
     resolution: {integrity: sha512-VBlAiynj3VMLrotgwOS3OyECFxas5y7ltLcK4t41lMUZeaK15Ym4QRkqN0EQKAFL42q9i21EPKjzLUPfltR72A==}
@@ -3548,7 +3560,11 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@coinmasters/tokens@3.10.1': {}
+
   '@coinmasters/tokens@3.8.15': {}
+
+  '@coinmasters/types@4.10.1': {}
 
   '@coinmasters/types@4.8.15': {}
 
@@ -3958,8 +3974,8 @@ snapshots:
 
   '@pioneer-platform/pioneer-discovery@0.0.15(@types/node@18.15.13)':
     dependencies:
-      '@coinmasters/tokens': 3.8.15
-      '@coinmasters/types': 4.8.15
+      '@coinmasters/tokens': 3.10.1
+      '@coinmasters/types': 4.10.1
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.15.13)
       '@pioneer-platform/pioneer-caip': 9.2.38
     transitivePeerDependencies:
