@@ -1,7 +1,6 @@
 'use client'
 
-import React from 'react';
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { PioneerProvider as BasePioneerProvider, usePioneer } from "@coinmasters/pioneer-react"
 import { AppProvider } from '@/components/providers/pioneer'
 import { Provider as ChakraProvider } from "@/components/ui/provider"
@@ -21,6 +20,7 @@ const scale = keyframes`
 `
 
 // Get environment variables with fallbacks
+// Using NEXT_PUBLIC_ prefix ensures these are available at build time
 const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL
 const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS
 
@@ -33,11 +33,14 @@ function PioneerInitializer({ children, onPioneerReady }: {
   const [isInitialized, setIsInitialized] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  // Use ref instead of module-level variable for hot-reload friendliness
+  const setupCompleteRef = useRef(false)
 
   useEffect(() => {
-    const initPioneer = async () => {
-      if (isInitialized) return
+    // Skip if already initialized in this component instance
+    if (setupCompleteRef.current) return
 
+    const initPioneer = async () => {
       try {
         setIsLoading(true)
         setError(null)
@@ -68,6 +71,7 @@ function PioneerInitializer({ children, onPioneerReady }: {
           }
         }
 
+        setupCompleteRef.current = true
         setIsInitialized(true)
         onPioneerReady(pioneer)
       } catch (e) {
@@ -79,7 +83,12 @@ function PioneerInitializer({ children, onPioneerReady }: {
     }
 
     initPioneer()
-  }, [pioneer, isInitialized, onPioneerReady])
+
+    // Clean up socket listeners on unmount to prevent memory leaks
+    return () => {
+      pioneer.state?.app?.pioneer?.socket?.removeAllListeners();
+    }
+  }, [pioneer, onPioneerReady]) // Remove isInitialized from deps, using ref instead
 
   if (error) {
     return (
@@ -127,12 +136,38 @@ function PioneerInitializer({ children, onPioneerReady }: {
 }
 
 export function Provider({ children }: ProviderProps) {
-  const [pioneerInstance, setPioneerInstance] = useState<ReturnType<typeof usePioneer> | null>(null)
+  const [pioneer, setPioneer] = useState<ReturnType<typeof usePioneer> | null>(null);
+  const [ready, setReady] = useState(false);
 
-  const handlePioneerReady = (pioneer: ReturnType<typeof usePioneer>) => {
-    setPioneerInstance(pioneer)
+  // Memoize callback to prevent unnecessary effect reruns
+  const handlePioneerReady = useCallback((p: ReturnType<typeof usePioneer>) => {
+    setPioneer(p);
+  }, []);
+
+  // Wait for username to be available before rendering children
+  useEffect(() => {
+    if (!pioneer) return;
+
+    const interval = setInterval(() => {
+      if (pioneer.state?.app?.username) {
+        setReady(true);
+        clearInterval(interval);
+      }
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [pioneer]);
+
+  // Still loading? Show spinner
+  if (!ready) {
+    return (
+      <Center w="100vw" h="100vh">
+        <LogoIcon boxSize="8" animation={`5s ease-out ${scale}`} opacity="0.8" />
+      </Center>
+    );
   }
 
+  // Now safe: username exists
   return (
     <ChakraProvider>
       <BasePioneerProvider>
@@ -140,7 +175,7 @@ export function Provider({ children }: ProviderProps) {
           <AppProvider 
             onError={(error, info) => console.error(error, info)} 
             initialColorMode={'dark'} 
-            pioneer={pioneerInstance}
+            pioneer={pioneer}
           >
             {children}
           </AppProvider>
