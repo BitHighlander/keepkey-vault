@@ -498,22 +498,19 @@ export default function AssetPage() {
 
   // Render the current view based on state
   return (
-    <Flex 
+    <Box 
       minH="100vh" 
-      justify="center" 
-      align="center" 
       bg="black"
+      width="100%"
     >
       <Box 
-        width="375px" 
         height="100vh"
         bg="black" 
         overflow="hidden"
         position="relative"
-        boxShadow="xl"
-        borderRadius="2xl"
-        border="1px solid"
-        borderColor="gray.800"
+        maxW={{ base: '100%', md: '768px', lg: '1200px' }}
+        width="100%"
+        mx="auto"
       >
         <Box 
           height="100%" 
@@ -539,6 +536,6 @@ export default function AssetPage() {
           )}
         </Box>
       </Box>
-    </Flex>
+    </Box>
   )
 } 
