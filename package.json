@@ -15,10 +15,16 @@
   "dependencies": {
     "@chakra-ui/react": "^3.8.0",
     "@chakra-ui/react-types": "^2.0.6",
-    "@coinmasters/pioneer-react": "^0.8.33",
+    "@coinmasters/pioneer-sdk": "^4.10.3",
+    "@coinmasters/types": "^4.10.1",
+    "@coinmasters/api": "^3.10.1",
+    "@coinmasters/tokens": "^3.10.1",
     "@emotion/react": "^11.14.0",
+    "@pioneer-platform/pioneer-caip": "^9.2.37",
+    "@pioneer-platform/pioneer-coins": "^9.2.26",
     "@types/d3": "^7.4.3",
     "@types/qrcode": "^1.5.5",
+    "@types/uuid": "^10.0.0",
     "d3": "^7.9.0",
     "framer-motion": "^12.4.7",
     "next": "15.1.7",
@@ -29,7 +35,8 @@
     "react-countup": "^6.5.3",
     "react-dom": "^19.0.0",
     "react-icons": "^5.4.0",
-    "recharts": "^2.15.1"
+    "recharts": "^2.15.1",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
