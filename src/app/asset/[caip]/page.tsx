@@ -114,7 +114,7 @@ export default function AssetPage() {
 
     // If not ready, start polling with a longer timeout
     const checkInterval = setInterval(() => {
-      setAppCheckAttempts(prev => {
+      setAppCheckAttempts((prev: number) => {
         const newAttempt = prev + 1
         console.log(`🔄 [AssetPage] App check attempt ${newAttempt}`)
         return newAttempt
@@ -144,6 +144,163 @@ export default function AssetPage() {
     const caip = decodedCaip
     console.log('🔄 [AssetPage] App is ready, setting asset context from URL parameter:', caip)
     
+    // Helper function to determine if a CAIP represents a token vs native asset
+    const isTokenCaip = (caip: string): boolean => {
+      if (!caip) return false;
+      
+      // Explicit token type
+      if (caip.includes('erc20') || caip.includes('eip721')) return true;
+      
+      // ERC20 tokens have contract addresses (0x followed by 40 hex chars)
+      if (caip.includes('eip155:') && /0x[a-fA-F0-9]{40}/.test(caip)) return true;
+      
+      // Cosmos ecosystem tokens (not using slip44 format)
+      if (caip.includes('MAYA.') || caip.includes('THOR.') || caip.includes('OSMO.')) return true;
+      
+      // Cosmos tokens using denom or ibc format
+      if (caip.includes('/denom:') || caip.includes('/ibc:')) return true;
+      
+      // Any CAIP that doesn't use slip44 format is likely a token
+      if (!caip.includes('slip44:') && caip.includes('.')) return true;
+      
+      return false;
+    };
+
+    // Check if this is a token
+    const isToken = isTokenCaip(caip);
+    console.log('🪙 [AssetPage] CAIP analysis:', { caip, isToken });
+
+    if (isToken) {
+      // Handle token case
+      console.log('🪙 [AssetPage] Detected token, searching in balances...');
+      
+      // Find the token in balances
+      const tokenBalance = app.balances?.find((balance: any) => balance.caip === caip);
+      
+      if (tokenBalance) {
+        console.log('🪙 [AssetPage] Found token balance:', tokenBalance);
+        
+        // Determine the network this token belongs to
+        let tokenNetworkId = '';
+        if (caip.includes('MAYA.')) {
+          tokenNetworkId = 'cosmos:mayachain-mainnet-v1';
+        } else if (caip.includes('cosmos:mayachain-mainnet-v1')) {
+          // Handle new MAYA token format
+          tokenNetworkId = 'cosmos:mayachain-mainnet-v1';
+        } else if (caip.includes('THOR.')) {
+          tokenNetworkId = 'cosmos:thorchain-mainnet-v1';
+        } else if (caip.includes('cosmos:thorchain-mainnet-v1')) {
+          tokenNetworkId = 'cosmos:thorchain-mainnet-v1';
+        } else if (caip.includes('OSMO.')) {
+          tokenNetworkId = 'cosmos:osmosis-1';
+        } else if (caip.includes('cosmos:osmosis-1')) {
+          tokenNetworkId = 'cosmos:osmosis-1';
+        } else if (caip.includes('eip155:')) {
+          // Extract network from ERC20 token CAIP
+          const parts = caip.split('/');
+          tokenNetworkId = parts[0];
+        } else if (caip.includes('cosmos:')) {
+          // Generic Cosmos token handling
+          const parts = caip.split('/');
+          tokenNetworkId = parts[0];
+        }
+        
+        console.log('🪙 [AssetPage] Determined token network:', tokenNetworkId);
+        
+        // Get the native balance for the token's network
+        let nativeBalance = null;
+        let nativeSymbol = '';
+        
+        // Map network to native asset CAIP and symbol
+        const nativeAssetMap: { [key: string]: { caip: string, symbol: string } } = {
+          'cosmos:mayachain-mainnet-v1': { caip: 'cosmos:mayachain-mainnet-v1/slip44:931', symbol: 'CACAO' }, // CACAO is the gas asset, not MAYA
+          'cosmos:thorchain-mainnet-v1': { caip: 'cosmos:thorchain-mainnet-v1/slip44:931', symbol: 'RUNE' },
+          'cosmos:osmosis-1': { caip: 'cosmos:osmosis-1/slip44:118', symbol: 'OSMO' },
+          'eip155:1': { caip: 'eip155:1/slip44:60', symbol: 'ETH' },
+          'eip155:137': { caip: 'eip155:137/slip44:60', symbol: 'MATIC' },
+          'eip155:43114': { caip: 'eip155:43114/slip44:60', symbol: 'AVAX' },
+          'eip155:56': { caip: 'eip155:56/slip44:60', symbol: 'BNB' },
+          'eip155:8453': { caip: 'eip155:8453/slip44:60', symbol: 'ETH' },
+          'eip155:10': { caip: 'eip155:10/slip44:60', symbol: 'ETH' },
+          'eip155:42161': { caip: 'eip155:42161/slip44:60', symbol: 'ETH' },
+        };
+        
+        const nativeAssetInfo = nativeAssetMap[tokenNetworkId];
+        if (nativeAssetInfo) {
+          // Find native balance
+          const nativeAssetBalance = app.balances?.find((balance: any) => 
+            balance.caip === nativeAssetInfo.caip
+          );
+          if (nativeAssetBalance) {
+            nativeBalance = nativeAssetBalance.balance;
+            nativeSymbol = nativeAssetInfo.symbol;
+            console.log('🪙 [AssetPage] Found native balance for', nativeSymbol, ':', nativeBalance);
+          } else {
+            // If no balance found, set to 0
+            nativeBalance = '0';
+            nativeSymbol = nativeAssetInfo.symbol;
+            console.log('⚠️ [AssetPage] No native balance found for', nativeSymbol, ', setting to 0');
+          }
+        }
+        
+        // Create asset context for the token
+        const tokenAssetContextData = {
+          networkId: tokenNetworkId,
+          chainId: tokenNetworkId,
+          assetId: caip,
+          caip: caip,
+          name: tokenBalance.name || tokenBalance.symbol || tokenBalance.ticker || 'TOKEN',
+          networkName: tokenNetworkId.split(':').pop() || '',
+          symbol: tokenBalance.ticker || tokenBalance.symbol || 'TOKEN',
+          icon: tokenBalance.icon || tokenBalance.image || 'https://pioneers.dev/coins/pioneer.png',
+          color: tokenBalance.color || '#FFD700',
+          balance: tokenBalance.balance || '0',
+          value: tokenBalance.valueUsd || 0,
+          precision: tokenBalance.precision || 18,
+          priceUsd: parseFloat(tokenBalance.priceUsd || 0),
+          isToken: true, // Add flag to indicate this is a token
+          type: 'token',
+          nativeBalance: nativeBalance, // Add native balance for display
+          nativeSymbol: nativeSymbol, // Add native symbol for display
+          explorer: tokenNetworkId.startsWith('eip155') 
+            ? `https://${tokenNetworkId.split(':').pop()?.toLowerCase()}.etherscan.io`
+            : tokenNetworkId.startsWith('cosmos')
+            ? `https://www.mintscan.io/${tokenNetworkId.split(':')[1]}`
+            : `https://explorer.pioneers.dev/${tokenNetworkId}`,
+          explorerAddressLink: tokenNetworkId.startsWith('eip155')
+            ? `https://${tokenNetworkId.split(':').pop()?.toLowerCase()}.etherscan.io/address/`
+            : tokenNetworkId.startsWith('cosmos')
+            ? `https://www.mintscan.io/${tokenNetworkId.split(':')[1]}/account/`
+            : `https://explorer.pioneers.dev/${tokenNetworkId}/address/`,
+          explorerTxLink: tokenNetworkId.startsWith('eip155')
+            ? `https://${tokenNetworkId.split(':').pop()?.toLowerCase()}.etherscan.io/tx/`
+            : tokenNetworkId.startsWith('cosmos')
+            ? `https://www.mintscan.io/${tokenNetworkId.split(':')[1]}/txs/`
+            : `https://explorer.pioneers.dev/${tokenNetworkId}/tx/`,
+          pubkeys: (app.pubkeys || []).filter((p: any) => {
+            return p.networks.includes(tokenNetworkId);
+          })
+        };
+        
+        console.log('🪙 [AssetPage] Setting token asset context:', tokenAssetContextData);
+        
+        try {
+          app.setAssetContext(tokenAssetContextData);
+          console.log('✅ [AssetPage] Token asset context set successfully');
+          return; // Exit early, we're done
+        } catch (error) {
+          console.error('❌ [AssetPage] Error setting token asset context:', error);
+        }
+      } else {
+        console.error('⚠️ [AssetPage] Token not found in balances:', caip);
+        router.push('/');
+        return;
+      }
+    }
+    
+    // Handle native asset case (existing logic)
+    console.log('💎 [AssetPage] Detected native asset, using network logic...');
+    
     // Parse the CAIP to extract networkId and assetType
     let networkId: string = caip
     let assetType: string = ''
@@ -157,7 +314,7 @@ export default function AssetPage() {
     }
     
     // Find the network matching the networkId - try various matching strategies
-    let matchingNetwork = null
+    let matchingNetwork: any = null
     
     if (app.dashboard?.networks) {
       console.log('🔍 [AssetPage] Searching for network match among', app.dashboard.networks.length, 'networks')
@@ -206,21 +363,50 @@ export default function AssetPage() {
       // Always use the full CAIP passed in the URL
       const fullCaip = caip
       
+      // For native assets, we should also check if we have the balance in app.balances
+      let nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === fullCaip);
+      
+      // Determine the correct symbol based on the network
+      let correctSymbol = matchingNetwork.gasAssetSymbol;
+      let correctName = matchingNetwork.gasAssetSymbol;
+      let correctIcon = matchingNetwork.icon;
+      let correctBalance = matchingNetwork.totalNativeBalance;
+      let correctValue = matchingNetwork.totalValueUsd;
+      let correctPriceUsd = matchingNetwork.totalValueUsd / parseFloat(matchingNetwork.totalNativeBalance);
+      
+      // Override with balance data if available (more accurate)
+      if (nativeAssetBalance) {
+        console.log('🔍 [AssetPage] Found native asset balance data:', nativeAssetBalance);
+        correctSymbol = nativeAssetBalance.ticker || nativeAssetBalance.symbol || correctSymbol;
+        correctName = nativeAssetBalance.name || correctSymbol;
+        correctIcon = nativeAssetBalance.icon || nativeAssetBalance.image || correctIcon;
+        correctBalance = nativeAssetBalance.balance || correctBalance;
+        correctValue = parseFloat(nativeAssetBalance.valueUsd || correctValue);
+        correctPriceUsd = parseFloat(nativeAssetBalance.priceUsd || correctPriceUsd);
+      }
+      
+      // Special handling for MAYA chain native asset (CACAO)
+      if (networkId === 'cosmos:mayachain-mainnet-v1' && fullCaip.includes('slip44:931')) {
+        correctSymbol = 'CACAO';
+        correctName = 'CACAO';
+        correctIcon = 'https://pioneers.dev/coins/cacao.png';
+      }
+      
       // Create the asset context with the correct CAIP
       const assetContextData = {
         networkId: networkId, // The network part (e.g. "eip155:1")
         chainId: networkId,
         assetId: fullCaip, // The full CAIP (e.g. "eip155:1/slip44:60")
         caip: fullCaip,  // The full CAIP (e.g. "eip155:1/slip44:60")
-        name: matchingNetwork.gasAssetSymbol,
+        name: correctName,
         networkName: networkId.split(':').pop() || '',
-        symbol: matchingNetwork.gasAssetSymbol,
-        icon: matchingNetwork.icon,
+        symbol: correctSymbol,
+        icon: correctIcon,
         color: matchingNetwork.color,
-        balance: matchingNetwork.totalNativeBalance,
-        value: matchingNetwork.totalValueUsd,
-        precision: 18,
-        priceUsd: matchingNetwork.totalValueUsd / parseFloat(matchingNetwork.totalNativeBalance),
+        balance: correctBalance,
+        value: correctValue,
+        precision: nativeAssetBalance?.precision || 18,
+        priceUsd: correctPriceUsd,
         explorer: networkId.startsWith('eip155') 
           ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io`
           : networkId.startsWith('cosmos')
@@ -344,6 +530,7 @@ export default function AssetPage() {
           )}
           
           {currentView === 'send' && (
+            /* @ts-ignore */
             <Send onBackClick={handleBack} />
           )}
           

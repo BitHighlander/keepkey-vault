@@ -115,6 +115,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [activeSliceIndex, setActiveSliceIndex] = useState<number>(0);
   const [lastSync, setLastSync] = useState<number>(Date.now());
   const [previousTotalValue, setPreviousTotalValue] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
@@ -249,8 +250,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
   // Prepare data for donut chart
   const chartData = dashboard?.networks
-    .filter(network => parseFloat(network.totalNativeBalance) > 0)
-    .map(network => ({
+    .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+    .map((network: Network) => ({
       name: network.gasAssetSymbol,
       value: network.totalValueUsd,
       color: network.color,
@@ -424,7 +425,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   >
                     <DonutChart 
                       data={chartData} 
-                      formatValue={(value) => formatValueForChart(value)}
+                      formatValue={(value: number) => formatValueForChart(value)}
                       height={210}
                       width={210}
                       activeIndex={activeSliceIndex}
@@ -447,7 +448,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     <ChartLegend 
                       data={chartData} 
                       total={dashboard.totalValueUsd}
-                      formatValue={(value) => formatUsd(value)}
+                      formatValue={(value: number) => formatUsd(value)}
                       activeIndex={activeSliceIndex}
                       onHoverItem={handleHover}
                     />
@@ -487,10 +488,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 </>
               ) : (
                 dashboard?.networks
-                  .map((network) => {
+                  .map((network: Network) => {
                     const { integer, largePart, smallPart } = formatBalance(network.totalNativeBalance);
                     const percentage = dashboard.networkPercentages.find(
-                      np => np.networkId === network.networkId
+                      (np: NetworkPercentage) => np.networkId === network.networkId
                     )?.percentage || 0;
 
                     return (
@@ -682,6 +683,420 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               )}
             </VStack>
           </Box>
+
+          {/* Tokens Section - Always Show */}
+          {(() => {
+            // Helper function to determine if a CAIP represents a token vs native asset
+            const isTokenCaip = (caip: string): boolean => {
+              if (!caip) return false;
+              
+              // Explicit token type
+              if (caip.includes('erc20') || caip.includes('eip721')) return true;
+              
+              // ERC20 tokens have contract addresses (0x followed by 40 hex chars)
+              if (caip.includes('eip155:') && /0x[a-fA-F0-9]{40}/.test(caip)) return true;
+              
+              // Maya tokens: denom:maya identifies Maya tokens (MAYA.CACAO, MAYA.MAYA, etc.)
+              if (caip.includes('cosmos:mayachain-mainnet-v1/denom:maya')) return true;
+              
+              // Cosmos ecosystem tokens (not using slip44 format)
+              if (caip.includes('MAYA.') || caip.includes('THOR.') || caip.includes('OSMO.')) return true;
+              
+              // Any CAIP that doesn't use slip44 format is likely a token
+              if (!caip.includes('slip44:') && caip.includes('.')) return true;
+              
+              return false;
+            };
+
+            // Filter tokens from balances if we have balances
+            let tokenBalances: any[] = [];
+            if (app?.balances) {
+              tokenBalances = app.balances.filter((balance: any) => {
+                // Check explicit type first
+                if (balance.type === 'token') return true;
+                
+                // Check CAIP pattern
+                const isToken = isTokenCaip(balance.caip);
+                
+                // Only show tokens that have a balance > 0
+                const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
+                
+                return isToken && hasBalance;
+              });
+
+              // Sort tokens by USD value (highest first)
+              tokenBalances.sort((a: any, b: any) => {
+                const valueA = parseFloat(a.valueUsd || 0);
+                const valueB = parseFloat(b.valueUsd || 0);
+                return valueB - valueA; // Descending order (highest first)
+              });
+
+              // Debug logging for token detection
+              console.log('🪙 [Dashboard] Total balances:', app.balances.length);
+              console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
+              console.log('🪙 [Dashboard] Token balances found:', tokenBalances.length);
+              
+              // Debug Maya specifically
+              const mayaBalances = app.balances.filter((b: any) => 
+                b.caip && (b.caip.includes('mayachain') || b.caip.includes('MAYA'))
+              );
+              console.log('🏔️ [Dashboard] Maya balances found:', mayaBalances.length);
+              if (mayaBalances.length > 0) {
+                console.log('🏔️ [Dashboard] Maya balance details:', mayaBalances.map((m: any) => ({
+                  caip: m.caip,
+                  symbol: m.symbol,
+                  balance: m.balance,
+                  valueUsd: m.valueUsd,
+                  type: m.type,
+                  isToken: isTokenCaip(m.caip)
+                })));
+              }
+              
+              if (tokenBalances.length > 0) {
+                console.log('🪙 [Dashboard] Token details (sorted by USD value):', tokenBalances.map((t: any) => ({
+                  caip: t.caip,
+                  symbol: t.symbol,
+                  balance: t.balance,
+                  valueUsd: t.valueUsd,
+                  type: t.type
+                })));
+              }
+            }
+
+            return (
+              <Box>
+                <HStack justify="space-between" mb={5}>
+                  <HStack gap={2}>
+                    <Text fontSize="md" color="gray.400">Tokens</Text>
+                    <Text fontSize="xs" color="gray.600">
+                      ({tokenBalances.length})
+                    </Text>
+                    {tokenBalances.length > 0 && (
+                      <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                        • sorted by value
+                      </Text>
+                    )}
+                  </HStack>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    color={theme.gold}
+                    _hover={{ color: theme.goldHover }}
+                  >
+                    View All
+                  </Button>
+                </HStack>
+                
+                <VStack gap={4}>
+                  {tokenBalances.length === 0 ? (
+                    // Empty state when no tokens found
+                    <Box
+                      w="100%"
+                      p={6}
+                      borderRadius="2xl"
+                      borderWidth="2px"
+                      borderStyle="dashed"
+                      borderColor="gray.600"
+                      bg="gray.800"
+                      position="relative"
+                      _hover={{
+                        borderColor: theme.gold,
+                        bg: 'rgba(255, 215, 0, 0.05)',
+                      }}
+                      transition="all 0.2s"
+                      cursor="pointer"
+                    >
+                      <VStack gap={3} py={4}>
+                        <Box
+                          borderRadius="full"
+                          p={3}
+                          bg="gray.700"
+                          color="gray.400"
+                        >
+                          <Text fontSize="2xl">🔍</Text>
+                        </Box>
+                        <Text fontSize="md" color="gray.400" fontWeight="medium">
+                          Looking for tokens?
+                        </Text>
+                        <Text fontSize="sm" color="gray.500" textAlign="center" maxW="320px">
+                          No tokens found with balance. Tokens like Maya assets (MAYA, CACAO), ERC20, and other non-native assets will appear here sorted by USD value when detected.
+                        </Text>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          color={theme.gold}
+                          borderColor={theme.gold}
+                          _hover={{ 
+                            bg: `${theme.gold}20`,
+                            borderColor: theme.goldHover,
+                            color: theme.goldHover
+                          }}
+                          onClick={async () => {
+                            console.log('🔍 [Dashboard] User clicked refresh tokens');
+                            setIsRefreshing(true);
+                            try {
+                              if (app && typeof app.refresh === 'function') {
+                                console.log('🔄 [Dashboard] Calling app.refresh()');
+                                await app.refresh();
+                              } else if (app && typeof app.sync === 'function') {
+                                console.log('🔄 [Dashboard] Calling app.sync()');
+                                await app.sync();
+                              }
+                              
+                              // Also get charts/tokens
+                              if (app && typeof app.getCharts === 'function') {
+                                console.log('🔄 [Dashboard] Calling app.getCharts()');
+                                await app.getCharts();
+                              }
+                              
+                              // Fetch dashboard data after refresh
+                              await fetchDashboard();
+                              
+                              console.log('✅ [Dashboard] Refresh completed');
+                            } catch (error) {
+                              console.error('❌ [Dashboard] Refresh failed:', error);
+                            } finally {
+                              setIsRefreshing(false);
+                            }
+                          }}
+                          loading={isRefreshing}
+                          loadingText="Refreshing..."
+                        >
+                          Refresh Balances
+                        </Button>
+                      </VStack>
+                    </Box>
+                  ) : (
+                    // Show actual tokens when found
+                    tokenBalances.map((token: any) => {
+                    const { integer, largePart, smallPart } = formatBalance(token.balance);
+                    const tokenValueUsd = parseFloat(token.valueUsd || 0);
+                     
+                     // Get token icon and color with better fallbacks
+                     let tokenIcon = token.icon;
+                     let tokenColor = token.color;
+                     
+                     // Determine token symbol and name
+                     const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
+                     const tokenName = token.name || tokenSymbol;
+                     
+                     // Set fallback icon and color based on token type if not provided
+                     if (!tokenIcon || !tokenColor) {
+                       if (token.caip?.includes('MAYA.') || token.caip?.includes('cosmos:mayachain-mainnet-v1/denom:maya')) {
+                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/maya.png';
+                         tokenColor = tokenColor || '#00D4AA';
+                       } else if (token.caip?.includes('THOR.')) {
+                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/thorchain.png';
+                         tokenColor = tokenColor || '#00CCFF';
+                       } else if (token.caip?.includes('eip155:')) {
+                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/ethereum.png';
+                         tokenColor = tokenColor || '#627EEA';
+                       } else {
+                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/pioneer.png';
+                         tokenColor = tokenColor || '#FFD700';
+                       }
+                     }
+                     
+                     // Debug logging for token detection
+                     console.log('🪙 [Dashboard] Token detected:', {
+                       caip: token.caip,
+                       symbol: tokenSymbol,
+                       balance: token.balance,
+                       valueUsd: tokenValueUsd,
+                       type: token.type
+                     });
+
+                    return (
+                      <Box 
+                        key={token.caip + '_' + token.pubkey}
+                        w="100%"
+                        p={5}
+                        borderRadius="2xl"
+                        borderWidth="1px"
+                        borderColor={`${tokenColor}40`}
+                        boxShadow={`0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
+                        position="relative"
+                        bg={`${tokenColor}15`}
+                        _before={{
+                          content: '""',
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: `linear-gradient(135deg, ${tokenColor}40 0%, ${tokenColor}20 100%)`,
+                          opacity: 0.6,
+                          borderRadius: "inherit",
+                          pointerEvents: "none",
+                        }}
+                        _after={{
+                          content: '""',
+                          position: "absolute",
+                          top: "-50%",
+                          left: "-50%",
+                          right: "-50%",
+                          bottom: "-50%",
+                          background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
+                          opacity: 0.5,
+                          borderRadius: "inherit",
+                          pointerEvents: "none",
+                        }}
+                        _hover={{ 
+                          transform: 'translateY(-2px)',
+                          boxShadow: `0 8px 24px ${tokenColor}30, inset 0 0 30px ${tokenColor}20`,
+                          borderColor: tokenColor,
+                          bg: `${tokenColor}25`,
+                          _before: {
+                            opacity: 0.8,
+                            background: `linear-gradient(135deg, ${tokenColor}50 0%, ${tokenColor}30 100%)`,
+                          },
+                          _after: {
+                            opacity: 0.7,
+                          },
+                        }}
+                        _active={{
+                          transform: 'scale(0.98) translateY(-1px)',
+                          boxShadow: `0 2px 12px ${tokenColor}20`,
+                          transition: 'all 0.1s ease-in-out',
+                        }}
+                        _focus={{
+                          outline: 'none',
+                          boxShadow: `0 0 0 2px ${tokenColor}, 0 8px 24px ${tokenColor}30`,
+                        }}
+                        cursor="pointer"
+                        onClick={() => {
+                          console.log('🪙 [Dashboard] Navigating to token page:', token);
+                          
+                          // Use the token's CAIP for navigation
+                          const caip = token.caip;
+                          
+                          console.log('🪙 [Dashboard] Using token CAIP for navigation:', caip);
+                          console.log('🪙 [Dashboard] Token object:', token);
+                          
+                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
+                          const encodedCaip = btoa(caip);
+                          
+                          console.log('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
+                          
+                          // Navigate using encoded parameters to the simplified route
+                          router.push(`/asset/${encodedCaip}`);
+                        }}
+                        role="button"
+                        aria-label={`Select ${tokenSymbol} token`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            router.push(`/asset/${btoa(token.caip)}`);
+                          }
+                        }}
+                        transition="all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+                      >
+                        <Flex align="center" justify="space-between" position="relative" zIndex={1}>
+                          <HStack gap={4}>
+                            <Box 
+                              borderRadius="full" 
+                              overflow="hidden" 
+                              boxSize="44px"
+                              bg={tokenColor}
+                              boxShadow={`lg, inset 0 0 10px ${tokenColor}40`}
+                              position="relative"
+                              _after={{
+                                content: '""',
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: `linear-gradient(135deg, ${tokenColor}40 0%, transparent 100%)`,
+                                opacity: 0.6,
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <Image 
+                                src={tokenIcon} 
+                                alt={tokenName}
+                                boxSize="44px"
+                                objectFit="cover"
+                              />
+                            </Box>
+                            <Stack gap={0.5}>
+                              <Text fontSize="md" fontWeight="bold" color={tokenColor}>
+                                {tokenSymbol}
+                              </Text>
+                              <Text 
+                                fontSize="xs" 
+                                color="gray.500" 
+                                mb={1}
+                                title={token.caip}
+                                cursor="help"
+                                _hover={{
+                                  textDecoration: 'underline',
+                                  textDecorationStyle: 'dotted'
+                                }}
+                              >
+                                {middleEllipsis(token.caip, 14)}
+                              </Text>
+                              <HStack gap={2} align="center">
+                                <Text fontSize="sm" color="gray.300">
+                                  {integer}.{largePart}
+                                  <Text as="span" fontSize="xs" color="gray.400">
+                                    {smallPart}
+                                  </Text>
+                                </Text>
+                                <Text fontSize="xs" color={tokenColor}>
+                                  {tokenSymbol}
+                                </Text>
+                              </HStack>
+                            </Stack>
+                          </HStack>
+                          <Stack 
+                            align="flex-end" 
+                            gap={0.5}
+                            p={1}
+                            borderRadius="md"
+                            position="relative"
+                            zIndex={2}
+                            transition="all 0.15s ease-in-out"
+                            _hover={{
+                              bg: `${tokenColor}30`,
+                              boxShadow: `0 0 8px ${tokenColor}40`,
+                            }}
+                          >
+                            <Text 
+                              fontSize="md" 
+                              color={tokenColor}
+                              fontWeight="medium"
+                            >
+                              $<CountUp 
+                                key={`token-${token.caip}-${lastSync}`}
+                                end={tokenValueUsd} 
+                                decimals={2}
+                                duration={1.5}
+                                separator=","
+                              />
+                            </Text>
+                            <Text 
+                              fontSize="xs" 
+                              color={`${tokenColor}80`}
+                              fontWeight="medium"
+                              px={1}
+                              py={0.5}
+                              borderRadius="sm"
+                              bg={`${tokenColor}20`}
+                            >
+                              TOKEN
+                            </Text>
+                          </Stack>
+                        </Flex>
+                      </Box>
+                    );
+                  })
+                  )}
+                </VStack>
+              </Box>
+            );
+          })()}
 
           {/* Add Network Button */}
           <Box

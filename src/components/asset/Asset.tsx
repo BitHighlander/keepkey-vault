@@ -14,6 +14,7 @@ import {
   Spinner,
   useDisclosure,
   Icon,
+  Badge,
 } from '@chakra-ui/react';
 
 // Add sound effect imports
@@ -373,30 +374,111 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
           borderColor={theme.border}
         >
           <VStack align="center" gap={4}>
-            <Box 
-              borderRadius="full" 
-              overflow="hidden" 
-              boxSize="80px"
-              bg={theme.cardBg}
-              boxShadow="lg"
-              p={2}
-              borderWidth="1px"
-              borderColor={assetContext.color || theme.border}
-            >
-              <Image 
-                src={assetContext.icon}
-                alt={`${assetContext.name} Icon`}
-                boxSize="100%"
-                objectFit="contain"
-              />
-            </Box>
+            {/* Compound Avatar for Tokens */}
+            {assetContext.isToken ? (
+              <Box position="relative">
+                {/* Main Network Icon */}
+                <Box 
+                  borderRadius="full" 
+                  overflow="hidden" 
+                  boxSize="80px"
+                  bg={theme.cardBg}
+                  boxShadow="lg"
+                  p={2}
+                  borderWidth="1px"
+                  borderColor={theme.border}
+                >
+                  {/* Get network icon based on networkId */}
+                  <Image 
+                    src={(() => {
+                      // Map networkId to network icon
+                      const networkId = assetContext.networkId;
+                      if (networkId.includes('mayachain')) return 'https://pioneers.dev/coins/maya.png';
+                      if (networkId.includes('thorchain')) return 'https://pioneers.dev/coins/thorchain.png';
+                      if (networkId.includes('osmosis')) return 'https://pioneers.dev/coins/osmosis.png';
+                      if (networkId.includes('eip155:1')) return 'https://pioneers.dev/coins/ethereum.png';
+                      if (networkId.includes('eip155:137')) return 'https://pioneers.dev/coins/polygon.png';
+                      if (networkId.includes('eip155:43114')) return 'https://pioneers.dev/coins/avalanche.png';
+                      if (networkId.includes('eip155:56')) return 'https://pioneers.dev/coins/binance.png';
+                      if (networkId.includes('eip155:8453')) return 'https://pioneers.dev/coins/base.png';
+                      if (networkId.includes('eip155:10')) return 'https://pioneers.dev/coins/optimism.png';
+                      if (networkId.includes('eip155:42161')) return 'https://pioneers.dev/coins/arbitrum.png';
+                      // Default network icon
+                      return 'https://pioneers.dev/coins/pioneer.png';
+                    })()}
+                    alt="Network Icon"
+                    boxSize="100%"
+                    objectFit="contain"
+                  />
+                </Box>
+                
+                {/* Token Icon as smaller overlay */}
+                <Box 
+                  position="absolute"
+                  bottom="-2"
+                  right="-2"
+                  borderRadius="full" 
+                  overflow="hidden" 
+                  boxSize="32px"
+                  bg={theme.cardBg}
+                  boxShadow="md"
+                  p={1}
+                  borderWidth="2px"
+                  borderColor={theme.bg}
+                >
+                  <Image 
+                    src={assetContext.icon}
+                    alt={`${assetContext.name} Icon`}
+                    boxSize="100%"
+                    objectFit="contain"
+                  />
+                </Box>
+              </Box>
+            ) : (
+              /* Native Asset Icon */
+              <Box 
+                borderRadius="full" 
+                overflow="hidden" 
+                boxSize="80px"
+                bg={theme.cardBg}
+                boxShadow="lg"
+                p={2}
+                borderWidth="1px"
+                borderColor={assetContext.color || theme.border}
+              >
+                <Image 
+                  src={assetContext.icon}
+                  alt={`${assetContext.name} Icon`}
+                  boxSize="100%"
+                  objectFit="contain"
+                />
+              </Box>
+            )}
+            
             <Stack align="center" gap={1}>
               <Text fontSize="2xl" fontWeight="bold" color="white">
                 {assetContext.name}
               </Text>
-              <Text fontSize="md" color="gray.400">
-                {assetContext.symbol}
+              <HStack gap={2} align="center">
+                <Text fontSize="md" color="gray.400">
+                  {assetContext.symbol}
+                </Text>
+                {assetContext.isToken && (
+                  <Badge 
+                    colorScheme="purple" 
+                    variant="subtle"
+                    fontSize="xs"
+                  >
+                    TOKEN
+                  </Badge>
+                )}
+              </HStack>
+              
+              {/* Display CAIP in small text */}
+              <Text fontSize="xs" color="gray.500" fontFamily="mono">
+                {assetContext.caip}
               </Text>
+              
               <Text fontSize="3xl" fontWeight="bold" color={theme.gold}>
                 $<CountUp 
                   key={`value-${lastSync}`}
@@ -406,9 +488,79 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                   separator=","
                 />
               </Text>
-              <Text fontSize="md" color="white">
-                {formatBalance(assetContext.balance)} {assetContext.symbol}
-              </Text>
+              
+              {/* For tokens, show BOTH balances clearly */}
+              {assetContext.isToken ? (
+                <VStack gap={2}>
+                  {/* Token Balance */}
+                  <Box textAlign="center">
+                    <Text fontSize="lg" fontWeight="bold" color="white">
+                      {formatBalance(assetContext.balance)} {assetContext.symbol}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">Token Balance</Text>
+                  </Box>
+                  
+                  {/* Native Balance with warning if zero */}
+                  <Box 
+                    textAlign="center"
+                    p={2}
+                    borderRadius="md"
+                    borderWidth={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "2px" : "0"}
+                    borderColor="red.500"
+                    position="relative"
+                    _hover={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? {
+                      '& .warning-tooltip': { opacity: 1, visibility: 'visible' }
+                    } : {}}
+                  >
+                    <Text fontSize="md" color={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.400" : "gray.300"}>
+                      {assetContext.nativeBalance ? formatBalance(assetContext.nativeBalance) : '0'} {assetContext.nativeSymbol || 'GAS'}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">Gas Balance</Text>
+                    
+                    {/* Warning tooltip for zero balance */}
+                    {assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 && (
+                      <Box
+                        className="warning-tooltip"
+                        position="absolute"
+                        top="-40px"
+                        left="50%"
+                        transform="translateX(-50%)"
+                        bg="red.600"
+                        color="white"
+                        px={3}
+                        py={1}
+                        borderRadius="md"
+                        fontSize="xs"
+                        whiteSpace="nowrap"
+                        opacity={0}
+                        visibility="hidden"
+                        transition="all 0.2s"
+                        zIndex={10}
+                        _before={{
+                          content: '""',
+                          position: 'absolute',
+                          bottom: '-4px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 0,
+                          height: 0,
+                          borderLeft: '4px solid transparent',
+                          borderRight: '4px solid transparent',
+                          borderTop: '4px solid',
+                          borderTopColor: 'red.600',
+                        }}
+                      >
+                        ⚠️ Gas required to transfer tokens
+                      </Box>
+                    )}
+                  </Box>
+                </VStack>
+              ) : (
+                /* Native Asset Balance */
+                <Text fontSize="md" color="white">
+                  {formatBalance(assetContext.balance)} {assetContext.symbol}
+                </Text>
+              )}
             </Stack>
           </VStack>
         </Box>
@@ -494,6 +646,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                   Network Information
                 </Text>
                 <HStack justify="space-between">
+                  <Text color="gray.400">Type</Text>
+                  <Text color="white">{assetContext.isToken ? 'Token' : 'Native Asset'}</Text>
+                </HStack>
+                <HStack justify="space-between">
                   <Text color="gray.400">Network</Text>
                   <Text color="white">{assetContext.networkName || assetContext.networkId?.split(':').pop()}</Text>
                 </HStack>
@@ -542,12 +698,6 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                 <Text color="gray.400" fontSize="sm" fontWeight="medium">
                   Asset Information
                 </Text>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Type</Text>
-                  <Text color="white">
-                    {assetContext.networkId?.includes('eip155') ? 'Token' : 'Native Asset'}
-                  </Text>
-                </HStack>
                 <HStack justify="space-between">
                   <Text color="gray.400">Precision</Text>
                   <Text color="white">{assetContext.precision}</Text>
