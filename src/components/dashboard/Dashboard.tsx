@@ -354,50 +354,59 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         height="calc(100% - 60px)" 
         overflowY="auto" 
         overflowX="hidden"
-        p={6}
         {...scrollbarStyles}
       >
-        <VStack gap={8} align="stretch">
-          {/* Portfolio Overview with Chart */}
-          <Box 
-            p={8} 
-            borderRadius="2xl" 
-            boxShadow={!loading && dashboard && chartData.length > 0 
-              ? `0 4px 20px ${chartData[0].color}20, inset 0 0 20px ${chartData[0].color}10`
-              : 'lg'
-            }
-            border="1px solid"
-            borderColor={!loading && dashboard && chartData.length > 0 
-              ? `${chartData[0].color}40`
-              : theme.border
-            }
-            position="relative"
-            overflow="hidden"
-            bg={!loading && dashboard && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: !loading && dashboard && chartData.length > 0
-                ? `linear-gradient(135deg, ${chartData[0].color}40 0%, ${chartData[0].color}20 100%)`
-                : 'none',
-              opacity: 0.6,
-              zIndex: 0,
-            }}
-            _after={{
-              content: '""',
-              position: "absolute",
-              top: "-50%",
-              left: "-50%",
-              right: "-50%",
-              bottom: "-50%",
-              background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
-              zIndex: 1,
-            }}
-          >
+        <Box
+          maxW="1200px"
+          mx="auto"
+          px={8}
+          py={6}
+        >
+                    <VStack gap={8} align="center">
+            {/* Portfolio Overview with Chart - Centered and Contained */}
+            <Box
+              maxW="500px"
+              w="100%"
+            >
+              <Box 
+                p={8} 
+                borderRadius="2xl" 
+                boxShadow={!loading && dashboard && chartData.length > 0 
+                  ? `0 4px 20px ${chartData[0].color}20, inset 0 0 20px ${chartData[0].color}10`
+                  : 'lg'
+                }
+                border="1px solid"
+                borderColor={!loading && dashboard && chartData.length > 0 
+                  ? `${chartData[0].color}40`
+                  : theme.border
+                }
+                position="relative"
+                overflow="hidden"
+                bg={!loading && dashboard && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
+                _before={{
+                  content: '""',
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: !loading && dashboard && chartData.length > 0
+                    ? `linear-gradient(135deg, ${chartData[0].color}40 0%, ${chartData[0].color}20 100%)`
+                    : 'none',
+                  opacity: 0.6,
+                  zIndex: 0,
+                }}
+                _after={{
+                  content: '""',
+                  position: "absolute",
+                  top: "-50%",
+                  left: "-50%",
+                  right: "-50%",
+                  bottom: "-50%",
+                  background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
+                  zIndex: 1,
+                }}
+              >
             <Flex 
               justify="center" 
               align="center" 
@@ -459,9 +468,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               )}
             </Flex>
           </Box>
+        </Box>
 
-          {/* Network List */}
-          <Box>
+          {/* Network List - Full Width */}
+          <Box w="100%">
             <HStack justify="space-between" mb={5}>
               <HStack gap={2}>
                 <Text fontSize="md" color="gray.400">Your Assets</Text>
@@ -612,9 +622,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               <Text fontSize="md" fontWeight="bold" color={network.color}>
                                 {network.gasAssetSymbol}
                               </Text>
-                              <Text 
+                              <Box
                                 fontSize="xs" 
-                                color="gray.500" 
+                                color="gray.400" 
                                 mb={1}
                                 title={network.gasAssetCaip || network.networkId}
                                 cursor="help"
@@ -623,16 +633,27 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                   textDecorationStyle: 'dotted'
                                 }}
                               >
-                                {middleEllipsis(network.gasAssetCaip || network.networkId, 14)}
-                              </Text>
+                                <Box
+                                  as="span"
+                                  display={{ base: 'inline', md: 'none' }}
+                                >
+                                  {middleEllipsis(network.gasAssetCaip || network.networkId, 14)}
+                                </Box>
+                                <Box
+                                  as="span"
+                                  display={{ base: 'none', md: 'inline' }}
+                                >
+                                  {network.gasAssetCaip || network.networkId}
+                                </Box>
+                              </Box>
                               <HStack gap={2} align="center">
-                                <Text fontSize="sm" color="gray.300">
+                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
                                   {integer}.{largePart}
-                                  <Text as="span" fontSize="xs" color="gray.400">
+                                  <Text as="span" fontSize="xs" color="gray.300">
                                     {smallPart}
                                   </Text>
                                 </Text>
-                                <Text fontSize="xs" color={network.color}>
+                                <Text fontSize="xs" color={network.color} fontWeight="medium">
                                   {network.gasAssetSymbol}
                                 </Text>
                               </HStack>
@@ -764,7 +785,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             }
 
             return (
-              <Box>
+              <Box w="100%">
                 <HStack justify="space-between" mb={5}>
                   <HStack gap={2}>
                     <Text fontSize="md" color="gray.400">Tokens</Text>
@@ -1024,9 +1045,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               <Text fontSize="md" fontWeight="bold" color={tokenColor}>
                                 {tokenSymbol}
                               </Text>
-                              <Text 
+                              <Box
                                 fontSize="xs" 
-                                color="gray.500" 
+                                color="gray.400" 
                                 mb={1}
                                 title={token.caip}
                                 cursor="help"
@@ -1035,16 +1056,27 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                   textDecorationStyle: 'dotted'
                                 }}
                               >
-                                {middleEllipsis(token.caip, 14)}
-                              </Text>
+                                <Box
+                                  as="span"
+                                  display={{ base: 'inline', md: 'none' }}
+                                >
+                                  {middleEllipsis(token.caip, 14)}
+                                </Box>
+                                <Box
+                                  as="span"
+                                  display={{ base: 'none', md: 'inline' }}
+                                >
+                                  {token.caip}
+                                </Box>
+                              </Box>
                               <HStack gap={2} align="center">
-                                <Text fontSize="sm" color="gray.300">
+                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
                                   {integer}.{largePart}
-                                  <Text as="span" fontSize="xs" color="gray.400">
+                                  <Text as="span" fontSize="xs" color="gray.300">
                                     {smallPart}
                                   </Text>
                                 </Text>
-                                <Text fontSize="xs" color={tokenColor}>
+                                <Text fontSize="xs" color={tokenColor} fontWeight="medium">
                                   {tokenSymbol}
                                 </Text>
                               </HStack>
@@ -1098,8 +1130,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             );
           })()}
 
-          {/* Add Network Button */}
+          {/* Add Network Button - Full Width */}
           <Box
+            w="100%"
             p={6}
             borderRadius="2xl"
             borderStyle="dashed"
@@ -1140,9 +1173,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             </Flex>
           </Box>
           
-          {/* Add some padding at the bottom for better scrolling */}
-          <Box height="20px" />
-        </VStack>
+            {/* Add some padding at the bottom for better scrolling */}
+            <Box height="20px" />
+          </VStack>
+        </Box>
       </Box>
     </Box>
   );

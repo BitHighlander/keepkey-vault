@@ -62,119 +62,110 @@ export default function Home() {
   // Show loading state if pioneer is not ready
   if (!pioneer) {
     return (
-      <Box bg="black" minHeight="100vh" width="100%">
-        <Flex 
-          minH="100vh" 
-          justify="center" 
-          align="center" 
-          bg="black"
+      <Box bg="black" minHeight="100vh" width="100vw" overflow="hidden">
+        <Box 
+          width="100%"
+          height="100vh"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
         >
           <Spinner size="xl" color="gold" />
-        </Flex>
+        </Box>
       </Box>
     );
   }
 
   return (
-    <Box bg="black" minHeight="100vh" width="100%">
+    <Box bg="black" minHeight="100vh" width="100vw" overflow="hidden">
       {/* Add structured data for SEO */}
       <ProductStructuredData />
       <OrganizationStructuredData />
       <SoftwareApplicationStructuredData />
       
-      <Flex 
-        minH="100vh" 
-        justify="center" 
-        align="center" 
-        bg="black"
+      <Box 
+        width="100%"
+        height="100vh"
+        bg="black" 
+        overflow="hidden"
+        position="relative"
       >
-        <Box 
-          width="375px" 
-          height="100vh"
-          bg="black" 
-          overflow="hidden"
-          position="relative"
-          boxShadow="xl"
-          borderRadius="2xl"
-          border="1px solid"
-          borderColor="gray.800"
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          opacity={isTransitioning ? 1 : 0}
+          display={isTransitioning ? 'flex' : 'none'}
+          justifyContent="center"
+          alignItems="center"
+          bg="rgba(0,0,0,0.8)"
+          zIndex={999}
+          transition="opacity 0.3s ease"
         >
-          <Box
-            position="absolute"
-            top={0}
-            left={0}
-            right={0}
-            bottom={0}
-            opacity={isTransitioning ? 1 : 0}
-            display={isTransitioning ? 'flex' : 'none'}
-            justifyContent="center"
-            alignItems="center"
-            bg="rgba(0,0,0,0.8)"
-            zIndex={999}
-            transition="opacity 0.3s ease"
-          >
-            <Spinner 
-              size="xl"
-              color="gold"
-            />
-          </Box>
-
-          <Box
-            opacity={isTransitioning ? 0 : 1}
-            transform={isTransitioning ? 'scale(0.98)' : 'scale(1)'}
-            transition="all 0.3s ease"
-          >
-            <Dashboard 
-              onSettingsClick={() => setIsSettingsOpen(true)}
-              onAddNetworkClick={() => setIsAddBlockchainOpen(true)}
-            />
-          </Box>
+          <Spinner 
+            size="xl"
+            color="gold"
+          />
         </Box>
 
-        {/* Settings Dialog */}
-        {/* @ts-ignore */}
-        <DialogRoot open={isSettingsOpen} onOpenChange={handleSettingsOpenChange}>
-          {/* @ts-ignore */}
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Settings</DialogTitle>
-            </DialogHeader>
-            <DialogBody>
-              <Settings onClose={() => setIsSettingsOpen(false)} />
-            </DialogBody>
-            <DialogFooter>
-              {/* @ts-ignore */}
-              <DialogCloseTrigger asChild>
-                <Box as="button" color="white" p={2} fontSize="sm">
-                  Close
-                </Box>
-              </DialogCloseTrigger>
-            </DialogFooter>
-          </DialogContent>
-        </DialogRoot>
+        <Box
+          opacity={isTransitioning ? 0 : 1}
+          transform={isTransitioning ? 'scale(0.98)' : 'scale(1)'}
+          transition="all 0.3s ease"
+          height="100%"
+        >
+          <Dashboard 
+            onSettingsClick={() => setIsSettingsOpen(true)}
+            onAddNetworkClick={() => setIsAddBlockchainOpen(true)}
+          />
+        </Box>
+      </Box>
 
-        {/* Add Blockchain Dialog */}
+      {/* Settings Dialog */}
+      {/* @ts-ignore */}
+      <DialogRoot open={isSettingsOpen} onOpenChange={handleSettingsOpenChange}>
         {/* @ts-ignore */}
-        <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
-          {/* @ts-ignore */}
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Blockchain</DialogTitle>
-            </DialogHeader>
-            <DialogBody>
-              <AddBlockchain onClose={() => setIsAddBlockchainOpen(false)} />
-            </DialogBody>
-            <DialogFooter>
-              {/* @ts-ignore */}
-              <DialogCloseTrigger asChild>
-                <Box as="button" color="white" p={2} fontSize="sm">
-                  Close
-                </Box>
-              </DialogCloseTrigger>
-            </DialogFooter>
-          </DialogContent>
-        </DialogRoot>
-      </Flex>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <Settings onClose={() => setIsSettingsOpen(false)} />
+          </DialogBody>
+          <DialogFooter>
+            {/* @ts-ignore */}
+            <DialogCloseTrigger asChild>
+              <Box as="button" color="white" p={2} fontSize="sm">
+                Close
+              </Box>
+            </DialogCloseTrigger>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+
+      {/* Add Blockchain Dialog */}
+      {/* @ts-ignore */}
+      <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
+        {/* @ts-ignore */}
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Blockchain</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <AddBlockchain onClose={() => setIsAddBlockchainOpen(false)} />
+          </DialogBody>
+          <DialogFooter>
+            {/* @ts-ignore */}
+            <DialogCloseTrigger asChild>
+              <Box as="button" color="white" p={2} fontSize="sm">
+                Close
+              </Box>
+            </DialogCloseTrigger>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
     </Box>
   );
 }
