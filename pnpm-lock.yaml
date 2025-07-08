@@ -18,8 +18,8 @@ importers:
         specifier: ^2.0.6
         version: 2.0.6(react@19.1.0)
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.12.0
-        version: 4.12.0(@types/node@20.19.4)
+        specifier: ^4.12.3
+        version: 4.12.3(@types/node@20.19.4)
       '@coinmasters/tokens':
         specifier: ^3.10.1
         version: 3.10.1
@@ -175,8 +175,8 @@ packages:
   '@coinmasters/api@3.10.1':
     resolution: {integrity: sha512-E4Yuo75SPtSdP1mqTcTorPE+bQK3MQHLnJ6RHuOC4dpG0KoO63zJ7VaA+iA6LLaeprXQQvJn0wBI8Jy4A4RIMA==}
 
-  '@coinmasters/pioneer-sdk@4.12.0':
-    resolution: {integrity: sha512-K7iTVkxdqobWNt9tvIuwIhkT9/JTxkp2aBz8REgreYmWGjxa9YS5+zl48gpBdWTATpLh8EUNXiIY69UHePOwhQ==}
+  '@coinmasters/pioneer-sdk@4.12.3':
+    resolution: {integrity: sha512-0vCnch5iOt4snTG00rCiuWCh7OGtfb9J3Pb5t2Xd50tW/sNw86M35ggN7XsxkjRAp1Ce6pukQFXF03fvWCAMSw==}
 
   '@coinmasters/tokens@3.10.1':
     resolution: {integrity: sha512-lzT7SVdhT2pRhFjQau87Xod2D0iJqvt9epOnpUYriF5+wBSVhGDdBWVIAUiALtRnT3vk9Z+ctcOddBylTXRThA==}
@@ -3241,7 +3241,7 @@ snapshots:
       '@coinmasters/types': 4.10.1
       ky: 1.1.3
 
-  '@coinmasters/pioneer-sdk@4.12.0(@types/node@20.19.4)':
+  '@coinmasters/pioneer-sdk@4.12.3(@types/node@20.19.4)':
     dependencies:
       '@coinmasters/api': 3.10.1
       '@coinmasters/tokens': 3.10.1

@@ -66,6 +66,34 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
       networkId,
       totalBalances: app.balances.length 
     });
+    
+    // Debug: Show all cosmos-related balances
+    const cosmosBalances = app.balances.filter((balance: any) => 
+      balance.networkId?.includes('cosmos') || balance.caip?.includes('cosmos')
+    );
+    console.log('🔍 [CosmosStaking] All cosmos balances found:', cosmosBalances.length);
+    cosmosBalances.forEach((balance: any, index: number) => {
+      console.log(`🔍 [CosmosStaking] Cosmos balance ${index}:`, {
+        caip: balance.caip,
+        chart: balance.chart,
+        pubkey: balance.pubkey,
+        networkId: balance.networkId,
+        type: balance.type,
+        balance: balance.balance
+      });
+    });
+    
+    // Debug: Show all balances with chart property
+    const chartBalances = app.balances.filter((balance: any) => balance.chart);
+    console.log('🔍 [CosmosStaking] Balances with chart property:', chartBalances.length);
+    chartBalances.forEach((balance: any, index: number) => {
+      console.log(`🔍 [CosmosStaking] Chart balance ${index}:`, {
+        chart: balance.chart,
+        caip: balance.caip,
+        pubkey: balance.pubkey,
+        type: balance.type
+      });
+    });
 
     // Filter balances for staking positions
     const stakingBalances = app.balances.filter((balance: any) => {

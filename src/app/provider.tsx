@@ -176,10 +176,30 @@ export function Provider({ children }: ProviderProps) {
           // Start background chart fetching to populate staking positions and other chart data
           try {
             console.log('📊 Starting chart fetching (including staking positions)...');
+            console.log('📊 Balances before getCharts:', appInit.balances.length);
+            
             await appInit.getCharts();
+            
             console.log('✅ Chart fetching completed successfully');
+            console.log('📊 Balances after getCharts:', appInit.balances.length);
+            
+            // Debug: Look for staking positions
+            const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
+            console.log('📊 Staking positions found:', stakingBalances.length);
+            if (stakingBalances.length > 0) {
+              console.log('📊 First staking position:', stakingBalances[0]);
+            }
+            
+            // Debug: Look for cosmos balances
+            const cosmosBalances = appInit.balances.filter((b: any) => b.networkId?.includes('cosmos'));
+            console.log('📊 Cosmos balances found:', cosmosBalances.length);
+            if (cosmosBalances.length > 0) {
+              console.log('📊 First cosmos balance:', cosmosBalances[0]);
+            }
+            
           } catch (chartError) {
             console.warn('⚠️ Chart fetching failed, continuing anyway:', chartError);
+            console.warn('⚠️ Chart error details:', chartError);
             // Don't throw - this is not critical for basic functionality
           }
           
