@@ -173,9 +173,15 @@ export function Provider({ children }: ProviderProps) {
           const assets = await appInit.getAssets();
           console.log('✅ Got assets:', assets?.length || 0);
           
-          // Temporarily disable background chart fetching due to staking position parameter bug
-          // TODO: Re-enable when Pioneer SDK is updated with correct parameter (network instead of networkId)
-          // appInit.getCharts();
+          // Start background chart fetching to populate staking positions and other chart data
+          try {
+            console.log('📊 Starting chart fetching (including staking positions)...');
+            await appInit.getCharts();
+            console.log('✅ Chart fetching completed successfully');
+          } catch (chartError) {
+            console.warn('⚠️ Chart fetching failed, continuing anyway:', chartError);
+            // Don't throw - this is not critical for basic functionality
+          }
           
           // Try to connect to KeepKey if available
           console.log('🔑 Attempting to connect to KeepKey...');

@@ -52,57 +52,53 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
   // Check if this is a cosmos network
   const isCosmosNetwork = assetContext?.networkId?.includes('cosmos:');
 
-  // Fetch staking positions
-  const fetchStakingData = async () => {
-    if (!app || !assetContext?.pubkeys?.[0]?.address || !isCosmosNetwork) return;
+  // Get staking positions from existing balances (they should already be loaded by getCharts)
+  const getStakingPositions = () => {
+    if (!app?.balances || !assetContext?.pubkeys?.[0]?.address || !isCosmosNetwork) {
+      return [];
+    }
 
-    setLoading(true);
-    setError(null);
+    const address = assetContext.pubkeys[0].address;
+    const networkId = assetContext.networkId;
 
-    try {
-      const address = assetContext.pubkeys[0].address;
-      const networkId = assetContext.networkId;
+    console.log('🔍 [CosmosStaking] Looking for staking positions in balances:', { 
+      address, 
+      networkId,
+      totalBalances: app.balances.length 
+    });
 
-      console.log('🔍 [CosmosStaking] Fetching staking positions for:', { address, networkId });
-      console.log('🔍 [CosmosStaking] Pioneer instance:', !!app.pioneer);
-      console.log('🔍 [CosmosStaking] GetStakingPositions method available:', typeof app.pioneer.GetStakingPositions);
-
-      // Fetch staking positions using Pioneer SDK 
-      // Convert networkId to network name for API compatibility
-      const network = networkId.includes('cosmos:cosmoshub') ? 'cosmos' : 
-                     networkId.includes('cosmos:osmosis') ? 'osmosis' : 
-                     networkId.split(':')[1] || networkId;
+    // Filter balances for staking positions
+    const stakingBalances = app.balances.filter((balance: any) => {
+      const isStaking = balance.chart === 'staking';
+      const matchesAddress = balance.pubkey === address;
+      const matchesNetwork = balance.networkId === networkId;
       
-      console.log('🔍 [CosmosStaking] Converted network:', { networkId, network });
-      
-      const stakingResponse = await app.pioneer.GetStakingPositions({
-        networkId: network,  // Use simplified network name
-        address: address
+      console.log('🔍 [CosmosStaking] Checking balance:', {
+        caip: balance.caip,
+        chart: balance.chart,
+        pubkey: balance.pubkey,
+        networkId: balance.networkId,
+        isStaking,
+        matchesAddress,
+        matchesNetwork
       });
       
-      console.log('🔍 [CosmosStaking] Raw stakingResponse:', stakingResponse);
+      return isStaking && matchesAddress && matchesNetwork;
+    });
 
-      if (stakingResponse?.data) {
-        console.log('✅ [CosmosStaking] Found staking positions:', stakingResponse.data);
-        setStakingPositions(stakingResponse.data);
-      } else {
-        console.log('ℹ️ [CosmosStaking] No staking positions found');
-        setStakingPositions([]);
-      }
-
-    } catch (err: any) {
-      console.error('❌ [CosmosStaking] Error fetching staking data:', err);
-      setError(err.message || 'Failed to fetch staking data');
-    } finally {
-      setLoading(false);
-    }
+    console.log('✅ [CosmosStaking] Found staking positions in balances:', stakingBalances);
+    return stakingBalances;
   };
 
+  // Load staking data when component mounts or context changes
   useEffect(() => {
     if (isExpanded && isCosmosNetwork) {
-      fetchStakingData();
+      const positions = getStakingPositions();
+      setStakingPositions(positions);
+      setLoading(false);
+      setError(null);
     }
-  }, [isExpanded, isCosmosNetwork, assetContext]);
+  }, [isExpanded, isCosmosNetwork, assetContext, app?.balances]);
 
   // Calculate totals
   const totalStakingValue = stakingPositions.reduce((sum, pos) => sum + (pos.valueUsd || 0), 0);
