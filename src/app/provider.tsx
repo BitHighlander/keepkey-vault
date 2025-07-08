@@ -173,8 +173,9 @@ export function Provider({ children }: ProviderProps) {
           const assets = await appInit.getAssets();
           console.log('✅ Got assets:', assets?.length || 0);
           
-          // Start background chart fetching
-          appInit.getCharts();
+          // Temporarily disable background chart fetching due to staking position parameter bug
+          // TODO: Re-enable when Pioneer SDK is updated with correct parameter (network instead of networkId)
+          // appInit.getCharts();
           
           // Try to connect to KeepKey if available
           console.log('🔑 Attempting to connect to KeepKey...');
@@ -185,12 +186,15 @@ export function Provider({ children }: ProviderProps) {
           // Don't throw - these are optional features
         }
 
+
+
         console.log('🎯 Pioneer SDK fully initialized!');
         console.log('🔍 Final SDK state:', {
           status: appInit.status,
           pubkeys: appInit.pubkeys?.length || 0,
           balances: appInit.balances?.length || 0,
-          dashboard: !!appInit.dashboard
+          dashboard: !!appInit.dashboard,
+          dashboardNetworks: appInit.dashboard?.networks?.length || 0
         });
         setPioneerSdk(appInit);
       } catch (e) {

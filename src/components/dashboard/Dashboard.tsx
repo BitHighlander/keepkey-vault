@@ -723,6 +723,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               // Cosmos ecosystem tokens (not using slip44 format)
               if (caip.includes('MAYA.') || caip.includes('THOR.') || caip.includes('OSMO.')) return true;
               
+              // Cosmos tokens using denom or ibc format
+              if (caip.includes('/denom:') || caip.includes('/ibc:')) return true;
+              
               // Any CAIP that doesn't use slip44 format is likely a token
               if (!caip.includes('slip44:') && caip.includes('.')) return true;
               
@@ -741,6 +744,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 
                 // Only show tokens that have a balance > 0
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
+                
+                // Debug logging for each balance
+                if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
+                  console.log('🔍 [Dashboard] Checking balance for token classification:', {
+                    caip: balance.caip,
+                    symbol: balance.symbol,
+                    balance: balance.balance,
+                    type: balance.type,
+                    isToken: isToken,
+                    hasBalance: hasBalance,
+                    willInclude: isToken && hasBalance
+                  });
+                }
                 
                 return isToken && hasBalance;
               });
@@ -864,10 +880,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 await app.sync();
                               }
                               
-                              // Also get charts/tokens
+                              // Also get charts/tokens (with error handling for staking position bug)
                               if (app && typeof app.getCharts === 'function') {
                                 console.log('🔄 [Dashboard] Calling app.getCharts()');
-                                await app.getCharts();
+                                try {
+                                  await app.getCharts();
+                                } catch (chartError) {
+                                  console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
+                                  // Don't throw - this is a known issue with the Pioneer SDK
+                                }
                               }
                               
                               // Fetch dashboard data after refresh

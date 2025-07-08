@@ -32,6 +32,7 @@ import { usePioneerContext } from '@/components/providers/pioneer';
 import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
+import { CosmosStaking } from './CosmosStaking';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -994,6 +995,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
             </VStack>
           )}
         </Box>
+        
+        {/* Cosmos Staking Section */}
+        <CosmosStaking assetContext={assetContext} />
       </Box>
     </Box>
   );

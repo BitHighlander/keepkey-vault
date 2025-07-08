@@ -53,8 +53,10 @@ export default function AssetPage() {
   // Track the current view instead of dialog state
   const [currentView, setCurrentView] = useState<ViewType>('asset')
   
-  // Decode the parameter - it might be both URL-encoded AND Base64 encoded
+  // Decode the parameter immediately - it might be both URL-encoded AND Base64 encoded
   useEffect(() => {
+    if (!params.caip) return;
+    
     let encodedCaip = decodeURIComponent(params.caip as string)
     let caip: string
     
@@ -79,6 +81,14 @@ export default function AssetPage() {
   const { state } = pioneer
   const { app } = state
   const router = useRouter()
+  
+  // Check if app is already ready on mount
+  useEffect(() => {
+    if (app && app.setAssetContext && app.balances && app.pubkeys && decodedCaip) {
+      console.log('🚀 [AssetPage] App already ready on mount, setting ready immediately');
+      setIsAppReady(true);
+    }
+  }, [app, decodedCaip])
 
   // Check if app is ready and has all required properties
   useEffect(() => {
@@ -86,18 +96,18 @@ export default function AssetPage() {
       const isReady = !!(
         app && 
         app.setAssetContext && 
-        app.dashboard && 
-        app.dashboard.networks && 
-        app.dashboard.networks.length > 0
+        app.balances &&
+        app.pubkeys
       )
       
       console.log('🔄 [AssetPage] Checking if app is ready:', { 
         isReady,
         hasApp: !!app, 
         hasSetAssetContext: !!app?.setAssetContext, 
-        hasDashboard: !!app?.dashboard,
-        hasNetworks: !!app?.dashboard?.networks,
-        networkCount: app?.dashboard?.networks?.length
+        hasBalances: !!app?.balances,
+        balanceCount: app?.balances?.length || 0,
+        hasPubkeys: !!app?.pubkeys,
+        pubkeyCount: app?.pubkeys?.length || 0
       })
       
       if (isReady) {
@@ -112,7 +122,7 @@ export default function AssetPage() {
     const isReady = checkAppReady()
     if (isReady) return
 
-    // If not ready, start polling with a longer timeout
+    // Reduced polling time and attempts for faster loading
     const checkInterval = setInterval(() => {
       setAppCheckAttempts((prev: number) => {
         const newAttempt = prev + 1
@@ -121,17 +131,17 @@ export default function AssetPage() {
       })
       
       const isReady = checkAppReady()
-      // Increased from 10 to 30 attempts (15 seconds instead of 5)
-      if (isReady || appCheckAttempts >= 30) {
+      // Reduced to 10 attempts (2 seconds instead of 15)
+      if (isReady || appCheckAttempts >= 10) {
         clearInterval(checkInterval)
         
-        if (appCheckAttempts >= 30 && !isReady) {
-          console.error('⚠️ [AssetPage] Gave up waiting for app context after 30 attempts')
+        if (appCheckAttempts >= 10 && !isReady) {
+          console.error('⚠️ [AssetPage] Gave up waiting for app context after 10 attempts')
           // Provide a fallback option - redirect to dashboard
           router.push('/')
         }
       }
-    }, 500) // Check every 500ms
+    }, 200) // Check every 200ms instead of 500ms
     
     return () => clearInterval(checkInterval)
   }, [app, state, appCheckAttempts, router])
@@ -139,35 +149,16 @@ export default function AssetPage() {
   // Set asset context when app is ready and we have a decoded CAIP
   useEffect(() => {
     // Only proceed if app is ready and we have a CAIP
-    if (!isAppReady || !decodedCaip) return
+    if (!isAppReady || !decodedCaip) {
+      console.log('🔄 [AssetPage] Not ready yet:', { isAppReady, decodedCaip });
+      return;
+    }
     
     const caip = decodedCaip
     console.log('🔄 [AssetPage] App is ready, setting asset context from URL parameter:', caip)
     
-    // Helper function to determine if a CAIP represents a token vs native asset
-    const isTokenCaip = (caip: string): boolean => {
-      if (!caip) return false;
-      
-      // Explicit token type
-      if (caip.includes('erc20') || caip.includes('eip721')) return true;
-      
-      // ERC20 tokens have contract addresses (0x followed by 40 hex chars)
-      if (caip.includes('eip155:') && /0x[a-fA-F0-9]{40}/.test(caip)) return true;
-      
-      // Cosmos ecosystem tokens (not using slip44 format)
-      if (caip.includes('MAYA.') || caip.includes('THOR.') || caip.includes('OSMO.')) return true;
-      
-      // Cosmos tokens using denom or ibc format
-      if (caip.includes('/denom:') || caip.includes('/ibc:')) return true;
-      
-      // Any CAIP that doesn't use slip44 format is likely a token
-      if (!caip.includes('slip44:') && caip.includes('.')) return true;
-      
-      return false;
-    };
-
-    // Check if this is a token
-    const isToken = isTokenCaip(caip);
+    // Quick check if this is a token (simplified for speed)
+    const isToken = caip.includes('/denom:') || caip.includes('/ibc:') || caip.includes('erc20') || caip.includes('eip721') || /0x[a-fA-F0-9]{40}/.test(caip);
     console.log('🪙 [AssetPage] CAIP analysis:', { caip, isToken });
 
     if (isToken) {
@@ -313,137 +304,89 @@ export default function AssetPage() {
       console.log('🔍 [AssetPage] Parsed CAIP into parts:', { networkId, assetType })
     }
     
-    // Find the network matching the networkId - try various matching strategies
-    let matchingNetwork: any = null
+    // Find the balance matching the CAIP
+    let nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
     
-    if (app.dashboard?.networks) {
-      console.log('🔍 [AssetPage] Searching for network match among', app.dashboard.networks.length, 'networks')
-      
-      // Strategy 1: Try direct exact match first
-      matchingNetwork = app.dashboard.networks.find((network: any) => 
-        network.networkId === networkId
-      )
-      
-      if (matchingNetwork) {
-        console.log('🔍 [AssetPage] Found exact network match:', matchingNetwork.networkId)
-      }
-      
-      // Strategy 2: If not found, check for wildcard networks that would match this specific network
-      if (!matchingNetwork) {
-        matchingNetwork = app.dashboard.networks.find((network: any) => {
-          // If network has a wildcard (*) and our specific networkId starts with the prefix part
-          if (network.networkId.includes('*')) {
-            const prefix = network.networkId.split('*')[0]
-            return networkId.startsWith(prefix)
-          }
-          return false
-        })
-        
-        if (matchingNetwork) {
-          console.log('🔍 [AssetPage] Found matching wildcard network:', matchingNetwork.networkId)
-        }
-      }
-      
-      // Strategy 3: Check if full CAIP matches any network's gasAssetCaip
-      if (!matchingNetwork) {
-        matchingNetwork = app.dashboard.networks.find((network: any) => 
-          network.gasAssetCaip === caip
-        )
-        
-        if (matchingNetwork) {
-          console.log('🔍 [AssetPage] Found network by matching gasAssetCaip:', matchingNetwork.networkId)
-        }
-      }
+    console.log('🔍 [AssetPage] Looking for balance with CAIP:', caip);
+    console.log('🔍 [AssetPage] Available balances:', app.balances?.map((b: any) => b.caip) || []);
+    
+    if (!nativeAssetBalance) {
+      console.error('⚠️ [AssetPage] Could not find balance for CAIP:', caip);
+      router.push('/');
+      return;
     }
     
-    if (matchingNetwork) {
-      console.log('🔍 [AssetPage] Found network:', matchingNetwork.networkId)
-      console.log('🔍 [AssetPage] Network details:', matchingNetwork)
-      
-      // Always use the full CAIP passed in the URL
-      const fullCaip = caip
-      
-      // For native assets, we should also check if we have the balance in app.balances
-      let nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === fullCaip);
-      
-      // Determine the correct symbol based on the network
-      let correctSymbol = matchingNetwork.gasAssetSymbol;
-      let correctName = matchingNetwork.gasAssetSymbol;
-      let correctIcon = matchingNetwork.icon;
-      let correctBalance = matchingNetwork.totalNativeBalance;
-      let correctValue = matchingNetwork.totalValueUsd;
-      let correctPriceUsd = matchingNetwork.totalValueUsd / parseFloat(matchingNetwork.totalNativeBalance);
-      
-      // Override with balance data if available (more accurate)
-      if (nativeAssetBalance) {
-        console.log('🔍 [AssetPage] Found native asset balance data:', nativeAssetBalance);
-        correctSymbol = nativeAssetBalance.ticker || nativeAssetBalance.symbol || correctSymbol;
-        correctName = nativeAssetBalance.name || correctSymbol;
-        correctIcon = nativeAssetBalance.icon || nativeAssetBalance.image || correctIcon;
-        correctBalance = nativeAssetBalance.balance || correctBalance;
-        correctValue = parseFloat(nativeAssetBalance.valueUsd || correctValue);
-        correctPriceUsd = parseFloat(nativeAssetBalance.priceUsd || correctPriceUsd);
-      }
-      
-      // Special handling for MAYA chain native asset (CACAO)
-      if (networkId === 'cosmos:mayachain-mainnet-v1' && fullCaip.includes('slip44:931')) {
-        correctSymbol = 'CACAO';
-        correctName = 'CACAO';
-        correctIcon = 'https://pioneers.dev/coins/cacao.png';
-      }
-      
-      // Create the asset context with the correct CAIP
-      const assetContextData = {
-        networkId: networkId, // The network part (e.g. "eip155:1")
-        chainId: networkId,
-        assetId: fullCaip, // The full CAIP (e.g. "eip155:1/slip44:60")
-        caip: fullCaip,  // The full CAIP (e.g. "eip155:1/slip44:60")
-        name: correctName,
-        networkName: networkId.split(':').pop() || '',
-        symbol: correctSymbol,
-        icon: correctIcon,
-        color: matchingNetwork.color,
-        balance: correctBalance,
-        value: correctValue,
-        precision: nativeAssetBalance?.precision || 18,
-        priceUsd: correctPriceUsd,
-        explorer: networkId.startsWith('eip155') 
-          ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io`
-          : networkId.startsWith('cosmos')
-          ? `https://www.mintscan.io/${networkId.split(':')[1]}`
-          : `https://explorer.pioneers.dev/${networkId}`,
-        explorerAddressLink: networkId.startsWith('eip155')
-          ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io/address/`
-          : networkId.startsWith('cosmos')
-          ? `https://www.mintscan.io/${networkId.split(':')[1]}/account/`
-          : `https://explorer.pioneers.dev/${networkId}/address/`,
-        explorerTxLink: networkId.startsWith('eip155')
-          ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io/tx/`
-          : networkId.startsWith('cosmos')
-          ? `https://www.mintscan.io/${networkId.split(':')[1]}/txs/`
-          : `https://explorer.pioneers.dev/${networkId}/tx/`,
-        pubkeys: (app.pubkeys || []).filter((p: any) => {
-          // Include pubkeys that match either the specific network or the wildcard
-          return p.networks.includes(networkId) || 
-                (matchingNetwork.networkId.includes('*') && 
-                 p.networks.includes(matchingNetwork.networkId));
-        })
-      }
-      
-      console.log('🔍 [AssetPage] Setting asset context with data:', assetContextData)
-      console.log('🔍 [AssetPage] Asset context pubkeys:', assetContextData.pubkeys)
-      
-      try {
-        app.setAssetContext(assetContextData)
-        console.log('✅ [AssetPage] Asset context set successfully')
-      } catch (error) {
-        console.error('❌ [AssetPage] Error setting asset context:', error)
-      }
-    } else {
-      console.error('⚠️ [AssetPage] Could not find network with ID:', networkId)
-      // Could redirect to an error page or dashboard
-      router.push('/')
-    }
+    console.log('🔍 [AssetPage] Found balance:', nativeAssetBalance);
+         
+     // Use the balance data to create the asset context
+     const fullCaip = caip;
+     
+     // Determine symbol, name, icon from balance data
+     let correctSymbol = nativeAssetBalance.ticker || nativeAssetBalance.symbol || 'UNKNOWN';
+     let correctName = nativeAssetBalance.name || correctSymbol;
+     let correctIcon = nativeAssetBalance.icon || nativeAssetBalance.image || 'https://pioneers.dev/coins/pioneer.png';
+     let correctBalance = nativeAssetBalance.balance || '0';
+     let correctValue = parseFloat(nativeAssetBalance.valueUsd || 0);
+     let correctPriceUsd = parseFloat(nativeAssetBalance.priceUsd || 0);
+     let correctColor = nativeAssetBalance.color || '#FFD700';
+     
+     // Special handling for specific assets
+     if (networkId === 'cosmos:mayachain-mainnet-v1' && fullCaip.includes('slip44:931')) {
+       correctSymbol = 'CACAO';
+       correctName = 'CACAO';
+       correctIcon = 'https://pioneers.dev/coins/cacao.png';
+       correctColor = '#00D4AA';
+     } else if (networkId.includes('bitcoin')) {
+       correctColor = '#F7931A';
+     } else if (networkId.includes('ethereum')) {
+       correctColor = '#627EEA';
+     }
+     
+     // Create the asset context with the balance data
+     const assetContextData = {
+       networkId: networkId, // The network part (e.g. "eip155:1")
+       chainId: networkId,
+       assetId: fullCaip, // The full CAIP (e.g. "eip155:1/slip44:60")
+       caip: fullCaip,  // The full CAIP (e.g. "eip155:1/slip44:60")
+       name: correctName,
+       networkName: networkId.split(':').pop() || '',
+       symbol: correctSymbol,
+       icon: correctIcon,
+       color: correctColor,
+       balance: correctBalance,
+       value: correctValue,
+       precision: nativeAssetBalance?.precision || 18,
+       priceUsd: correctPriceUsd,
+       explorer: networkId.startsWith('eip155') 
+         ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io`
+         : networkId.startsWith('cosmos')
+         ? `https://www.mintscan.io/${networkId.split(':')[1]}`
+         : `https://explorer.pioneers.dev/${networkId}`,
+       explorerAddressLink: networkId.startsWith('eip155')
+         ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io/address/`
+         : networkId.startsWith('cosmos')
+         ? `https://www.mintscan.io/${networkId.split(':')[1]}/account/`
+         : `https://explorer.pioneers.dev/${networkId}/address/`,
+       explorerTxLink: networkId.startsWith('eip155')
+         ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io/tx/`
+         : networkId.startsWith('cosmos')
+         ? `https://www.mintscan.io/${networkId.split(':')[1]}/txs/`
+         : `https://explorer.pioneers.dev/${networkId}/tx/`,
+       pubkeys: (app.pubkeys || []).filter((p: any) => {
+         // Include pubkeys that match the specific network
+         return p.networks.includes(networkId);
+       })
+     }
+     
+     console.log('🔍 [AssetPage] Setting asset context with data:', assetContextData)
+     console.log('🔍 [AssetPage] Asset context pubkeys:', assetContextData.pubkeys)
+     
+     try {
+       app.setAssetContext(assetContextData)
+       console.log('✅ [AssetPage] Asset context set successfully')
+     } catch (error) {
+       console.error('❌ [AssetPage] Error setting asset context:', error)
+     }
   }, [isAppReady, decodedCaip, app, router])
 
   // Handle navigation functions
