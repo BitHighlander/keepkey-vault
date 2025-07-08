@@ -67,9 +67,16 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
       console.log('🔍 [CosmosStaking] Pioneer instance:', !!app.pioneer);
       console.log('🔍 [CosmosStaking] GetStakingPositions method available:', typeof app.pioneer.GetStakingPositions);
 
-      // Fetch staking positions using Pioneer SDK (correct way based on e2e tests)
+      // Fetch staking positions using Pioneer SDK 
+      // Convert networkId to network name for API compatibility
+      const network = networkId.includes('cosmos:cosmoshub') ? 'cosmos' : 
+                     networkId.includes('cosmos:osmosis') ? 'osmosis' : 
+                     networkId.split(':')[1] || networkId;
+      
+      console.log('🔍 [CosmosStaking] Converted network:', { networkId, network });
+      
       const stakingResponse = await app.pioneer.GetStakingPositions({
-        networkId: networkId,  // This is correct according to e2e tests
+        networkId: network,  // Use simplified network name
         address: address
       });
       
