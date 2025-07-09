@@ -118,7 +118,9 @@ export function Provider({ children }: ProviderProps) {
         );
         
         try {
-          // Initialize exactly like e2e test
+          // Initialize exactly like e2e test, but handle balance fetching errors gracefully
+          console.log("🔧 Calling appInit.init() with empty objects...");
+          
           const resultInit = await Promise.race([
             appInit.init({}, {}),
             initTimeout
@@ -130,10 +132,34 @@ export function Provider({ children }: ProviderProps) {
           console.log("📊 Wallets:", appInit.wallets.length);
           console.log("🔑 Pubkeys:", appInit.pubkeys.length);
           console.log("💰 Balances:", appInit.balances.length);
-        } catch (timeoutError) {
+          
+          // Debug pubkeys to ensure they have required fields
+          if (appInit.pubkeys && appInit.pubkeys.length > 0) {
+            console.log("🔍 Debugging pubkeys structure:");
+            appInit.pubkeys.forEach((pubkey: any, index: number) => {
+              console.log(`Pubkey ${index}:`, {
+                address: pubkey.address,
+                pubkey: pubkey.pubkey,
+                networks: pubkey.networks,
+                caip: pubkey.caip,
+                hasRequiredFields: !!(pubkey.address && pubkey.pubkey && pubkey.networks)
+              });
+            });
+          }
+        } catch (initError: any) {
           clearInterval(progressInterval);
-          console.error('⏱️ SDK init timed out:', timeoutError);
-          throw new Error('Pioneer SDK initialization timed out. Check the browser console for more details.');
+          console.error('⏱️ SDK init failed:', initError);
+          
+          // Check if it's the GetPortfolioBalances error we can handle
+          if (initError.message && initError.message.includes('GetPortfolioBalances')) {
+            console.warn('⚠️ GetPortfolioBalances failed during init, continuing with limited functionality');
+            // The SDK might still be partially initialized, so we can continue
+            console.log("📊 Partial initialization - Wallets:", appInit.wallets?.length || 0);
+            console.log("🔑 Partial initialization - Pubkeys:", appInit.pubkeys?.length || 0);
+            console.log("💰 Partial initialization - Balances:", appInit.balances?.length || 0);
+          } else {
+            throw new Error('Pioneer SDK initialization timed out. Check the browser console for more details.');
+          }
         }
         
         // Verify initialization like e2e test
@@ -205,8 +231,24 @@ export function Provider({ children }: ProviderProps) {
           
           // Try to connect to KeepKey if available
           console.log('🔑 Attempting to connect to KeepKey...');
-          const keepkeyConnected = await appInit.pairWallet('KEEPKEY');
-          console.log('🔑 KeepKey connection result:', keepkeyConnected);
+          console.log('🔑 KeepKey SDK before pairing:', !!appInit.keepKeySdk);
+          
+          try {
+            const keepkeyConnected = await appInit.pairWallet('KEEPKEY');
+            console.log('🔑 KeepKey connection result:', keepkeyConnected);
+            console.log('🔑 KeepKey SDK after pairing:', !!appInit.keepKeySdk);
+            
+            if (appInit.keepKeySdk) {
+              console.log('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
+              await appInit.refresh();
+              console.log('🔑 ✅ refresh() completed - dashboard should now be available');
+            } else {
+              console.log('🔑 ⚠️ KeepKey SDK still not initialized after pairing');
+            }
+          } catch (pairError) {
+            console.error('🔑 ❌ KeepKey pairing failed:', pairError);
+            console.log('🔑 This is expected if no KeepKey device is connected');
+          }
         } catch (testError) {
           console.log('⚠️ SDK test failed:', testError);
           // Don't throw - these are optional features
@@ -222,6 +264,33 @@ export function Provider({ children }: ProviderProps) {
           dashboard: !!appInit.dashboard,
           dashboardNetworks: appInit.dashboard?.networks?.length || 0
         });
+        
+        // Debug: Check what data is actually available
+        console.log('🔍 Available data structures:');
+        console.log('📊 Balances:', appInit.balances?.length || 0);
+        console.log('🔑 Pubkeys:', appInit.pubkeys?.length || 0);
+        console.log('🌐 Blockchains:', appInit.blockchains?.length || 0);
+        console.log('💰 Dashboard:', !!appInit.dashboard);
+        
+        if (appInit.balances && appInit.balances.length > 0) {
+          console.log('📊 Sample balance:', appInit.balances[0]);
+        }
+        
+        if (appInit.pubkeys && appInit.pubkeys.length > 0) {
+          console.log('🔑 Sample pubkey:', appInit.pubkeys[0]);
+        }
+        
+        if (appInit.blockchains && appInit.blockchains.length > 0) {
+          console.log('🌐 Sample blockchain:', appInit.blockchains[0]);
+        }
+        
+        if (appInit.dashboard) {
+          console.log('💰 Dashboard data:', appInit.dashboard);
+        } else {
+          console.log('💰 No dashboard data - this indicates sync() was not called!');
+          console.log('💰 KeepKey SDK status:', !!appInit.keepKeySdk);
+          console.log('💰 This means KeepKey device is not connected or initialized');
+        }
         setPioneerSdk(appInit);
       } catch (e) {
         console.error('💥 FATAL: Pioneer SDK initialization failed:', e);

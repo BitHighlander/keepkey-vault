@@ -15,6 +15,8 @@ import {
 
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { FaChevronDown, FaChevronUp, FaPlus, FaMinus, FaCoins } from 'react-icons/fa';
+import { DelegateModal } from '@/components/staking/DelegateModal';
+import { UndelegateModal } from '@/components/staking/UndelegateModal';
 
 // Theme colors
 const theme = {
@@ -31,6 +33,7 @@ interface StakingPosition {
   ticker: string;
   valueUsd: number;
   validator: string;
+  validatorAddress: string;
   status: string;
   caip: string;
 }
@@ -44,6 +47,9 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
   const [stakingPositions, setStakingPositions] = useState<StakingPosition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDelegateModal, setShowDelegateModal] = useState(false);
+  const [showUndelegateModal, setShowUndelegateModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const pioneer = usePioneerContext();
   const { state } = pioneer;
@@ -115,7 +121,39 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
     });
 
     console.log('✅ [CosmosStaking] Found staking positions in balances:', stakingBalances);
-    return stakingBalances;
+    
+    // Transform balances to match StakingPosition interface
+    return stakingBalances.map((balance: any) => ({
+      type: balance.type || 'delegation',
+      balance: balance.balance || '0',
+      ticker: balance.ticker || balance.symbol || assetContext.symbol,
+      valueUsd: balance.valueUsd || 0,
+      validator: balance.validator || balance.validatorName || 'Unknown Validator',
+      validatorAddress: balance.validatorAddress || balance.validator || '',
+      status: balance.status || 'active',
+      caip: balance.caip || assetContext.caip
+    }));
+  };
+
+  // Refresh staking positions by calling getCharts
+  const refreshStakingPositions = async () => {
+    if (!app?.getCharts) return;
+    
+    setIsRefreshing(true);
+    try {
+      console.log('🔄 [CosmosStaking] Refreshing staking positions...');
+      await app.getCharts();
+      console.log('✅ [CosmosStaking] Staking positions refreshed');
+      
+      // Update positions after refresh
+      const positions = getStakingPositions();
+      setStakingPositions(positions);
+    } catch (error) {
+      console.error('❌ [CosmosStaking] Error refreshing staking positions:', error);
+      setError('Failed to refresh staking positions');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Load staking data when component mounts or context changes
@@ -133,6 +171,27 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
   const delegationPositions = stakingPositions.filter(pos => pos.type === 'delegation');
   const rewardPositions = stakingPositions.filter(pos => pos.type === 'reward');
   const unbondingPositions = stakingPositions.filter(pos => pos.type === 'unbonding');
+
+  // Get available balance for delegation
+  const getAvailableBalance = () => {
+    if (!app?.balances || !assetContext?.pubkeys?.[0]?.address) return '0';
+    
+    const address = assetContext.pubkeys[0].address;
+    const caip = assetContext.caip;
+    
+    // Find the native balance for this asset
+    const nativeBalance = app.balances.find((balance: any) => 
+      balance.caip === caip && balance.pubkey === address
+    );
+    
+    return nativeBalance?.balance || '0';
+  };
+
+  // Handle successful delegation/undelegation
+  const handleStakingSuccess = () => {
+    // Refresh staking positions after successful transaction
+    refreshStakingPositions();
+  };
 
   // Don't render for non-cosmos networks
   if (!isCosmosNetwork) return null;
@@ -171,11 +230,29 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
             </Badge>
           )}
         </HStack>
-        <Icon 
-          as={isExpanded ? FaChevronUp : FaChevronDown} 
-          color={theme.gold}
-          boxSize={4}
-        />
+        <HStack gap={2}>
+          {isExpanded && (
+                         <Button
+               size="sm"
+               variant="ghost"
+               color={theme.gold}
+               _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+               onClick={(e) => {
+                 e.stopPropagation();
+                 refreshStakingPositions();
+               }}
+               loading={isRefreshing}
+               loadingText="Syncing..."
+             >
+               🔄 Sync
+             </Button>
+          )}
+          <Icon 
+            as={isExpanded ? FaChevronUp : FaChevronDown} 
+            color={theme.gold}
+            boxSize={4}
+          />
+        </HStack>
       </Flex>
       
       {/* Content */}
@@ -232,10 +309,7 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
                     bg: 'rgba(255, 215, 0, 0.1)',
                     borderColor: theme.gold,
                   }}
-                  onClick={() => {
-                    console.log('🚀 [CosmosStaking] Delegate button clicked - TODO: Implement delegation');
-                    // TODO: Implement delegation modal/flow
-                  }}
+                  onClick={() => setShowDelegateModal(true)}
                 >
                   <HStack gap={2}>
                     <Icon as={FaPlus} boxSize={3} />
@@ -253,10 +327,7 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
                     borderColor: theme.gold,
                   }}
                   disabled={delegationPositions.length === 0}
-                  onClick={() => {
-                    console.log('🚀 [CosmosStaking] Undelegate button clicked - TODO: Implement undelegation');
-                    // TODO: Implement undelegation modal/flow
-                  }}
+                  onClick={() => setShowUndelegateModal(true)}
                 >
                   <HStack gap={2}>
                     <Icon as={FaMinus} boxSize={3} />
@@ -319,12 +390,42 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
                   <Text color="gray.500" fontSize="sm" mt={1}>
                     Start by delegating some {assetContext.symbol} to earn rewards
                   </Text>
+                                     <Button
+                     mt={3}
+                     size="sm"
+                     variant="outline"
+                     color={theme.gold}
+                     borderColor={theme.border}
+                     _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                     onClick={refreshStakingPositions}
+                     loading={isRefreshing}
+                     loadingText="Syncing..."
+                   >
+                     🔄 Sync Staking Positions
+                   </Button>
                 </Box>
               )}
             </>
           )}
         </VStack>
       )}
+      
+      {/* Staking Modals */}
+      <DelegateModal
+        isOpen={showDelegateModal}
+        onClose={() => setShowDelegateModal(false)}
+        assetContext={assetContext}
+        availableBalance={getAvailableBalance()}
+        onSuccess={handleStakingSuccess}
+      />
+      
+      <UndelegateModal
+        isOpen={showUndelegateModal}
+        onClose={() => setShowUndelegateModal(false)}
+        assetContext={assetContext}
+        stakingPositions={stakingPositions}
+        onSuccess={handleStakingSuccess}
+      />
     </Box>
   );
 };
