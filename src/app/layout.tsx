@@ -57,10 +57,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/images/kk-icon-gold.png" }
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.png", type: "image/png" }
     ],
     apple: [
-      { url: "/images/logos/keepkey-logo-square.png" }
+      { url: "/apple-touch-icon.png", sizes: "180x180" }
     ]
   },
   robots: {
