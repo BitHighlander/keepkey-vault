@@ -57,6 +57,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   // Add state to track previous balance for comparison
   const [previousBalance, setPreviousBalance] = useState<string>('0');
+  // Add flag to track if this is the initial load to prevent sound on first balance set
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -95,6 +97,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
       // Initialize previousBalance when asset context is available
       if (assetContext.balance) {
         setPreviousBalance(assetContext.balance);
+        // Mark as no longer initial load after first balance is set
+        setIsInitialLoad(false);
       }
       setLoading(false);
       return;
@@ -154,6 +158,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
     // Initialize previousBalance when component mounts
     if (app.assetContext?.balance) {
       setPreviousBalance(app.assetContext.balance);
+      // Mark as no longer initial load after first balance is set
+      setIsInitialLoad(false);
     }
     
     const intervalId = setInterval(() => {
@@ -170,10 +176,12 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
             console.log("💰 [Asset] Balance comparison:", { 
               previous: prevBalance, 
               current: currentBalance,
-              increased: parseFloat(currentBalance) > parseFloat(prevBalance)
+              increased: parseFloat(currentBalance) > parseFloat(prevBalance),
+              isInitialLoad
             });
             
-            if (parseFloat(currentBalance) > parseFloat(prevBalance)) {
+            // Only play sound if this is not the initial load and balance actually increased
+            if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
               console.log("🎵 [Asset] Balance increased! Playing chaching sound");
               playSound(chachingSound);
             }
@@ -190,7 +198,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [app, previousBalance]);
+  }, [app, previousBalance, isInitialLoad]);
 
   const handleBack = () => {
     if (onBackClick) {

@@ -253,21 +253,9 @@ export default function AssetPage() {
           type: 'token',
           nativeBalance: nativeBalance, // Add native balance for display
           nativeSymbol: nativeSymbol, // Add native symbol for display
-          explorer: tokenNetworkId.startsWith('eip155') 
-            ? `https://${tokenNetworkId.split(':').pop()?.toLowerCase()}.etherscan.io`
-            : tokenNetworkId.startsWith('cosmos')
-            ? `https://www.mintscan.io/${tokenNetworkId.split(':')[1]}`
-            : `https://explorer.pioneers.dev/${tokenNetworkId}`,
-          explorerAddressLink: tokenNetworkId.startsWith('eip155')
-            ? `https://${tokenNetworkId.split(':').pop()?.toLowerCase()}.etherscan.io/address/`
-            : tokenNetworkId.startsWith('cosmos')
-            ? `https://www.mintscan.io/${tokenNetworkId.split(':')[1]}/account/`
-            : `https://explorer.pioneers.dev/${tokenNetworkId}/address/`,
-          explorerTxLink: tokenNetworkId.startsWith('eip155')
-            ? `https://${tokenNetworkId.split(':').pop()?.toLowerCase()}.etherscan.io/tx/`
-            : tokenNetworkId.startsWith('cosmos')
-            ? `https://www.mintscan.io/${tokenNetworkId.split(':')[1]}/txs/`
-            : `https://explorer.pioneers.dev/${tokenNetworkId}/tx/`,
+          explorer: app.assetsMap?.get(caip)?.explorer || 'https://xrpscan.com',
+          explorerAddressLink: app.assetsMap?.get(caip)?.explorerAddressLink || 'https://xrpscan.com/account/',
+          explorerTxLink: app.assetsMap?.get(caip)?.explorerTxLink || 'https://xrpscan.com/tx/',
           pubkeys: (app.pubkeys || []).filter((p: any) => {
             return p.networks.includes(tokenNetworkId);
           })
@@ -357,21 +345,9 @@ export default function AssetPage() {
        value: correctValue,
        precision: nativeAssetBalance?.precision || 18,
        priceUsd: correctPriceUsd,
-       explorer: networkId.startsWith('eip155') 
-         ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io`
-         : networkId.startsWith('cosmos')
-         ? `https://www.mintscan.io/${networkId.split(':')[1]}`
-         : `https://explorer.pioneers.dev/${networkId}`,
-       explorerAddressLink: networkId.startsWith('eip155')
-         ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io/address/`
-         : networkId.startsWith('cosmos')
-         ? `https://www.mintscan.io/${networkId.split(':')[1]}/account/`
-         : `https://explorer.pioneers.dev/${networkId}/address/`,
-       explorerTxLink: networkId.startsWith('eip155')
-         ? `https://${networkId.split(':').pop()?.toLowerCase()}.etherscan.io/tx/`
-         : networkId.startsWith('cosmos')
-         ? `https://www.mintscan.io/${networkId.split(':')[1]}/txs/`
-         : `https://explorer.pioneers.dev/${networkId}/tx/`,
+       explorer: app.assetsMap?.get(fullCaip.toLowerCase())?.explorer || 'https://xrpscan.com',
+       explorerAddressLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerAddressLink || 'https://xrpscan.com/account/',
+       explorerTxLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerTxLink || 'https://xrpscan.com/tx/',
        pubkeys: (app.pubkeys || []).filter((p: any) => {
          // Include pubkeys that match the specific network
          return p.networks.includes(networkId);
