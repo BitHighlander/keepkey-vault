@@ -77,6 +77,10 @@ export function Provider({ children }: ProviderProps) {
 
         console.log('🔧 Blockchains:', blockchains);
         console.log('🔧 Paths length:', paths.length);
+        
+        // Filter out any unsupported networks (like scroll)
+        console.log('🔧 Supported blockchains only:', blockchains);
+        console.log('🔧 Filtering out unsupported networks like scroll, fantom, etc.');
 
         // Create Pioneer SDK instance directly
         console.log('🔧 Creating Pioneer SDK instance...');
@@ -98,6 +102,34 @@ export function Provider({ children }: ProviderProps) {
         });
 
         console.log('🔧 Pioneer SDK instance created, calling init...');
+        
+        // Add network filtering to prevent unsupported networks from being processed
+        const originalGetBalances = appInit.getBalances?.bind(appInit);
+        if (originalGetBalances) {
+          appInit.getBalances = async (...args: any[]) => {
+            const result = await originalGetBalances(...args);
+            // Filter out any balances from unsupported networks like scroll
+            if (appInit.balances && Array.isArray(appInit.balances)) {
+              const originalLength = appInit.balances.length;
+              appInit.balances = appInit.balances.filter((balance: any) => {
+                if (!balance.networkId) return true;
+                const isSupported = blockchains.includes(balance.networkId);
+                if (!isSupported) {
+                  console.warn('🚫 Filtering out unsupported network balance:', {
+                    networkId: balance.networkId,
+                    caip: balance.caip,
+                    symbol: balance.symbol || balance.ticker
+                  });
+                }
+                return isSupported;
+              });
+              if (originalLength !== appInit.balances.length) {
+                console.log(`🔧 Filtered ${originalLength - appInit.balances.length} unsupported network balances`);
+              }
+            }
+            return result;
+          };
+        }
         
         // Add progress tracking
         let progressInterval = setInterval(() => {

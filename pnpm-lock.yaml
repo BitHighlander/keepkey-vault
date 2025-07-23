@@ -18,8 +18,8 @@ importers:
         specifier: ^2.0.6
         version: 2.0.6(react@19.1.0)
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.12.10
-        version: 4.12.10(@types/node@20.19.4)
+        specifier: ^4.12.20
+        version: 4.12.20(@types/node@20.19.4)
       '@coinmasters/tokens':
         specifier: ^3.10.1
         version: 3.10.1
@@ -172,11 +172,11 @@ packages:
       react: '>=18'
       react-dom: '>=18'
 
-  '@coinmasters/api@3.10.1':
-    resolution: {integrity: sha512-E4Yuo75SPtSdP1mqTcTorPE+bQK3MQHLnJ6RHuOC4dpG0KoO63zJ7VaA+iA6LLaeprXQQvJn0wBI8Jy4A4RIMA==}
+  '@coinmasters/api@3.10.8':
+    resolution: {integrity: sha512-8zSX6NwEJQ9Ye4OfKrZiOu8lFyjyjU6X+qRCEHvCUB51NKmy6gBEkrqD1Lqs9qpqiap+5vAbvalUlY8JO/Z6zA==}
 
-  '@coinmasters/pioneer-sdk@4.12.10':
-    resolution: {integrity: sha512-qikyU6/k1PQtSFLtoFz2HNExMZD4t8sENkf615ob8q7x2qd0j9rQGtxl5TqZABqjA6L0uU/unAxfRVMc0J6juQ==}
+  '@coinmasters/pioneer-sdk@4.12.20':
+    resolution: {integrity: sha512-x1ky1xEvujj2aUyy8uwe/sVc2reAXiBUYiYVRLk2rMtP0do+tGJ8lUqp0zeHgMb3xm1BgLjKBiSguC4U5W1d1w==}
 
   '@coinmasters/tokens@3.10.1':
     resolution: {integrity: sha512-lzT7SVdhT2pRhFjQau87Xod2D0iJqvt9epOnpUYriF5+wBSVhGDdBWVIAUiALtRnT3vk9Z+ctcOddBylTXRThA==}
@@ -618,8 +618,8 @@ packages:
   '@pioneer-platform/pioneer-caip@9.2.38':
     resolution: {integrity: sha512-eQ3vplYpaz8Au9YrqRLKFRiMZSyOlXoxkSulxDRGx+vmzy7NM+Qn2HXNeNwGKFNyk9LQkSlspi7BcagYiF96Sg==}
 
-  '@pioneer-platform/pioneer-client@9.2.7':
-    resolution: {integrity: sha512-WAdtMYPcu4heb5gJACZlmMrM7sKWMzEHpVfa46RXq9e81PNkvogq0D43xPTFLlnuRmVQ4dM1hDq2hG434SBzng==}
+  '@pioneer-platform/pioneer-client@9.2.8':
+    resolution: {integrity: sha512-csnKigbiE05vz9tbyPfS/nKXeQfL9VIbto+2PDZFhG55t1G542lvdLaMkl6VilNbJRYX66NgVoSWAUDmwGXl1g==}
 
   '@pioneer-platform/pioneer-coins@9.2.26':
     resolution: {integrity: sha512-oTXb/Le69YcViDLWzj8BAh0S0KrBQfw/FiA9DOyTJkhQ05Ze5vcQyUf/HfIRL6V2YWwU/uhkC6DmGM5Pw1bqNA==}
@@ -3236,20 +3236,19 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@coinmasters/api@3.10.1':
+  '@coinmasters/api@3.10.8':
     dependencies:
       '@coinmasters/types': 4.10.1
       ky: 1.1.3
 
-  '@coinmasters/pioneer-sdk@4.12.10(@types/node@20.19.4)':
+  '@coinmasters/pioneer-sdk@4.12.20(@types/node@20.19.4)':
     dependencies:
-      '@coinmasters/api': 3.10.1
-      '@coinmasters/tokens': 3.10.1
+      '@coinmasters/api': 3.10.8
       '@coinmasters/types': 4.10.1
       '@keepkey/keepkey-sdk': 0.2.62
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.4)
       '@pioneer-platform/pioneer-caip': 9.2.38
-      '@pioneer-platform/pioneer-client': 9.2.7
+      '@pioneer-platform/pioneer-client': 9.2.8
       '@pioneer-platform/pioneer-coins': 9.2.26(@types/node@20.19.4)
       '@pioneer-platform/pioneer-discovery': 0.0.18(@types/node@20.19.4)
       '@pioneer-platform/pioneer-events': 8.3.2
@@ -3853,7 +3852,7 @@ snapshots:
 
   '@pioneer-platform/pioneer-caip@9.2.38': {}
 
-  '@pioneer-platform/pioneer-client@9.2.7':
+  '@pioneer-platform/pioneer-client@9.2.8':
     dependencies:
       swagger-client: 3.35.6
     transitivePeerDependencies:
