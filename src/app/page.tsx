@@ -5,6 +5,8 @@ import { Box, Flex, Spinner } from "@chakra-ui/react"
 import Dashboard from '@/components/dashboard/Dashboard'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { useState, useEffect } from 'react'
+// Background image path
+const splashBg = '/images/backgrounds/splash-bg.png'
 import {
   DialogRoot,
   DialogContent,
@@ -28,6 +30,9 @@ export default function Home() {
     state = {},
     isTransitioning = false,
   } = pioneer || {};
+
+  // Use the normal loading state
+  const showLoading = isTransitioning;
   
   const { app } = state;
 
@@ -45,9 +50,19 @@ export default function Home() {
       hasApp: !!app,
       hasAssetContext: !!app?.assetContext,
       isTransitioning,
-      hasPioneer: !!pioneer
+      hasPioneer: !!pioneer,
+      splashBgPath: splashBg // Debug: check if image imported correctly
     });
   }, [app, isTransitioning, pioneer]);
+
+  // Debug loading screen state
+  useEffect(() => {
+    if (showLoading) {
+      console.log('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
+    } else {
+      console.log('✅ [LOADING SCREEN] Loading screen hidden');
+    }
+  }, [showLoading]);
 
   // Handle settings dialog open state
   const handleSettingsOpenChange = (details: { open: boolean }) => {
@@ -89,6 +104,10 @@ export default function Home() {
         bg="black" 
         overflow="hidden"
         position="relative"
+        backgroundImage={`url(${splashBg})`}
+        backgroundSize="cover"
+        backgroundPosition="center"
+        backgroundRepeat="no-repeat"
       >
         <Box
           position="absolute"
@@ -100,7 +119,10 @@ export default function Home() {
           display={isTransitioning ? 'flex' : 'none'}
           justifyContent="center"
           alignItems="center"
-          bg="rgba(0,0,0,0.8)"
+          backgroundImage={`url(${splashBg})`}
+          backgroundSize="cover"
+          backgroundPosition="center"
+          backgroundRepeat="no-repeat"
           zIndex={999}
           transition="opacity 0.3s ease"
         >
@@ -111,8 +133,8 @@ export default function Home() {
         </Box>
 
         <Box
-          opacity={isTransitioning ? 0 : 1}
-          transform={isTransitioning ? 'scale(0.98)' : 'scale(1)'}
+          opacity={showLoading ? 0 : 1}
+          transform={showLoading ? 'scale(0.98)' : 'scale(1)'}
           transition="all 0.3s ease"
           height="100%"
         >

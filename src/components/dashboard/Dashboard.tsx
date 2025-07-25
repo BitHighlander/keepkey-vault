@@ -303,14 +303,21 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   return (
-    <Box height="100vh" bg={theme.bg}>
+    <Box 
+      height="100vh" 
+      bg={theme.bg}
+      backgroundImage="url(/images/backgrounds/splash-bg.png)"
+      backgroundSize="cover"
+      backgroundPosition="center"
+      backgroundRepeat="no-repeat"
+    >
       {/* Header */}
       <Box 
         borderBottom="1px" 
         borderColor={theme.border}
         p={4}
         bg={theme.cardBg}
-        backdropFilter="blur(10px)"
+        backdropFilter="blur(5px)"
         position="relative"
         _after={{
           content: '""',
@@ -1175,8 +1182,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               right: "-50%",
               bottom: "-50%",
               background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
-              opacity: 0.2,
-              transition: "opacity 0.2s",
+                          opacity: 0.4,
+            transition: "opacity 0.2s",
             }}
             transition="all 0.2s"
             cursor="pointer"
