@@ -18,8 +18,8 @@ importers:
         specifier: ^2.0.6
         version: 2.0.6(react@19.1.0)
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.12.31
-        version: 4.12.31(@types/node@20.19.4)
+        specifier: ^4.12.32
+        version: 4.12.32(@types/node@20.19.4)
       '@coinmasters/tokens':
         specifier: ^3.10.1
         version: 3.10.1
@@ -172,11 +172,11 @@ packages:
       react: '>=18'
       react-dom: '>=18'
 
-  '@coinmasters/api@3.10.19':
-    resolution: {integrity: sha512-bg6+7PfrCYJixWTciAzS9Wl9XoUXJo8mYUx9+O+m6jb8gjTw/kCIzD8pm9a9SFklRp8zE3vXwrD+27ZuuzOwKg==}
+  '@coinmasters/api@3.10.20':
+    resolution: {integrity: sha512-lezp723Pbyw9eTcy1JPnbYkRLedOVCuf+FNrwxJsEONK+o+iJ75kjE+TL6v+Y4owLnxoNA+D16INoGWA976JnA==}
 
-  '@coinmasters/pioneer-sdk@4.12.31':
-    resolution: {integrity: sha512-YIMWqrrRCzBCWDNVijCLTVsGMsatAZQSxlqi6DVBqy4Zk+IwsXl4ZwYZY7LT2tpOrE1htOOFg5G7nXMOcT8frg==}
+  '@coinmasters/pioneer-sdk@4.12.32':
+    resolution: {integrity: sha512-8aisX4KtpUaiBUHsYiPz0yz0a67Lm94p2Xd+yPtj2/C0g4IHNmbBvj7OuEIV6r7z2kW9vrdi//JH8Am7Hav9vQ==}
 
   '@coinmasters/tokens@3.10.1':
     resolution: {integrity: sha512-lzT7SVdhT2pRhFjQau87Xod2D0iJqvt9epOnpUYriF5+wBSVhGDdBWVIAUiALtRnT3vk9Z+ctcOddBylTXRThA==}
@@ -3236,14 +3236,14 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@coinmasters/api@3.10.19':
+  '@coinmasters/api@3.10.20':
     dependencies:
       '@coinmasters/types': 4.10.1
       ky: 1.1.3
 
-  '@coinmasters/pioneer-sdk@4.12.31(@types/node@20.19.4)':
+  '@coinmasters/pioneer-sdk@4.12.32(@types/node@20.19.4)':
     dependencies:
-      '@coinmasters/api': 3.10.19
+      '@coinmasters/api': 3.10.20
       '@coinmasters/types': 4.10.1
       '@keepkey/keepkey-sdk': 0.2.62
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.4)

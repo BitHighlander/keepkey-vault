@@ -66,10 +66,8 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
   onSuccess,
 }) => {
   const [amount, setAmount] = useState('');
-  const [selectedValidator, setSelectedValidator] = useState('');
-  const [validators, setValidators] = useState<Validator[]>([]);
+  const [validatorAddress, setValidatorAddress] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingValidators, setLoadingValidators] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transactionStep, setTransactionStep] = useState<'form' | 'confirm' | 'sign' | 'broadcast' | 'success'>('form');
   const [txHash, setTxHash] = useState('');
@@ -80,132 +78,28 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
   const { state } = pioneer;
   const { app } = state;
 
-  // Load validators when modal opens
-  useEffect(() => {
-    if (isOpen && assetContext?.networkId) {
-      loadValidators();
-    }
-  }, [isOpen, assetContext?.networkId]);
-
-  const loadValidators = async () => {
-    setLoadingValidators(true);
-    setError(null);
-    
-    try {
-      console.log('🔍 Loading validators for network:', assetContext.networkId);
-      
-      // Try to get validators from Pioneer API
-      if (app?.pioneer) {
-        try {
-          const validatorsResponse = await app.pioneer.GetValidators({
-            networkId: assetContext.networkId
-          });
-          
-          console.log('📊 Validators response:', validatorsResponse);
-          
-          if (validatorsResponse?.data && Array.isArray(validatorsResponse.data)) {
-            // Filter active validators and sort by tokens (descending)
-            const activeValidators = validatorsResponse.data
-              .filter((v: any) => v.status === 'BOND_STATUS_BONDED' && !v.jailed)
-              .sort((a: any, b: any) => parseFloat(b.tokens || '0') - parseFloat(a.tokens || '0'));
-            
-            setValidators(activeValidators);
-            console.log('✅ Loaded validators:', activeValidators.length);
-          } else {
-            console.warn('⚠️ No validators data in response');
-            setValidators([]);
-          }
-        } catch (apiError) {
-          console.error('❌ Failed to load validators from API:', apiError);
-          
-          // Fallback to mock validators for common networks
-          const mockValidators = getMockValidators(assetContext.networkId);
-          setValidators(mockValidators);
-          console.log('🔄 Using mock validators:', mockValidators.length);
-        }
-      } else {
-        // Fallback to mock validators
-        const mockValidators = getMockValidators(assetContext.networkId);
-        setValidators(mockValidators);
-        console.log('🔄 Using mock validators (no pioneer):', mockValidators.length);
-      }
-    } catch (error) {
-      console.error('❌ Error loading validators:', error);
-      setError('Failed to load validators. Please try again.');
-    } finally {
-      setLoadingValidators(false);
-    }
+  // Get the expected validator prefix based on network
+  const getValidatorPrefix = (networkId: string): string => {
+    if (networkId.includes('osmosis')) return 'osmovaloper';
+    if (networkId.includes('thorchain')) return 'thorvaloper';
+    if (networkId.includes('mayachain')) return 'mayavaloper';
+    if (networkId.includes('juno')) return 'junovaloper';
+    if (networkId.includes('akash')) return 'akashvaloper';
+    if (networkId.includes('stargaze')) return 'starsvaloper';
+    if (networkId.includes('secret')) return 'secretvaloper';
+    if (networkId.includes('kava')) return 'kavavaloper';
+    if (networkId.includes('injective')) return 'injvaloper';
+    if (networkId.includes('persistence')) return 'persistencevaloper';
+    if (networkId.includes('sommelier')) return 'sommvaloper';
+    if (networkId.includes('cosmoshub')) return 'cosmosvaloper';
+    return 'cosmosvaloper'; // Default to cosmos
   };
 
-  // Mock validators for common networks
-  const getMockValidators = (networkId: string): Validator[] => {
-    const baseValidators = [
-      {
-        address: 'cosmosvaloper1sjllsnramtg3ewxqwwrwjxfgc4n4ef9u2lcnj0',
-        moniker: 'Stake.fish',
-        commission: '0.05',
-        status: 'BOND_STATUS_BONDED',
-        jailed: false,
-        tokens: '1000000000000',
-        delegator_shares: '1000000000000',
-        description: {
-          moniker: 'Stake.fish',
-          identity: '',
-          website: 'https://stake.fish',
-          details: 'Reliable validator with high uptime'
-        }
-      },
-      {
-        address: 'cosmosvaloper1c4k24jzduc365kywrsvf5ujz4ya6mwympnc4en',
-        moniker: 'Coinbase Custody',
-        commission: '0.20',
-        status: 'BOND_STATUS_BONDED',
-        jailed: false,
-        tokens: '800000000000',
-        delegator_shares: '800000000000',
-        description: {
-          moniker: 'Coinbase Custody',
-          identity: '',
-          website: 'https://custody.coinbase.com',
-          details: 'Institutional grade validator'
-        }
-      },
-      {
-        address: 'cosmosvaloper14lultfckehtszvzw4ehu0apvsr77afvyju5zzy',
-        moniker: 'DokiaCapital',
-        commission: '0.03',
-        status: 'BOND_STATUS_BONDED',
-        jailed: false,
-        tokens: '600000000000',
-        delegator_shares: '600000000000',
-        description: {
-          moniker: 'DokiaCapital',
-          identity: '',
-          website: 'https://dokia.capital',
-          details: 'Professional validator service'
-        }
-      }
-    ];
-
-    // Customize based on network
-    if (networkId.includes('osmosis')) {
-      return baseValidators.map(v => ({
-        ...v,
-        address: v.address.replace('cosmosvaloper', 'osmovaloper')
-      }));
-    } else if (networkId.includes('thorchain')) {
-      return baseValidators.map(v => ({
-        ...v,
-        address: v.address.replace('cosmosvaloper', 'thorvaloper')
-      }));
-    } else if (networkId.includes('mayachain')) {
-      return baseValidators.map(v => ({
-        ...v,
-        address: v.address.replace('cosmosvaloper', 'mayavaloper')
-      }));
-    }
-
-    return baseValidators;
+  // Validate validator address format
+  const validateValidatorAddress = (address: string): boolean => {
+    if (!address) return false;
+    const expectedPrefix = getValidatorPrefix(assetContext?.networkId || '');
+    return address.startsWith(expectedPrefix);
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,8 +116,14 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
   };
 
   const buildDelegateTransaction = async () => {
-    if (!amount || !selectedValidator || !assetContext) {
+    if (!amount || !validatorAddress || !assetContext) {
       throw new Error('Missing required fields');
+    }
+
+    // Validate validator address format
+    if (!validateValidatorAddress(validatorAddress)) {
+      const expectedPrefix = getValidatorPrefix(assetContext.networkId);
+      throw new Error(`Invalid validator address. Must start with "${expectedPrefix}" for ${assetContext.symbol}`);
     }
 
     setLoading(true);
@@ -232,14 +132,14 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
     try {
       console.log('🔨 Building delegate transaction:', {
         amount,
-        validator: selectedValidator,
+        validator: validatorAddress,
         networkId: assetContext.networkId,
         caip: assetContext.caip
       });
 
       // Build the staking transaction using new buildDelegateTx method
       const stakingParams = {
-        validatorAddress: selectedValidator,
+        validatorAddress: validatorAddress,
         amount: parseFloat(amount),
         memo: 'Delegation via KeepKey Vault'
       };
@@ -338,7 +238,7 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
   const handleClose = () => {
     setAmount('');
-    setSelectedValidator('');
+    setValidatorAddress('');
     setError(null);
     setTransactionStep('form');
     setTxHash('');
@@ -346,8 +246,8 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
     onClose();
   };
 
-  const selectedValidatorData = validators.find(v => v.address === selectedValidator);
-  const canDelegate = amount && selectedValidator && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(availableBalance);
+  const isValidValidatorAddress = validateValidatorAddress(validatorAddress);
+  const canDelegate = amount && validatorAddress && isValidValidatorAddress && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(availableBalance);
 
   return (
     <DialogRoot open={isOpen} onOpenChange={({ open }) => !open && handleClose()}>
@@ -384,59 +284,80 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
                   </HStack>
                 </Box>
 
-                {/* Validator Selection */}
+                {/* Validator Address Input */}
                 <VStack align="stretch" gap={2}>
-                  <Text color="white" fontWeight="medium">Select Validator</Text>
-                  {loadingValidators ? (
-                    <Flex justify="center" p={4}>
-                      <Spinner color={theme.gold} />
-                    </Flex>
-                  ) : (
-                    <select
-                      value={selectedValidator}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedValidator(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        backgroundColor: theme.bg,
-                        borderColor: theme.border,
-                        borderWidth: '1px',
-                        borderRadius: '6px',
-                        color: 'white',
-                        fontSize: '14px'
-                      }}
-                    >
-                      <option value="">Choose a validator...</option>
-                      {validators.map((validator) => (
-                        <option key={validator.address} value={validator.address}>
-                          {validator.moniker} - {(parseFloat(validator.commission) * 100).toFixed(1)}% commission
-                        </option>
-                      ))}
-                    </select>
+                  <Text color="white" fontWeight="medium">Validator Address</Text>
+                  <Input
+                    value={validatorAddress}
+                    onChange={(e) => setValidatorAddress(e.target.value)}
+                    placeholder={`Enter validator address (${getValidatorPrefix(assetContext?.networkId || '')}...)`}
+                    bg={theme.bg}
+                    borderColor={!validatorAddress || isValidValidatorAddress ? theme.border : 'red.500'}
+                    color="white"
+                    _hover={{ borderColor: theme.goldHover }}
+                    _focus={{ borderColor: theme.gold }}
+                    fontFamily="mono"
+                    fontSize="sm"
+                  />
+                  
+                  {/* Validation feedback */}
+                  {validatorAddress && !isValidValidatorAddress && (
+                    <Text color="red.400" fontSize="xs">
+                      ⚠️ Invalid address format. Must start with "{getValidatorPrefix(assetContext?.networkId || '')}" for {assetContext?.symbol}
+                    </Text>
                   )}
                   
-                  {selectedValidatorData && (
-                    <Box p={3} bg={theme.bg} borderRadius="md" borderWidth="1px" borderColor={theme.border}>
-                      <VStack align="stretch" gap={2}>
-                        <HStack justify="space-between">
-                          <Text color="gray.400" fontSize="sm">Validator:</Text>
-                          <Text color="white" fontWeight="medium">{selectedValidatorData.moniker}</Text>
-                        </HStack>
-                        <HStack justify="space-between">
-                          <Text color="gray.400" fontSize="sm">Commission:</Text>
-                          <Badge colorScheme="blue" variant="subtle">
-                            {(parseFloat(selectedValidatorData.commission) * 100).toFixed(1)}%
-                          </Badge>
-                        </HStack>
-                        <HStack justify="space-between">
-                          <Text color="gray.400" fontSize="sm">Status:</Text>
-                          <Badge colorScheme="green" variant="subtle">
-                            Active
-                          </Badge>
-                        </HStack>
-                      </VStack>
-                    </Box>
+                  {validatorAddress && isValidValidatorAddress && (
+                    <Text color="green.400" fontSize="xs">
+                      ✅ Valid validator address format
+                    </Text>
                   )}
+                  
+                  {/* Helper text with example validators */}
+                  <Box p={3} bg={theme.bg} borderRadius="md" borderWidth="1px" borderColor={theme.border}>
+                    <VStack align="stretch" gap={2}>
+                      <Text color="gray.400" fontSize="xs" fontWeight="bold">
+                        ℹ️ How to find validator addresses:
+                      </Text>
+                      <Text color="gray.400" fontSize="xs">
+                        • Visit a block explorer like Mintscan or Keplr Dashboard
+                      </Text>
+                      <Text color="gray.400" fontSize="xs">
+                        • Browse the validators list for {assetContext?.symbol || 'your network'}
+                      </Text>
+                      <Text color="gray.400" fontSize="xs">
+                        • Copy the validator operator address (starts with "{getValidatorPrefix(assetContext?.networkId || '')}")
+                      </Text>
+                      
+                      {assetContext?.networkId?.includes('osmosis') && (
+                        <>
+                          <Text color="gray.400" fontSize="xs" fontWeight="bold" mt={2}>
+                            Example Osmosis validators:
+                          </Text>
+                          <Text color="gray.300" fontSize="xs" fontFamily="mono">
+                            • osmovaloper1q5xvvmf03dx8amz66ku6z0x4u39f0aphqf42wc (Meria)
+                          </Text>
+                          <Text color="gray.300" fontSize="xs" fontFamily="mono">
+                            • osmovaloper1pxphtfhqnx9ny27d53z4052e3r76e7qq495ehm (AutoStake)
+                          </Text>
+                        </>
+                      )}
+                      
+                      {assetContext?.networkId?.includes('cosmoshub') && (
+                        <>
+                          <Text color="gray.400" fontSize="xs" fontWeight="bold" mt={2}>
+                            Example Cosmos Hub validators:
+                          </Text>
+                          <Text color="gray.300" fontSize="xs" fontFamily="mono">
+                            • cosmosvaloper1sjllsnramtg3ewxqwwrwjxfgc4n4ef9u2lcnj0 (Stake.fish)
+                          </Text>
+                          <Text color="gray.300" fontSize="xs" fontFamily="mono">
+                            • cosmosvaloper14lultfckehtszvzw4ehu0apvsr77afvyju5zzy (DokiaCapital)
+                          </Text>
+                        </>
+                      )}
+                    </VStack>
+                  </Box>
                 </VStack>
 
                 {/* Amount Input */}
@@ -485,7 +406,9 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
                     </HStack>
                     <HStack justify="space-between" width="100%">
                       <Text color="gray.400">Validator:</Text>
-                      <Text color="white" fontWeight="bold">{selectedValidatorData?.moniker}</Text>
+                      <Text color="white" fontWeight="bold" fontSize="xs" fontFamily="mono">
+                        {validatorAddress.substring(0, 12)}...{validatorAddress.substring(validatorAddress.length - 8)}
+                      </Text>
                     </HStack>
                     <HStack justify="space-between" width="100%">
                       <Text color="gray.400">Fee:</Text>
@@ -537,7 +460,9 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
                     </HStack>
                     <HStack justify="space-between" width="100%">
                       <Text color="gray.400">Validator:</Text>
-                      <Text color="white" fontWeight="bold">{selectedValidatorData?.moniker}</Text>
+                      <Text color="white" fontWeight="bold" fontSize="xs" fontFamily="mono">
+                        {validatorAddress.substring(0, 12)}...{validatorAddress.substring(validatorAddress.length - 8)}
+                      </Text>
                     </HStack>
                     {txHash && (
                       <HStack justify="space-between" width="100%">

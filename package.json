@@ -15,7 +15,7 @@
   "dependencies": {
     "@chakra-ui/react": "^3.8.0",
     "@chakra-ui/react-types": "^2.0.6",
-    "@coinmasters/pioneer-sdk": "^4.12.31",
+    "@coinmasters/pioneer-sdk": "^4.12.32",
     "@coinmasters/tokens": "^3.10.1",
     "@coinmasters/types": "^4.10.1",
     "@emotion/react": "^11.14.0",
