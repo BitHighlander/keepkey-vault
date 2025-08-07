@@ -16,9 +16,9 @@ import {
   Spinner,
   Card,
   Flex,
-  Switch,
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaCog, FaChevronDown, FaArrowRight, FaBolt } from 'react-icons/fa';
+import { FaExchangeAlt, FaChevronDown, FaArrowRight } from 'react-icons/fa';
+import { middleEllipsis } from '@/utils/strings';
 // @ts-ignore
 import { caipToNetworkId, caipToThorchain } from '@pioneer-platform/pioneer-caip';
 
@@ -56,11 +56,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [showFromDropdown, setShowFromDropdown] = useState(false);
   const [showToDropdown, setShowToDropdown] = useState(false);
   
-  // Settings
-  const [showSettings, setShowSettings] = useState(false);
-  const [enableStreaming, setEnableStreaming] = useState(false);
-  const [streamingInterval, setStreamingInterval] = useState('1');
-  const [streamingQuantity, setStreamingQuantity] = useState('0');
+  // Optional recipient; when empty we use default to-address
   const [recipientAddress, setRecipientAddress] = useState('');
   
   // Asset prices for USD display
@@ -85,13 +81,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   }, [app?.dashboard]);
   const toAssets = fromAssets;
 
-  // middle ellipsis like dashboard
-  const middleEllipsis = (text: string, visibleChars = 16) => {
-    if (!text) return '';
-    if (text.length <= visibleChars) return text;
-    const charsToShow = Math.floor(visibleChars / 2);
-    return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
-  };
 
   // Ensure distinct initial contexts
   useEffect(() => {
@@ -351,7 +340,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   useEffect(() => {
     const timer = setTimeout(fetchQuote, 500);
     return () => clearTimeout(timer);
-  }, [inputAmount, app?.assetContext?.caip, app?.outboundAssetContext?.caip, recipientAddress, enableStreaming, streamingInterval, streamingQuantity]);
+  }, [inputAmount, app?.assetContext?.caip, app?.outboundAssetContext?.caip, recipientAddress]);
 
   // Swap from and to assets (contexts)
   const swapAssets = async () => {
@@ -429,9 +418,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setError(`Swap submitted! TX: ${result.txHash || result.hash}`);
         }
       } else {
-        // No device connected
-        console.log('⚠️ Pioneer SDK swap execution not available');
-        setError('Connect your KeepKey to execute the swap. Quotes are available without a device.');
+        // Execution pathway not available
+        console.log('⚠️ Swap execution path not available');
+        setError('Unable to execute swap. Please retry.');
       }
     } catch (error: any) {
       console.error('Error executing swap:', error);
@@ -739,7 +728,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 </Box>
               </HStack>
 
-              <Box borderTop="1px solid" borderColor="border.primary" my={2} />
+              {/* Divider removed per UX simplification */}
 
               {/* Amount Input */}
               <Box>
@@ -785,108 +774,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 )}
               </Box>
 
-              {/* Settings Toggle */}
-               <Button
-                size="sm"
-                variant="ghost"
-                color="fg.muted"
-                onClick={() => setShowSettings(!showSettings)}
-                 // @ts-ignore - leftIcon provided by Chakra button wrapper in project theme
-                 leftIcon={<FaCog />}
-                width="full"
-                justifyContent="center"
-              >
-                Advanced Settings
-              </Button>
+              {/* Recipient address input removed per request */}
 
-              {/* Advanced Settings */}
-              {showSettings && (
-                <Stack gap={3} p={4} bg="bg.primary" borderRadius="md" border="1px solid" borderColor="border.primary">
-                  {/* Streaming Swap Toggle */}
-                  <HStack justify="space-between">
-                    <HStack>
-                      <FaBolt color="#FFD700" />
-                      <Text color="fg.primary" fontSize="sm">Streaming Swap</Text>
-                    </HStack>
-                    {/* @ts-ignore project UI switch component accepts boolean setter */}
-                    <Switch.Root checked={enableStreaming} onCheckedChange={setEnableStreaming}>
-                      <Switch.Control>
-                        <Switch.Thumb />
-                      </Switch.Control>
-                    </Switch.Root>
-                  </HStack>
-
-                  {enableStreaming && (
-                    <Stack gap={2}>
-                      <Box>
-                        <Text color="fg.muted" fontSize="xs" mb={1}>
-                          Streaming Interval (blocks):
-                        </Text>
-                        <Input
-                          value={streamingInterval}
-                          onChange={(e) => setStreamingInterval(e.target.value)}
-                          bg="bg.surface"
-                          borderColor="border.primary"
-                          size="sm"
-                          type="number"
-                          min="1"
-                          max="10"
-                        />
-                      </Box>
-
-                      <Box>
-                        <Text color="fg.muted" fontSize="xs" mb={1}>
-                          Streaming Quantity:
-                        </Text>
-                        <Input
-                          value={streamingQuantity}
-                          onChange={(e) => setStreamingQuantity(e.target.value)}
-                          bg="bg.surface"
-                          borderColor="border.primary"
-                          size="sm"
-                          type="number"
-                          min="0"
-                          max="100"
-                        />
-                      </Box>
-                    </Stack>
-                  )}
-
-                  {/* Recipient Address */}
-                  <Box>
-                    <Text color="fg.muted" fontSize="xs" mb={1}>
-                      Recipient Address (Optional):
-                    </Text>
-                    <Input
-                      placeholder={`Leave empty to use your ${getAssetDisplay(false).ticker} address`}
-                      size="sm"
-                      value={recipientAddress}
-                      onChange={(e) => setRecipientAddress(e.target.value)}
-                      bg="bg.surface"
-                      borderColor="border.primary"
-                      color="fg.primary"
-                      fontSize="xs"
-                    />
-                  </Box>
-                </Stack>
-              )}
-
-              {/* Get Quote Button */}
-                     <Button
-                size="lg"
-                bg="green.500"
-                color="white"
-                _hover={{ bg: "green.600" }}
-                onClick={fetchQuote}
-                       // @ts-ignore project button supports isLoading
-                       isLoading={isLoading}
-                       loadingText="Fetching Quote..."
-                disabled={!inputAmount || parseFloat(inputAmount) <= 0}
-                width="full"
-                height="50px"
-              >
-                Get Quote
-              </Button>
+              {/* Auto-quote is triggered by input; no separate Get Quote step */}
 
               {/* Error Display */}
               {error && (
@@ -897,14 +787,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
               {/* Quote Result */}
               {quote && outputAmount && (
-                <Box p={4} bg="bg.primary" borderRadius="md" border="1px solid" borderColor="border.primary">
+                <Box p={0} bg="transparent" border="0">
                   <Stack gap={3}>
-                    {/* Streaming Swap Label */}
-                    {enableStreaming && (
-                      <Text color="fg.primary" fontWeight="bold" fontSize="sm" textAlign="center">
-                        THORChain Streaming Swap
-                      </Text>
-                    )}
+                    {/* Streaming label removed */}
 
                     {/* Swap Summary */}
                     <HStack justify="center" gap={3} py={2}>
@@ -931,72 +816,38 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       </HStack>
                     </HStack>
 
+                    {/* Simple rate display */}
+                    {parseFloat(inputAmount) > 0 && (
+                      <Text color="fg.muted" fontSize="xs" textAlign="center">
+                        Rate: 1 {getAssetDisplay(true).ticker} ≈ {(parseFloat(outputAmount) / parseFloat(inputAmount)).toFixed(8)} {getAssetDisplay(false).ticker}
+                      </Text>
+                    )}
+
                     {outputValueUSD && (
                       <Text color="fg.muted" fontSize="sm" textAlign="center">
                         {outputValueUSD}
                       </Text>
                     )}
 
-                    <Box borderTop="1px solid" borderColor="border.primary" my={2} />
-
-                    {/* Fee Breakdown */}
-                    <Stack gap={2}>
-                      <Text color="fg.muted" fontSize="xs" fontWeight="bold">
-                        Fee Breakdown:
-                      </Text>
-                      
-                      <HStack justify="space-between">
-                        <Text color="fg.muted" fontSize="xs">Liquidity Fee:</Text>
-                        <Text color="fg.primary" fontSize="xs">
-                          {convertFromBaseUnits(quote.fees?.liquidity || '0')} {quote.fees?.asset?.split('.')[1] || ''}
-                        </Text>
-                      </HStack>
-
-                      <HStack justify="space-between">
-                        <Text color="fg.muted" fontSize="xs">Outbound Fee:</Text>
-                        <Text color="fg.primary" fontSize="xs">
-                          {convertFromBaseUnits(quote.fees?.outbound || '0')} {quote.fees?.asset?.split('.')[1] || ''}
-                        </Text>
-                      </HStack>
-
-                      <HStack justify="space-between">
-                        <Text color="fg.muted" fontSize="xs" fontWeight="bold">Total Fee:</Text>
-                        <Text color="fg.primary" fontSize="xs" fontWeight="bold">
-                          {convertFromBaseUnits(quote.fees?.total || '0')} {quote.fees?.asset?.split('.')[1] || ''} 
-                          {quote.fees?.total_bps && ` (${(quote.fees.total_bps / 100).toFixed(2)}%)`}
-                        </Text>
-                      </HStack>
-                    </Stack>
-
-                    {/* Timing Information */}
-                    {quote.total_swap_seconds && (
-                      <>
-                        <Box borderTop="1px solid" borderColor="border.primary" my={2} />
-                        <HStack justify="space-between">
-                          <Text color="fg.muted" fontSize="xs">Estimated Time:</Text>
-                          <Text color="fg.primary" fontSize="xs">
-                            {formatTime(quote.total_swap_seconds)}
-                          </Text>
-                        </HStack>
-                      </>
-                    )}
+                    {/* No fees/timing shown per request */}
                     
                     {/* Execute Swap Button */}
-                    <Box borderTop="1px solid" borderColor="border.primary" my={2} />
                      <Button
                       size="lg"
-                      bg="accent.solid"
-                      color="white"
-                      _hover={{ bg: "accent.muted" }}
+                      bg="green.500"
+                      color="black"
+                      _hover={{ bg: "green.400" }}
+                      _active={{ bg: 'green.600' }}
+                      _disabled={{ bg: 'gray.600', color: 'gray.300', cursor: 'not-allowed' }}
                       onClick={executeSwap}
                        // @ts-ignore project button supports isLoading
                        isLoading={isLoading}
-                       loadingText="Executing Swap..."
+                        loadingText="Swapping..."
                       width="full"
                       height="50px"
                       mt={3}
                     >
-                      Execute Swap
+                      Swap
                     </Button>
                   </Stack>
                 </Box>
