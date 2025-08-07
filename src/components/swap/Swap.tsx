@@ -56,7 +56,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [outputValueUSD, setOutputValueUSD] = useState('');
 
   // Get supported assets from Pioneer SDK
-  const [supportedAssets, setSupportedAssets] = useState<any[]>([]);
+  const [fromAssets, setFromAssets] = useState<any[]>([]);
+  const [toAssets, setToAssets] = useState<any[]>([]);
 
   // Get user's balance for a specific asset
   const getUserBalance = (assetSymbol: string): string => {
@@ -153,64 +154,87 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   };
 
-  // Initialize assets from Pioneer SDK
+  // Initialize assets from balances and available assets
   useEffect(() => {
     const initializeAssets = async () => {
       if (!app) return;
       
       try {
-        // Get assets from Pioneer SDK
-        const assets = await app.getAssets();
-        console.log('📊 Assets from Pioneer SDK:', assets?.length);
+        // Get native assets from dashboard.networks (matching the portfolio display)
+        if (app.dashboard && app.dashboard.networks && app.dashboard.networks.length > 0) {
+          console.log('📊 Loading native assets from dashboard.networks:', app.dashboard.networks.length);
+          
+          // Map dashboard networks to THORChain format - these are all NATIVE assets
+          const assetsWithBalance = app.dashboard.networks
+            .filter((network: any) => {
+              // Only include networks with non-zero balance
+              const hasBalance = parseFloat(network.totalNativeBalance || '0') > 0;
+              return hasBalance;
+            })
+            .map((network: any) => {
+              // Map network IDs to THORChain chain prefixes
+              const chainMap: { [key: string]: string } = {
+                'bitcoin': 'BTC',
+                'ethereum': 'ETH',
+                'binancecoin': 'BSC',
+                'thorchain': 'THOR',
+                'avalanche': 'AVAX',
+                'cosmos': 'GAIA',
+                'bitcoincash': 'BCH',
+                'dogecoin': 'DOGE',
+                'litecoin': 'LTC',
+                'mayachain': 'MAYA',
+              };
+              
+              const chain = chainMap[network.networkId?.toLowerCase()];
+              const thorSymbol = chain ? `${chain}.${network.gasAssetSymbol}` : `${network.gasAssetSymbol}.${network.gasAssetSymbol}`;
+              
+              return {
+                symbol: thorSymbol,
+                name: network.gasAssetSymbol,
+                ticker: network.gasAssetSymbol,
+                icon: network.icon,
+                balance: network.totalNativeBalance,
+                networkId: network.networkId,
+                caip: network.gasAssetCaip,
+                address: null // Will be fetched from pubkeys when needed
+              };
+            })
+            .filter((asset: any) => asset.symbol); // Only keep assets with valid symbols
+          
+          setFromAssets(assetsWithBalance);
+          console.log('✅ Loaded "From" assets (native only) from balances:', assetsWithBalance.length);
+        }
         
-        // Filter THORChain compatible assets
-        const thorchainAssets = assets?.filter((asset: any) => {
-          // Check if it's a THORChain compatible asset
+        // Get all native assets from SDK (for "To" dropdown)
+        const allAssets = await app.getAssets();
+        console.log('📊 All assets from Pioneer SDK:', allAssets?.length);
+        
+        // Filter for THORChain compatible native assets
+        const thorchainNativeAssets = allAssets?.filter((asset: any) => {
           const thorSymbol = asset.thorchainSymbol || asset.symbol;
           return thorSymbol && (
             thorSymbol.includes('.') || // Native assets like BTC.BTC
             thorSymbol.startsWith('THOR.') // THORChain native
           );
-        }) || [];
-        
-        // Map to our format with Pioneer SDK icons
-        const formattedAssets = thorchainAssets.length > 0 ? thorchainAssets.map((asset: any) => ({
+        }).map((asset: any) => ({
           symbol: asset.thorchainSymbol || asset.symbol,
           name: asset.name,
           ticker: asset.ticker || asset.symbol?.split('.')[1] || asset.symbol,
           icon: asset.icon || `https://pioneers.dev/coins/${asset.name?.toLowerCase().replace(/\s+/g, '-')}.png`
-        })) : [
-          // Fallback to default assets if SDK doesn't return THORChain assets
-          { symbol: 'BTC.BTC', name: 'Bitcoin', ticker: 'BTC', icon: 'https://pioneers.dev/coins/bitcoin.png' },
-          { symbol: 'ETH.ETH', name: 'Ethereum', ticker: 'ETH', icon: 'https://pioneers.dev/coins/ethereum.png' },
-          { symbol: 'BSC.BNB', name: 'BNB', ticker: 'BNB', icon: 'https://pioneers.dev/coins/binance-coin.png' },
-          { symbol: 'THOR.RUNE', name: 'THORChain', ticker: 'RUNE', icon: 'https://pioneers.dev/coins/thorchain.png' },
-          { symbol: 'ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48', name: 'USD Coin', ticker: 'USDC', icon: 'https://pioneers.dev/coins/usd-coin.png' },
-          { symbol: 'ETH.USDT-0XDAC17F958D2EE523A2206206994597C13D831EC7', name: 'Tether', ticker: 'USDT', icon: 'https://pioneers.dev/coins/tether.png' },
-          { symbol: 'AVAX.AVAX', name: 'Avalanche', ticker: 'AVAX', icon: 'https://pioneers.dev/coins/avalanche.png' },
-          { symbol: 'GAIA.ATOM', name: 'Cosmos', ticker: 'ATOM', icon: 'https://pioneers.dev/coins/cosmos.png' },
-          { symbol: 'BCH.BCH', name: 'Bitcoin Cash', ticker: 'BCH', icon: 'https://pioneers.dev/coins/bitcoin-cash.png' },
-          { symbol: 'DOGE.DOGE', name: 'Dogecoin', ticker: 'DOGE', icon: 'https://pioneers.dev/coins/dogecoin.png' },
-          { symbol: 'LTC.LTC', name: 'Litecoin', ticker: 'LTC', icon: 'https://pioneers.dev/coins/litecoin.png' },
-        ];
+        })) || [];
         
-        setSupportedAssets(formattedAssets);
-        console.log('✅ Loaded THORChain assets:', formattedAssets.length);
+        setToAssets(thorchainNativeAssets);
+        console.log('✅ Loaded "To" assets (native):', thorchainNativeAssets.length);
+        
       } catch (error) {
-        console.error('Error loading assets from Pioneer SDK:', error);
-        // Use fallback assets
-        setSupportedAssets([
-          { symbol: 'BTC.BTC', name: 'Bitcoin', ticker: 'BTC', icon: 'https://pioneers.dev/coins/bitcoin.png' },
-          { symbol: 'ETH.ETH', name: 'Ethereum', ticker: 'ETH', icon: 'https://pioneers.dev/coins/ethereum.png' },
-          { symbol: 'BSC.BNB', name: 'BNB', ticker: 'BNB', icon: 'https://pioneers.dev/coins/binance-coin.png' },
-          { symbol: 'THOR.RUNE', name: 'THORChain', ticker: 'RUNE', icon: 'https://pioneers.dev/coins/thorchain.png' },
-        ]);
+        console.error('Error loading assets:', error);
       }
     };
     
     initializeAssets();
     fetchAssetPrices();
-  }, [app]);
+  }, [app, app?.dashboard]);
 
   // Update USD value when amount changes
   useEffect(() => {
@@ -359,8 +383,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
-  const getAssetDisplay = (symbol: string) => {
-    const asset = supportedAssets.find(a => a.symbol === symbol);
+  const getAssetDisplay = (symbol: string, isFromAsset: boolean = false) => {
+    const assets = isFromAsset ? fromAssets : toAssets;
+    const asset = assets.find(a => a.symbol === symbol);
     return asset || { symbol, name: symbol, ticker: symbol.split('.')[1] || symbol, icon: 'https://pioneers.dev/coins/coin.png' };
   };
   
@@ -452,17 +477,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <HStack width="full" justify="space-between">
                       <HStack gap={2}>
                         <Image 
-                          src={getAssetDisplay(fromAsset).icon}
+                          src={getAssetDisplay(fromAsset, true).icon}
                           alt={fromAsset} 
                           boxSize="32px" 
                           fallbackSrc="https://pioneers.dev/coins/coin.png"
                         />
                         <Box textAlign="left">
                           <Text fontSize="sm" fontWeight="bold">
-                            {getAssetDisplay(fromAsset).ticker}
+                            {getAssetDisplay(fromAsset, true).ticker}
                           </Text>
                           <Text fontSize="xs" color="fg.muted">
-                            {getAssetDisplay(fromAsset).name}
+                            {getAssetDisplay(fromAsset, true).name}
                           </Text>
                         </Box>
                       </HStack>
@@ -474,7 +499,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   {showFromDropdown && (
                     <Box
                       position="absolute"
-                      top="85px"
+                      top="90px"
                       left={0}
                       right={0}
                       bg="bg.surface"
@@ -483,14 +508,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       borderRadius="md"
                       maxH="300px"
                       overflowY="auto"
-                      zIndex={10}
-                      boxShadow="lg"
+                      zIndex={20}
+                      boxShadow="xl"
                     >
-                      {supportedAssets.map((asset) => (
+                      {fromAssets.map((asset) => (
                         <Button
                           key={asset.symbol}
                           width="full"
-                          height="60px"
+                          height="80px"
                           bg="transparent"
                           _hover={{ bg: "bg.muted" }}
                           onClick={() => {
@@ -498,17 +523,26 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             setShowFromDropdown(false);
                           }}
                           justifyContent="flex-start"
-                          padding={3}
+                          padding={4}
                         >
-                          <HStack gap={2}>
+                          <HStack gap={3} width="full">
                             <Image 
                               src={asset.icon} 
                               alt={asset.ticker} 
-                              boxSize="24px"
+                              boxSize="40px"
                               fallbackSrc="https://pioneers.dev/coins/coin.png"
                             />
-                            <Text>{asset.ticker}</Text>
-                            <Text fontSize="xs" color="fg.muted">{asset.name}</Text>
+                            <Box flex={1} textAlign="left">
+                              <Text fontSize="md" fontWeight="bold" color="fg.primary">
+                                {asset.ticker}
+                              </Text>
+                              <Text fontSize="xs" color="fg.muted" noOfLines={1}>
+                                {asset.caip || asset.address || asset.symbol}
+                              </Text>
+                              <Text fontSize="sm" color="fg.primary" mt={1}>
+                                {parseFloat(asset.balance).toFixed(6)} {asset.ticker}
+                              </Text>
+                            </Box>
                           </HStack>
                         </Button>
                       ))}
@@ -569,7 +603,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   {showToDropdown && (
                     <Box
                       position="absolute"
-                      top="85px"
+                      top="90px"
                       left={0}
                       right={0}
                       bg="bg.surface"
@@ -578,14 +612,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       borderRadius="md"
                       maxH="300px"
                       overflowY="auto"
-                      zIndex={10}
-                      boxShadow="lg"
+                      zIndex={20}
+                      boxShadow="xl"
                     >
-                      {supportedAssets.map((asset) => (
+                      {toAssets.map((asset) => (
                         <Button
                           key={asset.symbol}
                           width="full"
-                          height="60px"
+                          height="70px"
                           bg="transparent"
                           _hover={{ bg: "bg.muted" }}
                           onClick={() => {
@@ -593,17 +627,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             setShowToDropdown(false);
                           }}
                           justifyContent="flex-start"
-                          padding={3}
+                          padding={4}
                         >
-                          <HStack gap={2}>
+                          <HStack gap={3} width="full">
                             <Image 
                               src={asset.icon} 
                               alt={asset.ticker} 
-                              boxSize="24px"
+                              boxSize="36px"
                               fallbackSrc="https://pioneers.dev/coins/coin.png"
                             />
-                            <Text>{asset.ticker}</Text>
-                            <Text fontSize="xs" color="fg.muted">{asset.name}</Text>
+                            <Box flex={1} textAlign="left">
+                              <Text fontSize="md" fontWeight="bold" color="fg.primary">
+                                {asset.ticker}
+                              </Text>
+                              <Text fontSize="xs" color="fg.muted">
+                                {asset.name}
+                              </Text>
+                            </Box>
                           </HStack>
                         </Button>
                       ))}
@@ -616,20 +656,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
               {/* Amount Input */}
               <Box>
-                <HStack justify="space-between" mb={2}>
-                  <Text color="fg.muted" fontSize="sm">
-                    Swap Amount ({getAssetDisplay(fromAsset).ticker}):
+                <HStack justify="space-between" mb={3}>
+                  <Text color="fg.muted" fontSize="sm" fontWeight="medium">
+                    Amount
                   </Text>
-                  <HStack gap={2}>
-                    <Text color="fg.muted" fontSize="xs">
-                      Balance: {getUserBalance(fromAsset)}
+                  <HStack gap={3}>
+                    <Text color="fg.muted" fontSize="sm">
+                      Balance: <Text as="span" color="fg.primary" fontWeight="medium">{getUserBalance(fromAsset)}</Text>
                     </Text>
                     <Button
-                      size="xs"
-                      variant="ghost"
+                      size="sm"
+                      variant="outline"
+                      borderColor="accent.solid"
                       color="accent.solid"
                       onClick={() => setInputAmount(getUserBalance(fromAsset))}
-                      _hover={{ bg: "bg.muted" }}
+                      _hover={{ bg: "accent.solid", color: "white" }}
+                      px={3}
+                      height="24px"
                     >
                       MAX
                     </Button>
@@ -776,12 +819,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <HStack justify="center" gap={3} py={2}>
                       <HStack>
                         <Image 
-                          src={getAssetDisplay(fromAsset).icon}
+                          src={getAssetDisplay(fromAsset, true).icon}
                           alt={fromAsset} 
                           boxSize="20px" 
                         />
                         <Text color="fg.primary" fontWeight="bold">
-                          {inputAmount} {getAssetDisplay(fromAsset).ticker}
+                          {inputAmount} {getAssetDisplay(fromAsset, true).ticker}
                         </Text>
                       </HStack>
                       <FaArrowRight color="gray" />
