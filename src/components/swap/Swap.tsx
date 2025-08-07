@@ -449,14 +449,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           </Heading>
         </Flex>
 
-        <Card.Root bg="bg.surface" borderColor="border.primary">
+        <Card.Root>
           <Card.Body p={6}>
             <Stack gap={4}>
               {/* From/To Labels */}
               <HStack justify="space-around" mb={2}>
-                <Text color="fg.muted" fontSize="sm" flex={1}>From:</Text>
+                <Text fontSize="sm" flex={1}>From:</Text>
                 <Box width="40px" /> {/* Spacer for swap button */}
-                <Text color="fg.muted" fontSize="sm" flex={1}>To:</Text>
+                <Text fontSize="sm" flex={1}>To:</Text>
               </HStack>
 
               {/* Asset Selection Row */}
@@ -466,11 +466,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   <Button
                     width="full"
                     height="80px"
-                    bg="bg.primary"
-                    borderColor="border.primary"
+                    bg="gray.800"
                     border="1px solid"
-                    color="fg.primary"
-                    _hover={{ bg: "bg.muted" }}
+                    borderColor="gray.700"
+                    _hover={{ bg: "gray.700" }}
                     onClick={() => setShowFromDropdown(!showFromDropdown)}
                     padding={3}
                   >
@@ -479,14 +478,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         <Image 
                           src={getAssetDisplay(fromAsset, true).icon}
                           alt={fromAsset} 
-                          boxSize="32px" 
-                          fallbackSrc="https://pioneers.dev/coins/coin.png"
+                          boxSize="32px"
                         />
                         <Box textAlign="left">
-                          <Text fontSize="sm" fontWeight="bold">
+                          <Text fontSize="sm" fontWeight="bold" color="white">
                             {getAssetDisplay(fromAsset, true).ticker}
                           </Text>
-                          <Text fontSize="xs" color="fg.muted">
+                          <Text fontSize="xs" color="gray.400">
                             {getAssetDisplay(fromAsset, true).name}
                           </Text>
                         </Box>
@@ -502,44 +500,46 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       top="90px"
                       left={0}
                       right={0}
-                      bg="bg.surface"
+                      bg="gray.900"
                       border="1px solid"
-                      borderColor="border.primary"
+                      borderColor="gray.700"
                       borderRadius="md"
                       maxH="300px"
                       overflowY="auto"
                       zIndex={20}
-                      boxShadow="xl"
+                      boxShadow="2xl"
                     >
                       {fromAssets.map((asset) => (
                         <Button
                           key={asset.symbol}
                           width="full"
                           height="80px"
-                          bg="transparent"
-                          _hover={{ bg: "bg.muted" }}
+                          bg="gray.900"
+                          _hover={{ bg: "gray.800" }}
                           onClick={() => {
                             setFromAsset(asset.symbol);
                             setShowFromDropdown(false);
                           }}
                           justifyContent="flex-start"
                           padding={4}
+                          borderRadius={0}
+                          borderBottom="1px solid"
+                          borderBottomColor="gray.800"
                         >
                           <HStack gap={3} width="full">
                             <Image 
                               src={asset.icon} 
                               alt={asset.ticker} 
                               boxSize="40px"
-                              fallbackSrc="https://pioneers.dev/coins/coin.png"
                             />
                             <Box flex={1} textAlign="left">
-                              <Text fontSize="md" fontWeight="bold" color="fg.primary">
+                              <Text fontSize="md" fontWeight="bold" color="white">
                                 {asset.ticker}
                               </Text>
-                              <Text fontSize="xs" color="fg.muted" noOfLines={1}>
+                              <Text fontSize="xs" color="gray.400" noOfLines={1}>
                                 {asset.caip || asset.address || asset.symbol}
                               </Text>
-                              <Text fontSize="sm" color="fg.primary" mt={1}>
+                              <Text fontSize="sm" color="green.400" mt={1}>
                                 {parseFloat(asset.balance).toFixed(6)} {asset.ticker}
                               </Text>
                             </Box>
@@ -554,7 +554,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 <Button
                   size="sm"
                   variant="ghost"
-                  color="accent.solid"
                   onClick={swapAssets}
                   minW="40px"
                   height="40px"
@@ -570,11 +569,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   <Button
                     width="full"
                     height="80px"
-                    bg="bg.primary"
-                    borderColor="border.primary"
+                    bg="gray.800"
+                    borderColor="gray.700"
                     border="1px solid"
-                    color="fg.primary"
-                    _hover={{ bg: "bg.muted" }}
+                    _hover={{ bg: "gray.700" }}
                     onClick={() => setShowToDropdown(!showToDropdown)}
                     padding={3}
                   >
@@ -587,10 +585,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           fallbackSrc="https://pioneers.dev/coins/coin.png"
                         />
                         <Box textAlign="left">
-                          <Text fontSize="sm" fontWeight="bold">
+                          <Text fontSize="sm" fontWeight="bold" color="white">
                             {getAssetDisplay(toAsset).ticker}
                           </Text>
-                          <Text fontSize="xs" color="fg.muted">
+                          <Text fontSize="xs" color="gray.400">
                             {getAssetDisplay(toAsset).name}
                           </Text>
                         </Box>
@@ -606,28 +604,31 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       top="90px"
                       left={0}
                       right={0}
-                      bg="bg.surface"
+                      bg="gray.900"
                       border="1px solid"
-                      borderColor="border.primary"
+                      borderColor="gray.700"
                       borderRadius="md"
                       maxH="300px"
                       overflowY="auto"
                       zIndex={20}
-                      boxShadow="xl"
+                      boxShadow="2xl"
                     >
                       {toAssets.map((asset) => (
                         <Button
                           key={asset.symbol}
                           width="full"
                           height="70px"
-                          bg="transparent"
-                          _hover={{ bg: "bg.muted" }}
+                          bg="gray.900"
+                          _hover={{ bg: "gray.800" }}
                           onClick={() => {
                             setToAsset(asset.symbol);
                             setShowToDropdown(false);
                           }}
                           justifyContent="flex-start"
                           padding={4}
+                          borderRadius={0}
+                          borderBottom="1px solid"
+                          borderBottomColor="gray.800"
                         >
                           <HStack gap={3} width="full">
                             <Image 
@@ -637,10 +638,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                               fallbackSrc="https://pioneers.dev/coins/coin.png"
                             />
                             <Box flex={1} textAlign="left">
-                              <Text fontSize="md" fontWeight="bold" color="fg.primary">
+                              <Text fontSize="md" fontWeight="bold" color="white">
                                 {asset.ticker}
                               </Text>
-                              <Text fontSize="xs" color="fg.muted">
+                              <Text fontSize="xs" color="gray.400">
                                 {asset.name}
                               </Text>
                             </Box>
@@ -827,7 +828,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           {inputAmount} {getAssetDisplay(fromAsset, true).ticker}
                         </Text>
                       </HStack>
-                      <FaArrowRight color="gray" />
+                      <FaArrowRight />
                       <HStack>
                         <Image 
                           src={getAssetDisplay(toAsset).icon}
