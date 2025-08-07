@@ -78,9 +78,24 @@ export function Provider({ children }: ProviderProps) {
         console.log('🔧 Blockchains:', blockchains);
         console.log('🔧 Paths length:', paths.length);
         
-        // Filter out any unsupported networks (like scroll)
-        console.log('🔧 Supported blockchains only:', blockchains);
-        console.log('🔧 Filtering out unsupported networks like scroll, fantom, etc.');
+        // Filter out any unsupported networks that cause getCharts errors
+        const unsupportedNetworks = [
+          'eip155:100', // Gnosis/xDAI
+          'eip155:250', // Fantom
+          'eip155:534352', // Scroll
+          'eip155:324', // zkSync Era
+          'eip155:1101', // Polygon zkEVM
+        ];
+        
+        const originalLength = blockchains.length;
+        blockchains = blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
+        
+        console.log('🔧 Filtered blockchains:', {
+          original: originalLength,
+          filtered: blockchains.length,
+          removed: originalLength - blockchains.length,
+          removedNetworks: unsupportedNetworks
+        });
 
         // Create Pioneer SDK instance directly
         console.log('🔧 Creating Pioneer SDK instance...');
@@ -275,10 +290,19 @@ export function Provider({ children }: ProviderProps) {
               console.log('📊 Starting chart fetching (including staking positions)...');
               console.log('📊 Balances before getCharts:', appInit.balances.length);
               
-              await appInit.getCharts();
-              
-              console.log('✅ Chart fetching completed successfully');
-              console.log('📊 Balances after getCharts:', appInit.balances.length);
+              try {
+                await appInit.getCharts();
+                console.log('✅ Chart fetching completed successfully');
+                console.log('📊 Balances after getCharts:', appInit.balances.length);
+              } catch (chartError: any) {
+                // Check if it's a network support error
+                if (chartError?.message?.includes('network not live in blockchains')) {
+                  console.warn('⚠️ Some networks are not supported for charts:', chartError.message);
+                  // Don't throw - this is expected for some networks
+                } else {
+                  console.error('❌ Chart fetching error:', chartError);
+                }
+              }
             } else {
               console.log('⏭️ Skipping chart fetching - no pubkeys available yet (wallet not paired)');
             }
@@ -321,8 +345,16 @@ export function Provider({ children }: ProviderProps) {
               try {
                 if (appInit.pubkeys && appInit.pubkeys.length > 0) {
                   console.log('📊 Fetching charts after wallet pairing...');
-                  await appInit.getCharts();
-                  console.log('✅ Chart data fetched successfully after pairing');
+                  try {
+                    await appInit.getCharts();
+                    console.log('✅ Chart data fetched successfully after pairing');
+                  } catch (getChartsError: any) {
+                    if (getChartsError?.message?.includes('network not live in blockchains')) {
+                      console.warn('⚠️ Some networks not supported for charts after pairing:', getChartsError.message);
+                    } else {
+                      console.error('❌ Chart error after pairing:', getChartsError);
+                    }
+                  }
                   
                   // Debug: Check for staking positions
                   const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
