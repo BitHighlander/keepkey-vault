@@ -392,39 +392,32 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setError('');
     
     try {
-      // Check if Pioneer SDK has THORChain swap execution
-      if (app.executeThorchainSwap) {
-        console.log('🚀 Executing swap via Pioneer SDK...');
-        
-        const swapParams = {
-          quote,
-          fromAsset: app?.assetContext?.caip,
-          toAsset: app?.outboundAssetContext?.caip,
+      // Prefer SDK swap path that builds/signs/broadcasts using device
+      if (typeof app.swap === 'function') {
+        console.log('🚀 Executing swap via SDK.swap...');
+        const result = await app.swap({
+          caipIn: app?.assetContext?.caip,
+          caipOut: app?.outboundAssetContext?.caip,
           amount: inputAmount,
-          recipient: recipientAddress || toAddressDefault,
-        };
-        
-        const result = await app.executeThorchainSwap(swapParams);
+        });
         console.log('✅ Swap executed:', result);
-        
-        // Reset form after successful swap
         setInputAmount('');
         setOutputAmount('');
         setQuote(null);
         setError('');
-        
-        // Show success message
-        if (result.txHash || result.hash) {
-          setError(`Swap submitted! TX: ${result.txHash || result.hash}`);
-        }
-      } else {
-        // Execution pathway not available
-        console.log('⚠️ Swap execution path not available');
-        setError('Unable to execute swap. Please retry.');
+        const txid = result?.txHash || result?.hash || result?.txid || result;
+        if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
+        return;
       }
+      // If SDK.swap is not present, surface a clear error
+      throw new Error('Swap operation not available in SDK.');
     } catch (error: any) {
       console.error('Error executing swap:', error);
-      setError(error.message || 'Failed to execute swap');
+      // Show detailed, actionable error
+      const msg =
+        error?.message ||
+        (typeof error === 'string' ? error : JSON.stringify(error));
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
