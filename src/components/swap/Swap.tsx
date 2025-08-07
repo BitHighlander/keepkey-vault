@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import { usePioneerContext } from '@/components/providers/pioneer';
 import {
   Box,
   Stack,
@@ -9,72 +10,231 @@ import {
   Button,
   Input,
   Image,
+  Heading,
+  Switch,
 } from '@chakra-ui/react';
 import { 
   Spinner,
-  Alert,
   Card,
   Flex,
-  MenuContent,
-  MenuRoot,
-  MenuTrigger,
-  MenuItem,
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaArrowLeft, FaCog, FaChevronDown, FaExclamationCircle } from 'react-icons/fa';
+import { FaExchangeAlt, FaCog, FaChevronDown, FaArrowRight, FaBolt } from 'react-icons/fa';
 
 interface SwapProps {
   onBackClick?: () => void;
-  walletConnected?: boolean;
-  thorchainClient?: any; // Replace with actual THORChain client type
-  pioneerClient?: any; // Replace with actual Pioneer SDK client type
 }
 
-// Supported assets for swapping - these should come from THORChain pools
-const supportedAssets = [
-  { symbol: 'BTC', name: 'Bitcoin', chain: 'BTC', icon: 'https://pioneers.dev/coins/bitcoin.png' },
-  { symbol: 'ETH', name: 'Ethereum', chain: 'ETH', icon: 'https://pioneers.dev/coins/ethereum.png' },
-  { symbol: 'RUNE', name: 'THORChain', chain: 'THOR', icon: 'https://pioneers.dev/coins/thorchain.png' },
-  { symbol: 'USDC', name: 'USD Coin', chain: 'ETH', icon: 'https://pioneers.dev/coins/usd-coin.png' },
-  { symbol: 'USDT', name: 'Tether', chain: 'ETH', icon: 'https://pioneers.dev/coins/tether.png' },
-];
+export const Swap = ({ onBackClick }: SwapProps) => {
+  // Get app context from Pioneer
+  const pioneer = usePioneerContext();
+  const { state } = pioneer;
+  const { app } = state;
 
-interface THORChainQuote {
-  expected_amount_out: string;
-  fees: {
-    total: string;
-    affiliate: string;
-    outbound: string;
-  };
-  slippage_bps: number;
-  router: string;
-  expiry: number;
-  warning?: string;
-  notes?: string;
-  dust_threshold?: string;
-  recommended_min_amount_in?: string;
-  memo?: string;
-}
-
-export const Swap = ({ 
-  onBackClick, 
-  walletConnected = false,
-  thorchainClient,
-  pioneerClient 
-}: SwapProps) => {
-  const [fromAsset, setFromAsset] = useState('BTC');
-  const [toAsset, setToAsset] = useState('ETH');
+  // State for swap form
+  const [fromAsset, setFromAsset] = useState('ETH.ETH');
+  const [toAsset, setToAsset] = useState('BTC.BTC');
   const [inputAmount, setInputAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [quote, setQuote] = useState<THORChainQuote | null>(null);
+  const [quote, setQuote] = useState<any>(null);
   const [error, setError] = useState<string>('');
+  
+  // Dropdown states
+  const [showFromDropdown, setShowFromDropdown] = useState(false);
+  const [showToDropdown, setShowToDropdown] = useState(false);
+  
+  // Settings
   const [showSettings, setShowSettings] = useState(false);
-  const [slippage, setSlippage] = useState('3');
+  const [enableStreaming, setEnableStreaming] = useState(false);
+  const [streamingInterval, setStreamingInterval] = useState('1');
+  const [streamingQuantity, setStreamingQuantity] = useState('0');
   const [recipientAddress, setRecipientAddress] = useState('');
-  const [fromBalance, setFromBalance] = useState<string>('0.00');
-  const [toBalance, setToBalance] = useState<string>('0.00');
+  
+  // Asset prices for USD display
+  const [assetPrices, setAssetPrices] = useState<{ [key: string]: number }>({});
+  const [estimatedValueUSD, setEstimatedValueUSD] = useState('');
+  const [outputValueUSD, setOutputValueUSD] = useState('');
 
-  // Fetch real quote from THORChain
+  // Get supported assets from Pioneer SDK
+  const [supportedAssets, setSupportedAssets] = useState<any[]>([]);
+
+  // Get user's balance for a specific asset
+  const getUserBalance = (assetSymbol: string): string => {
+    if (!app?.balances) return '0';
+    
+    // Map THORChain symbol to balance lookup
+    const balance = app.balances.find((b: any) => {
+      // Check various symbol formats
+      return b.symbol === assetSymbol || 
+             b.ticker === assetSymbol.split('.')[1] ||
+             b.thorchainSymbol === assetSymbol ||
+             (b.symbol === assetSymbol.split('.')[1] && b.networkId?.includes(assetSymbol.split('.')[0].toLowerCase()));
+    });
+    
+    return balance ? balance.balance || balance.value || '0' : '0';
+  };
+  
+  // Get user's address for the selected asset
+  const getUserAddress = (assetSymbol: string): string => {
+    if (!app?.pubkeys) return '';
+    
+    // Map asset to chain
+    const chainMap: { [key: string]: string } = {
+      'BTC.BTC': 'bitcoin',
+      'ETH.ETH': 'ethereum',
+      'ETH.USDC': 'ethereum',
+      'ETH.USDT': 'ethereum',
+      'BSC.BNB': 'binancecoin',
+      'THOR.RUNE': 'thorchain',
+      'AVAX.AVAX': 'avalanche',
+      'GAIA.ATOM': 'cosmos',
+      'BCH.BCH': 'bitcoincash',
+      'DOGE.DOGE': 'dogecoin',
+      'LTC.LTC': 'litecoin',
+    };
+    
+    const baseSymbol = assetSymbol.split('-')[0]; // Handle tokens like ETH.USDC-0X...
+    const chain = chainMap[baseSymbol] || chainMap[assetSymbol];
+    
+    if (!chain) return '';
+    
+    // Find pubkey for this chain
+    const pubkey = app.pubkeys.find((pk: any) => 
+      pk.networks?.includes(chain) || 
+      pk.blockchain === chain ||
+      pk.symbol === chain.toUpperCase()
+    );
+    
+    return pubkey?.address || pubkey?.pubkey || '';
+  };
+
+  // Fetch asset prices from Pioneer SDK or Midgard
+  const fetchAssetPrices = async () => {
+    try {
+      // Try to get prices from Pioneer SDK first
+      if (app?.getAssetPrices) {
+        try {
+          console.log('📊 Fetching prices from Pioneer SDK...');
+          const sdkPrices = await app.getAssetPrices();
+          
+          // Convert SDK prices to THORChain asset format
+          const priceMap: { [key: string]: number } = {};
+          Object.entries(sdkPrices).forEach(([key, value]: [string, any]) => {
+            // Map different price formats
+            priceMap[key] = value.price || value.usd || value;
+          });
+          
+          setAssetPrices(priceMap);
+          console.log('✅ Got prices from Pioneer SDK');
+          return;
+        } catch (sdkError) {
+          console.warn('⚠️ Pioneer SDK price fetch failed, using Midgard:', sdkError);
+        }
+      }
+      
+      // Fallback to Midgard API
+      const response = await fetch('https://midgard.ninerealms.com/v2/pools');
+      const pools = await response.json();
+      
+      const prices = pools.reduce((acc: any, pool: any) => {
+        acc[pool.asset] = parseFloat(pool.assetPriceUSD);
+        return acc;
+      }, {});
+      
+      // Special case for RUNE
+      const usdcPool = pools.find((p: any) => p.asset === 'ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48');
+      if (usdcPool) {
+        prices['THOR.RUNE'] = parseFloat(usdcPool.assetDepth) / parseFloat(usdcPool.runeDepth);
+      }
+      
+      setAssetPrices(prices);
+    } catch (error) {
+      console.error('Error fetching asset prices:', error);
+    }
+  };
+
+  // Initialize assets from Pioneer SDK
+  useEffect(() => {
+    const initializeAssets = async () => {
+      if (!app) return;
+      
+      try {
+        // Get assets from Pioneer SDK
+        const assets = await app.getAssets();
+        console.log('📊 Assets from Pioneer SDK:', assets?.length);
+        
+        // Filter THORChain compatible assets
+        const thorchainAssets = assets?.filter((asset: any) => {
+          // Check if it's a THORChain compatible asset
+          const thorSymbol = asset.thorchainSymbol || asset.symbol;
+          return thorSymbol && (
+            thorSymbol.includes('.') || // Native assets like BTC.BTC
+            thorSymbol.startsWith('THOR.') // THORChain native
+          );
+        }) || [];
+        
+        // Map to our format with Pioneer SDK icons
+        const formattedAssets = thorchainAssets.length > 0 ? thorchainAssets.map((asset: any) => ({
+          symbol: asset.thorchainSymbol || asset.symbol,
+          name: asset.name,
+          ticker: asset.ticker || asset.symbol?.split('.')[1] || asset.symbol,
+          icon: asset.icon || `https://pioneers.dev/coins/${asset.name?.toLowerCase().replace(/\s+/g, '-')}.png`
+        })) : [
+          // Fallback to default assets if SDK doesn't return THORChain assets
+          { symbol: 'BTC.BTC', name: 'Bitcoin', ticker: 'BTC', icon: 'https://pioneers.dev/coins/bitcoin.png' },
+          { symbol: 'ETH.ETH', name: 'Ethereum', ticker: 'ETH', icon: 'https://pioneers.dev/coins/ethereum.png' },
+          { symbol: 'BSC.BNB', name: 'BNB', ticker: 'BNB', icon: 'https://pioneers.dev/coins/binance-coin.png' },
+          { symbol: 'THOR.RUNE', name: 'THORChain', ticker: 'RUNE', icon: 'https://pioneers.dev/coins/thorchain.png' },
+          { symbol: 'ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48', name: 'USD Coin', ticker: 'USDC', icon: 'https://pioneers.dev/coins/usd-coin.png' },
+          { symbol: 'ETH.USDT-0XDAC17F958D2EE523A2206206994597C13D831EC7', name: 'Tether', ticker: 'USDT', icon: 'https://pioneers.dev/coins/tether.png' },
+          { symbol: 'AVAX.AVAX', name: 'Avalanche', ticker: 'AVAX', icon: 'https://pioneers.dev/coins/avalanche.png' },
+          { symbol: 'GAIA.ATOM', name: 'Cosmos', ticker: 'ATOM', icon: 'https://pioneers.dev/coins/cosmos.png' },
+          { symbol: 'BCH.BCH', name: 'Bitcoin Cash', ticker: 'BCH', icon: 'https://pioneers.dev/coins/bitcoin-cash.png' },
+          { symbol: 'DOGE.DOGE', name: 'Dogecoin', ticker: 'DOGE', icon: 'https://pioneers.dev/coins/dogecoin.png' },
+          { symbol: 'LTC.LTC', name: 'Litecoin', ticker: 'LTC', icon: 'https://pioneers.dev/coins/litecoin.png' },
+        ];
+        
+        setSupportedAssets(formattedAssets);
+        console.log('✅ Loaded THORChain assets:', formattedAssets.length);
+      } catch (error) {
+        console.error('Error loading assets from Pioneer SDK:', error);
+        // Use fallback assets
+        setSupportedAssets([
+          { symbol: 'BTC.BTC', name: 'Bitcoin', ticker: 'BTC', icon: 'https://pioneers.dev/coins/bitcoin.png' },
+          { symbol: 'ETH.ETH', name: 'Ethereum', ticker: 'ETH', icon: 'https://pioneers.dev/coins/ethereum.png' },
+          { symbol: 'BSC.BNB', name: 'BNB', ticker: 'BNB', icon: 'https://pioneers.dev/coins/binance-coin.png' },
+          { symbol: 'THOR.RUNE', name: 'THORChain', ticker: 'RUNE', icon: 'https://pioneers.dev/coins/thorchain.png' },
+        ]);
+      }
+    };
+    
+    initializeAssets();
+    fetchAssetPrices();
+  }, [app]);
+
+  // Update USD value when amount changes
+  useEffect(() => {
+    if (inputAmount && assetPrices[fromAsset]) {
+      const usdValue = parseFloat(inputAmount) * assetPrices[fromAsset];
+      setEstimatedValueUSD(`≈ $${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    } else {
+      setEstimatedValueUSD('');
+    }
+  }, [inputAmount, fromAsset, assetPrices]);
+
+  // Convert to base units
+  const convertToBaseUnits = (amount: string): string => {
+    const value = parseFloat(amount);
+    return Math.floor(value * 1e8).toString();
+  };
+
+  // Convert from base units
+  const convertFromBaseUnits = (amount: string): string => {
+    const value = parseFloat(amount);
+    return (value / 1e8).toFixed(8);
+  };
+
+  // Fetch quote using Pioneer SDK or THORNode
   const fetchQuote = async () => {
     if (!inputAmount || parseFloat(inputAmount) <= 0) {
       setOutputAmount('');
@@ -82,8 +242,8 @@ export const Swap = ({
       return;
     }
 
-    if (!thorchainClient) {
-      setError('THORChain client not initialized. Please ensure wallet is connected.');
+    if (fromAsset === toAsset) {
+      setError('From and To assets must be different');
       return;
     }
 
@@ -91,138 +251,123 @@ export const Swap = ({
     setError('');
 
     try {
-      // Convert amount to base units (sats for BTC, wei for ETH, etc)
-      const amountInBaseUnits = convertToBaseUnits(inputAmount, fromAsset);
-      
-      // Build the THORChain quote request URL
-      // This should use the actual THORChain Midgard API
-      const quoteUrl = `https://midgard.thorchain.info/v2/thorchain/quote/swap`;
-      const params = new URLSearchParams({
-        from_asset: getAssetString(fromAsset),
-        to_asset: getAssetString(toAsset),
-        amount: amountInBaseUnits,
-        destination: recipientAddress || '', // Optional destination address
-        tolerance_bps: (parseFloat(slippage) * 100).toString(), // Convert percentage to basis points
-      });
+      const amountInBaseUnits = convertToBaseUnits(inputAmount);
+      const destination = recipientAddress || getUserAddress(toAsset);
 
-      const response = await fetch(`${quoteUrl}?${params}`);
+      if (!destination) {
+        throw new Error(`Please provide a destination address for ${toAsset}`);
+      }
+
+      // Try to use Pioneer SDK's THORChain integration first
+      if (app?.getThorchainQuote) {
+        try {
+          console.log('🚀 Using Pioneer SDK for THORChain quote...');
+          const quoteParams = {
+            sellAsset: fromAsset,
+            buyAsset: toAsset,
+            sellAmount: amountInBaseUnits,
+            senderAddress: getUserAddress(fromAsset),
+            recipientAddress: destination,
+            slippage: '3', // 3% slippage tolerance
+            streamingInterval: enableStreaming ? streamingInterval : undefined,
+            streamingQuantity: enableStreaming ? streamingQuantity : undefined,
+          };
+          
+          const sdkQuote = await app.getThorchainQuote(quoteParams);
+          console.log('✅ Got quote from Pioneer SDK:', sdkQuote);
+          
+          // Map SDK quote to our format
+          setQuote(sdkQuote);
+          const output = convertFromBaseUnits(sdkQuote.expected_amount_out || sdkQuote.expectedAmountOut);
+          setOutputAmount(output);
+          
+          // Calculate output USD value
+          if (assetPrices[toAsset]) {
+            const usdValue = parseFloat(output) * assetPrices[toAsset];
+            setOutputValueUSD(`≈ $${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          }
+          
+          return; // Success with SDK
+        } catch (sdkError) {
+          console.warn('⚠️ Pioneer SDK quote failed, falling back to direct API:', sdkError);
+          // Fall through to direct API call
+        }
+      }
+
+      // Fallback to direct THORNode API
+      let quoteUrl = 'https://thornode.ninerealms.com/thorchain/quote/swap?';
+      quoteUrl += `amount=${amountInBaseUnits}`;
+      quoteUrl += `&from_asset=${fromAsset}`;
+      quoteUrl += `&to_asset=${toAsset}`;
+      quoteUrl += `&destination=${destination}`;
+      
+      // Add streaming parameters if enabled
+      if (enableStreaming) {
+        quoteUrl += `&streaming_interval=${streamingInterval}`;
+        quoteUrl += `&streaming_quantity=${streamingQuantity}`;
+      }
+
+      console.log('Fetching quote from THORNode:', quoteUrl);
+      const response = await fetch(quoteUrl);
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch quote from THORChain');
+        throw new Error(errorData.error || 'Failed to fetch quote');
       }
 
-      const quoteData: THORChainQuote = await response.json();
-      
+      const quoteData = await response.json();
       setQuote(quoteData);
-      // Convert the output amount from base units to display units
-      const outputInDisplayUnits = convertFromBaseUnits(quoteData.expected_amount_out, toAsset);
-      setOutputAmount(outputInDisplayUnits);
+      
+      // Set output amount
+      const output = convertFromBaseUnits(quoteData.expected_amount_out);
+      setOutputAmount(output);
+      
+      // Calculate output USD value
+      if (assetPrices[toAsset]) {
+        const usdValue = parseFloat(output) * assetPrices[toAsset];
+        setOutputValueUSD(`≈ $${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      }
       
     } catch (error: any) {
-      console.error('Error fetching THORChain quote:', error);
-      setError(error.message || 'Failed to get quote from THORChain. Please try again.');
+      console.error('Error fetching quote:', error);
+      setError(error.message || 'Unable to fetch quote');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Helper function to get THORChain asset string format
-  const getAssetString = (symbol: string): string => {
-    const asset = supportedAssets.find(a => a.symbol === symbol);
-    if (!asset) return '';
-    
-    // THORChain format: CHAIN.SYMBOL (e.g., BTC.BTC, ETH.ETH, ETH.USDC)
-    if (asset.chain === 'THOR') {
-      return 'THOR.RUNE';
-    }
-    return `${asset.chain}.${symbol}`;
-  };
-
-  // Convert display units to base units (e.g., BTC to sats)
-  const convertToBaseUnits = (amount: string, asset: string): string => {
-    const value = parseFloat(amount);
-    switch (asset) {
-      case 'BTC':
-        return Math.floor(value * 1e8).toString(); // Convert to satoshis
-      case 'ETH':
-      case 'USDC':
-      case 'USDT':
-        return Math.floor(value * 1e18).toString(); // Convert to wei
-      case 'RUNE':
-        return Math.floor(value * 1e8).toString(); // RUNE uses 8 decimals
-      default:
-        return Math.floor(value * 1e8).toString();
-    }
-  };
-
-  // Convert base units to display units
-  const convertFromBaseUnits = (amount: string, asset: string): string => {
-    const value = parseFloat(amount);
-    switch (asset) {
-      case 'BTC':
-        return (value / 1e8).toFixed(8);
-      case 'ETH':
-      case 'USDC':
-      case 'USDT':
-        return (value / 1e18).toFixed(6);
-      case 'RUNE':
-        return (value / 1e8).toFixed(6);
-      default:
-        return (value / 1e8).toFixed(6);
-    }
-  };
-
-  // Fetch wallet balances
-  const fetchBalances = async () => {
-    if (!walletConnected || !pioneerClient) {
-      return;
-    }
-
-    try {
-      // Fetch actual balances from the connected wallet
-      // This should use the Pioneer SDK or wallet provider
-      const balances = await pioneerClient.getBalances();
-      
-      const fromAssetBalance = balances.find((b: any) => b.symbol === fromAsset);
-      const toAssetBalance = balances.find((b: any) => b.symbol === toAsset);
-      
-      setFromBalance(fromAssetBalance?.balance || '0.00');
-      setToBalance(toAssetBalance?.balance || '0.00');
-    } catch (error) {
-      console.error('Error fetching balances:', error);
-    }
-  };
-
-  // Fetch balances when wallet connects or assets change
-  useEffect(() => {
-    fetchBalances();
-  }, [walletConnected, fromAsset, toAsset, pioneerClient]);
-
   // Debounced quote fetching
   useEffect(() => {
     const timer = setTimeout(fetchQuote, 500);
     return () => clearTimeout(timer);
-  }, [inputAmount, fromAsset, toAsset, slippage, recipientAddress]);
+  }, [inputAmount, fromAsset, toAsset, recipientAddress, enableStreaming, streamingInterval, streamingQuantity]);
 
   // Swap from and to assets
   const swapAssets = () => {
     const temp = fromAsset;
     setFromAsset(toAsset);
     setToAsset(temp);
-    setInputAmount(outputAmount);
+    setInputAmount('');
     setOutputAmount('');
     setQuote(null);
   };
 
-  const handleSwap = async () => {
-    if (!quote || !walletConnected) {
-      setError('Please connect your wallet to perform swap');
-      return;
-    }
+  // Format time display
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  };
 
-    if (!thorchainClient || !pioneerClient) {
-      setError('Wallet clients not initialized');
+  const getAssetDisplay = (symbol: string) => {
+    const asset = supportedAssets.find(a => a.symbol === symbol);
+    return asset || { symbol, name: symbol, ticker: symbol.split('.')[1] || symbol, icon: 'https://pioneers.dev/coins/coin.png' };
+  };
+  
+  // Execute the swap using Pioneer SDK
+  const executeSwap = async () => {
+    if (!quote || !app) {
+      setError('No quote available');
       return;
     }
     
@@ -230,419 +375,500 @@ export const Swap = ({
     setError('');
     
     try {
-      // Build the swap transaction using the quote memo
-      if (!quote.memo) {
-        throw new Error('No swap memo provided in quote');
+      // Check if Pioneer SDK has THORChain swap execution
+      if (app.executeThorchainSwap) {
+        console.log('🚀 Executing swap via Pioneer SDK...');
+        
+        const swapParams = {
+          quote,
+          fromAsset,
+          toAsset,
+          amount: inputAmount,
+          recipient: recipientAddress || getUserAddress(toAsset),
+        };
+        
+        const result = await app.executeThorchainSwap(swapParams);
+        console.log('✅ Swap executed:', result);
+        
+        // Reset form after successful swap
+        setInputAmount('');
+        setOutputAmount('');
+        setQuote(null);
+        setError('');
+        
+        // Show success message
+        if (result.txHash || result.hash) {
+          setError(`Swap submitted! TX: ${result.txHash || result.hash}`);
+        }
+      } else {
+        // Fallback: Build and sign transaction manually
+        console.log('⚠️ Pioneer SDK swap execution not available');
+        setError('Swap execution requires KeepKey device connection');
       }
-
-      // Prepare the transaction based on the source chain
-      const fromChain = supportedAssets.find(a => a.symbol === fromAsset)?.chain;
-      
-      let txHash: string;
-      
-      switch (fromChain) {
-        case 'BTC':
-          // Build and sign Bitcoin transaction
-          txHash = await pioneerClient.sendBitcoinTransaction({
-            to: quote.router,
-            amount: inputAmount,
-            memo: quote.memo,
-          });
-          break;
-          
-        case 'ETH':
-          // Build and sign Ethereum transaction
-          txHash = await pioneerClient.sendEthereumTransaction({
-            to: quote.router,
-            amount: inputAmount,
-            memo: quote.memo,
-            token: fromAsset === 'ETH' ? null : fromAsset,
-          });
-          break;
-          
-        case 'THOR':
-          // Build and sign THORChain transaction
-          txHash = await thorchainClient.deposit({
-            amount: inputAmount,
-            memo: quote.memo,
-          });
-          break;
-          
-        default:
-          throw new Error(`Unsupported chain: ${fromChain}`);
-      }
-      
-      // Monitor the swap status
-      // This would typically poll THORChain for swap status
-      console.log('Swap transaction submitted:', txHash);
-      
-      // Clear form after successful submission
-      setInputAmount('');
-      setOutputAmount('');
-      setQuote(null);
-      
-      // Refresh balances after swap
-      await fetchBalances();
-      
     } catch (error: any) {
-      console.error('Swap execution error:', error);
-      setError(error.message || 'Swap failed. Please check your wallet and try again.');
+      console.error('Error executing swap:', error);
+      setError(error.message || 'Failed to execute swap');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleBack = () => {
-    if (onBackClick) {
-      onBackClick();
-    }
-  };
-
   return (
-    <Box height="100%" bg="bg.primary" overflow="hidden">
-      {/* Header */}
-      <Box 
-        borderBottom="1px solid"
-        borderColor="border.primary"
-        p={4}
-        bg="bg.surface"
-      >
-        <HStack justify="space-between" align="center">
-          <Button
-            size="sm"
-            variant="ghost"
-            color="accent.solid"
-            onClick={handleBack}
-            _hover={{ color: "accent.emphasized" }}
-          >
-            <FaArrowLeft style={{ marginRight: '8px' }} />
-            <Text>Back</Text>
-          </Button>
-          <Text fontSize="lg" fontWeight="bold" color="fg.primary">
-            THORChain Swap
-          </Text>
-          <Button
-            size="sm"
-            variant="ghost"
-            color="accent.solid"
-            onClick={() => setShowSettings(!showSettings)}
-            _hover={{ color: "accent.emphasized" }}
-          >
-            <FaCog />
-          </Button>
-        </HStack>
-      </Box>
+    <Box bg="bg.primary" minH="100vh" p={4}>
+      <Box maxW="500px" mx="auto">
+        {/* Header */}
+        <Flex align="center" justify="center" mb={6}>
+          <Image src="https://pioneers.dev/coins/thorchain.png" alt="THORChain" boxSize="40px" mr={3} />
+          <Heading size="lg" color="fg.primary">
+            THORChain Quote Estimator
+          </Heading>
+        </Flex>
 
-      <Box p={6} height="calc(100% - 80px)" overflowY="auto">
-        <Stack gap={6} align="stretch" maxW="400px" mx="auto">
-          {/* Wallet Connection Warning */}
-          {!walletConnected && (
-            <Alert.Root status="warning" bg="yellow.solid/10" borderColor="yellow.solid/20">
-              <Alert.Indicator>
-                <FaExclamationCircle />
-              </Alert.Indicator>
-              <Alert.Title color="fg.primary">
-                Please connect your wallet to perform swaps
-              </Alert.Title>
-            </Alert.Root>
-          )}
+        <Card.Root bg="bg.surface" borderColor="border.primary">
+          <Card.Body p={6}>
+            <Stack gap={4}>
+              {/* From/To Labels */}
+              <HStack justify="space-around" mb={2}>
+                <Text color="fg.muted" fontSize="sm" flex={1}>From:</Text>
+                <Box width="40px" /> {/* Spacer for swap button */}
+                <Text color="fg.muted" fontSize="sm" flex={1}>To:</Text>
+              </HStack>
 
-          {/* Settings Panel */}
-          {showSettings && (
-            <Card.Root bg="bg.surface" borderColor="border.primary">
-              <Card.Body>
-                <Stack align="stretch" gap={4}>
-                  <Text color="fg.primary" fontWeight="bold">Settings</Text>
-                  <Box>
-                    <Text color="fg.muted" fontSize="sm" mb={2}>
-                      Slippage Tolerance
-                    </Text>
-                    <HStack gap={2}>
-                      {['1', '3', '5'].map((value) => (
+              {/* Asset Selection Row */}
+              <HStack gap={2} align="center">
+                {/* From Asset */}
+                <Box flex={1} position="relative">
+                  <Button
+                    width="full"
+                    height="80px"
+                    bg="bg.primary"
+                    borderColor="border.primary"
+                    border="1px solid"
+                    color="fg.primary"
+                    _hover={{ bg: "bg.muted" }}
+                    onClick={() => setShowFromDropdown(!showFromDropdown)}
+                    padding={3}
+                  >
+                    <HStack width="full" justify="space-between">
+                      <HStack gap={2}>
+                        <Image 
+                          src={getAssetDisplay(fromAsset).icon}
+                          alt={fromAsset} 
+                          boxSize="32px" 
+                          fallbackSrc="https://pioneers.dev/coins/coin.png"
+                        />
+                        <Box textAlign="left">
+                          <Text fontSize="sm" fontWeight="bold">
+                            {getAssetDisplay(fromAsset).ticker}
+                          </Text>
+                          <Text fontSize="xs" color="fg.muted">
+                            {getAssetDisplay(fromAsset).name}
+                          </Text>
+                        </Box>
+                      </HStack>
+                      <FaChevronDown />
+                    </HStack>
+                  </Button>
+                  
+                  {/* Dropdown Menu */}
+                  {showFromDropdown && (
+                    <Box
+                      position="absolute"
+                      top="85px"
+                      left={0}
+                      right={0}
+                      bg="bg.surface"
+                      border="1px solid"
+                      borderColor="border.primary"
+                      borderRadius="md"
+                      maxH="300px"
+                      overflowY="auto"
+                      zIndex={10}
+                      boxShadow="lg"
+                    >
+                      {supportedAssets.map((asset) => (
                         <Button
-                          key={value}
-                          size="sm"
-                          variant={slippage === value ? 'solid' : 'outline'}
-                          colorPalette={slippage === value ? 'purple' : 'gray'}
-                          onClick={() => setSlippage(value)}
+                          key={asset.symbol}
+                          width="full"
+                          height="60px"
+                          bg="transparent"
+                          _hover={{ bg: "bg.muted" }}
+                          onClick={() => {
+                            setFromAsset(asset.symbol);
+                            setShowFromDropdown(false);
+                          }}
+                          justifyContent="flex-start"
+                          padding={3}
                         >
-                          {value}%
+                          <HStack gap={2}>
+                            <Image 
+                              src={asset.icon} 
+                              alt={asset.ticker} 
+                              boxSize="24px"
+                              fallbackSrc="https://pioneers.dev/coins/coin.png"
+                            />
+                            <Text>{asset.ticker}</Text>
+                            <Text fontSize="xs" color="fg.muted">{asset.name}</Text>
+                          </HStack>
                         </Button>
                       ))}
-                      <Input
-                        placeholder="Custom"
-                        size="sm"
-                        value={slippage}
-                        onChange={(e) => setSlippage(e.target.value)}
-                        bg="bg.primary"
-                        borderColor="border.primary"
-                        color="fg.primary"
-                        width="80px"
-                        type="number"
-                        min="0.1"
-                        max="10"
-                      />
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Swap Button */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  color="accent.solid"
+                  onClick={swapAssets}
+                  minW="40px"
+                  height="40px"
+                  borderRadius="full"
+                  _hover={{ bg: "bg.muted" }}
+                  alignSelf="center"
+                >
+                  <FaExchangeAlt />
+                </Button>
+
+                {/* To Asset */}
+                <Box flex={1} position="relative">
+                  <Button
+                    width="full"
+                    height="80px"
+                    bg="bg.primary"
+                    borderColor="border.primary"
+                    border="1px solid"
+                    color="fg.primary"
+                    _hover={{ bg: "bg.muted" }}
+                    onClick={() => setShowToDropdown(!showToDropdown)}
+                    padding={3}
+                  >
+                    <HStack width="full" justify="space-between">
+                      <HStack gap={2}>
+                        <Image 
+                          src={getAssetDisplay(toAsset).icon}
+                          alt={toAsset} 
+                          boxSize="32px" 
+                          fallbackSrc="https://pioneers.dev/coins/coin.png"
+                        />
+                        <Box textAlign="left">
+                          <Text fontSize="sm" fontWeight="bold">
+                            {getAssetDisplay(toAsset).ticker}
+                          </Text>
+                          <Text fontSize="xs" color="fg.muted">
+                            {getAssetDisplay(toAsset).name}
+                          </Text>
+                        </Box>
+                      </HStack>
+                      <FaChevronDown />
                     </HStack>
-                  </Box>
+                  </Button>
+                  
+                  {/* Dropdown Menu */}
+                  {showToDropdown && (
+                    <Box
+                      position="absolute"
+                      top="85px"
+                      left={0}
+                      right={0}
+                      bg="bg.surface"
+                      border="1px solid"
+                      borderColor="border.primary"
+                      borderRadius="md"
+                      maxH="300px"
+                      overflowY="auto"
+                      zIndex={10}
+                      boxShadow="lg"
+                    >
+                      {supportedAssets.map((asset) => (
+                        <Button
+                          key={asset.symbol}
+                          width="full"
+                          height="60px"
+                          bg="transparent"
+                          _hover={{ bg: "bg.muted" }}
+                          onClick={() => {
+                            setToAsset(asset.symbol);
+                            setShowToDropdown(false);
+                          }}
+                          justifyContent="flex-start"
+                          padding={3}
+                        >
+                          <HStack gap={2}>
+                            <Image 
+                              src={asset.icon} 
+                              alt={asset.ticker} 
+                              boxSize="24px"
+                              fallbackSrc="https://pioneers.dev/coins/coin.png"
+                            />
+                            <Text>{asset.ticker}</Text>
+                            <Text fontSize="xs" color="fg.muted">{asset.name}</Text>
+                          </HStack>
+                        </Button>
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              </HStack>
+
+              <Box borderTop="1px solid" borderColor="border.primary" my={2} />
+
+              {/* Amount Input */}
+              <Box>
+                <HStack justify="space-between" mb={2}>
+                  <Text color="fg.muted" fontSize="sm">
+                    Swap Amount ({getAssetDisplay(fromAsset).ticker}):
+                  </Text>
+                  <HStack gap={2}>
+                    <Text color="fg.muted" fontSize="xs">
+                      Balance: {getUserBalance(fromAsset)}
+                    </Text>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      color="accent.solid"
+                      onClick={() => setInputAmount(getUserBalance(fromAsset))}
+                      _hover={{ bg: "bg.muted" }}
+                    >
+                      MAX
+                    </Button>
+                  </HStack>
+                </HStack>
+                <Input
+                  placeholder="0.0"
+                  value={inputAmount}
+                  onChange={(e) => setInputAmount(e.target.value)}
+                  bg="bg.primary"
+                  borderColor="border.primary"
+                  color="fg.primary"
+                  fontSize="xl"
+                  height="50px"
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                />
+                {estimatedValueUSD && (
+                  <Text color="fg.muted" fontSize="sm" mt={1} textAlign="right">
+                    {estimatedValueUSD}
+                  </Text>
+                )}
+              </Box>
+
+              {/* Settings Toggle */}
+              <Button
+                size="sm"
+                variant="ghost"
+                color="fg.muted"
+                onClick={() => setShowSettings(!showSettings)}
+                leftIcon={<FaCog />}
+                width="full"
+                justifyContent="center"
+              >
+                Advanced Settings
+              </Button>
+
+              {/* Advanced Settings */}
+              {showSettings && (
+                <Stack gap={3} p={4} bg="bg.primary" borderRadius="md" border="1px solid" borderColor="border.primary">
+                  {/* Streaming Swap Toggle */}
+                  <HStack justify="space-between">
+                    <HStack>
+                      <FaBolt color="#FFD700" />
+                      <Text color="fg.primary" fontSize="sm">Streaming Swap</Text>
+                    </HStack>
+                    <Switch
+                      isChecked={enableStreaming}
+                      onChange={(e) => setEnableStreaming(e.target.checked)}
+                    />
+                  </HStack>
+
+                  {enableStreaming && (
+                    <Stack gap={2}>
+                      <Box>
+                        <Text color="fg.muted" fontSize="xs" mb={1}>
+                          Streaming Interval (blocks):
+                        </Text>
+                        <Input
+                          value={streamingInterval}
+                          onChange={(e) => setStreamingInterval(e.target.value)}
+                          bg="bg.surface"
+                          borderColor="border.primary"
+                          size="sm"
+                          type="number"
+                          min="1"
+                          max="10"
+                        />
+                      </Box>
+
+                      <Box>
+                        <Text color="fg.muted" fontSize="xs" mb={1}>
+                          Streaming Quantity:
+                        </Text>
+                        <Input
+                          value={streamingQuantity}
+                          onChange={(e) => setStreamingQuantity(e.target.value)}
+                          bg="bg.surface"
+                          borderColor="border.primary"
+                          size="sm"
+                          type="number"
+                          min="0"
+                          max="100"
+                        />
+                      </Box>
+                    </Stack>
+                  )}
+
+                  {/* Recipient Address */}
                   <Box>
-                    <Text color="fg.muted" fontSize="sm" mb={2}>
-                      Recipient Address (Optional)
+                    <Text color="fg.muted" fontSize="xs" mb={1}>
+                      Recipient Address (Optional):
                     </Text>
                     <Input
-                      placeholder="Leave empty to send to connected wallet"
+                      placeholder={`Leave empty to use your ${getAssetDisplay(toAsset).ticker} address`}
                       size="sm"
                       value={recipientAddress}
                       onChange={(e) => setRecipientAddress(e.target.value)}
-                      bg="bg.primary"
+                      bg="bg.surface"
                       borderColor="border.primary"
                       color="fg.primary"
+                      fontSize="xs"
                     />
                   </Box>
                 </Stack>
-              </Card.Body>
-            </Card.Root>
-          )}
+              )}
 
-          {/* From Asset */}
-          <Card.Root bg="bg.surface" borderColor="border.primary">
-            <Card.Body>
-              <Stack align="stretch" gap={3}>
-                <HStack justify="space-between">
-                  <Text color="fg.muted" fontSize="sm">From</Text>
-                  <Text color="fg.muted" fontSize="sm">Balance: {fromBalance}</Text>
-                </HStack>
-                <HStack gap={3}>
-                  <MenuRoot>
-                    <MenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        bg="bg.primary"
-                        borderColor="border.primary"
-                        color="fg.primary"
-                        width="120px"
-                        _hover={{ bg: "bg.muted" }}
-                      >
-                        <HStack gap={2}>
-                          <Image src={supportedAssets.find(a => a.symbol === fromAsset)?.icon} alt={fromAsset} boxSize="20px" />
-                          <Text>{fromAsset}</Text>
-                          <FaChevronDown />
+              {/* Get Quote Button */}
+              <Button
+                size="lg"
+                bg="green.500"
+                color="white"
+                _hover={{ bg: "green.600" }}
+                onClick={fetchQuote}
+                isLoading={isLoading}
+                loadingText="Fetching Quote..."
+                disabled={!inputAmount || parseFloat(inputAmount) <= 0}
+                width="full"
+                height="50px"
+              >
+                Get Quote
+              </Button>
+
+              {/* Error Display */}
+              {error && (
+                <Text color="red.500" fontSize="sm" textAlign="center">
+                  {error}
+                </Text>
+              )}
+
+              {/* Quote Result */}
+              {quote && outputAmount && (
+                <Box p={4} bg="bg.primary" borderRadius="md" border="1px solid" borderColor="border.primary">
+                  <Stack gap={3}>
+                    {/* Streaming Swap Label */}
+                    {enableStreaming && (
+                      <Text color="fg.primary" fontWeight="bold" fontSize="sm" textAlign="center">
+                        THORChain Streaming Swap
+                      </Text>
+                    )}
+
+                    {/* Swap Summary */}
+                    <HStack justify="center" gap={3} py={2}>
+                      <HStack>
+                        <Image 
+                          src={getAssetDisplay(fromAsset).icon}
+                          alt={fromAsset} 
+                          boxSize="20px" 
+                        />
+                        <Text color="fg.primary" fontWeight="bold">
+                          {inputAmount} {getAssetDisplay(fromAsset).ticker}
+                        </Text>
+                      </HStack>
+                      <FaArrowRight color="gray" />
+                      <HStack>
+                        <Image 
+                          src={getAssetDisplay(toAsset).icon}
+                          alt={toAsset} 
+                          boxSize="20px" 
+                        />
+                        <Text color="green.400" fontWeight="bold">
+                          {parseFloat(outputAmount).toFixed(8)} {getAssetDisplay(toAsset).ticker}
+                        </Text>
+                      </HStack>
+                    </HStack>
+
+                    {outputValueUSD && (
+                      <Text color="fg.muted" fontSize="sm" textAlign="center">
+                        {outputValueUSD}
+                      </Text>
+                    )}
+
+                    <Box borderTop="1px solid" borderColor="border.primary" my={2} />
+
+                    {/* Fee Breakdown */}
+                    <Stack gap={2}>
+                      <Text color="fg.muted" fontSize="xs" fontWeight="bold">
+                        Fee Breakdown:
+                      </Text>
+                      
+                      <HStack justify="space-between">
+                        <Text color="fg.muted" fontSize="xs">Liquidity Fee:</Text>
+                        <Text color="fg.primary" fontSize="xs">
+                          {convertFromBaseUnits(quote.fees?.liquidity || '0')} {quote.fees?.asset?.split('.')[1] || ''}
+                        </Text>
+                      </HStack>
+
+                      <HStack justify="space-between">
+                        <Text color="fg.muted" fontSize="xs">Outbound Fee:</Text>
+                        <Text color="fg.primary" fontSize="xs">
+                          {convertFromBaseUnits(quote.fees?.outbound || '0')} {quote.fees?.asset?.split('.')[1] || ''}
+                        </Text>
+                      </HStack>
+
+                      <HStack justify="space-between">
+                        <Text color="fg.muted" fontSize="xs" fontWeight="bold">Total Fee:</Text>
+                        <Text color="fg.primary" fontSize="xs" fontWeight="bold">
+                          {convertFromBaseUnits(quote.fees?.total || '0')} {quote.fees?.asset?.split('.')[1] || ''} 
+                          {quote.fees?.total_bps && ` (${(quote.fees.total_bps / 100).toFixed(2)}%)`}
+                        </Text>
+                      </HStack>
+                    </Stack>
+
+                    {/* Timing Information */}
+                    {quote.total_swap_seconds && (
+                      <>
+                        <Box borderTop="1px solid" borderColor="border.primary" my={2} />
+                        <HStack justify="space-between">
+                          <Text color="fg.muted" fontSize="xs">Estimated Time:</Text>
+                          <Text color="fg.primary" fontSize="xs">
+                            {formatTime(quote.total_swap_seconds)}
+                          </Text>
                         </HStack>
-                      </Button>
-                    </MenuTrigger>
-                    <MenuContent bg="bg.surface" borderColor="border.primary">
-                      {supportedAssets.map((asset) => (
-                        <MenuItem
-                          key={asset.symbol}
-                          value={asset.symbol}
-                          bg="bg.surface"
-                          color="fg.primary"
-                          _hover={{ bg: "bg.muted" }}
-                          onClick={() => setFromAsset(asset.symbol)}
-                        >
-                          <HStack gap={2}>
-                            <Image src={asset.icon} alt={asset.symbol} boxSize="20px" />
-                            <Text>{asset.symbol}</Text>
-                            <Text color="fg.muted" fontSize="sm">
-                              {asset.name}
-                            </Text>
-                          </HStack>
-                        </MenuItem>
-                      ))}
-                    </MenuContent>
-                  </MenuRoot>
-                  <Input
-                    placeholder="0.0"
-                    value={inputAmount}
-                    onChange={(e) => setInputAmount(e.target.value)}
-                    bg="bg.primary"
-                    borderColor="border.primary"
-                    color="fg.primary"
-                    fontSize="lg"
-                    textAlign="right"
-                    type="number"
-                    min="0"
-                    step="0.000001"
-                  />
-                </HStack>
-                {parseFloat(inputAmount) > parseFloat(fromBalance) && (
-                  <Text color="red.solid" fontSize="xs">
-                    Insufficient balance
-                  </Text>
-                )}
-              </Stack>
-            </Card.Body>
-          </Card.Root>
-
-          {/* Swap Button */}
-          <Flex justify="center">
-            <Button
-              size="sm"
-              variant="outline"
-              borderColor="border.primary"
-              color="accent.solid"
-              bg="bg.surface"
-              _hover={{
-                bg: "accent.solid",
-                color: "bg.primary",
-                borderColor: "accent.solid",
-              }}
-              onClick={swapAssets}
-              disabled={isLoading}
-            >
-              <FaExchangeAlt />
-            </Button>
-          </Flex>
-
-          {/* To Asset */}
-          <Card.Root bg="bg.surface" borderColor="border.primary">
-            <Card.Body>
-              <Stack align="stretch" gap={3}>
-                <HStack justify="space-between">
-                  <Text color="fg.muted" fontSize="sm">To</Text>
-                  <Text color="fg.muted" fontSize="sm">Balance: {toBalance}</Text>
-                </HStack>
-                <HStack gap={3}>
-                  <MenuRoot>
-                    <MenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        bg="bg.primary"
-                        borderColor="border.primary"
-                        color="fg.primary"
-                        width="120px"
-                        _hover={{ bg: "bg.muted" }}
-                      >
-                        <HStack gap={2}>
-                          <Image src={supportedAssets.find(a => a.symbol === toAsset)?.icon} alt={toAsset} boxSize="20px" />
-                          <Text>{toAsset}</Text>
-                          <FaChevronDown />
-                        </HStack>
-                      </Button>
-                    </MenuTrigger>
-                    <MenuContent bg="bg.surface" borderColor="border.primary">
-                      {supportedAssets.map((asset) => (
-                        <MenuItem
-                          key={asset.symbol}
-                          value={asset.symbol}
-                          bg="bg.surface"
-                          color="fg.primary"
-                          _hover={{ bg: "bg.muted" }}
-                          onClick={() => setToAsset(asset.symbol)}
-                        >
-                          <HStack gap={2}>
-                            <Image src={asset.icon} alt={asset.symbol} boxSize="20px" />
-                            <Text>{asset.symbol}</Text>
-                            <Text color="fg.muted" fontSize="sm">
-                              {asset.name}
-                            </Text>
-                          </HStack>
-                        </MenuItem>
-                      ))}
-                    </MenuContent>
-                  </MenuRoot>
-                  <Input
-                    placeholder="0.0"
-                    value={outputAmount}
-                    readOnly
-                    bg="bg.primary"
-                    borderColor="border.primary"
-                    color="fg.primary"
-                    fontSize="lg"
-                    textAlign="right"
-                  />
-                </HStack>
-              </Stack>
-            </Card.Body>
-          </Card.Root>
-
-          {/* Quote Details */}
-          {quote && (
-            <Card.Root bg="bg.surface" borderColor="border.primary">
-              <Card.Body>
-                <Stack align="stretch" gap={2}>
-                  <Text color="fg.primary" fontWeight="bold" fontSize="sm">
-                    Quote Details
-                  </Text>
-                  <HStack justify="space-between">
-                    <Text color="fg.muted" fontSize="sm">Expected Output</Text>
-                    <Text color="fg.primary" fontSize="sm">
-                      {convertFromBaseUnits(quote.expected_amount_out, toAsset)} {toAsset}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text color="fg.muted" fontSize="sm">Total Fees</Text>
-                    <Text color="fg.primary" fontSize="sm">
-                      {convertFromBaseUnits(quote.fees.total, 'RUNE')} RUNE
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text color="fg.muted" fontSize="sm">Slippage</Text>
-                    <Text color="fg.primary" fontSize="sm">
-                      {(quote.slippage_bps / 100).toFixed(2)}%
-                    </Text>
-                  </HStack>
-                  {quote.warning && (
-                    <Alert.Root status="warning" bg="yellow.solid/10">
-                      <Alert.Indicator>
-                        <FaExclamationCircle />
-                      </Alert.Indicator>
-                      <Alert.Title fontSize="xs">{quote.warning}</Alert.Title>
-                    </Alert.Root>
-                  )}
-                  {quote.recommended_min_amount_in && (
-                    <Text color="fg.muted" fontSize="xs">
-                      Recommended minimum: {convertFromBaseUnits(quote.recommended_min_amount_in, fromAsset)} {fromAsset}
-                    </Text>
-                  )}
-                </Stack>
-              </Card.Body>
-            </Card.Root>
-          )}
-
-          {/* Error Alert */}
-          {error && (
-            <Alert.Root status="error" bg="red.solid/10" borderColor="red.solid/20">
-              <Alert.Indicator>
-                <FaExclamationCircle />
-              </Alert.Indicator>
-              <Alert.Title color="fg.primary">{error}</Alert.Title>
-            </Alert.Root>
-          )}
-
-          {/* Swap Button */}
-          <Button
-            size="lg"
-            bg="accent.solid"
-            color="bg.primary"
-            _hover={{ bg: "accent.emphasized" }}
-            disabled={
-              !quote || 
-              isLoading || 
-              !inputAmount || 
-              !walletConnected ||
-              parseFloat(inputAmount) > parseFloat(fromBalance)
-            }
-            loading={isLoading}
-            loadingText="Processing Swap..."
-            onClick={handleSwap}
-          >
-            {!walletConnected 
-              ? 'Connect Wallet to Swap'
-              : !quote 
-                ? 'Enter amount to get quote'
-                : parseFloat(inputAmount) > parseFloat(fromBalance)
-                  ? 'Insufficient Balance'
-                  : `Swap ${fromAsset} for ${toAsset}`
-            }
-          </Button>
-
-          {/* Loading Spinner */}
-          {isLoading && (
-            <Flex justify="center">
-              <Spinner color="accent.solid" />
-            </Flex>
-          )}
-        </Stack>
+                      </>
+                    )}
+                    
+                    {/* Execute Swap Button */}
+                    <Box borderTop="1px solid" borderColor="border.primary" my={2} />
+                    <Button
+                      size="lg"
+                      bg="accent.solid"
+                      color="white"
+                      _hover={{ bg: "accent.muted" }}
+                      onClick={executeSwap}
+                      isLoading={isLoading}
+                      loadingText="Executing Swap..."
+                      width="full"
+                      height="50px"
+                      mt={3}
+                    >
+                      Execute Swap
+                    </Button>
+                  </Stack>
+                </Box>
+              )}
+            </Stack>
+          </Card.Body>
+        </Card.Root>
       </Box>
     </Box>
   );

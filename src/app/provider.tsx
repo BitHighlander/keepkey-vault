@@ -297,8 +297,11 @@ export function Provider({ children }: ProviderProps) {
               } catch (chartError: any) {
                 // Check if it's a network support error
                 if (chartError?.message?.includes('network not live in blockchains')) {
-                  console.warn('⚠️ Some networks are not supported for charts:', chartError.message);
-                  // Don't throw - this is expected for some networks
+                  // Extract the unsupported network from the error message
+                  const match = chartError.message.match(/"([^"]+)"/);
+                  const network = match ? match[1] : 'unknown';
+                  console.log(`ℹ️ Network ${network} not supported for charts - skipping`);
+                  // This is expected - some networks don't have chart support
                 } else {
                   console.error('❌ Chart fetching error:', chartError);
                 }
@@ -338,21 +341,47 @@ export function Provider({ children }: ProviderProps) {
             
             if (appInit.keepKeySdk) {
               console.log('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
+              
+              // Filter unsupported networks from the SDK's blockchains if possible
+              if (appInit.blockchains && Array.isArray(appInit.blockchains)) {
+                const unsupportedNetworks = [
+                  'eip155:100', // Gnosis/xDAI
+                  'eip155:250', // Fantom
+                  'eip155:534352', // Scroll
+                  'eip155:324', // zkSync Era
+                  'eip155:1101', // Polygon zkEVM
+                ];
+                
+                const originalCount = appInit.blockchains.length;
+                appInit.blockchains = appInit.blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
+                console.log('🔑 Filtered blockchains after pairing:', {
+                  original: originalCount,
+                  filtered: appInit.blockchains.length,
+                  removed: originalCount - appInit.blockchains.length
+                });
+              }
+              
               await appInit.refresh();
               console.log('🔑 ✅ refresh() completed - dashboard should now be available');
               
               // Now that we have pubkeys after pairing, fetch chart data including staking positions
               try {
                 if (appInit.pubkeys && appInit.pubkeys.length > 0) {
-                  console.log('📊 Fetching charts after wallet pairing...');
-                  try {
-                    await appInit.getCharts();
-                    console.log('✅ Chart data fetched successfully after pairing');
-                  } catch (getChartsError: any) {
-                    if (getChartsError?.message?.includes('network not live in blockchains')) {
-                      console.warn('⚠️ Some networks not supported for charts after pairing:', getChartsError.message);
-                    } else {
-                      console.error('❌ Chart error after pairing:', getChartsError);
+                  // Check if we have problematic networks
+                  const hasProblematicNetworks = appInit.blockchains?.some((chain: string) => 
+                    ['eip155:100', 'eip155:250', 'eip155:534352', 'eip155:324', 'eip155:1101'].includes(chain)
+                  );
+                  
+                  if (hasProblematicNetworks) {
+                    console.log('ℹ️ Skipping getCharts after pairing - unsupported networks detected');
+                  } else {
+                    console.log('📊 Fetching charts after wallet pairing...');
+                    try {
+                      await appInit.getCharts();
+                      console.log('✅ Chart data fetched successfully after pairing');
+                    } catch (getChartsError: any) {
+                      // Fallback error handling just in case
+                      console.log('ℹ️ Chart fetching skipped:', getChartsError.message);
                     }
                   }
                   
