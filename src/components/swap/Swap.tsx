@@ -11,12 +11,12 @@ import {
   Input,
   Image,
   Heading,
-  Switch,
 } from '@chakra-ui/react';
 import { 
   Spinner,
   Card,
   Flex,
+  Switch,
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaCog, FaChevronDown, FaArrowRight, FaBolt } from 'react-icons/fa';
 
@@ -61,6 +61,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Get user's balance for a specific asset
   const getUserBalance = (assetSymbol: string): string => {
+    // First check in fromAssets which has the actual balances
+    const assetWithBalance = fromAssets.find((a: any) => a.symbol === assetSymbol);
+    if (assetWithBalance && assetWithBalance.balance) {
+      return assetWithBalance.balance;
+    }
+    
+    // Fallback to app.balances if available
     if (!app?.balances) return '0';
     
     // Map THORChain symbol to balance lookup
@@ -92,12 +99,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       'BCH.BCH': 'bitcoincash',
       'DOGE.DOGE': 'dogecoin',
       'LTC.LTC': 'litecoin',
+      'MAYA.CACAO': 'mayachain',
     };
     
     const baseSymbol = assetSymbol.split('-')[0]; // Handle tokens like ETH.USDC-0X...
     const chain = chainMap[baseSymbol] || chainMap[assetSymbol];
     
-    if (!chain) return '';
+    if (!chain) {
+      console.warn(`No chain mapping for asset: ${assetSymbol}`);
+      return '';
+    }
     
     // Find pubkey for this chain
     const pubkey = app.pubkeys.find((pk: any) => 
@@ -105,6 +116,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       pk.blockchain === chain ||
       pk.symbol === chain.toUpperCase()
     );
+    
+    if (!pubkey) {
+      console.warn(`No pubkey found for chain: ${chain}`);
+    }
     
     return pubkey?.address || pubkey?.pubkey || '';
   };
@@ -202,30 +217,57 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             })
             .filter((asset: any) => asset.symbol); // Only keep assets with valid symbols
           
-          setFromAssets(assetsWithBalance);
-          console.log('✅ Loaded "From" assets (native only) from balances:', assetsWithBalance.length);
+          // Sort by USD value (highest first)
+          const sortedAssets = assetsWithBalance.sort((a: any, b: any) => {
+            // Calculate USD values
+            const aBalance = parseFloat(a.balance || '0');
+            const bBalance = parseFloat(b.balance || '0');
+            const aPrice = assetPrices[a.symbol] || 0;
+            const bPrice = assetPrices[b.symbol] || 0;
+            const aValue = aBalance * aPrice;
+            const bValue = bBalance * bPrice;
+            return bValue - aValue; // Sort descending (highest first)
+          });
+          
+          setFromAssets(sortedAssets);
+          console.log('✅ Loaded "From" assets (native only) from balances:', sortedAssets.length);
         }
         
-        // Get all native assets from SDK (for "To" dropdown)
-        const allAssets = await app.getAssets();
-        console.log('📊 All assets from Pioneer SDK:', allAssets?.length);
+        // Get all native assets for "To" dropdown (including 0 balances)
+        // Map all supported chains to THORChain format
+        const supportedChains = [
+          { networkId: 'bitcoin', chain: 'BTC', symbol: 'BTC', name: 'Bitcoin' },
+          { networkId: 'ethereum', chain: 'ETH', symbol: 'ETH', name: 'Ethereum' },
+          { networkId: 'binancecoin', chain: 'BSC', symbol: 'BNB', name: 'BNB Smart Chain' },
+          { networkId: 'thorchain', chain: 'THOR', symbol: 'RUNE', name: 'THORChain' },
+          { networkId: 'avalanche', chain: 'AVAX', symbol: 'AVAX', name: 'Avalanche' },
+          { networkId: 'cosmos', chain: 'GAIA', symbol: 'ATOM', name: 'Cosmos' },
+          { networkId: 'bitcoincash', chain: 'BCH', symbol: 'BCH', name: 'Bitcoin Cash' },
+          { networkId: 'dogecoin', chain: 'DOGE', symbol: 'DOGE', name: 'Dogecoin' },
+          { networkId: 'litecoin', chain: 'LTC', symbol: 'LTC', name: 'Litecoin' },
+          { networkId: 'mayachain', chain: 'MAYA', symbol: 'CACAO', name: 'Maya Protocol' },
+        ];
         
-        // Filter for THORChain compatible native assets
-        const thorchainNativeAssets = allAssets?.filter((asset: any) => {
-          const thorSymbol = asset.thorchainSymbol || asset.symbol;
-          return thorSymbol && (
-            thorSymbol.includes('.') || // Native assets like BTC.BTC
-            thorSymbol.startsWith('THOR.') // THORChain native
-          );
-        }).map((asset: any) => ({
-          symbol: asset.thorchainSymbol || asset.symbol,
-          name: asset.name,
-          ticker: asset.ticker || asset.symbol?.split('.')[1] || asset.symbol,
-          icon: asset.icon || `https://pioneers.dev/coins/${asset.name?.toLowerCase().replace(/\s+/g, '-')}.png`
-        })) || [];
+        // Create native assets list with all chains (including 0 balances)
+        const allNativeAssets = supportedChains.map(chain => {
+          const thorSymbol = `${chain.chain}.${chain.symbol}`;
+          
+          // Check if we have a balance for this asset
+          const assetWithBalance = fromAssets.find((a: any) => a.symbol === thorSymbol);
+          const balance = assetWithBalance ? assetWithBalance.balance : '0';
+          
+          return {
+            symbol: thorSymbol,
+            name: chain.name,
+            ticker: chain.symbol,
+            icon: `https://pioneers.dev/coins/${chain.networkId}.png`,
+            balance: balance,
+            networkId: chain.networkId,
+          };
+        });
         
-        setToAssets(thorchainNativeAssets);
-        console.log('✅ Loaded "To" assets (native):', thorchainNativeAssets.length);
+        setToAssets(allNativeAssets);
+        console.log('✅ Loaded "To" assets (all native including 0 balances):', allNativeAssets.length);
         
       } catch (error) {
         console.error('Error loading assets:', error);
@@ -246,6 +288,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   }, [inputAmount, fromAsset, assetPrices]);
 
+  // Re-sort fromAssets when prices change
+  useEffect(() => {
+    if (fromAssets.length > 0 && Object.keys(assetPrices).length > 0) {
+      const sortedAssets = [...fromAssets].sort((a: any, b: any) => {
+        const aBalance = parseFloat(a.balance || '0');
+        const bBalance = parseFloat(b.balance || '0');
+        const aPrice = assetPrices[a.symbol] || 0;
+        const bPrice = assetPrices[b.symbol] || 0;
+        const aValue = aBalance * aPrice;
+        const bValue = bBalance * bPrice;
+        return bValue - aValue; // Sort descending (highest USD value first)
+      });
+      setFromAssets(sortedAssets);
+    }
+  }, [assetPrices]);
+
   // Convert to base units
   const convertToBaseUnits = (amount: string): string => {
     const value = parseFloat(amount);
@@ -263,11 +321,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     if (!inputAmount || parseFloat(inputAmount) <= 0) {
       setOutputAmount('');
       setQuote(null);
+      setError('');
       return;
     }
 
     if (fromAsset === toAsset) {
-      setError('From and To assets must be different');
+      setError('Cannot swap to the same asset. Please select different assets.');
+      setOutputAmount('');
+      setQuote(null);
       return;
     }
 
@@ -279,7 +340,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       const destination = recipientAddress || getUserAddress(toAsset);
 
       if (!destination) {
-        throw new Error(`Please provide a destination address for ${toAsset}`);
+        setError(`Please provide a destination address for ${toAsset}`);
+        setIsLoading(false);
+        return;
       }
 
       // Try to use Pioneer SDK's THORChain integration first
@@ -374,6 +437,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setInputAmount('');
     setOutputAmount('');
     setQuote(null);
+    setError('');
   };
 
   // Format time display
@@ -509,43 +573,65 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       zIndex={20}
                       boxShadow="2xl"
                     >
-                      {fromAssets.map((asset) => (
-                        <Button
-                          key={asset.symbol}
-                          width="full"
-                          height="80px"
-                          bg="gray.900"
-                          _hover={{ bg: "gray.800" }}
-                          onClick={() => {
-                            setFromAsset(asset.symbol);
-                            setShowFromDropdown(false);
-                          }}
-                          justifyContent="flex-start"
-                          padding={4}
-                          borderRadius={0}
-                          borderBottom="1px solid"
-                          borderBottomColor="gray.800"
-                        >
-                          <HStack gap={3} width="full">
-                            <Image 
-                              src={asset.icon} 
-                              alt={asset.ticker} 
-                              boxSize="40px"
-                            />
-                            <Box flex={1} textAlign="left">
-                              <Text fontSize="md" fontWeight="bold" color="white">
-                                {asset.ticker}
-                              </Text>
-                              <Text fontSize="xs" color="gray.400" noOfLines={1}>
-                                {asset.caip || asset.address || asset.symbol}
-                              </Text>
-                              <Text fontSize="sm" color="green.400" mt={1}>
-                                {parseFloat(asset.balance).toFixed(6)} {asset.ticker}
-                              </Text>
-                            </Box>
-                          </HStack>
-                        </Button>
-                      ))}
+                      {fromAssets.map((asset) => {
+                        const isDisabled = asset.symbol === toAsset;
+                        return (
+                          <Button
+                            key={asset.symbol}
+                            width="full"
+                            height="80px"
+                            bg={isDisabled ? "gray.950" : "gray.900"}
+                            _hover={{ bg: isDisabled ? "gray.950" : "gray.800" }}
+                            onClick={() => {
+                              if (!isDisabled) {
+                                setFromAsset(asset.symbol);
+                                setShowFromDropdown(false);
+                              }
+                            }}
+                            justifyContent="flex-start"
+                            padding={4}
+                            borderRadius={0}
+                            borderBottom="1px solid"
+                            borderBottomColor="gray.800"
+                            cursor={isDisabled ? "not-allowed" : "pointer"}
+                            opacity={isDisabled ? 0.5 : 1}
+                          >
+                            <HStack gap={3} width="full">
+                              <Image 
+                                src={asset.icon} 
+                                alt={asset.ticker} 
+                                boxSize="40px"
+                                opacity={isDisabled ? 0.5 : 1}
+                              />
+                              <Box flex={1} textAlign="left">
+                                <HStack>
+                                  <Text fontSize="md" fontWeight="bold" color={isDisabled ? "gray.600" : "white"}>
+                                    {asset.ticker}
+                                  </Text>
+                                  {isDisabled && (
+                                    <Text fontSize="xs" color="yellow.500" fontWeight="bold">
+                                      (Selected as To)
+                                    </Text>
+                                  )}
+                                </HStack>
+                                <Text fontSize="xs" color={isDisabled ? "gray.600" : "gray.400"} noOfLines={1}>
+                                  {asset.caip || asset.address || asset.symbol}
+                                </Text>
+                                <HStack justify="space-between" mt={1}>
+                                  <Text fontSize="sm" color={isDisabled ? "gray.600" : "green.400"}>
+                                    {parseFloat(asset.balance).toFixed(6)} {asset.ticker}
+                                  </Text>
+                                  {assetPrices[asset.symbol] && parseFloat(asset.balance) > 0 && (
+                                    <Text fontSize="sm" color={isDisabled ? "gray.600" : "blue.400"}>
+                                      ${(parseFloat(asset.balance) * assetPrices[asset.symbol]).toFixed(2)}
+                                    </Text>
+                                  )}
+                                </HStack>
+                              </Box>
+                            </HStack>
+                          </Button>
+                        );
+                      })}
                     </Box>
                   )}
                 </Box>
@@ -613,41 +699,59 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       zIndex={20}
                       boxShadow="2xl"
                     >
-                      {toAssets.map((asset) => (
-                        <Button
-                          key={asset.symbol}
-                          width="full"
-                          height="70px"
-                          bg="gray.900"
-                          _hover={{ bg: "gray.800" }}
-                          onClick={() => {
-                            setToAsset(asset.symbol);
-                            setShowToDropdown(false);
-                          }}
-                          justifyContent="flex-start"
-                          padding={4}
-                          borderRadius={0}
-                          borderBottom="1px solid"
-                          borderBottomColor="gray.800"
-                        >
-                          <HStack gap={3} width="full">
-                            <Image 
-                              src={asset.icon} 
-                              alt={asset.ticker} 
-                              boxSize="36px"
-                              fallbackSrc="https://pioneers.dev/coins/coin.png"
-                            />
-                            <Box flex={1} textAlign="left">
-                              <Text fontSize="md" fontWeight="bold" color="white">
-                                {asset.ticker}
-                              </Text>
-                              <Text fontSize="xs" color="gray.400">
-                                {asset.name}
-                              </Text>
-                            </Box>
-                          </HStack>
-                        </Button>
-                      ))}
+                      {toAssets.map((asset) => {
+                        const isDisabled = asset.symbol === fromAsset;
+                        return (
+                          <Button
+                            key={asset.symbol}
+                            width="full"
+                            height="80px"
+                            bg={isDisabled ? "gray.950" : "gray.900"}
+                            _hover={{ bg: isDisabled ? "gray.950" : "gray.800" }}
+                            onClick={() => {
+                              if (!isDisabled) {
+                                setToAsset(asset.symbol);
+                                setShowToDropdown(false);
+                              }
+                            }}
+                            justifyContent="flex-start"
+                            padding={4}
+                            borderRadius={0}
+                            borderBottom="1px solid"
+                            borderBottomColor="gray.800"
+                            cursor={isDisabled ? "not-allowed" : "pointer"}
+                            opacity={isDisabled ? 0.5 : 1}
+                          >
+                            <HStack gap={3} width="full">
+                              <Image 
+                                src={asset.icon} 
+                                alt={asset.ticker} 
+                                boxSize="40px"
+                                fallbackSrc="https://pioneers.dev/coins/coin.png"
+                                opacity={isDisabled ? 0.5 : 1}
+                              />
+                              <Box flex={1} textAlign="left">
+                                <HStack>
+                                  <Text fontSize="md" fontWeight="bold" color={isDisabled ? "gray.600" : "white"}>
+                                    {asset.ticker}
+                                  </Text>
+                                  {isDisabled && (
+                                    <Text fontSize="xs" color="yellow.500" fontWeight="bold">
+                                      (Selected as From)
+                                    </Text>
+                                  )}
+                                </HStack>
+                                <Text fontSize="xs" color={isDisabled ? "gray.600" : "gray.400"}>
+                                  {asset.name}
+                                </Text>
+                                <Text fontSize="sm" color={isDisabled ? "gray.600" : parseFloat(asset.balance || '0') > 0 ? "green.400" : "gray.500"} mt={1}>
+                                  {parseFloat(asset.balance || '0').toFixed(6)} {asset.ticker}
+                                </Text>
+                              </Box>
+                            </HStack>
+                          </Button>
+                        );
+                      })}
                     </Box>
                   )}
                 </Box>
@@ -721,10 +825,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <FaBolt color="#FFD700" />
                       <Text color="fg.primary" fontSize="sm">Streaming Swap</Text>
                     </HStack>
-                    <Switch
-                      isChecked={enableStreaming}
-                      onChange={(e) => setEnableStreaming(e.target.checked)}
-                    />
+                    <Switch.Root checked={enableStreaming} onCheckedChange={setEnableStreaming}>
+                      <Switch.Control>
+                        <Switch.Thumb />
+                      </Switch.Control>
+                    </Switch.Root>
                   </HStack>
 
                   {enableStreaming && (
