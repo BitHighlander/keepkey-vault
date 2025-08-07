@@ -270,13 +270,18 @@ export function Provider({ children }: ProviderProps) {
           
           // Start background chart fetching to populate staking positions and other chart data
           try {
-            console.log('📊 Starting chart fetching (including staking positions)...');
-            console.log('📊 Balances before getCharts:', appInit.balances.length);
-            
-            await appInit.getCharts();
-            
-            console.log('✅ Chart fetching completed successfully');
-            console.log('📊 Balances after getCharts:', appInit.balances.length);
+            // Only call getCharts if we have pubkeys (addresses) to look up
+            if (appInit.pubkeys && appInit.pubkeys.length > 0) {
+              console.log('📊 Starting chart fetching (including staking positions)...');
+              console.log('📊 Balances before getCharts:', appInit.balances.length);
+              
+              await appInit.getCharts();
+              
+              console.log('✅ Chart fetching completed successfully');
+              console.log('📊 Balances after getCharts:', appInit.balances.length);
+            } else {
+              console.log('⏭️ Skipping chart fetching - no pubkeys available yet (wallet not paired)');
+            }
             
             // Debug: Look for staking positions
             const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
@@ -311,6 +316,24 @@ export function Provider({ children }: ProviderProps) {
               console.log('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
               await appInit.refresh();
               console.log('🔑 ✅ refresh() completed - dashboard should now be available');
+              
+              // Now that we have pubkeys after pairing, fetch chart data including staking positions
+              try {
+                if (appInit.pubkeys && appInit.pubkeys.length > 0) {
+                  console.log('📊 Fetching charts after wallet pairing...');
+                  await appInit.getCharts();
+                  console.log('✅ Chart data fetched successfully after pairing');
+                  
+                  // Debug: Check for staking positions
+                  const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
+                  console.log('📊 Staking positions after pairing:', stakingBalances.length);
+                } else {
+                  console.log('⚠️ No pubkeys available after pairing - cannot fetch charts');
+                }
+              } catch (chartError) {
+                console.warn('⚠️ Chart fetching failed after pairing:', chartError);
+                // Don't throw - this is not critical for basic functionality
+              }
             } else {
               console.log('🔑 ⚠️ KeepKey SDK still not initialized after pairing');
             }

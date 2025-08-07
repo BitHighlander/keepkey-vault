@@ -137,7 +137,10 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
 
   // Refresh staking positions by calling getCharts
   const refreshStakingPositions = async () => {
-    if (!app?.getCharts) return;
+    if (!app?.getCharts || !app?.pubkeys || app.pubkeys.length === 0) {
+      console.log('⏭️ [CosmosStaking] Cannot refresh staking positions - no pubkeys available');
+      return;
+    }
     
     setIsRefreshing(true);
     try {
