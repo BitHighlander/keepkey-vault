@@ -85,6 +85,50 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   }, [app?.dashboard]);
   const toAssets = fromAssets;
 
+  // middle ellipsis like dashboard
+  const middleEllipsis = (text: string, visibleChars = 16) => {
+    if (!text) return '';
+    if (text.length <= visibleChars) return text;
+    const charsToShow = Math.floor(visibleChars / 2);
+    return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
+  };
+
+  // Ensure distinct initial contexts
+  useEffect(() => {
+    if (!app?.setAssetContext || !app?.setOutboundAssetContext) return;
+    if (!fromAssets || fromAssets.length === 0) return;
+    const currentIn = app?.assetContext?.caip;
+    const currentOut = app?.outboundAssetContext?.caip;
+    const first = fromAssets[0];
+    const second = fromAssets.find((a: any) => a.caip !== first.caip) || first;
+    (async () => {
+      try {
+        if (!currentIn) {
+          await app.setAssetContext({
+            caip: first.caip,
+            networkId: first.networkId || caipToNetworkId(first.caip),
+            symbol: first.symbol,
+            name: first.name,
+            icon: first.icon,
+          });
+        }
+        const inAfter = currentIn || first.caip;
+        if (!currentOut || currentOut === inAfter) {
+          const outChoice = fromAssets.find((a: any) => a.caip !== inAfter) || second;
+          await app.setOutboundAssetContext({
+            caip: outChoice.caip,
+            networkId: outChoice.networkId || caipToNetworkId(outChoice.caip),
+            symbol: outChoice.symbol,
+            name: outChoice.name,
+            icon: outChoice.icon,
+          });
+        }
+      } catch (_) {
+        // ignore
+      }
+    })();
+  }, [fromAssets, app?.assetContext?.caip, app?.outboundAssetContext?.caip, app?.setAssetContext, app?.setOutboundAssetContext]);
+
   // Get user's balance for selected input asset
   const getUserBalance = (): string => {
     try {
@@ -96,6 +140,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     } catch {
       return '0';
     }
+  };
+
+  // Pick first asset different from a given CAIP
+  const pickAlternate = (currentCaip?: string) => {
+    if (!currentCaip) return fromAssets[0] || null;
+    return fromAssets.find((a: any) => a.caip !== currentCaip) || null;
   };
   
   // Get user's address for the selected asset
@@ -206,7 +256,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     if (!app?.assetContext?.caip) return '';
     const networkId = caipToNetworkId(app.assetContext.caip);
     if (!networkId) return '';
-    const pk = app?.pubkeys?.find((p: any) => p.networks?.includes(networkId));
+    const prefix = networkId.split(':')[0];
+    const pk = app?.pubkeys?.find((p: any) => Array.isArray(p.networks) && (p.networks.includes(networkId) || p.networks.includes(`${prefix}:*`)));
     return pk?.address || pk?.pubkey || '';
   }, [app?.pubkeys, app?.assetContext?.caip]);
 
@@ -214,9 +265,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     if (!app?.outboundAssetContext?.caip) return '';
     const networkId = caipToNetworkId(app.outboundAssetContext.caip);
     if (!networkId) return '';
-    const pk = app?.pubkeys?.find((p: any) => p.networks?.includes(networkId));
+    const prefix = networkId.split(':')[0];
+    const pk = app?.pubkeys?.find((p: any) => Array.isArray(p.networks) && (p.networks.includes(networkId) || p.networks.includes(`${prefix}:*`)));
     return pk?.address || pk?.pubkey || '';
   }, [app?.pubkeys, app?.outboundAssetContext?.caip]);
+
+  // Dashboard network meta for styling and balances
+  const getNetworkMeta = (caip?: string) => {
+    const networks = app?.dashboard?.networks || [];
+    const n = networks.find((x: any) => x.gasAssetCaip === caip);
+    return {
+      color: n?.color,
+      balance: n?.totalNativeBalance != null ? String(n.totalNativeBalance) : '0',
+      caip: n?.gasAssetCaip,
+    };
+  };
 
   // Fetch quote using integration clients (no fallbacks)
   const fetchQuote = async () => {
@@ -366,9 +429,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setError(`Swap submitted! TX: ${result.txHash || result.hash}`);
         }
       } else {
-        // Fallback: Build and sign transaction manually
+        // No device connected
         console.log('⚠️ Pioneer SDK swap execution not available');
-        setError('Swap execution requires KeepKey device connection');
+        setError('Connect your KeepKey to execute the swap. Quotes are available without a device.');
       }
     } catch (error: any) {
       console.error('Error executing swap:', error);
@@ -401,15 +464,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
               {/* Asset Selection Row */}
               <HStack gap={2} align="center">
-                {/* From Asset */}
+                 {/* From Asset */}
                 <Box flex={1} position="relative">
                   <Button
                     width="full"
                     height="80px"
-                    bg="gray.800"
+                    bg={getNetworkMeta(app?.assetContext?.caip).color ? `${getNetworkMeta(app?.assetContext?.caip).color}15` : 'gray.800'}
                     border="1px solid"
-                    borderColor="gray.700"
-                    _hover={{ bg: "gray.700" }}
+                    borderColor={getNetworkMeta(app?.assetContext?.caip).color ? `${getNetworkMeta(app?.assetContext?.caip).color}40` : 'gray.700'}
+                    _hover={{ bg: getNetworkMeta(app?.assetContext?.caip).color ? `${getNetworkMeta(app?.assetContext?.caip).color}25` : 'gray.700' }}
                     onClick={() => setShowFromDropdown(!showFromDropdown)}
                     padding={3}
                   >
@@ -426,6 +489,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           </Text>
                           <Text fontSize="xs" color="gray.400">
                             {getAssetDisplay(true).name}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {middleEllipsis(app?.assetContext?.caip || '', 14)}
+                          </Text>
+                          <Text fontSize="xs" color="gray.300">
+                            {getNetworkMeta(app?.assetContext?.caip).balance} {getAssetDisplay(true).ticker}
                           </Text>
                         </Box>
                       </HStack>
@@ -458,7 +527,36 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             height="80px"
                             bg={isDisabled ? "gray.950" : "gray.900"}
                             _hover={{ bg: isDisabled ? "gray.950" : "gray.800" }}
-                            onClick={async () => { if (!isDisabled && app?.setAssetContext) { await app.setAssetContext({ caip: asset.caip, networkId: asset.networkId || caipToNetworkId(asset.caip), symbol: asset.symbol, name: asset.name, icon: asset.icon }); setShowFromDropdown(false); setQuote(null); setOutputAmount(''); setError(''); }}}
+                            onClick={async () => {
+                              if (isDisabled) return;
+                              if (!app?.setAssetContext) return;
+                              await app.setAssetContext({
+                                caip: asset.caip,
+                                networkId: asset.networkId || caipToNetworkId(asset.caip),
+                                symbol: asset.symbol,
+                                name: asset.name,
+                                icon: asset.icon,
+                              });
+                              // Ensure output differs from input
+                              try {
+                                if (app?.outboundAssetContext?.caip === asset.caip && app?.setOutboundAssetContext) {
+                                  const alt = pickAlternate(asset.caip);
+                                  if (alt) {
+                                    await app.setOutboundAssetContext({
+                                      caip: alt.caip,
+                                      networkId: alt.networkId || caipToNetworkId(alt.caip),
+                                      symbol: alt.symbol,
+                                      name: alt.name,
+                                      icon: alt.icon,
+                                    });
+                                  }
+                                }
+                              } catch {}
+                              setShowFromDropdown(false);
+                              setQuote(null);
+                              setOutputAmount('');
+                              setError('');
+                            }}
                             justifyContent="flex-start"
                             padding={4}
                             borderRadius={0}
@@ -521,15 +619,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   <FaExchangeAlt />
                 </Button>
 
-                {/* To Asset */}
+                 {/* To Asset */}
                 <Box flex={1} position="relative">
                   <Button
                     width="full"
                     height="80px"
-                    bg="gray.800"
-                    borderColor="gray.700"
+                    bg={getNetworkMeta(app?.outboundAssetContext?.caip).color ? `${getNetworkMeta(app?.outboundAssetContext?.caip).color}15` : 'gray.800'}
+                    borderColor={getNetworkMeta(app?.outboundAssetContext?.caip).color ? `${getNetworkMeta(app?.outboundAssetContext?.caip).color}40` : 'gray.700'}
                     border="1px solid"
-                    _hover={{ bg: "gray.700" }}
+                    _hover={{ bg: getNetworkMeta(app?.outboundAssetContext?.caip).color ? `${getNetworkMeta(app?.outboundAssetContext?.caip).color}25` : 'gray.700' }}
                     onClick={() => setShowToDropdown(!showToDropdown)}
                     padding={3}
                   >
@@ -546,6 +644,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           </Text>
                           <Text fontSize="xs" color="gray.400">
                             {getAssetDisplay(false).name}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {middleEllipsis(app?.outboundAssetContext?.caip || '', 14)}
+                          </Text>
+                          <Text fontSize="xs" color="gray.300">
+                            {getNetworkMeta(app?.outboundAssetContext?.caip).balance} {getAssetDisplay(false).ticker}
                           </Text>
                         </Box>
                       </HStack>
@@ -578,7 +682,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             height="80px"
                             bg={isDisabled ? "gray.950" : "gray.900"}
                             _hover={{ bg: isDisabled ? "gray.950" : "gray.800" }}
-                            onClick={async () => { if (!isDisabled && app?.setOutboundAssetContext) { await app.setOutboundAssetContext({ caip: asset.caip, networkId: asset.networkId || caipToNetworkId(asset.caip), symbol: asset.symbol, name: asset.name, icon: asset.icon }); setShowToDropdown(false); setQuote(null); setOutputAmount(''); setError(''); }}}
+                            onClick={async () => {
+                              if (isDisabled) return;
+                              if (!app?.setOutboundAssetContext) return;
+                              await app.setOutboundAssetContext({
+                                caip: asset.caip,
+                                networkId: asset.networkId || caipToNetworkId(asset.caip),
+                                symbol: asset.symbol,
+                                name: asset.name,
+                                icon: asset.icon,
+                              });
+                              setShowToDropdown(false);
+                              setQuote(null);
+                              setOutputAmount('');
+                              setError('');
+                            }}
                             justifyContent="flex-start"
                             padding={4}
                             borderRadius={0}
