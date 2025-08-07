@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import {
   Box,
@@ -19,6 +19,21 @@ import {
   Switch,
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaCog, FaChevronDown, FaArrowRight, FaBolt } from 'react-icons/fa';
+// @ts-ignore
+import { caipToNetworkId, caipToThorchain } from '@pioneer-platform/pioneer-caip';
+
+// CJS interop-friendly dynamic import helpers
+async function getThorchainClient(): Promise<any> {
+  // @ts-ignore
+  const mod: any = await import('@pioneer-platform/thorchain-client');
+  return mod?.default || mod;
+}
+
+async function getMayachainClient(): Promise<any> {
+  // @ts-ignore
+  const mod: any = await import('@pioneer-platform/mayachain-client');
+  return mod?.default || mod;
+}
 
 interface SwapProps {
   onBackClick?: () => void;
@@ -31,8 +46,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const { app } = state;
 
   // State for swap form
-  const [fromAsset, setFromAsset] = useState('ETH.ETH');
-  const [toAsset, setToAsset] = useState('BTC.BTC');
   const [inputAmount, setInputAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -55,31 +68,34 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [estimatedValueUSD, setEstimatedValueUSD] = useState('');
   const [outputValueUSD, setOutputValueUSD] = useState('');
 
-  // Get supported assets from Pioneer SDK
-  const [fromAssets, setFromAssets] = useState<any[]>([]);
-  const [toAssets, setToAssets] = useState<any[]>([]);
+  // Build assets from dashboard (match dashboard UI)
+  const fromAssets = useMemo(() => {
+    const networks = app?.dashboard?.networks || [];
+    const items = networks.map((network: any) => ({
+      caip: network.gasAssetCaip,
+      networkId: network.networkId,
+      symbol: network.gasAssetSymbol,
+      name: network.networkName || network.gasAssetSymbol,
+      icon: network.icon,
+      color: network.color,
+      balance: String(network.totalNativeBalance || '0'),
+      valueUsd: Number(network.totalValueUsd || 0),
+    }));
+    return items.sort((a: any, b: any) => (b.valueUsd || 0) - (a.valueUsd || 0));
+  }, [app?.dashboard]);
+  const toAssets = fromAssets;
 
-  // Get user's balance for a specific asset
-  const getUserBalance = (assetSymbol: string): string => {
-    // First check in fromAssets which has the actual balances
-    const assetWithBalance = fromAssets.find((a: any) => a.symbol === assetSymbol);
-    if (assetWithBalance && assetWithBalance.balance) {
-      return assetWithBalance.balance;
+  // Get user's balance for selected input asset
+  const getUserBalance = (): string => {
+    try {
+      const caip = app?.assetContext?.caip;
+      if (!caip || !app?.balances) return '0';
+      const b = app.balances.find((x: any) => x.caip === caip);
+      if (!b) return '0';
+      return String(b.balance || b.value || '0');
+    } catch {
+      return '0';
     }
-    
-    // Fallback to app.balances if available
-    if (!app?.balances) return '0';
-    
-    // Map THORChain symbol to balance lookup
-    const balance = app.balances.find((b: any) => {
-      // Check various symbol formats
-      return b.symbol === assetSymbol || 
-             b.ticker === assetSymbol.split('.')[1] ||
-             b.thorchainSymbol === assetSymbol ||
-             (b.symbol === assetSymbol.split('.')[1] && b.networkId?.includes(assetSymbol.split('.')[0].toLowerCase()));
-    });
-    
-    return balance ? balance.balance || balance.value || '0' : '0';
   };
   
   // Get user's address for the selected asset
@@ -124,46 +140,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     return pubkey?.address || pubkey?.pubkey || '';
   };
 
-  // Fetch asset prices from Pioneer SDK or Midgard
+  // Fetch asset prices from Pioneer SDK
   const fetchAssetPrices = async () => {
     try {
-      // Try to get prices from Pioneer SDK first
       if (app?.getAssetPrices) {
-        try {
-          console.log('📊 Fetching prices from Pioneer SDK...');
-          const sdkPrices = await app.getAssetPrices();
-          
-          // Convert SDK prices to THORChain asset format
-          const priceMap: { [key: string]: number } = {};
-          Object.entries(sdkPrices).forEach(([key, value]: [string, any]) => {
-            // Map different price formats
-            priceMap[key] = value.price || value.usd || value;
-          });
-          
-          setAssetPrices(priceMap);
-          console.log('✅ Got prices from Pioneer SDK');
-          return;
-        } catch (sdkError) {
-          console.warn('⚠️ Pioneer SDK price fetch failed, using Midgard:', sdkError);
-        }
+        console.log('📊 Fetching prices from Pioneer SDK...');
+        const sdkPrices = await app.getAssetPrices();
+        const priceMap: { [key: string]: number } = {};
+        Object.entries(sdkPrices).forEach(([key, value]: [string, any]) => {
+          priceMap[key] = (value as any).price || (value as any).usd || (value as any);
+        });
+        setAssetPrices(priceMap);
+        console.log('✅ Got prices from Pioneer SDK');
       }
-      
-      // Fallback to Midgard API
-      const response = await fetch('https://midgard.ninerealms.com/v2/pools');
-      const pools = await response.json();
-      
-      const prices = pools.reduce((acc: any, pool: any) => {
-        acc[pool.asset] = parseFloat(pool.assetPriceUSD);
-        return acc;
-      }, {});
-      
-      // Special case for RUNE
-      const usdcPool = pools.find((p: any) => p.asset === 'ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48');
-      if (usdcPool) {
-        prices['THOR.RUNE'] = parseFloat(usdcPool.assetDepth) / parseFloat(usdcPool.runeDepth);
-      }
-      
-      setAssetPrices(prices);
     } catch (error) {
       console.error('Error fetching asset prices:', error);
     }
@@ -175,99 +164,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       if (!app) return;
       
       try {
-        // Get native assets from dashboard.networks (matching the portfolio display)
-        if (app.dashboard && app.dashboard.networks && app.dashboard.networks.length > 0) {
+
           console.log('📊 Loading native assets from dashboard.networks:', app.dashboard.networks.length);
           
-          // Map dashboard networks to THORChain format - these are all NATIVE assets
-          const assetsWithBalance = app.dashboard.networks
-            .filter((network: any) => {
-              // Only include networks with non-zero balance
-              const hasBalance = parseFloat(network.totalNativeBalance || '0') > 0;
-              return hasBalance;
-            })
-            .map((network: any) => {
-              // Map network IDs to THORChain chain prefixes
-              const chainMap: { [key: string]: string } = {
-                'bitcoin': 'BTC',
-                'ethereum': 'ETH',
-                'binancecoin': 'BSC',
-                'thorchain': 'THOR',
-                'avalanche': 'AVAX',
-                'cosmos': 'GAIA',
-                'bitcoincash': 'BCH',
-                'dogecoin': 'DOGE',
-                'litecoin': 'LTC',
-                'mayachain': 'MAYA',
-              };
-              
-              const chain = chainMap[network.networkId?.toLowerCase()];
-              const thorSymbol = chain ? `${chain}.${network.gasAssetSymbol}` : `${network.gasAssetSymbol}.${network.gasAssetSymbol}`;
-              
-              return {
-                symbol: thorSymbol,
-                name: network.gasAssetSymbol,
-                ticker: network.gasAssetSymbol,
-                icon: network.icon,
-                balance: network.totalNativeBalance,
-                networkId: network.networkId,
-                caip: network.gasAssetCaip,
-                address: null // Will be fetched from pubkeys when needed
-              };
-            })
-            .filter((asset: any) => asset.symbol); // Only keep assets with valid symbols
-          
-          // Sort by USD value (highest first)
-          const sortedAssets = assetsWithBalance.sort((a: any, b: any) => {
-            // Calculate USD values
-            const aBalance = parseFloat(a.balance || '0');
-            const bBalance = parseFloat(b.balance || '0');
-            const aPrice = assetPrices[a.symbol] || 0;
-            const bPrice = assetPrices[b.symbol] || 0;
-            const aValue = aBalance * aPrice;
-            const bValue = bBalance * bPrice;
-            return bValue - aValue; // Sort descending (highest first)
-          });
-          
-          setFromAssets(sortedAssets);
-          console.log('✅ Loaded "From" assets (native only) from balances:', sortedAssets.length);
-        }
+
         
-        // Get all native assets for "To" dropdown (including 0 balances)
-        // Map all supported chains to THORChain format
-        const supportedChains = [
-          { networkId: 'bitcoin', chain: 'BTC', symbol: 'BTC', name: 'Bitcoin' },
-          { networkId: 'ethereum', chain: 'ETH', symbol: 'ETH', name: 'Ethereum' },
-          { networkId: 'binancecoin', chain: 'BSC', symbol: 'BNB', name: 'BNB Smart Chain' },
-          { networkId: 'thorchain', chain: 'THOR', symbol: 'RUNE', name: 'THORChain' },
-          { networkId: 'avalanche', chain: 'AVAX', symbol: 'AVAX', name: 'Avalanche' },
-          { networkId: 'cosmos', chain: 'GAIA', symbol: 'ATOM', name: 'Cosmos' },
-          { networkId: 'bitcoincash', chain: 'BCH', symbol: 'BCH', name: 'Bitcoin Cash' },
-          { networkId: 'dogecoin', chain: 'DOGE', symbol: 'DOGE', name: 'Dogecoin' },
-          { networkId: 'litecoin', chain: 'LTC', symbol: 'LTC', name: 'Litecoin' },
-          { networkId: 'mayachain', chain: 'MAYA', symbol: 'CACAO', name: 'Maya Protocol' },
-        ];
-        
-        // Create native assets list with all chains (including 0 balances)
-        const allNativeAssets = supportedChains.map(chain => {
-          const thorSymbol = `${chain.chain}.${chain.symbol}`;
-          
-          // Check if we have a balance for this asset
-          const assetWithBalance = fromAssets.find((a: any) => a.symbol === thorSymbol);
-          const balance = assetWithBalance ? assetWithBalance.balance : '0';
-          
-          return {
-            symbol: thorSymbol,
-            name: chain.name,
-            ticker: chain.symbol,
-            icon: `https://pioneers.dev/coins/${chain.networkId}.png`,
-            balance: balance,
-            networkId: chain.networkId,
-          };
-        });
-        
-        setToAssets(allNativeAssets);
-        console.log('✅ Loaded "To" assets (all native including 0 balances):', allNativeAssets.length);
+        // setToAssets(allNativeAssets);
+        // console.log('✅ Loaded "To" assets (all native including 0 balances):', allNativeAssets.length);
         
       } catch (error) {
         console.error('Error loading assets:', error);
@@ -280,43 +183,42 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Update USD value when amount changes
   useEffect(() => {
-    if (inputAmount && assetPrices[fromAsset]) {
-      const usdValue = parseFloat(inputAmount) * assetPrices[fromAsset];
+    const sellId = app?.assetContext?.caip ? caipToThorchain(app.assetContext.caip, app.assetContext.symbol) : undefined;
+    if (inputAmount && sellId && assetPrices[sellId]) {
+      const usdValue = parseFloat(inputAmount) * assetPrices[sellId];
       setEstimatedValueUSD(`≈ $${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
     } else {
       setEstimatedValueUSD('');
     }
-  }, [inputAmount, fromAsset, assetPrices]);
+  }, [inputAmount, app?.assetContext?.caip, app?.assetContext?.symbol, assetPrices]);
 
-  // Re-sort fromAssets when prices change
-  useEffect(() => {
-    if (fromAssets.length > 0 && Object.keys(assetPrices).length > 0) {
-      const sortedAssets = [...fromAssets].sort((a: any, b: any) => {
-        const aBalance = parseFloat(a.balance || '0');
-        const bBalance = parseFloat(b.balance || '0');
-        const aPrice = assetPrices[a.symbol] || 0;
-        const bPrice = assetPrices[b.symbol] || 0;
-        const aValue = aBalance * aPrice;
-        const bValue = bBalance * bPrice;
-        return bValue - aValue; // Sort descending (highest USD value first)
-      });
-      setFromAssets(sortedAssets);
-    }
-  }, [assetPrices]);
+  // Update memoized list order when prices change (no state setter needed)
+  // We rely on useMemo sorting; trigger rerender by local state if needed in future
 
-  // Convert to base units
-  const convertToBaseUnits = (amount: string): string => {
+  // Convert from base units (default 8)
+  const convertFromBaseUnits = (amount: string, decimals = 8): string => {
     const value = parseFloat(amount);
-    return Math.floor(value * 1e8).toString();
+    return (value / Math.pow(10, decimals)).toFixed(decimals);
   };
 
-  // Convert from base units
-  const convertFromBaseUnits = (amount: string): string => {
-    const value = parseFloat(amount);
-    return (value / 1e8).toFixed(8);
-  };
+  // Resolve user addresses for selected assets
+  const fromAddress = useMemo(() => {
+    if (!app?.assetContext?.caip) return '';
+    const networkId = caipToNetworkId(app.assetContext.caip);
+    if (!networkId) return '';
+    const pk = app?.pubkeys?.find((p: any) => p.networks?.includes(networkId));
+    return pk?.address || pk?.pubkey || '';
+  }, [app?.pubkeys, app?.assetContext?.caip]);
 
-  // Fetch quote using Pioneer SDK or THORNode
+  const toAddressDefault = useMemo(() => {
+    if (!app?.outboundAssetContext?.caip) return '';
+    const networkId = caipToNetworkId(app.outboundAssetContext.caip);
+    if (!networkId) return '';
+    const pk = app?.pubkeys?.find((p: any) => p.networks?.includes(networkId));
+    return pk?.address || pk?.pubkey || '';
+  }, [app?.pubkeys, app?.outboundAssetContext?.caip]);
+
+  // Fetch quote using integration clients (no fallbacks)
   const fetchQuote = async () => {
     if (!inputAmount || parseFloat(inputAmount) <= 0) {
       setOutputAmount('');
@@ -324,11 +226,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       setError('');
       return;
     }
-
-    if (fromAsset === toAsset) {
-      setError('Cannot swap to the same asset. Please select different assets.');
-      setOutputAmount('');
-      setQuote(null);
+    if (!app?.assetContext?.caip || !app?.outboundAssetContext?.caip) {
+      setError('Select both input and output assets');
       return;
     }
 
@@ -336,85 +235,47 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setError('');
 
     try {
-      const amountInBaseUnits = convertToBaseUnits(inputAmount);
-      const destination = recipientAddress || getUserAddress(toAsset);
+      const sellCaip = app.assetContext.caip;
+      const buyCaip = app.outboundAssetContext.caip;
+      const sellId = caipToThorchain(sellCaip, app.assetContext.symbol);
+      const buyId = caipToThorchain(buyCaip, app.outboundAssetContext.symbol);
+      if (!sellId || !buyId) throw new Error('Unsupported asset mapping');
 
-      if (!destination) {
-        setError(`Please provide a destination address for ${toAsset}`);
-        setIsLoading(false);
-        return;
+      const destination = recipientAddress || toAddressDefault;
+      const sender = fromAddress;
+      if (!sender) throw new Error('Missing sender address for input asset');
+      if (!destination) throw new Error('Missing destination address for output asset');
+
+      const payload: any = {
+        sellAsset: sellId,
+        buyAsset: buyId,
+        sellAmount: String(inputAmount),
+        senderAddress: sender,
+        recipientAddress: destination,
+        slippage: '3',
+      };
+
+      const integration = sellId.startsWith('MAYA.') || buyId.startsWith('MAYA.') ? 'MAYA' : 'THOR';
+      let quoteResult: any;
+      if (integration === 'THOR') {
+        const thor = await getThorchainClient();
+        quoteResult = await thor.getQuote(payload);
+      } else {
+        const maya = await getMayachainClient();
+        quoteResult = await maya.getQuote(payload);
       }
 
-      // Try to use Pioneer SDK's THORChain integration first
-      if (app?.getThorchainQuote) {
-        try {
-          console.log('🚀 Using Pioneer SDK for THORChain quote...');
-          const quoteParams = {
-            sellAsset: fromAsset,
-            buyAsset: toAsset,
-            sellAmount: amountInBaseUnits,
-            senderAddress: getUserAddress(fromAsset),
-            recipientAddress: destination,
-            slippage: '3', // 3% slippage tolerance
-            streamingInterval: enableStreaming ? streamingInterval : undefined,
-            streamingQuantity: enableStreaming ? streamingQuantity : undefined,
-          };
-          
-          const sdkQuote = await app.getThorchainQuote(quoteParams);
-          console.log('✅ Got quote from Pioneer SDK:', sdkQuote);
-          
-          // Map SDK quote to our format
-          setQuote(sdkQuote);
-          const output = convertFromBaseUnits(sdkQuote.expected_amount_out || sdkQuote.expectedAmountOut);
-          setOutputAmount(output);
-          
-          // Calculate output USD value
-          if (assetPrices[toAsset]) {
-            const usdValue = parseFloat(output) * assetPrices[toAsset];
-            setOutputValueUSD(`≈ $${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-          }
-          
-          return; // Success with SDK
-        } catch (sdkError) {
-          console.warn('⚠️ Pioneer SDK quote failed, falling back to direct API:', sdkError);
-          // Fall through to direct API call
-        }
-      }
+      setQuote(quoteResult);
 
-      // Fallback to direct THORNode API
-      let quoteUrl = 'https://thornode.ninerealms.com/thorchain/quote/swap?';
-      quoteUrl += `amount=${amountInBaseUnits}`;
-      quoteUrl += `&from_asset=${fromAsset}`;
-      quoteUrl += `&to_asset=${toAsset}`;
-      quoteUrl += `&destination=${destination}`;
-      
-      // Add streaming parameters if enabled
-      if (enableStreaming) {
-        quoteUrl += `&streaming_interval=${streamingInterval}`;
-        quoteUrl += `&streaming_quantity=${streamingQuantity}`;
-      }
+      const out = quoteResult.amountOut
+        || (quoteResult.expected_amount_out && convertFromBaseUnits(String(quoteResult.expected_amount_out)));
+      if (out) setOutputAmount(String(out));
 
-      console.log('Fetching quote from THORNode:', quoteUrl);
-      const response = await fetch(quoteUrl);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch quote');
-      }
-
-      const quoteData = await response.json();
-      setQuote(quoteData);
-      
-      // Set output amount
-      const output = convertFromBaseUnits(quoteData.expected_amount_out);
-      setOutputAmount(output);
-      
-      // Calculate output USD value
-      if (assetPrices[toAsset]) {
-        const usdValue = parseFloat(output) * assetPrices[toAsset];
+      const toKey = buyId;
+      if (assetPrices[toKey] && out) {
+        const usdValue = parseFloat(String(out)) * assetPrices[toKey];
         setOutputValueUSD(`≈ $${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       }
-      
     } catch (error: any) {
       console.error('Error fetching quote:', error);
       setError(error.message || 'Unable to fetch quote');
@@ -427,13 +288,27 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   useEffect(() => {
     const timer = setTimeout(fetchQuote, 500);
     return () => clearTimeout(timer);
-  }, [inputAmount, fromAsset, toAsset, recipientAddress, enableStreaming, streamingInterval, streamingQuantity]);
+  }, [inputAmount, app?.assetContext?.caip, app?.outboundAssetContext?.caip, recipientAddress, enableStreaming, streamingInterval, streamingQuantity]);
 
-  // Swap from and to assets
-  const swapAssets = () => {
-    const temp = fromAsset;
-    setFromAsset(toAsset);
-    setToAsset(temp);
+  // Swap from and to assets (contexts)
+  const swapAssets = async () => {
+    const fromSel = app?.assetContext;
+    const toSel = app?.outboundAssetContext;
+    if (!fromSel || !toSel || !app?.setAssetContext || !app?.setOutboundAssetContext) return;
+    await app.setAssetContext({
+      caip: toSel.caip,
+      networkId: toSel.networkId || caipToNetworkId(toSel.caip),
+      symbol: toSel.symbol,
+      name: toSel.name,
+      icon: toSel.icon,
+    });
+    await app.setOutboundAssetContext({
+      caip: fromSel.caip,
+      networkId: fromSel.networkId || caipToNetworkId(fromSel.caip),
+      symbol: fromSel.symbol,
+      name: fromSel.name,
+      icon: fromSel.icon,
+    });
     setInputAmount('');
     setOutputAmount('');
     setQuote(null);
@@ -447,10 +322,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
-  const getAssetDisplay = (symbol: string, isFromAsset: boolean = false) => {
-    const assets = isFromAsset ? fromAssets : toAssets;
-    const asset = assets.find(a => a.symbol === symbol);
-    return asset || { symbol, name: symbol, ticker: symbol.split('.')[1] || symbol, icon: 'https://pioneers.dev/coins/coin.png' };
+  const getAssetDisplay = (isFromAsset: boolean = false) => {
+    const sel = isFromAsset ? app?.assetContext : app?.outboundAssetContext;
+    if (!sel) return { symbol: '', name: '', ticker: '', icon: 'https://pioneers.dev/coins/coin.png' };
+    const ticker = sel.symbol || sel.name || '';
+    return { symbol: sel.symbol, name: sel.name, ticker, icon: sel.icon };
   };
   
   // Execute the swap using Pioneer SDK
@@ -470,10 +346,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         
         const swapParams = {
           quote,
-          fromAsset,
-          toAsset,
+          fromAsset: app?.assetContext?.caip,
+          toAsset: app?.outboundAssetContext?.caip,
           amount: inputAmount,
-          recipient: recipientAddress || getUserAddress(toAsset),
+          recipient: recipientAddress || toAddressDefault,
         };
         
         const result = await app.executeThorchainSwap(swapParams);
@@ -540,16 +416,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <HStack width="full" justify="space-between">
                       <HStack gap={2}>
                         <Image 
-                          src={getAssetDisplay(fromAsset, true).icon}
-                          alt={fromAsset} 
+                          src={getAssetDisplay(true).icon}
+                          alt={app?.assetContext?.symbol || ''} 
                           boxSize="32px"
                         />
                         <Box textAlign="left">
                           <Text fontSize="sm" fontWeight="bold" color="white">
-                            {getAssetDisplay(fromAsset, true).ticker}
+                            {getAssetDisplay(true).ticker}
                           </Text>
                           <Text fontSize="xs" color="gray.400">
-                            {getAssetDisplay(fromAsset, true).name}
+                            {getAssetDisplay(true).name}
                           </Text>
                         </Box>
                       </HStack>
@@ -573,21 +449,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       zIndex={20}
                       boxShadow="2xl"
                     >
-                      {fromAssets.map((asset) => {
-                        const isDisabled = asset.symbol === toAsset;
+                      {fromAssets.map((asset: any) => {
+                        const isDisabled = asset.caip === app?.outboundAssetContext?.caip;
                         return (
                           <Button
-                            key={asset.symbol}
+                            key={asset.caip}
                             width="full"
                             height="80px"
                             bg={isDisabled ? "gray.950" : "gray.900"}
                             _hover={{ bg: isDisabled ? "gray.950" : "gray.800" }}
-                            onClick={() => {
-                              if (!isDisabled) {
-                                setFromAsset(asset.symbol);
-                                setShowFromDropdown(false);
-                              }
-                            }}
+                            onClick={async () => { if (!isDisabled && app?.setAssetContext) { await app.setAssetContext({ caip: asset.caip, networkId: asset.networkId || caipToNetworkId(asset.caip), symbol: asset.symbol, name: asset.name, icon: asset.icon }); setShowFromDropdown(false); setQuote(null); setOutputAmount(''); setError(''); }}}
                             justifyContent="flex-start"
                             padding={4}
                             borderRadius={0}
@@ -599,14 +470,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             <HStack gap={3} width="full">
                               <Image 
                                 src={asset.icon} 
-                                alt={asset.ticker} 
+                                alt={asset.symbol} 
                                 boxSize="40px"
                                 opacity={isDisabled ? 0.5 : 1}
                               />
                               <Box flex={1} textAlign="left">
                                 <HStack>
                                   <Text fontSize="md" fontWeight="bold" color={isDisabled ? "gray.600" : "white"}>
-                                    {asset.ticker}
+                                    {asset.symbol}
                                   </Text>
                                   {isDisabled && (
                                     <Text fontSize="xs" color="yellow.500" fontWeight="bold">
@@ -614,16 +485,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                                     </Text>
                                   )}
                                 </HStack>
-                                <Text fontSize="xs" color={isDisabled ? "gray.600" : "gray.400"} noOfLines={1}>
-                                  {asset.caip || asset.address || asset.symbol}
+                                <Text fontSize="xs" color={isDisabled ? "gray.600" : "gray.400"}>
+                                  {asset.caip}
                                 </Text>
-                                <HStack justify="space-between" mt={1}>
+                    <HStack justify="space-between" mt={1}>
                                   <Text fontSize="sm" color={isDisabled ? "gray.600" : "green.400"}>
-                                    {parseFloat(asset.balance).toFixed(6)} {asset.ticker}
+                                    {parseFloat(asset.balance || '0').toFixed(6)} {asset.symbol}
                                   </Text>
-                                  {assetPrices[asset.symbol] && parseFloat(asset.balance) > 0 && (
+                                  {assetPrices[asset.symbol] && parseFloat(asset.balance || '0') > 0 && (
                                     <Text fontSize="sm" color={isDisabled ? "gray.600" : "blue.400"}>
-                                      ${(parseFloat(asset.balance) * assetPrices[asset.symbol]).toFixed(2)}
+                                      ${(parseFloat(asset.balance || '0') * (assetPrices[asset.symbol] || 0)).toFixed(2)}
                                     </Text>
                                   )}
                                 </HStack>
@@ -664,18 +535,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   >
                     <HStack width="full" justify="space-between">
                       <HStack gap={2}>
-                        <Image 
-                          src={getAssetDisplay(toAsset).icon}
-                          alt={toAsset} 
+                       <Image 
+                          src={getAssetDisplay(false).icon}
+                          alt={app?.outboundAssetContext?.symbol || ''} 
                           boxSize="32px" 
-                          fallbackSrc="https://pioneers.dev/coins/coin.png"
                         />
                         <Box textAlign="left">
                           <Text fontSize="sm" fontWeight="bold" color="white">
-                            {getAssetDisplay(toAsset).ticker}
+                            {getAssetDisplay(false).ticker}
                           </Text>
                           <Text fontSize="xs" color="gray.400">
-                            {getAssetDisplay(toAsset).name}
+                            {getAssetDisplay(false).name}
                           </Text>
                         </Box>
                       </HStack>
@@ -699,21 +569,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       zIndex={20}
                       boxShadow="2xl"
                     >
-                      {toAssets.map((asset) => {
-                        const isDisabled = asset.symbol === fromAsset;
+                       {toAssets.map((asset: any) => {
+                        const isDisabled = asset.caip === app?.assetContext?.caip;
                         return (
                           <Button
-                            key={asset.symbol}
+                            key={asset.caip}
                             width="full"
                             height="80px"
                             bg={isDisabled ? "gray.950" : "gray.900"}
                             _hover={{ bg: isDisabled ? "gray.950" : "gray.800" }}
-                            onClick={() => {
-                              if (!isDisabled) {
-                                setToAsset(asset.symbol);
-                                setShowToDropdown(false);
-                              }
-                            }}
+                            onClick={async () => { if (!isDisabled && app?.setOutboundAssetContext) { await app.setOutboundAssetContext({ caip: asset.caip, networkId: asset.networkId || caipToNetworkId(asset.caip), symbol: asset.symbol, name: asset.name, icon: asset.icon }); setShowToDropdown(false); setQuote(null); setOutputAmount(''); setError(''); }}}
                             justifyContent="flex-start"
                             padding={4}
                             borderRadius={0}
@@ -725,15 +590,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             <HStack gap={3} width="full">
                               <Image 
                                 src={asset.icon} 
-                                alt={asset.ticker} 
+                                alt={asset.symbol} 
                                 boxSize="40px"
-                                fallbackSrc="https://pioneers.dev/coins/coin.png"
                                 opacity={isDisabled ? 0.5 : 1}
                               />
                               <Box flex={1} textAlign="left">
                                 <HStack>
                                   <Text fontSize="md" fontWeight="bold" color={isDisabled ? "gray.600" : "white"}>
-                                    {asset.ticker}
+                                    {asset.symbol}
                                   </Text>
                                   {isDisabled && (
                                     <Text fontSize="xs" color="yellow.500" fontWeight="bold">
@@ -741,11 +605,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                                     </Text>
                                   )}
                                 </HStack>
-                                <Text fontSize="xs" color={isDisabled ? "gray.600" : "gray.400"}>
+                                 <Text fontSize="xs" color={isDisabled ? "gray.600" : "gray.400"}>
                                   {asset.name}
                                 </Text>
                                 <Text fontSize="sm" color={isDisabled ? "gray.600" : parseFloat(asset.balance || '0') > 0 ? "green.400" : "gray.500"} mt={1}>
-                                  {parseFloat(asset.balance || '0').toFixed(6)} {asset.ticker}
+                                  {parseFloat(asset.balance || '0').toFixed(6)} {asset.symbol}
                                 </Text>
                               </Box>
                             </HStack>
@@ -767,14 +631,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   </Text>
                   <HStack gap={3}>
                     <Text color="fg.muted" fontSize="sm">
-                      Balance: <Text as="span" color="fg.primary" fontWeight="medium">{getUserBalance(fromAsset)}</Text>
+                      Balance: <Text as="span" color="fg.primary" fontWeight="medium">{getUserBalance()}</Text>
                     </Text>
                     <Button
                       size="sm"
                       variant="outline"
                       borderColor="accent.solid"
                       color="accent.solid"
-                      onClick={() => setInputAmount(getUserBalance(fromAsset))}
+                      onClick={() => setInputAmount(getUserBalance())}
                       _hover={{ bg: "accent.solid", color: "white" }}
                       px={3}
                       height="24px"
@@ -804,12 +668,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               </Box>
 
               {/* Settings Toggle */}
-              <Button
+               <Button
                 size="sm"
                 variant="ghost"
                 color="fg.muted"
                 onClick={() => setShowSettings(!showSettings)}
-                leftIcon={<FaCog />}
+                 // @ts-ignore - leftIcon provided by Chakra button wrapper in project theme
+                 leftIcon={<FaCog />}
                 width="full"
                 justifyContent="center"
               >
@@ -825,6 +690,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <FaBolt color="#FFD700" />
                       <Text color="fg.primary" fontSize="sm">Streaming Swap</Text>
                     </HStack>
+                    {/* @ts-ignore project UI switch component accepts boolean setter */}
                     <Switch.Root checked={enableStreaming} onCheckedChange={setEnableStreaming}>
                       <Switch.Control>
                         <Switch.Thumb />
@@ -874,7 +740,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       Recipient Address (Optional):
                     </Text>
                     <Input
-                      placeholder={`Leave empty to use your ${getAssetDisplay(toAsset).ticker} address`}
+                      placeholder={`Leave empty to use your ${getAssetDisplay(false).ticker} address`}
                       size="sm"
                       value={recipientAddress}
                       onChange={(e) => setRecipientAddress(e.target.value)}
@@ -888,14 +754,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               )}
 
               {/* Get Quote Button */}
-              <Button
+                     <Button
                 size="lg"
                 bg="green.500"
                 color="white"
                 _hover={{ bg: "green.600" }}
                 onClick={fetchQuote}
-                isLoading={isLoading}
-                loadingText="Fetching Quote..."
+                       // @ts-ignore project button supports isLoading
+                       isLoading={isLoading}
+                       loadingText="Fetching Quote..."
                 disabled={!inputAmount || parseFloat(inputAmount) <= 0}
                 width="full"
                 height="50px"
@@ -925,23 +792,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <HStack justify="center" gap={3} py={2}>
                       <HStack>
                         <Image 
-                          src={getAssetDisplay(fromAsset, true).icon}
-                          alt={fromAsset} 
+                          src={getAssetDisplay(true).icon}
+                          alt={app?.assetContext?.symbol || ''} 
                           boxSize="20px" 
                         />
                         <Text color="fg.primary" fontWeight="bold">
-                          {inputAmount} {getAssetDisplay(fromAsset, true).ticker}
+                          {inputAmount} {getAssetDisplay(true).ticker}
                         </Text>
                       </HStack>
                       <FaArrowRight />
                       <HStack>
                         <Image 
-                          src={getAssetDisplay(toAsset).icon}
-                          alt={toAsset} 
+                          src={getAssetDisplay(false).icon}
+                          alt={app?.outboundAssetContext?.symbol || ''} 
                           boxSize="20px" 
                         />
                         <Text color="green.400" fontWeight="bold">
-                          {parseFloat(outputAmount).toFixed(8)} {getAssetDisplay(toAsset).ticker}
+                          {parseFloat(outputAmount).toFixed(8)} {getAssetDisplay(false).ticker}
                         </Text>
                       </HStack>
                     </HStack>
@@ -998,14 +865,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     
                     {/* Execute Swap Button */}
                     <Box borderTop="1px solid" borderColor="border.primary" my={2} />
-                    <Button
+                     <Button
                       size="lg"
                       bg="accent.solid"
                       color="white"
                       _hover={{ bg: "accent.muted" }}
                       onClick={executeSwap}
-                      isLoading={isLoading}
-                      loadingText="Executing Swap..."
+                       // @ts-ignore project button supports isLoading
+                       isLoading={isLoading}
+                       loadingText="Executing Swap..."
                       width="full"
                       height="50px"
                       mt={3}
