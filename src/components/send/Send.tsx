@@ -293,205 +293,56 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     return 'OTHER';
   };
 
-  // Update fetchFeeRates to handle network-specific fee formats
+  // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
-    if (!assetContext?.networkId) return;
-    
-    try {
-      // Get the blockchain type
-      const networkId = assetContext.networkId;
-      const networkType = getNetworkType(networkId);
-      
-      // Network-specific default fees - much more accurate than generic defaults
-      const networkSpecificDefaults: Record<string, {slow: string, average: string, fastest: string}> = {
-        // EVM chains - fees in native token (ETH, BNB, etc) not gwei
-        'eip155:1': { slow: '0.001', average: '0.002', fastest: '0.005' }, // Ethereum in ETH
-        'eip155:56': { slow: '0.0001', average: '0.0002', fastest: '0.0003' }, // BSC in BNB
-        'eip155:137': { slow: '0.001', average: '0.002', fastest: '0.005' }, // Polygon in MATIC
-        'eip155:43114': { slow: '0.001', average: '0.002', fastest: '0.003' }, // Avalanche in AVAX
-        'eip155:8453': { slow: '0.00001', average: '0.00002', fastest: '0.00005' }, // Base in ETH
-        'eip155:10': { slow: '0.00001', average: '0.00002', fastest: '0.00005' }, // Optimism in ETH
-        
-        // UTXO chains use sat/byte
-        'bip122:000000000019d6689c085ae165831e93': { slow: '2', average: '5', fastest: '10' }, // Bitcoin
-        'bip122:12a765e31ffd4059bada1e25190f6e98': { slow: '1', average: '2', fastest: '5' }, // Litecoin
-        'bip122:000000000933ea01ad0ee984209779ba': { slow: '1', average: '2', fastest: '4' }, // Dogecoin
-        'bip122:000000000000000000651ef99cb9fcbe': { slow: '1', average: '3', fastest: '6' }, // Bitcoin Cash - sat/byte
-        
-        // Tendermint chains use flat fees
-        'cosmos:cosmoshub-4/slip44:118': { slow: '0.005', average: '0.005', fastest: '0.005' },
-        'cosmos:osmosis-1/slip44:118': { slow: '0.035', average: '0.035', fastest: '0.035' },
-        'cosmos:thorchain-mainnet-v1/slip44:931': { slow: '0.02', average: '0.02', fastest: '0.02' },
-        'cosmos:mayachain-mainnet-v1/slip44:931': { slow: '0.2', average: '0.2', fastest: '0.2' },
-        
-        // Other chains
-        'ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144': { slow: '0.000012', average: '0.000012', fastest: '0.000012' }, // XRP
-      };
-      
-      // Start with reasonable type-specific defaults if we don't have network-specific ones
-      let defaultFees;
-      switch (networkType) {
-        case 'EVM':
-          defaultFees = { slow: '0.001', average: '0.002', fastest: '0.005' }; // ETH not gwei
-          break;
-        case 'UTXO':
-          defaultFees = { slow: '3', average: '5', fastest: '10' }; // sat/byte
-          break;
-        case 'TENDERMINT':
-          defaultFees = { slow: '0.01', average: '0.01', fastest: '0.01' }; // native token
-          break;
-        default:
-          defaultFees = { slow: '0.001', average: '0.005', fastest: '0.01' }; // generic fallback
-      }
-      
-      // Use network-specific defaults if available
-      if (networkSpecificDefaults[networkId]) {
-        defaultFees = networkSpecificDefaults[networkId];
-      } else {
-        // Try to match by chain type
-        const chainTypeMatch = Object.keys(networkSpecificDefaults).find(key => networkId.startsWith(key.split(':')[0]));
-        if (chainTypeMatch) {
-          console.log(`Using defaults from similar chain type: ${chainTypeMatch}`);
-          defaultFees = networkSpecificDefaults[chainTypeMatch];
-        }
-      }
-
-      // Special handling for BCH - ensure fees are shown in proper units
-      if (networkId.includes('bitcoincash') || networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
-        // These are sat/byte rates for BCH, but converted to show as BCH in the UI
-        // For BCH transaction size of ~250 bytes, this gives reasonable fee range
-        defaultFees = { 
-          slow: '0.00000250',    // 1 sat/byte * ~250 bytes / 100,000,000
-          average: '0.00000750', // 3 sat/byte * ~250 bytes / 100,000,000
-          fastest: '0.00001500'  // 6 sat/byte * ~250 bytes / 100,000,000
-        };
-        console.log('🔧 Using BCH-specific fee defaults:', defaultFees);
-      }
-      
-      console.log(`Using default fees for network ${networkId}:`, defaultFees);
-      
-      // Try to get fee rates from the API
-      try {
-        if (app?.pioneer) {
-          const feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
-          console.log('Fee rates from API:', feeRates);
-          
-          if (feeRates?.data) {
-            // Only update if API returned valid values
-            if (feeRates.data.slow && feeRates.data.average && feeRates.data.fastest) {
-              // Process fee rates based on network type
-              switch(networkType) {
-                case 'EVM':
-                  // Convert to gwei if necessary
-                  defaultFees = {
-                    slow: feeRates.data.slow.toString(),
-                    average: feeRates.data.average.toString(),
-                    fastest: feeRates.data.fastest.toString()
-                  };
-                  break;
-                case 'UTXO':
-                  // UTXO chains use sats/byte for fee rates
-                  defaultFees = {
-                    slow: feeRates.data.slow.toString(),
-                    average: feeRates.data.average.toString(),
-                    fastest: feeRates.data.fastest.toString()
-                  };
-                  break;
-                case 'TENDERMINT':
-                  // Tendermint chains often have fixed fees
-                  defaultFees = {
-                    slow: feeRates.data.slow.toString(),
-                    average: feeRates.data.average.toString(),
-                    fastest: feeRates.data.fastest.toString()
-                  };
-                  break;
-                default:
-                  defaultFees = {
-                    slow: feeRates.data.slow.toString(),
-                    average: feeRates.data.average.toString(),
-                    fastest: feeRates.data.fastest.toString()
-                  };
-              }
-              console.log('Updated fees from API:', defaultFees);
-            } else {
-              console.warn('API returned incomplete fee data, using defaults');
-            }
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to fetch fee rates from API, using network-specific defaults', error);
-      }
-      
-      // Set the fee options
-      setFeeOptions(defaultFees);
-      
-      // Set the estimatedFee based on selected fee level
-      setEstimatedFee(defaultFees[selectedFeeLevel]);
-      updateFeeInUsd(defaultFees[selectedFeeLevel]);
-    } catch (error) {
-      console.error('Error fetching fee rates:', error);
+    if (!assetContext?.networkId) {
+      setError('No network ID available');
+      return;
     }
-  };
-  
-  // Get fee unit based on network type
-  const getFeeUnit = (): string => {
-    if (!assetContext?.networkId) return '';
-    
-    const networkType = getNetworkType(assetContext.networkId);
-    
-    switch (networkType) {
-      case 'EVM':
-        return 'GWEI';
-      case 'UTXO':
-        return 'sats/byte';
-      case 'TENDERMINT':
-        return assetContext.symbol || '';
-      case 'OTHER':
-        if (assetContext.networkId.includes('ripple')) {
-          return 'XRP';
-        }
-        return assetContext.symbol || '';
-      default:
-        return assetContext.symbol || '';
-    }
-  };
-  
-  // Format fee display based on network type
-  const formatFeeDisplay = (fee: string): string => {
-    if (!assetContext?.networkId) return fee;
     
     const networkId = assetContext.networkId;
-    const networkType = getNetworkType(networkId);
     
     try {
-      const feeValue = parseFloat(fee);
-      
-      switch (networkType) {
-        case 'EVM': {
-          // For EVM chains, we're storing the fee in GWEI but display in native token for consistency
-          return fee;
-        }
-        case 'UTXO': {
-          // For UTXO chains, check if we need to convert from satoshis
-          if (feeValue > 0.1) {
-            // If fee is large (likely in satoshis), convert and display in the main unit
-            return (feeValue / 100000000).toFixed(8);
-          }
-          // Otherwise, it's already in the correct unit
-          return fee;
-        }
-        case 'TENDERMINT': {
-          // For Tendermint chains, show in native token
-          return fee;
-        }
-        default:
-          return fee;
+      if (!app?.pioneer) {
+        throw new Error('Pioneer API not available');
       }
-    } catch (error) {
-      console.error('Error formatting fee display:', error);
-      return fee;
+
+      console.log('Fetching fee rates for network:', networkId);
+      const feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
+      console.log('Fee rates from API:', feeRates);
+      
+      if (!feeRates?.data) {
+        throw new Error('No fee data returned from API');
+      }
+      
+      if (!feeRates.data.slow || !feeRates.data.average || !feeRates.data.fastest) {
+        throw new Error('Incomplete fee data from API');
+      }
+      
+      // Use the fee rates directly from the API - no guessing!
+      const fees = {
+        slow: feeRates.data.slow.toString(),
+        average: feeRates.data.average.toString(),
+        fastest: feeRates.data.fastest.toString()
+      };
+      
+      console.log('Using fees from API:', fees);
+      setFeeOptions(fees);
+      setEstimatedFee(fees[selectedFeeLevel]);
+      updateFeeInUsd(fees[selectedFeeLevel]);
+      
+    } catch (error: any) {
+      console.error('Failed to fetch fee rates:', error);
+      const errorMessage = `Failed to get network fees: ${error.message || 'Unknown error'}`;
+      setError(errorMessage);
+      setShowErrorDialog(true);
+      
+      // Don't proceed with fake fees - show the error to the user
+      setFeeOptions({ slow: '0', average: '0', fastest: '0' });
+      setEstimatedFee('0');
     }
   };
+  
 
   // Handle fee selection change
   const handleFeeSelectionChange = (feeLevel: 'slow' | 'average' | 'fastest') => {
@@ -594,21 +445,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Missing asset CAIP')
       }
       
-      // Get network type
-      const networkId = assetContext?.networkId || '';
-      const networkType = getNetworkType(networkId);
-      
-      // Add BCH-specific debugging
-      const isBCH = networkId.includes('bitcoincash') || networkId.includes('bip122:000000000000000000651ef99cb9fcbe');
-      if (isBCH) {
-        console.log('🔍 Building Bitcoin Cash transaction:', {
-          networkId,
-          networkType,
-          caip,
-          assetContext
-        });
-      }
-      
       // Convert amount to native token if in USD mode
       const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
       
@@ -627,52 +463,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         isMax,
       }
       
-      // Add network-specific parameters based on chain type
-      switch (networkType) {
-        case 'EVM': {
-          // For EVM chains, we might need to specify gas settings
-          if (customFeeOption && customFeeAmount) {
-            // Add custom gas price for EVM chains
-            // @ts-ignore - Adding custom property for EVM
-            sendPayload.gasPrice = customFeeAmount;
-          }
-          break;
-        }
-        
-        case 'UTXO': {
-          // For UTXO chains, we might need to specify fee rate
-          if (customFeeOption && customFeeAmount) {
-            // Add custom fee rate for UTXO chains (sats/byte)
-            // @ts-ignore - Adding custom property for UTXO
-            sendPayload.feeRate = customFeeAmount;
-          }
-          
-          // Add BCH-specific parameters
-          if (isBCH) {
-            // BCH often requires explicit address format specification
-            // @ts-ignore - Adding custom property for BCH
-            sendPayload.addressFormat = 'cashaddr';
-            console.log('🔧 Added BCH-specific parameters to payload');
-          }
-          break;
-        }
-        
-        case 'TENDERMINT': {
-          // For Tendermint chains, add memo if provided
-          if (memo) {
-            sendPayload.memo = memo;
-          }
-          break;
-        }
-        
-        case 'OTHER': {
-          // Handle other chains like Ripple
-          if (networkId.includes('ripple') && memo) {
-            // In Ripple, this might be a "destination tag" instead of a memo
-            sendPayload.memo = memo;
-          }
-          break;
-        }
+      // Add custom fee if specified
+      if (customFeeOption && customFeeAmount) {
+        // @ts-ignore - Adding custom fee property
+        sendPayload.customFee = customFeeAmount;
       }
       
       // Add memo for supported chains if provided
@@ -687,218 +481,53 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       try {
         unsignedTxResult = await app.buildTx(sendPayload);
         console.log('Unsigned TX Result:', unsignedTxResult);
-        
-        // Add BCH-specific debug logging
-        if (isBCH) {
-          console.log('🔍 BCH Transaction built successfully:', {
-            resultType: typeof unsignedTxResult,
-            hasInputs: unsignedTxResult?.inputs ? 'Yes' : 'No',
-            hasOutputs: unsignedTxResult?.outputs ? 'Yes' : 'No'
-          });
-        }
-      } catch (buildError) {
+      } catch (buildError: any) {
         console.error('Transaction build error:', buildError);
-        if (isBCH) {
-          console.error('🚨 BCH Transaction build failed:', buildError);
-          
-          // Attempt a fallback approach for BCH
-          console.log('🔄 Attempting fallback approach for BCH...');
-          
-          // Try with a simpler payload or alternative approach
-          const simplifiedPayload = {
-            ...sendPayload,
-            // Force using specific fee level for BCH
-            feeLevel: 5
-          };
-          
-          console.log('🔄 Using simplified BCH payload:', simplifiedPayload);
-          unsignedTxResult = await app.buildTx(simplifiedPayload);
-          console.log('🔄 BCH Fallback transaction result:', unsignedTxResult);
-        } else {
-          throw buildError; // Re-throw for non-BCH chains
-        }
+        const errorMessage = `Failed to build transaction: ${buildError.message || 'Unknown error'}`;
+        setError(errorMessage);
+        setShowErrorDialog(true);
+        throw buildError;
       }
       
       if (!unsignedTxResult) {
         throw new Error('Failed to build transaction: No result returned');
       }
       
-      // Extract fee from unsigned transaction result if available
+      // Extract fee from unsigned transaction result
       try {
-        // Different chains have different formats for fee information
-        let feeValue = estimatedFee; // Use current estimate as fallback
+        let feeValue = null;
         
         if (unsignedTxResult && typeof unsignedTxResult === 'object') {
-          // Extract fee based on network type
-          switch (networkType) {
-            case 'EVM': {
-              // For EVM chains, fee is gasPrice * gasLimit
-              if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
-                const gasPrice = parseFloat(unsignedTxResult.gasPrice);
-                const gasLimit = parseFloat(unsignedTxResult.gasLimit);
-                
-                // Check if gasPrice is already in Wei or Gwei
-                // If gasPrice is less than 1, it's likely already in ETH
-                // If it's between 1 and 1000, it's likely in Gwei
-                // If it's greater than 1000, it's likely in Wei
-                let feeInEth;
-                if (gasPrice < 1) {
-                  // Already in ETH
-                  feeInEth = gasPrice * gasLimit;
-                } else if (gasPrice < 1000) {
-                  // Gas price in Gwei, convert to ETH
-                  const gweiToEth = 0.000000001;
-                  feeInEth = gasPrice * gasLimit * gweiToEth;
-                } else {
-                  // Gas price in Wei, convert to ETH
-                  const weiToEth = 0.000000000000000001;
-                  feeInEth = gasPrice * gasLimit * weiToEth;
-                }
-                feeValue = feeInEth.toFixed(8);
-              } else if (unsignedTxResult.maxFeePerGas && unsignedTxResult.gasLimit) {
-                // For EIP-1559 transactions
-                const maxFeePerGas = parseFloat(unsignedTxResult.maxFeePerGas);
-                const gasLimit = parseFloat(unsignedTxResult.gasLimit);
-                
-                // Check unit similar to above
-                let feeInEth;
-                if (maxFeePerGas < 1) {
-                  // Already in ETH
-                  feeInEth = maxFeePerGas * gasLimit;
-                } else if (maxFeePerGas < 1000) {
-                  // Gas price in Gwei, convert to ETH
-                  const gweiToEth = 0.000000001;
-                  feeInEth = maxFeePerGas * gasLimit * gweiToEth;
-                } else {
-                  // Gas price in Wei, convert to ETH
-                  const weiToEth = 0.000000000000000001;
-                  feeInEth = maxFeePerGas * gasLimit * weiToEth;
-                }
-                feeValue = feeInEth.toFixed(8);
-              } else if (unsignedTxResult.fee) {
-                // Direct fee value (already in ETH)
-                feeValue = typeof unsignedTxResult.fee === 'string' 
-                  ? unsignedTxResult.fee 
-                  : unsignedTxResult.fee.toString();
-              }
-              break;
-            }
-            
-            case 'UTXO': {
-              // For UTXO chains, fee might be directly specified
-              if (unsignedTxResult.fee) {
-                feeValue = typeof unsignedTxResult.fee === 'string' 
-                  ? unsignedTxResult.fee 
-                  : unsignedTxResult.fee.toString();
-                
-                // Validate fee for UTXO chains to prevent unreasonable values
-                const parsedFee = parseFloat(feeValue);
-                const txAmount = parseFloat(nativeAmount);
-                
-                // Sanity check: Fee shouldn't be greater than 10% of tx amount unless extremely small tx
-                if (parsedFee > txAmount * 0.1 && txAmount > 0.001) {
-                  console.warn('⚠️ Fee is suspiciously high, likely in satoshis. Adjusting:', parsedFee);
-                  
-                  // For BCH and other UTXO chains, if fee seems too large, it's likely in satoshis
-                  // A typical BCH fee should be a very small fraction of a BCH
-                  if (parsedFee > 0.1) {
-                    // Convert from satoshis to full coin (1 BCH = 100,000,000 satoshis)
-                    feeValue = (parsedFee / 100000000).toFixed(8);
-                    console.log('🔄 Adjusted fee to BCH units:', feeValue);
-                  }
-                }
-              } else if (unsignedTxResult.feeValue) {
-                feeValue = unsignedTxResult.feeValue.toString();
-                
-                // Apply same validation to feeValue
-                const parsedFee = parseFloat(feeValue);
-                if (parsedFee > 0.1) {
-                  feeValue = (parsedFee / 100000000).toFixed(8);
-                }
-              }
-              
-              // Special handling for BCH - add double-check for reasonable fee values
-              if (isBCH) {
-                const parsedFee = parseFloat(feeValue);
-                
-                // If fee still seems unreasonably high for BCH (greater than 0.01 BCH), force a reasonable value
-                if (parsedFee > 0.01) {
-                  console.warn('⚠️ BCH fee still too high after adjustment, forcing reasonable value');
-                  feeValue = '0.00001'; // Set a reasonable BCH fee
-                }
-              }
-              break;
-            }
-            
-            case 'TENDERMINT': {
-              // For Tendermint chains, check common fee patterns
-              if (unsignedTxResult.fee) {
-                if (typeof unsignedTxResult.fee === 'string') {
-                  feeValue = unsignedTxResult.fee;
-                } else if (typeof unsignedTxResult.fee === 'object') {
-                  if (unsignedTxResult.fee.amount && Array.isArray(unsignedTxResult.fee.amount) && unsignedTxResult.fee.amount.length > 0) {
-                    // Cosmos format: fee.amount is an array of {denom, amount}
-                    feeValue = unsignedTxResult.fee.amount[0].amount || feeValue;
-                  } else {
-                    feeValue = unsignedTxResult.fee.amount || unsignedTxResult.fee.value || feeValue;
-                  }
-                }
-              }
-              break;
-            }
-            
-            case 'OTHER': {
-              // For other chains, try common patterns
-              if (unsignedTxResult.fee) {
-                feeValue = typeof unsignedTxResult.fee === 'string' 
-                  ? unsignedTxResult.fee 
-                  : unsignedTxResult.fee.toString();
-              }
-              break;
-            }
+          // Look for fee in the transaction result - it should be there from buildTx
+          if (unsignedTxResult.fee) {
+            feeValue = typeof unsignedTxResult.fee === 'string' 
+              ? unsignedTxResult.fee 
+              : unsignedTxResult.fee.toString();
+          } else if (unsignedTxResult.feeValue) {
+            feeValue = unsignedTxResult.feeValue.toString();
+          } else if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
+            // EVM chains might provide gas values that need to be calculated
+            // But the API should handle this and give us the final fee
+            console.warn('Transaction has gas values but no calculated fee - API should provide this');
+            throw new Error('Transaction fee not calculated by API');
           }
         }
         
-        // Final sanity check for all chains
-        const parsedFee = parseFloat(feeValue);
-        const txAmount = parseFloat(nativeAmount);
-        
-        // For EVM chains, fees should typically be less than 0.01 ETH for normal transactions
-        // For $1 worth of ETH, the fee should definitely not be 0.1 ETH
-        if (networkType === 'EVM') {
-          // If fee is greater than 0.01 ETH, it's suspicious
-          if (parsedFee > 0.01) {
-            console.warn('⚠️ EVM fee suspiciously high:', parsedFee, 'ETH. Using reasonable default.');
-            feeValue = '0.002'; // Reasonable default for EVM chains
-          }
-        } else if (parsedFee > txAmount * 0.2 && parsedFee > 0.1 && txAmount > 0.001) {
-          // For other chains, if fee is more than 20% of the transaction amount and > 0.1 native units,
-          // it's likely an incorrect value (except for very small transactions)
-          console.warn('⚠️ Fee unreasonably high after all checks, using default');
-          
-          // Use a reasonable default based on network type
-          switch (networkType) {
-            case 'UTXO':
-              feeValue = '0.00001';
-              break;
-            case 'EVM':
-              feeValue = '0.002';
-              break;
-            default:
-              feeValue = '0.001';
-          }
+        if (!feeValue) {
+          throw new Error('No fee information in transaction result');
         }
         
-        // Update fee state
-        console.log('Final extracted fee:', feeValue);
+        // The fee from the API should already be in the correct units
+        console.log('Fee from transaction:', feeValue);
         setEstimatedFee(feeValue);
-        
-        // Calculate and update fee in USD
         updateFeeInUsd(feeValue);
-      } catch (feeError) {
+        
+      } catch (feeError: any) {
         console.error('Error extracting fee from transaction:', feeError);
-        // If we can't extract fee, we still have the default value
-        updateFeeInUsd(estimatedFee);
+        const errorMessage = `Failed to calculate transaction fee: ${feeError.message}`;
+        setError(errorMessage);
+        setShowErrorDialog(true);
+        throw feeError; // Stop the transaction if we can't get the fee
       }
       
       // Store the unsigned transaction
@@ -1978,7 +1607,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             borderWidth="1px"
             borderColor="red.500"
             width="90%"
-            maxWidth="500px"
+            maxWidth="600px"
             overflow="hidden"
             boxShadow="0px 4px 20px rgba(0, 0, 0, 0.5)"
           >
@@ -1986,41 +1615,112 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               bg="red.500"
               py={4}
               px={6}
-              textAlign="center"
             >
-              <Flex justify="center" align="center" mb={2}>
-                <Box fontSize="24px" mr={2}>
+              <Flex justify="space-between" align="center">
+                <Flex align="center">
+                  <Box fontSize="24px" mr={3}>
+                    <FaTimes />
+                  </Box>
+                  <Text fontSize="lg" fontWeight="bold" color="white">
+                    Transaction Error
+                  </Text>
+                </Flex>
+                <IconButton
+                  aria-label="Close"
+                  onClick={closeErrorDialog}
+                  size="sm"
+                  variant="ghost"
+                  color="white"
+                  _hover={{ bg: 'rgba(255,255,255,0.2)' }}
+                >
                   <FaTimes />
-                </Box>
+                </IconButton>
               </Flex>
-              <Text fontSize="lg" fontWeight="bold" color="white">
-                Transaction Error
-              </Text>
-              <Text fontSize="md" color="white" mt={1}>
-                {error || 'An error occurred during transaction signing.'}
-              </Text>
             </Box>
             
             <Box p={5}>
-              <Text color="white" mb={4}>
-                There was a problem signing your transaction with KeepKey. Please check your device and try again.
-              </Text>
-              <Text color="gray.400" fontSize="sm" mb={4}>
-                Error details: {error || 'Unknown error'}
-              </Text>
-              
-              <Button
-                width="100%"
-                bg={theme.gold}
-                color="black"
-                _hover={{
-                  bg: theme.goldHover,
-                }}
-                onClick={closeErrorDialog}
-                height="45px"
-              >
-                Close
-              </Button>
+              <Stack gap={4}>
+                <Box>
+                  <Text color="white" fontWeight="bold" mb={2}>
+                    What went wrong:
+                  </Text>
+                  <Box 
+                    p={3} 
+                    bg="rgba(255,0,0,0.1)" 
+                    borderRadius="md"
+                    borderLeft="3px solid"
+                    borderLeftColor="red.500"
+                  >
+                    <Text color="white" fontSize="md">
+                      {error || 'An unexpected error occurred'}
+                    </Text>
+                  </Box>
+                </Box>
+                
+                <Box>
+                  <Text color="white" fontWeight="bold" mb={2}>
+                    What you can do:
+                  </Text>
+                  <Stack gap={2} fontSize="sm" color="gray.300">
+                    {error?.includes('fee') && (
+                      <>
+                        <Text>• Check your network connection and try again</Text>
+                        <Text>• The Pioneer API may be temporarily unavailable</Text>
+                        <Text>• Try selecting a different fee level</Text>
+                      </>
+                    )}
+                    {error?.includes('sign') && (
+                      <>
+                        <Text>• Make sure your KeepKey is connected and unlocked</Text>
+                        <Text>• Check the transaction details on your device screen</Text>
+                        <Text>• Hold the button to confirm or click to reject</Text>
+                      </>
+                    )}
+                    {error?.includes('broadcast') && (
+                      <>
+                        <Text>• The network may be congested - try again in a moment</Text>
+                        <Text>• Check if you have sufficient balance for the transaction</Text>
+                        <Text>• Verify the recipient address is valid</Text>
+                      </>
+                    )}
+                    {!error?.includes('fee') && !error?.includes('sign') && !error?.includes('broadcast') && (
+                      <>
+                        <Text>• Check your KeepKey connection</Text>
+                        <Text>• Ensure you have sufficient balance</Text>
+                        <Text>• Try refreshing the page and attempting again</Text>
+                      </>
+                    )}
+                  </Stack>
+                </Box>
+                
+                {/* Technical details collapsible */}
+                <Box>
+                  <Text 
+                    color="gray.400" 
+                    fontSize="xs" 
+                    cursor="pointer"
+                    _hover={{ color: 'gray.300' }}
+                    onClick={() => console.error('Full error:', error)}
+                  >
+                    Technical details (click to log to console)
+                  </Text>
+                </Box>
+                
+                <Button
+                  width="100%"
+                  bg={theme.gold}
+                  color="black"
+                  _hover={{
+                    bg: theme.goldHover,
+                  }}
+                  onClick={closeErrorDialog}
+                  height="50px"
+                  fontSize="md"
+                  fontWeight="bold"
+                >
+                  Try Again
+                </Button>
+              </Stack>
             </Box>
           </Box>
         </Box>
