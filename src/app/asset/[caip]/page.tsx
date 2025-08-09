@@ -14,6 +14,8 @@ import {
 } from '@chakra-ui/react'
 import Send from '@/components/send/Send'
 import Receive from '@/components/receive/Receive'
+import Swap from '@/components/swap/Swap'
+import { isFeatureEnabled } from '@/config/features'
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -42,7 +44,7 @@ const theme = {
 };
 
 // Define view types
-type ViewType = 'asset' | 'send' | 'receive';
+type ViewType = 'asset' | 'send' | 'receive' | 'swap';
 
 export default function AssetPage() {
   const params = useParams()
@@ -368,7 +370,7 @@ export default function AssetPage() {
   // Handle navigation functions
   const handleBack = () => {
     if (currentView !== 'asset') {
-      // If in send or receive view, go back to asset view
+      // If in send, receive, or swap view, go back to asset view
       setCurrentView('asset')
     } else {
       // If already in asset view, go back to dashboard
@@ -442,6 +444,11 @@ export default function AssetPage() {
               onBackClick={handleBack} 
               onSendClick={() => setCurrentView('send')}
               onReceiveClick={() => setCurrentView('receive')}
+              onSwapClick={() => {
+                if (isFeatureEnabled('enableSwaps')) {
+                  setCurrentView('swap')
+                }
+              }}
             />
           )}
           
@@ -452,6 +459,10 @@ export default function AssetPage() {
           
           {currentView === 'receive' && (
             <Receive onBackClick={handleBack} />
+          )}
+          
+          {currentView === 'swap' && isFeatureEnabled('enableSwaps') && (
+            <Swap onBackClick={handleBack} />
           )}
         </Box>
       </Box>

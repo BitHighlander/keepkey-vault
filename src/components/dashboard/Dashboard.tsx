@@ -888,7 +888,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               }
                               
                               // Also get charts/tokens (with error handling for staking position bug)
-                              if (app && typeof app.getCharts === 'function') {
+                              if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
                                 console.log('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
@@ -896,6 +896,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                   console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
                                   // Don't throw - this is a known issue with the Pioneer SDK
                                 }
+                              } else if (app && typeof app.getCharts === 'function') {
+                                console.log('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');
                               }
                               
                               // Fetch dashboard data after refresh

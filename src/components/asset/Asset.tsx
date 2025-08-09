@@ -29,10 +29,11 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
+import { isFeatureEnabled } from '@/config/features';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -47,9 +48,10 @@ interface AssetProps {
   onBackClick?: () => void;
   onSendClick?: () => void;
   onReceiveClick?: () => void;
+  onSwapClick?: () => void;
 }
 
-export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) => {
+export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }: AssetProps) => {
   // State for managing the component's loading status
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<number>(Date.now());
@@ -626,6 +628,26 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                   <Text>Receive</Text>
                 </Flex>
               </Button>
+              {isFeatureEnabled('enableSwaps') && (
+                <Button
+                  width="100%"
+                  size="lg"
+                  bg={theme.cardBg}
+                  color="#9F7AEA"
+                  borderColor={theme.border}
+                  borderWidth="1px"
+                  _hover={{
+                    bg: 'rgba(159, 122, 234, 0.1)',
+                    borderColor: '#9F7AEA',
+                  }}
+                  onClick={onSwapClick}
+                >
+                  <Flex gap={2} align="center">
+                    <FaExchangeAlt />
+                    <Text>Swap</Text>
+                  </Flex>
+                </Button>
+              )}
             </VStack>
           </VStack>
           
