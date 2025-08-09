@@ -15,6 +15,7 @@ import {
 import Send from '@/components/send/Send'
 import Receive from '@/components/receive/Receive'
 import Swap from '@/components/swap/Swap'
+import { isFeatureEnabled } from '@/config/features'
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -443,7 +444,11 @@ export default function AssetPage() {
               onBackClick={handleBack} 
               onSendClick={() => setCurrentView('send')}
               onReceiveClick={() => setCurrentView('receive')}
-              onSwapClick={() => setCurrentView('swap')}
+              onSwapClick={() => {
+                if (isFeatureEnabled('enableSwaps')) {
+                  setCurrentView('swap')
+                }
+              }}
             />
           )}
           
@@ -456,7 +461,7 @@ export default function AssetPage() {
             <Receive onBackClick={handleBack} />
           )}
           
-          {currentView === 'swap' && (
+          {currentView === 'swap' && isFeatureEnabled('enableSwaps') && (
             <Swap onBackClick={handleBack} />
           )}
         </Box>

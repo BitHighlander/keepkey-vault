@@ -51,6 +51,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [quote, setQuote] = useState<any>(null);
   const [error, setError] = useState<string>('');
+  const [confirmMode, setConfirmMode] = useState<boolean>(false);
   
   // Dropdown states
   const [showFromDropdown, setShowFromDropdown] = useState(false);
@@ -80,8 +81,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     return items.sort((a: any, b: any) => (b.valueUsd || 0) - (a.valueUsd || 0));
   }, [app?.dashboard]);
   const toAssets = fromAssets;
-
-
   // Ensure distinct initial contexts
   useEffect(() => {
     if (!app?.setAssetContext || !app?.setOutboundAssetContext) return;
@@ -136,48 +135,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     if (!currentCaip) return fromAssets[0] || null;
     return fromAssets.find((a: any) => a.caip !== currentCaip) || null;
   };
-  
-  // Get user's address for the selected asset
-  const getUserAddress = (assetSymbol: string): string => {
-    if (!app?.pubkeys) return '';
-    
-    // Map asset to chain
-    const chainMap: { [key: string]: string } = {
-      'BTC.BTC': 'bitcoin',
-      'ETH.ETH': 'ethereum',
-      'ETH.USDC': 'ethereum',
-      'ETH.USDT': 'ethereum',
-      'BSC.BNB': 'binancecoin',
-      'THOR.RUNE': 'thorchain',
-      'AVAX.AVAX': 'avalanche',
-      'GAIA.ATOM': 'cosmos',
-      'BCH.BCH': 'bitcoincash',
-      'DOGE.DOGE': 'dogecoin',
-      'LTC.LTC': 'litecoin',
-      'MAYA.CACAO': 'mayachain',
-    };
-    
-    const baseSymbol = assetSymbol.split('-')[0]; // Handle tokens like ETH.USDC-0X...
-    const chain = chainMap[baseSymbol] || chainMap[assetSymbol];
-    
-    if (!chain) {
-      console.warn(`No chain mapping for asset: ${assetSymbol}`);
-      return '';
-    }
-    
-    // Find pubkey for this chain
-    const pubkey = app.pubkeys.find((pk: any) => 
-      pk.networks?.includes(chain) || 
-      pk.blockchain === chain ||
-      pk.symbol === chain.toUpperCase()
-    );
-    
-    if (!pubkey) {
-      console.warn(`No pubkey found for chain: ${chain}`);
-    }
-    
-    return pubkey?.address || pubkey?.pubkey || '';
-  };
 
   // Fetch asset prices from Pioneer SDK
   const fetchAssetPrices = async () => {
@@ -199,24 +156,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Initialize assets from balances and available assets
   useEffect(() => {
-    const initializeAssets = async () => {
-      if (!app) return;
-      
-      try {
-
-          console.log('📊 Loading native assets from dashboard.networks:', app.dashboard.networks.length);
-          
-
-        
-        // setToAssets(allNativeAssets);
-        // console.log('✅ Loaded "To" assets (all native including 0 balances):', allNativeAssets.length);
-        
-      } catch (error) {
-        console.error('Error loading assets:', error);
-      }
-    };
-    
-    initializeAssets();
     fetchAssetPrices();
   }, [app, app?.dashboard]);
 
@@ -392,6 +331,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setError('');
     
     try {
+      // Ensure SDK has an outbound address context (helps some SDK builds)
+      if (app?.outboundAssetContext?.caip && app?.setOutboundAssetContext && toAddressDefault) {
+        await app.setOutboundAssetContext({
+          caip: app.outboundAssetContext.caip,
+          networkId: app.outboundAssetContext.networkId || caipToNetworkId(app.outboundAssetContext.caip),
+          symbol: app.outboundAssetContext.symbol,
+          name: app.outboundAssetContext.name,
+          icon: app.outboundAssetContext.icon,
+          address: toAddressDefault,
+        });
+      }
       // Prefer SDK swap path that builds/signs/broadcasts using device
       if (typeof app.swap === 'function') {
         console.log('🚀 Executing swap via SDK.swap...');
@@ -405,6 +355,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         setOutputAmount('');
         setQuote(null);
         setError('');
+        setConfirmMode(false);
         const txid = result?.txHash || result?.hash || result?.txid || result;
         if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
         return;
@@ -430,7 +381,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         <Flex align="center" justify="center" mb={6}>
           <Image src="https://pioneers.dev/coins/thorchain.png" alt="THORChain" boxSize="40px" mr={3} />
           <Heading size="lg" color="fg.primary">
-            THORChain Quote Estimator
+            THORChain Swapper
           </Heading>
         </Flex>
 
@@ -822,7 +773,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       </Text>
                     )}
 
-                    {/* No fees/timing shown per request */}
+                    {/* Confirm details (memo and destination address) */}
+                    <Stack gap={1}>
+                      {quote?.memo && (
+                        <Text color="fg.muted" fontSize="xs" textAlign="center">
+                          Memo: {quote.memo}
+                        </Text>
+                      )}
+                      <Text color="fg.muted" fontSize="xs" textAlign="center">
+                        Destination: {middleEllipsis(toAddressDefault || '', 16)}
+                      </Text>
+                    </Stack>
                     
                     {/* Execute Swap Button */}
                      <Button

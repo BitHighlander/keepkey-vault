@@ -304,13 +304,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       
       // Network-specific default fees - much more accurate than generic defaults
       const networkSpecificDefaults: Record<string, {slow: string, average: string, fastest: string}> = {
-        // EVM chains use gwei
-        'eip155:1': { slow: '20', average: '40', fastest: '80' }, // Ethereum
-        'eip155:56': { slow: '5', average: '7', fastest: '10' }, // BSC
-        'eip155:137': { slow: '30', average: '50', fastest: '100' }, // Polygon
-        'eip155:43114': { slow: '25', average: '35', fastest: '50' }, // Avalanche
-        'eip155:8453': { slow: '0.05', average: '0.1', fastest: '0.2' }, // Base
-        'eip155:10': { slow: '0.001', average: '0.01', fastest: '0.1' }, // Optimism
+        // EVM chains - fees in native token (ETH, BNB, etc) not gwei
+        'eip155:1': { slow: '0.001', average: '0.002', fastest: '0.005' }, // Ethereum in ETH
+        'eip155:56': { slow: '0.0001', average: '0.0002', fastest: '0.0003' }, // BSC in BNB
+        'eip155:137': { slow: '0.001', average: '0.002', fastest: '0.005' }, // Polygon in MATIC
+        'eip155:43114': { slow: '0.001', average: '0.002', fastest: '0.003' }, // Avalanche in AVAX
+        'eip155:8453': { slow: '0.00001', average: '0.00002', fastest: '0.00005' }, // Base in ETH
+        'eip155:10': { slow: '0.00001', average: '0.00002', fastest: '0.00005' }, // Optimism in ETH
         
         // UTXO chains use sat/byte
         'bip122:000000000019d6689c085ae165831e93': { slow: '2', average: '5', fastest: '10' }, // Bitcoin
@@ -332,7 +332,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       let defaultFees;
       switch (networkType) {
         case 'EVM':
-          defaultFees = { slow: '30', average: '50', fastest: '80' }; // gwei
+          defaultFees = { slow: '0.001', average: '0.002', fastest: '0.005' }; // ETH not gwei
           break;
         case 'UTXO':
           defaultFees = { slow: '3', average: '5', fastest: '10' }; // sat/byte
@@ -562,9 +562,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return
     }
 
-    // Convert amount to native token if in USD mode
-    const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-
     // Show loading spinner while building transaction
     setIsBuildingTx(true)
     setLoading(true)
@@ -740,17 +737,49 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 const gasPrice = parseFloat(unsignedTxResult.gasPrice);
                 const gasLimit = parseFloat(unsignedTxResult.gasLimit);
                 
-                // Convert from wei to native token
-                const gweiToEth = 0.000000001;
-                feeValue = (gasPrice * gasLimit * gweiToEth).toFixed(8);
+                // Check if gasPrice is already in Wei or Gwei
+                // If gasPrice is less than 1, it's likely already in ETH
+                // If it's between 1 and 1000, it's likely in Gwei
+                // If it's greater than 1000, it's likely in Wei
+                let feeInEth;
+                if (gasPrice < 1) {
+                  // Already in ETH
+                  feeInEth = gasPrice * gasLimit;
+                } else if (gasPrice < 1000) {
+                  // Gas price in Gwei, convert to ETH
+                  const gweiToEth = 0.000000001;
+                  feeInEth = gasPrice * gasLimit * gweiToEth;
+                } else {
+                  // Gas price in Wei, convert to ETH
+                  const weiToEth = 0.000000000000000001;
+                  feeInEth = gasPrice * gasLimit * weiToEth;
+                }
+                feeValue = feeInEth.toFixed(8);
               } else if (unsignedTxResult.maxFeePerGas && unsignedTxResult.gasLimit) {
                 // For EIP-1559 transactions
                 const maxFeePerGas = parseFloat(unsignedTxResult.maxFeePerGas);
                 const gasLimit = parseFloat(unsignedTxResult.gasLimit);
                 
-                // Convert from wei to native token
-                const gweiToEth = 0.000000001;
-                feeValue = (maxFeePerGas * gasLimit * gweiToEth).toFixed(8);
+                // Check unit similar to above
+                let feeInEth;
+                if (maxFeePerGas < 1) {
+                  // Already in ETH
+                  feeInEth = maxFeePerGas * gasLimit;
+                } else if (maxFeePerGas < 1000) {
+                  // Gas price in Gwei, convert to ETH
+                  const gweiToEth = 0.000000001;
+                  feeInEth = maxFeePerGas * gasLimit * gweiToEth;
+                } else {
+                  // Gas price in Wei, convert to ETH
+                  const weiToEth = 0.000000000000000001;
+                  feeInEth = maxFeePerGas * gasLimit * weiToEth;
+                }
+                feeValue = feeInEth.toFixed(8);
+              } else if (unsignedTxResult.fee) {
+                // Direct fee value (already in ETH)
+                feeValue = typeof unsignedTxResult.fee === 'string' 
+                  ? unsignedTxResult.fee 
+                  : unsignedTxResult.fee.toString();
               }
               break;
             }
@@ -834,9 +863,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         const parsedFee = parseFloat(feeValue);
         const txAmount = parseFloat(nativeAmount);
         
-        // If fee is more than 20% of the transaction amount and > 0.1 native units,
-        // it's likely an incorrect value (except for very small transactions)
-        if (parsedFee > txAmount * 0.2 && parsedFee > 0.1 && txAmount > 0.001) {
+        // For EVM chains, fees should typically be less than 0.01 ETH for normal transactions
+        // For $1 worth of ETH, the fee should definitely not be 0.1 ETH
+        if (networkType === 'EVM') {
+          // If fee is greater than 0.01 ETH, it's suspicious
+          if (parsedFee > 0.01) {
+            console.warn('⚠️ EVM fee suspiciously high:', parsedFee, 'ETH. Using reasonable default.');
+            feeValue = '0.002'; // Reasonable default for EVM chains
+          }
+        } else if (parsedFee > txAmount * 0.2 && parsedFee > 0.1 && txAmount > 0.001) {
+          // For other chains, if fee is more than 20% of the transaction amount and > 0.1 native units,
+          // it's likely an incorrect value (except for very small transactions)
           console.warn('⚠️ Fee unreasonably high after all checks, using default');
           
           // Use a reasonable default based on network type
@@ -845,7 +882,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               feeValue = '0.00001';
               break;
             case 'EVM':
-              feeValue = '0.001';
+              feeValue = '0.002';
               break;
             default:
               feeValue = '0.001';
@@ -1592,10 +1629,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 </Box>
                 <Box>
                   <Text fontWeight="bold" color="white">
-                    {amount} {assetContext.symbol}
+                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
                   </Text>
                   <Text color="gray.400" fontSize="sm">
-                    {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}
+                    {formatUsd(parseFloat(isUsdInput ? amount : nativeToUsd(amount)))}
                   </Text>
                 </Box>
               </Flex>
@@ -1643,7 +1680,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   </Text>
                   <Box textAlign="right">
                     <Text color="white" fontSize="sm">
-                      {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
+                      {estimatedFee} {assetContext.symbol}
                     </Text>
                     <Text color="gray.400" fontSize="xs">
                       ≈ ${estimatedFeeUsd} USD
@@ -1657,12 +1694,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   </Text>
                   <Box textAlign="right">
                     <Text color="white" fontWeight="bold" fontSize="sm">
-                      {isMax ? 
-                        balance : 
-                        (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(8)} {assetContext.symbol}
+                      {(() => {
+                        const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+                        const totalNative = isMax ? balance : (parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0')).toFixed(8);
+                        return `${totalNative} ${assetContext.symbol}`;
+                      })()}
                     </Text>
                     <Text color="gray.400" fontSize="xs">
-                      {formatUsd((parseFloat(amount || '0') + parseFloat(estimatedFee)) * (assetContext.priceUsd || 0))}
+                      {(() => {
+                        const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+                        const totalNative = parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0');
+                        return formatUsd(totalNative * (assetContext.priceUsd || 0));
+                      })()}
                     </Text>
                   </Box>
                 </Flex>
@@ -2206,7 +2249,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Text color="gray.400">Estimated Fee</Text>
               <Stack gap={0} align="flex-end">
                 <Text color={theme.gold} fontWeight="medium">
-                  {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
+                  {estimatedFee} {assetContext.symbol}
                 </Text>
                 <Text color="gray.500" fontSize="xs">
                   ≈ ${estimatedFeeUsd} USD
