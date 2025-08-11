@@ -725,22 +725,6 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                       {assetContext.caip}
                     </Text>
                   </HStack>
-                  <HStack justify="space-between">
-                    <Text color="gray.400">Asset ID</Text>
-                    <Text 
-                      color="white" 
-                      fontSize="sm" 
-                      fontFamily="mono"
-                      title={assetContext.assetId}
-                      cursor="help"
-                      _hover={{
-                        textDecoration: 'underline',
-                        textDecorationStyle: 'dotted'
-                      }}
-                    >
-                      {middleEllipsis(assetContext.assetId, 16)}
-                    </Text>
-                  </HStack>
                 </VStack>
 
                 {/* Asset Info */}
@@ -829,7 +813,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                           onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
                           flex="1"
                         >
-                          View Address
+                          TX History
                         </Button>
                       )}
                     </HStack>
@@ -910,22 +894,6 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     }}
                   >
                     {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
-                  </Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text color="gray.400">Asset ID</Text>
-                  <Text 
-                    color="white" 
-                    fontSize="sm" 
-                    fontFamily="mono"
-                    title={assetContext.assetId}
-                    cursor="help"
-                    _hover={{
-                      textDecoration: 'underline',
-                      textDecorationStyle: 'dotted'
-                    }}
-                  >
-                    {middleEllipsis(assetContext.assetId, 16)}
                   </Text>
                 </HStack>
               </VStack>

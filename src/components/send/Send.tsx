@@ -1016,8 +1016,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return;
     }
     
-    console.log('Viewing transaction on explorer:', txHash);
-    console.log('Asset context:', assetContext);
+    console.log('Viewing transaction on explorer:', {
+      txHash,
+      networkId: assetContext?.networkId,
+      explorerTxLink: assetContext?.explorerTxLink,
+      caip: assetContext?.caip,
+      symbol: assetContext?.symbol,
+      assetContext
+    });
     
     let explorerUrl;
     
@@ -1029,43 +1035,68 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         : `${assetContext.explorerTxLink}/`;
       
       explorerUrl = `${baseUrl}${txHash}`;
+      console.log('Using explorer from assetContext.explorerTxLink:', explorerUrl);
     } 
     // Fallback for different network types
     else if (assetContext?.networkId) {
       const networkId = assetContext.networkId;
       const networkType = getNetworkType(networkId);
       
+      console.log('Determining explorer from networkId:', {
+        networkId,
+        networkType,
+        isEVM: networkId.startsWith('eip155:'),
+        isCosmos: networkId.startsWith('cosmos:'),
+        isUTXO: networkId.startsWith('bip122:')
+      });
+      
       switch (networkType) {
         case 'UTXO': {
-          if (networkId.includes('bitcoin')) {
+          if (networkId.includes('bip122:000000000019d6689c085ae165831e93')) {
             explorerUrl = `https://blockstream.info/tx/${txHash}`;
-          } else if (networkId.includes('litecoin')) {
+          } else if (networkId.includes('bip122:12a765e31ffd4059bada1e25190f6e98')) {
             explorerUrl = `https://blockchair.com/litecoin/transaction/${txHash}`;
-          } else if (networkId.includes('dogecoin')) {
+          } else if (networkId.includes('bip122:000000000933ea01ad0ee984209779ba')) {
             explorerUrl = `https://blockchair.com/dogecoin/transaction/${txHash}`;
-          } else if (networkId.includes('bitcoincash')) {
+          } else if (networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
             explorerUrl = `https://blockchair.com/bitcoin-cash/transaction/${txHash}`;
           } else {
-            explorerUrl = `https://blockchair.com/${networkId.split(':')[0]}/transaction/${txHash}`;
+            console.error(`Unsupported UTXO network: ${networkId}`);
+            alert(`Error: No explorer configured for UTXO network: ${networkId}`);
+            return;
           }
           break;
         }
         
         case 'EVM': {
-          if (networkId.includes('eip155:1')) {
-            explorerUrl = `https://etherscan.io/tx/${txHash}`;
-          } else if (networkId.includes('eip155:56')) {
-            explorerUrl = `https://bscscan.com/tx/${txHash}`;
-          } else if (networkId.includes('eip155:137')) {
-            explorerUrl = `https://polygonscan.com/tx/${txHash}`;
-          } else if (networkId.includes('eip155:43114')) {
-            explorerUrl = `https://snowtrace.io/tx/${txHash}`;
-          } else if (networkId.includes('eip155:8453')) {
-            explorerUrl = `https://basescan.org/tx/${txHash}`;
-          } else if (networkId.includes('eip155:10')) {
-            explorerUrl = `https://optimistic.etherscan.io/tx/${txHash}`;
+          // Parse the chain ID from the network ID (e.g., "eip155:137" -> 137)
+          const chainId = networkId.split(':')[1];
+          
+          const evmExplorers: Record<string, string> = {
+            '1': 'https://etherscan.io/tx/',
+            '56': 'https://bscscan.com/tx/',
+            '137': 'https://polygonscan.com/tx/',
+            '43114': 'https://snowtrace.io/tx/',
+            '8453': 'https://basescan.org/tx/',
+            '10': 'https://optimistic.etherscan.io/tx/',
+            '42161': 'https://arbiscan.io/tx/',
+            '250': 'https://ftmscan.com/tx/',
+            '25': 'https://cronoscan.com/tx/',
+            '100': 'https://gnosisscan.io/tx/',
+            '1284': 'https://moonscan.io/tx/',
+            '1285': 'https://moonriver.moonscan.io/tx/',
+            '42220': 'https://celoscan.io/tx/',
+            '1313161554': 'https://explorer.aurora.dev/tx/',
+            '1666600000': 'https://explorer.harmony.one/tx/',
+            '9001': 'https://www.mintscan.io/evmos/tx/',
+          };
+          
+          if (evmExplorers[chainId]) {
+            explorerUrl = `${evmExplorers[chainId]}${txHash}`;
           } else {
-            explorerUrl = `https://blockscan.com/tx/${txHash}`;
+            console.error(`Unsupported EVM chain: ${networkId} (chainId: ${chainId})`);
+            alert(`Error: No explorer configured for EVM chain: ${networkId}. Please contact support to add explorer for chain ID ${chainId}.`);
+            return;
           }
           break;
         }
@@ -1079,8 +1110,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             explorerUrl = `https://viewblock.io/thorchain/tx/${txHash}`;
           } else if (networkId.includes('cosmos:mayachain')) {
             explorerUrl = `https://www.mintscan.io/mayachain/tx/${txHash}`;
+          } else if (networkId.includes('cosmos:kaiyo-1')) {
+            explorerUrl = `https://www.mintscan.io/kujira/tx/${txHash}`;
           } else {
-            explorerUrl = `https://www.mintscan.io/${networkId.split(':')[1].split('/')[0]}/tx/${txHash}`;
+            const chainName = networkId.split(':')[1].split('/')[0];
+            console.warn(`Using generic Mintscan for Cosmos chain: ${chainName}`);
+            explorerUrl = `https://www.mintscan.io/${chainName}/tx/${txHash}`;
           }
           break;
         }
@@ -1089,21 +1124,28 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           if (networkId.includes('ripple')) {
             explorerUrl = `https://xrpscan.com/tx/${txHash}`;
           } else {
-            explorerUrl = `https://blockchair.com/search?q=${txHash}`;
+            console.error(`Unsupported network type for networkId: ${networkId}`);
+            alert(`Error: No explorer configured for network: ${networkId}. Please contact support.`);
+            return;
           }
           break;
         }
         
         default:
-          explorerUrl = `https://blockchair.com/search?q=${txHash}`;
+          console.error(`Unknown network type: ${networkType} for networkId: ${networkId}`);
+          alert(`Error: Unable to determine explorer for network: ${networkId}. Please contact support.`);
+          return;
       }
     } else {
-      // Generic fallback
-      explorerUrl = `https://blockchair.com/search?q=${txHash}`;
+      // No network information available
+      console.error('No network information available in assetContext');
+      alert('Error: Cannot determine blockchain explorer - no network information available. Please contact support.');
+      return;
     }
     
     // Open the explorer in a new tab
     if (explorerUrl) {
+      console.log('Opening explorer URL:', explorerUrl);
       window.open(explorerUrl, '_blank');
     }
   }

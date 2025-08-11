@@ -528,6 +528,8 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
 
 // Helper function to get explorer URL
 const getExplorerUrl = (networkId: string, txHash: string): string | null => {
+  console.log('Getting explorer URL for unstaking tx:', { networkId, txHash });
+  
   if (networkId.includes('cosmos:cosmoshub')) {
     return `https://www.mintscan.io/cosmos/tx/${txHash}`;
   } else if (networkId.includes('cosmos:osmosis')) {
@@ -536,10 +538,15 @@ const getExplorerUrl = (networkId: string, txHash: string): string | null => {
     return `https://viewblock.io/thorchain/tx/${txHash}`;
   } else if (networkId.includes('cosmos:mayachain')) {
     return `https://www.mintscan.io/mayachain/tx/${txHash}`;
+  } else if (networkId.includes('cosmos:kaiyo-1')) {
+    return `https://www.mintscan.io/kujira/tx/${txHash}`;
   } else if (networkId.includes('cosmos:')) {
     const chainName = networkId.split(':')[1].split('/')[0];
+    console.warn(`Using generic Mintscan for Cosmos chain: ${chainName}`);
     return `https://www.mintscan.io/${chainName}/tx/${txHash}`;
   }
+  
+  console.error(`No explorer configured for network: ${networkId}`);
   return null;
 };
 

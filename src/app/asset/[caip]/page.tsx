@@ -43,6 +43,132 @@ const theme = {
   border: '#222222',
 };
 
+// Helper function to get explorer URLs based on network ID
+const getExplorerForNetwork = (networkId: string) => {
+  // EVM chains
+  if (networkId.startsWith('eip155:')) {
+    const chainId = networkId.split(':')[1];
+    const evmExplorers: Record<string, { explorer: string; explorerAddressLink: string; explorerTxLink: string }> = {
+      '1': { 
+        explorer: 'https://etherscan.io', 
+        explorerAddressLink: 'https://etherscan.io/address/',
+        explorerTxLink: 'https://etherscan.io/tx/'
+      },
+      '56': { 
+        explorer: 'https://bscscan.com',
+        explorerAddressLink: 'https://bscscan.com/address/',
+        explorerTxLink: 'https://bscscan.com/tx/'
+      },
+      '137': { 
+        explorer: 'https://polygonscan.com',
+        explorerAddressLink: 'https://polygonscan.com/address/',
+        explorerTxLink: 'https://polygonscan.com/tx/'
+      },
+      '43114': { 
+        explorer: 'https://snowtrace.io',
+        explorerAddressLink: 'https://snowtrace.io/address/',
+        explorerTxLink: 'https://snowtrace.io/tx/'
+      },
+      '8453': { 
+        explorer: 'https://basescan.org',
+        explorerAddressLink: 'https://basescan.org/address/',
+        explorerTxLink: 'https://basescan.org/tx/'
+      },
+      '10': { 
+        explorer: 'https://optimistic.etherscan.io',
+        explorerAddressLink: 'https://optimistic.etherscan.io/address/',
+        explorerTxLink: 'https://optimistic.etherscan.io/tx/'
+      },
+      '42161': { 
+        explorer: 'https://arbiscan.io',
+        explorerAddressLink: 'https://arbiscan.io/address/',
+        explorerTxLink: 'https://arbiscan.io/tx/'
+      },
+    };
+    
+    return evmExplorers[chainId] || {
+      explorer: 'https://etherscan.io',
+      explorerAddressLink: 'https://etherscan.io/address/',
+      explorerTxLink: 'https://etherscan.io/tx/'
+    };
+  }
+  
+  // UTXO chains
+  if (networkId.startsWith('bip122:')) {
+    if (networkId.includes('000000000019d6689c085ae165831e93')) { // Bitcoin
+      return {
+        explorer: 'https://blockstream.info',
+        explorerAddressLink: 'https://blockstream.info/address/',
+        explorerTxLink: 'https://blockstream.info/tx/'
+      };
+    } else if (networkId.includes('12a765e31ffd4059bada1e25190f6e98')) { // Litecoin
+      return {
+        explorer: 'https://blockchair.com/litecoin',
+        explorerAddressLink: 'https://blockchair.com/litecoin/address/',
+        explorerTxLink: 'https://blockchair.com/litecoin/transaction/'
+      };
+    } else if (networkId.includes('000000000933ea01ad0ee984209779ba')) { // Dogecoin
+      return {
+        explorer: 'https://blockchair.com/dogecoin',
+        explorerAddressLink: 'https://blockchair.com/dogecoin/address/',
+        explorerTxLink: 'https://blockchair.com/dogecoin/transaction/'
+      };
+    } else if (networkId.includes('000000000000000000651ef99cb9fcbe')) { // Bitcoin Cash
+      return {
+        explorer: 'https://blockchair.com/bitcoin-cash',
+        explorerAddressLink: 'https://blockchair.com/bitcoin-cash/address/',
+        explorerTxLink: 'https://blockchair.com/bitcoin-cash/transaction/'
+      };
+    }
+  }
+  
+  // Cosmos chains
+  if (networkId.startsWith('cosmos:')) {
+    if (networkId.includes('cosmoshub')) {
+      return {
+        explorer: 'https://www.mintscan.io/cosmos',
+        explorerAddressLink: 'https://www.mintscan.io/cosmos/account/',
+        explorerTxLink: 'https://www.mintscan.io/cosmos/tx/'
+      };
+    } else if (networkId.includes('osmosis')) {
+      return {
+        explorer: 'https://www.mintscan.io/osmosis',
+        explorerAddressLink: 'https://www.mintscan.io/osmosis/account/',
+        explorerTxLink: 'https://www.mintscan.io/osmosis/tx/'
+      };
+    } else if (networkId.includes('thorchain')) {
+      return {
+        explorer: 'https://viewblock.io/thorchain',
+        explorerAddressLink: 'https://viewblock.io/thorchain/address/',
+        explorerTxLink: 'https://viewblock.io/thorchain/tx/'
+      };
+    } else if (networkId.includes('mayachain')) {
+      return {
+        explorer: 'https://www.mayascan.org',
+        explorerAddressLink: 'https://www.mayascan.org/address/',
+        explorerTxLink: 'https://www.mayascan.org/tx/'
+      };
+    }
+  }
+  
+  // Ripple
+  if (networkId.includes('ripple')) {
+    return {
+      explorer: 'https://xrpscan.com',
+      explorerAddressLink: 'https://xrpscan.com/account/',
+      explorerTxLink: 'https://xrpscan.com/tx/'
+    };
+  }
+  
+  // Default fallback
+  console.warn(`Unknown network ID for explorer: ${networkId}`);
+  return {
+    explorer: 'https://blockchair.com',
+    explorerAddressLink: 'https://blockchair.com/search?q=',
+    explorerTxLink: 'https://blockchair.com/search?q='
+  };
+};
+
 // Define view types
 type ViewType = 'asset' | 'send' | 'receive' | 'swap';
 
@@ -255,9 +381,9 @@ export default function AssetPage() {
           type: 'token',
           nativeBalance: nativeBalance, // Add native balance for display
           nativeSymbol: nativeSymbol, // Add native symbol for display
-          explorer: app.assetsMap?.get(caip)?.explorer || 'https://xrpscan.com',
-          explorerAddressLink: app.assetsMap?.get(caip)?.explorerAddressLink || 'https://xrpscan.com/account/',
-          explorerTxLink: app.assetsMap?.get(caip)?.explorerTxLink || 'https://xrpscan.com/tx/',
+          explorer: app.assetsMap?.get(caip)?.explorer || getExplorerForNetwork(tokenNetworkId).explorer,
+          explorerAddressLink: app.assetsMap?.get(caip)?.explorerAddressLink || getExplorerForNetwork(tokenNetworkId).explorerAddressLink,
+          explorerTxLink: app.assetsMap?.get(caip)?.explorerTxLink || getExplorerForNetwork(tokenNetworkId).explorerTxLink,
           pubkeys: (app.pubkeys || []).filter((p: any) => {
             return p.networks.includes(tokenNetworkId);
           })
@@ -373,9 +499,9 @@ export default function AssetPage() {
        value: correctValue,
        precision: nativeAssetBalance?.precision || 18,
        priceUsd: correctPriceUsd,
-       explorer: app.assetsMap?.get(fullCaip.toLowerCase())?.explorer || 'https://xrpscan.com',
-       explorerAddressLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerAddressLink || 'https://xrpscan.com/account/',
-       explorerTxLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerTxLink || 'https://xrpscan.com/tx/',
+       explorer: app.assetsMap?.get(fullCaip.toLowerCase())?.explorer || getExplorerForNetwork(networkId).explorer,
+       explorerAddressLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerAddressLink || getExplorerForNetwork(networkId).explorerAddressLink,
+       explorerTxLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerTxLink || getExplorerForNetwork(networkId).explorerTxLink,
        pubkeys: (app.pubkeys || []).filter((p: any) => {
          // Include pubkeys that match the specific network
          return p.networks.includes(networkId);
