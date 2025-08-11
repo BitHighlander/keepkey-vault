@@ -295,10 +295,36 @@ export default function AssetPage() {
     }
     
     // Find the balance matching the CAIP
-    let nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
+    // IMPORTANT: Prioritize native assets over tokens to avoid showing eETH instead of ETH
+    let nativeAssetBalance = null;
+    
+    // First, try to find a native asset (not a token)
+    // Special case for ETH: avoid selecting eETH (ether-fi) or other wrapped versions
+    if (caip === 'eip155:1/slip44:60') {
+      nativeAssetBalance = app.balances?.find((balance: any) => 
+        balance.caip === caip && 
+        balance.name !== 'eETH' && 
+        balance.appId !== 'ether-fi' &&
+        (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
+      );
+    } else {
+      nativeAssetBalance = app.balances?.find((balance: any) => 
+        balance.caip === caip && 
+        (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
+      );
+    }
+    
+    // If no native asset found, fall back to any matching balance
+    if (!nativeAssetBalance) {
+      nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
+    }
     
     console.log('🔍 [AssetPage] Looking for balance with CAIP:', caip);
-    console.log('🔍 [AssetPage] Available balances:', app.balances?.map((b: any) => b.caip) || []);
+    console.log('🔍 [AssetPage] Available balances:', app.balances?.map((b: any) => ({ 
+      caip: b.caip, 
+      name: b.name, 
+      appId: b.appId 
+    })) || []);
     
     if (!nativeAssetBalance) {
       console.error('⚠️ [AssetPage] Could not find balance for CAIP:', caip);

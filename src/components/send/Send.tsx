@@ -17,6 +17,7 @@ import {
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
+import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
 import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy } from 'react-icons/fa'
 import Confetti from 'react-confetti'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
@@ -38,9 +39,9 @@ const playSound = (sound: HTMLAudioElement | null) => {
 const theme = {
   bg: '#000000',
   cardBg: '#111111',
-  gold: '#FFD700',
-  goldHover: '#FFE135',
-  border: '#222222',
+  gold: '#8B9DC3',
+  goldHover: '#A0B4D4',
+  border: '#3A4A5C',
   formPadding: '16px', // Added for consistent form padding
   borderRadius: '12px', // Added for consistent border radius
 }
@@ -143,6 +144,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [selectedFeeLevel, setSelectedFeeLevel] = useState<'slow' | 'average' | 'fastest'>('average')
   const [customFeeOption, setCustomFeeOption] = useState<boolean>(false)
   const [customFeeAmount, setCustomFeeAmount] = useState<string>('')
+  const [feeRates, setFeeRates] = useState<any>(null)
+  const [feeOptions, setFeeOptions] = useState<{slow: string, average: string, fastest: string}>({ slow: '0', average: '0', fastest: '0' })
   // Add state for raw transaction dialog
   const [showRawTxDialog, setShowRawTxDialog] = useState<boolean>(false)
   const [rawTxJson, setRawTxJson] = useState<string>('')
@@ -151,12 +154,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
   
-  // Add state for fee options
-  const [feeOptions, setFeeOptions] = useState<{
-    slow: string;
-    average: string;
-    fastest: string;
-  }>({ slow: '0.0001', average: '0.0002', fastest: '0.0005' })
+  // Fee options are now handled by the FeeSelection component
   
   // Manual copy to clipboard implementation
   const [hasCopied, setHasCopied] = useState(false)
@@ -230,7 +228,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Convert USD to native token amount
   const usdToNative = (usdAmount: string): string => {
     if (!usdAmount || !assetContext.priceUsd || parseFloat(assetContext.priceUsd) === 0) return '0';
-    const nativeAmount = parseFloat(usdAmount) / parseFloat(assetContext.priceUsd);
+    const parsedUsd = parseFloat(usdAmount);
+    const parsedPrice = parseFloat(assetContext.priceUsd);
+    
+    // Check for NaN or invalid values
+    if (isNaN(parsedUsd) || isNaN(parsedPrice) || parsedPrice === 0) {
+      console.warn('Invalid USD to native conversion:', { usdAmount, priceUsd: assetContext.priceUsd });
+      return '0';
+    }
+    
+    const nativeAmount = parsedUsd / parsedPrice;
+    
+    // Check if result is NaN
+    if (isNaN(nativeAmount)) {
+      console.warn('NaN result in USD to native conversion:', { parsedUsd, parsedPrice });
+      return '0';
+    }
+    
     // Return formatted with appropriate decimal places
     return nativeAmount.toFixed(8);
   }
@@ -254,7 +268,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       let feeValue = parseFloat(feeInNative);
       
       // Get network type for proper unit conversion
-      const networkId = assetContext.networkId || '';
+      let networkId = assetContext.networkId || '';
+      
+      // Handle wildcard network IDs
+      if (networkId.includes('*') && assetContext.caip) {
+        const caipParts = assetContext.caip.split('/');
+        if (caipParts[0] && !caipParts[0].includes('*')) {
+          networkId = caipParts[0];
+        }
+      }
+      
       const networkType = getNetworkType(networkId);
       
       // Special handling based on network type
@@ -295,12 +318,38 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
-    if (!assetContext?.networkId) {
-      setError('No network ID available');
+    if (!assetContext) {
+      setError('Asset context not available');
       return;
     }
     
-    const networkId = assetContext.networkId;
+    // Try to get a valid network ID from various sources
+    let networkId = assetContext.networkId;
+    
+    // If networkId contains wildcard, try to extract from CAIP
+    if (networkId?.includes('*')) {
+      // Try to get from CAIP identifier (e.g., eip155:1/slip44:60 -> eip155:1)
+      if (assetContext.caip) {
+        const caipParts = assetContext.caip.split('/');
+        if (caipParts[0] && !caipParts[0].includes('*')) {
+          networkId = caipParts[0];
+        }
+      }
+      
+      // If still has wildcard, try assetId
+      if (networkId?.includes('*') && assetContext.assetId) {
+        const assetParts = assetContext.assetId.split('/');
+        if (assetParts[0] && !assetParts[0].includes('*')) {
+          networkId = assetParts[0];
+        }
+      }
+    }
+    
+    if (!networkId || networkId.includes('*')) {
+      setError('Cannot determine specific network chain ID');
+      console.error('Invalid network ID:', networkId, 'Asset context:', assetContext);
+      return;
+    }
     
     try {
       if (!app?.pioneer) {
@@ -308,32 +357,102 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
 
       console.log('Fetching fee rates for network:', networkId);
-      const feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
-      console.log('Fee rates from API:', feeRates);
       
+      // Try different API call methods to work around server-side routing issue
+      let feeRates;
+      try {
+        console.log('Fetching fee rates for network:', networkId);
+        
+        // Call the GetFeeRate API with proper CAIP network ID
+        if (app.pioneer.GetFeeRateByNetwork) {
+          feeRates = await app.pioneer.GetFeeRateByNetwork({ networkId: networkId });
+        } else {
+          feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
+        }
+      } catch (apiError) {
+        console.error('Primary API call failed:', apiError);
+        // Don't use network name fallbacks - the server now properly handles CAIP IDs
+        throw apiError;
+      }
+      
+      console.log('Fee rates from API:', feeRates);
+
+      // Store the complete fee rates data for use in the UI
+      setFeeRates(feeRates);      
       if (!feeRates?.data) {
         throw new Error('No fee data returned from API');
       }
       
-      if (!feeRates.data.slow || !feeRates.data.average || !feeRates.data.fastest) {
+      // The API returns fastest, fast, average - map to our UI's slow, average, fastest
+      if (!feeRates.data.average || !feeRates.data.fast || !feeRates.data.fastest) {
         throw new Error('Incomplete fee data from API');
       }
       
-      // Use the fee rates directly from the API - no guessing!
+      // Map API response to UI fee levels
+      // API returns: fastest (high priority), fast (medium), average (low priority)
+      // UI expects: slow (low priority), average (medium), fastest (high priority)
       const fees = {
-        slow: feeRates.data.slow.toString(),
-        average: feeRates.data.average.toString(),
-        fastest: feeRates.data.fastest.toString()
+        slow: feeRates.data.average.toString(),    // Use 'average' for slow
+        average: feeRates.data.fast.toString(),     // Use 'fast' for average
+        fastest: feeRates.data.fastest.toString()   // Use 'fastest' for fastest
       };
       
+      // Log the fee unit if provided
+      if (feeRates.data.unit) {
+        console.log('Fee unit:', feeRates.data.unit);
+        console.log('Fee description:', feeRates.data.description);
+      }
+      
       console.log('Using fees from API:', fees);
+      
+      // Store the raw fee options (gas prices)
       setFeeOptions(fees);
-      setEstimatedFee(fees[selectedFeeLevel]);
-      updateFeeInUsd(fees[selectedFeeLevel]);
+      
+      // For EVM chains with Gwei fees, calculate actual transaction fee
+      if (feeRates.data.unit === 'gwei') {
+        // Gas price is in Gwei, need to calculate with gas limit (21000 for simple transfer)
+        const gasLimit = 21000; // Standard ETH transfer
+        const gasPriceGwei = parseFloat(fees[selectedFeeLevel]);
+        const feeInGwei = gasPriceGwei * gasLimit;
+        const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
+        const feeString = feeInEth.toFixed(9);
+        
+        console.log('Calculated EVM fee:', {
+          gasPriceGwei,
+          gasLimit,
+          feeInGwei,
+          feeInEth,
+          feeString
+        });
+        
+        setEstimatedFee(feeString);
+        updateFeeInUsd(feeString);
+      } else {
+        // For non-EVM chains, use the fee directly
+        setEstimatedFee(fees[selectedFeeLevel]);
+        updateFeeInUsd(fees[selectedFeeLevel]);
+      }
       
     } catch (error: any) {
       console.error('Failed to fetch fee rates:', error);
-      const errorMessage = `Failed to get network fees: ${error.message || 'Unknown error'}`;
+      console.error('Network ID sent to API:', networkId);
+      console.error('Full asset context:', assetContext);
+      
+      // Extract more detailed error information
+      let errorDetail = error.message || 'Unknown error';
+      if (error.response?.data?.message) {
+        errorDetail = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorDetail = JSON.stringify(error.response.data.error);
+      }
+      
+      // Check for the specific server-side routing bug
+      if (errorDetail.includes('missing node! for network eip155:*')) {
+        errorDetail = `Server routing issue: The Pioneer API server is incorrectly converting "${networkId}" to "eip155:*". This is a known server bug that needs to be fixed in the Pioneer API backend.`;
+        console.error('SERVER BUG DETECTED:', errorDetail);
+      }
+      
+      const errorMessage = `Failed to get network fees for ${networkId}: ${errorDetail}`;
       setError(errorMessage);
       setShowErrorDialog(true);
       
@@ -345,14 +464,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   
 
   // Handle fee selection change
-  const handleFeeSelectionChange = (feeLevel: 'slow' | 'average' | 'fastest') => {
+  const handleFeeSelectionChange = (feeLevel: FeeLevel) => {
     setSelectedFeeLevel(feeLevel);
     setCustomFeeOption(false);
     
-    // Update the estimated fee
-    const newFee = feeOptions[feeLevel];
-    setEstimatedFee(newFee);
-    updateFeeInUsd(newFee);
+    // The FeeSelection component handles the fee data internally
+    // We just update the selection state here
+    // Fee calculation logic should be moved to a shared utility or hook
   };
   
   // Handle custom fee input
@@ -445,8 +563,34 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Missing asset CAIP')
       }
       
+      // Log the asset context to debug network ID issues
+      console.log('Building transaction with asset context:', {
+        caip,
+        networkId: assetContext?.networkId,
+        assetId: assetContext?.assetId,
+        symbol: assetContext?.symbol
+      })
+      
       // Convert amount to native token if in USD mode
       const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+      
+      // Validate the amount is not NaN or empty
+      if (!nativeAmount || nativeAmount === '0' || isNaN(parseFloat(nativeAmount))) {
+        console.error('Invalid amount for transaction:', { 
+          amount, 
+          nativeAmount, 
+          isUsdInput,
+          priceUsd: assetContext?.priceUsd 
+        });
+        throw new Error('Invalid amount: Please enter a valid amount');
+      }
+      
+      console.log('Transaction amount validation:', {
+        originalAmount: amount,
+        nativeAmount,
+        isUsdInput,
+        priceUsd: assetContext?.priceUsd
+      });
       
       // Map fee levels to SDK fee level values
       const feeLevelMap = {
@@ -505,11 +649,58 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               : unsignedTxResult.fee.toString();
           } else if (unsignedTxResult.feeValue) {
             feeValue = unsignedTxResult.feeValue.toString();
+          } else if (unsignedTxResult.gasPrice && unsignedTxResult.gas) {
+            // EVM chains provide gasPrice and gas limit - calculate the fee
+            // gasPrice is in hex Wei, gas is hex gas units
+            const gasPriceHex = unsignedTxResult.gasPrice.startsWith('0x') 
+              ? unsignedTxResult.gasPrice 
+              : '0x' + unsignedTxResult.gasPrice;
+            const gasLimitHex = unsignedTxResult.gas.startsWith('0x')
+              ? unsignedTxResult.gas
+              : '0x' + unsignedTxResult.gas;
+              
+            const gasPrice = BigInt(gasPriceHex);
+            const gasLimit = BigInt(gasLimitHex);
+            const feeInWei = gasPrice * gasLimit;
+            
+            // Convert Wei to ETH string for display (more precise conversion)
+            const feeInEth = Number(feeInWei) / 1e18;
+            feeValue = feeInEth.toFixed(9);
+            
+            console.log('Gas calculation:', {
+              gasPrice: gasPriceHex,
+              gasPriceDecimal: gasPrice.toString(),
+              gasPriceGwei: Number(gasPrice) / 1e9,
+              gasLimit: gasLimitHex,
+              gasLimitDecimal: gasLimit.toString(),
+              feeInWei: feeInWei.toString(),
+              feeInEth: feeValue
+            });
           } else if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
-            // EVM chains might provide gas values that need to be calculated
-            // But the API should handle this and give us the final fee
-            console.warn('Transaction has gas values but no calculated fee - API should provide this');
-            throw new Error('Transaction fee not calculated by API');
+            // Alternative field name for gas limit
+            const gasPriceHex = unsignedTxResult.gasPrice.startsWith('0x') 
+              ? unsignedTxResult.gasPrice 
+              : '0x' + unsignedTxResult.gasPrice;
+            const gasLimitHex = unsignedTxResult.gasLimit.startsWith('0x')
+              ? unsignedTxResult.gasLimit
+              : '0x' + unsignedTxResult.gasLimit;
+              
+            const gasPrice = BigInt(gasPriceHex);
+            const gasLimit = BigInt(gasLimitHex);
+            const feeInWei = gasPrice * gasLimit;
+            
+            // Convert Wei to ETH string for display
+            const feeInEth = Number(feeInWei) / 1e18;
+            feeValue = feeInEth.toFixed(9);
+            
+            console.log('Gas calculation (gasLimit):', {
+              gasPrice: gasPriceHex,
+              gasPriceGwei: Number(gasPrice) / 1e9,
+              gasLimit: gasLimitHex,
+              gasLimitDecimal: gasLimit.toString(),
+              feeInWei: feeInWei.toString(),
+              feeInEth: feeValue
+            });
           }
         }
         
@@ -609,9 +800,26 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('Broadcast Result:', broadcastResult)
       
       // Extract the transaction hash from the result - handle different result formats
-      const finalTxHash = typeof broadcastResult === 'string' 
-        ? broadcastResult 
-        : broadcastResult?.txHash || broadcastResult?.txid || broadcastResult || '';
+      let finalTxHash = '';
+      
+      // Check if the result is an error object
+      if (broadcastResult && typeof broadcastResult === 'object' && 'error' in broadcastResult) {
+        // This is an error response
+        throw new Error(broadcastResult.error || 'Broadcast failed');
+      } else if (typeof broadcastResult === 'string') {
+        finalTxHash = broadcastResult;
+      } else if (broadcastResult?.txHash) {
+        finalTxHash = broadcastResult.txHash;
+      } else if (broadcastResult?.txid) {
+        finalTxHash = broadcastResult.txid;
+      } else if (broadcastResult) {
+        // Try to convert to string if it's something else
+        finalTxHash = String(broadcastResult);
+      }
+      
+      if (!finalTxHash) {
+        throw new Error('No transaction hash returned from broadcast');
+      }
       
       console.log('Final TX Hash:', finalTxHash);
       setTxHash(finalTxHash)
@@ -1935,6 +2143,33 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Stack>
             </Box>
           )}
+          
+          {/* Fee Selection - Now using reusable component */}
+          <Box 
+            width="100%" 
+            bg="rgba(255, 215, 0, 0.05)" 
+            borderRadius={theme.borderRadius} 
+            p={theme.formPadding}
+            borderWidth="1px"
+            borderColor="rgba(255, 215, 0, 0.2)"
+          >
+            <FeeSelection
+              networkId={assetContext?.networkId || ''}
+              assetId={assetContext?.assetId}
+              selectedFeeLevel={selectedFeeLevel}
+              onFeeSelectionChange={handleFeeSelectionChange}
+              customFeeOption={customFeeOption}
+              onCustomFeeToggle={() => {
+                setCustomFeeOption(!customFeeOption);
+                if (!customFeeOption) {
+                  setSelectedFeeLevel('average');
+                }
+              }}
+              customFeeAmount={customFeeAmount}
+              onCustomFeeChange={setCustomFeeAmount}
+              theme={theme}
+            />
+          </Box>
           
           {/* Fee Estimate */}
           <Box 

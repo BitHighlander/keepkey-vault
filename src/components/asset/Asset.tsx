@@ -722,7 +722,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                         textDecorationStyle: 'dotted'
                       }}
                     >
-                      {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
+                      {assetContext.caip}
                     </Text>
                   </HStack>
                   <HStack justify="space-between">
