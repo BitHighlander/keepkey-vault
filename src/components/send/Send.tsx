@@ -649,6 +649,30 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               : unsignedTxResult.fee.toString();
           } else if (unsignedTxResult.feeValue) {
             feeValue = unsignedTxResult.feeValue.toString();
+          } else if (unsignedTxResult.tx && unsignedTxResult.tx.value && unsignedTxResult.tx.value.fee) {
+            // Cosmos-style transactions (including XRP wrapped in Cosmos format)
+            const cosmosStyleFee = unsignedTxResult.tx.value.fee;
+            if (cosmosStyleFee.amount && cosmosStyleFee.amount.length > 0) {
+              // Fee is in the amount array
+              feeValue = cosmosStyleFee.amount[0].amount;
+              console.log('Extracted fee from Cosmos-style tx:', feeValue);
+            }
+          } else if (unsignedTxResult.payment && unsignedTxResult.payment.amount) {
+            // XRP/Ripple transactions - use a default fee if not specified
+            // XRP fees are typically 10-20 drops (0.00001-0.00002 XRP)
+            // Check if there's a Fee field in the transaction first
+            if (unsignedTxResult.Fee) {
+              // Fee is specified in drops (1 XRP = 1,000,000 drops)
+              const feeInDrops = typeof unsignedTxResult.Fee === 'string' 
+                ? parseInt(unsignedTxResult.Fee) 
+                : unsignedTxResult.Fee;
+              feeValue = (feeInDrops / 1000000).toString();
+              console.log('Extracted XRP fee from Fee field:', feeInDrops, 'drops =', feeValue, 'XRP');
+            } else {
+              // Use default fee if not specified
+              feeValue = '0.000012'; // 12 drops in XRP
+              console.log('Using default XRP fee:', feeValue, 'XRP (12 drops)');
+            }
           } else if (unsignedTxResult.gasPrice && unsignedTxResult.gas) {
             // EVM chains provide gasPrice and gas limit - calculate the fee
             // gasPrice is in hex Wei, gas is hex gas units
@@ -1544,51 +1568,53 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 )}
               </Box>
               
-              {/* Fee Details */}
-              <Box 
-                p={4}
-                bg={theme.bg}
-                border="1px solid"
-                borderColor={theme.border}
-                borderRadius="md"
-                width="100%"
-              >
-                <Flex justify="space-between" align="center">
-                  <Text fontSize="sm" color="gray.400">
-                    Network Fee
-                  </Text>
-                  <Box textAlign="right">
-                    <Text color="white" fontSize="sm">
-                      {estimatedFee} {assetContext.symbol}
+              {/* Fee Details - Hide for XRP */}
+              {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
+                <Box 
+                  p={4}
+                  bg={theme.bg}
+                  border="1px solid"
+                  borderColor={theme.border}
+                  borderRadius="md"
+                  width="100%"
+                >
+                  <Flex justify="space-between" align="center">
+                    <Text fontSize="sm" color="gray.400">
+                      Network Fee
                     </Text>
-                    <Text color="gray.400" fontSize="xs">
-                      ≈ ${estimatedFeeUsd} USD
+                    <Box textAlign="right">
+                      <Text color="white" fontSize="sm">
+                        {estimatedFee} {assetContext.symbol}
+                      </Text>
+                      <Text color="gray.400" fontSize="xs">
+                        ≈ ${estimatedFeeUsd} USD
+                      </Text>
+                    </Box>
+                  </Flex>
+                  
+                  <Flex justify="space-between" align="center" mt={3}>
+                    <Text fontSize="sm" color="gray.400">
+                      Total
                     </Text>
-                  </Box>
-                </Flex>
-                
-                <Flex justify="space-between" align="center" mt={3}>
-                  <Text fontSize="sm" color="gray.400">
-                    Total
-                  </Text>
-                  <Box textAlign="right">
-                    <Text color="white" fontWeight="bold" fontSize="sm">
-                      {(() => {
-                        const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-                        const totalNative = isMax ? balance : (parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0')).toFixed(8);
-                        return `${totalNative} ${assetContext.symbol}`;
-                      })()}
-                    </Text>
-                    <Text color="gray.400" fontSize="xs">
-                      {(() => {
-                        const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-                        const totalNative = parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0');
+                    <Box textAlign="right">
+                      <Text color="white" fontWeight="bold" fontSize="sm">
+                        {(() => {
+                          const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+                          const totalNative = isMax ? balance : (parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0')).toFixed(8);
+                          return `${totalNative} ${assetContext.symbol}`;
+                        })()}
+                      </Text>
+                      <Text color="gray.400" fontSize="xs">
+                        {(() => {
+                          const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+                          const totalNative = parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0');
                         return formatUsd(totalNative * (assetContext.priceUsd || 0));
                       })()}
                     </Text>
                   </Box>
                 </Flex>
               </Box>
+              )}
               
               {/* Transaction Details */}
               {unsignedTx && (
@@ -2186,54 +2212,58 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Box>
           )}
           
-          {/* Fee Selection - Now using reusable component */}
-          <Box 
-            width="100%" 
-            bg="rgba(255, 215, 0, 0.05)" 
-            borderRadius={theme.borderRadius} 
-            p={theme.formPadding}
-            borderWidth="1px"
-            borderColor="rgba(255, 215, 0, 0.2)"
-          >
-            <FeeSelection
-              networkId={assetContext?.networkId || ''}
-              assetId={assetContext?.assetId}
-              selectedFeeLevel={selectedFeeLevel}
-              onFeeSelectionChange={handleFeeSelectionChange}
-              customFeeOption={customFeeOption}
-              onCustomFeeToggle={() => {
-                setCustomFeeOption(!customFeeOption);
-                if (!customFeeOption) {
-                  setSelectedFeeLevel('average');
-                }
-              }}
-              customFeeAmount={customFeeAmount}
-              onCustomFeeChange={setCustomFeeAmount}
-              theme={theme}
-            />
-          </Box>
-          
-          {/* Fee Estimate */}
-          <Box 
-            width="100%" 
-            bg="rgba(255, 215, 0, 0.05)" 
-            borderRadius={theme.borderRadius} 
-            p={theme.formPadding}
-            borderWidth="1px"
-            borderColor="rgba(255, 215, 0, 0.2)"
-          >
-            <Flex justify="space-between" align="center">
-              <Text color="gray.400">Estimated Fee</Text>
-              <Stack gap={0} align="flex-end">
-                <Text color={theme.gold} fontWeight="medium">
-                  {estimatedFee} {assetContext.symbol}
-                </Text>
-                <Text color="gray.500" fontSize="xs">
-                  ≈ ${estimatedFeeUsd} USD
-                </Text>
-              </Stack>
-            </Flex>
-          </Box>
+          {/* Fee Selection - Now using reusable component - Hide for XRP */}
+          {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
+            <>
+              <Box 
+                width="100%" 
+                bg="rgba(255, 215, 0, 0.05)" 
+                borderRadius={theme.borderRadius} 
+                p={theme.formPadding}
+                borderWidth="1px"
+                borderColor="rgba(255, 215, 0, 0.2)"
+              >
+                <FeeSelection
+                  networkId={assetContext?.networkId || ''}
+                  assetId={assetContext?.assetId}
+                  selectedFeeLevel={selectedFeeLevel}
+                  onFeeSelectionChange={handleFeeSelectionChange}
+                  customFeeOption={customFeeOption}
+                  onCustomFeeToggle={() => {
+                    setCustomFeeOption(!customFeeOption);
+                    if (!customFeeOption) {
+                      setSelectedFeeLevel('average');
+                    }
+                  }}
+                  customFeeAmount={customFeeAmount}
+                  onCustomFeeChange={setCustomFeeAmount}
+                  theme={theme}
+                />
+              </Box>
+              
+              {/* Fee Estimate */}
+              <Box 
+                width="100%" 
+                bg="rgba(255, 215, 0, 0.05)" 
+                borderRadius={theme.borderRadius} 
+                p={theme.formPadding}
+                borderWidth="1px"
+                borderColor="rgba(255, 215, 0, 0.2)"
+              >
+                <Flex justify="space-between" align="center">
+                  <Text color="gray.400">Estimated Fee</Text>
+                  <Stack gap={0} align="flex-end">
+                    <Text color={theme.gold} fontWeight="medium">
+                      {estimatedFee} {assetContext.symbol}
+                    </Text>
+                    <Text color="gray.500" fontSize="xs">
+                      ≈ ${estimatedFeeUsd} USD
+                    </Text>
+                  </Stack>
+                </Flex>
+              </Box>
+            </>
+          )}
           
           {/* Send Button */}
           <Button
