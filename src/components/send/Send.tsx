@@ -39,8 +39,6 @@ const playSound = (sound: HTMLAudioElement | null) => {
 const theme = {
   bg: '#000000',
   cardBg: '#111111',
-  gold: '#8B9DC3',
-  goldHover: '#A0B4D4',
   border: '#3A4A5C',
   formPadding: '16px', // Added for consistent form padding
   borderRadius: '12px', // Added for consistent border radius
@@ -116,6 +114,26 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const { state } = pioneer
   const { app } = state
   const assetContext = app?.assetContext
+  
+  // Get the asset color dynamically, with fallback based on asset
+  const getAssetColor = () => {
+    if (assetContext?.color) return assetContext.color;
+    
+    // Fallback colors for common assets
+    const symbol = assetContext?.symbol?.toUpperCase();
+    switch(symbol) {
+      case 'BTC': return '#F7931A';  // Bitcoin orange
+      case 'ETH': return '#627EEA';  // Ethereum purple  
+      case 'BCH': return '#8DC351';  // Bitcoin Cash green
+      case 'LTC': return '#BFBBBB';  // Litecoin silver
+      case 'DOGE': return '#C2A633'; // Dogecoin gold
+      default: return '#F7931A';   // Default to Bitcoin orange
+    }
+  };
+  
+  const assetColor = getAssetColor();
+  const assetColorHover = `${assetColor}CC`; // Add transparency for hover
+  const assetColorLight = `${assetColor}22`; // 22 = ~13% opacity
 
   // State for input fields
   const [amount, setAmount] = useState<string>('')
@@ -378,13 +396,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('Fee rates from API:', feeRates);
 
       // Store the complete fee rates data for use in the UI
-      setFeeRates(feeRates);      
-      if (!feeRates?.data) {
+      setFeeRates(feeRates);
+      
+      // Handle both response formats: direct object or wrapped in data property
+      const feeData = feeRates?.data || feeRates;
+      
+      if (!feeData) {
         throw new Error('No fee data returned from API');
       }
-      
+
+      //{slow: '1', average: '1', fastest: '1'}
       // The API returns fastest, fast, average - map to our UI's slow, average, fastest
-      if (!feeRates.data.average || !feeRates.data.fast || !feeRates.data.fastest) {
+      if (!feeData.average || !feeData.fast || !feeData.fastest) {
         throw new Error('Incomplete fee data from API');
       }
       
@@ -392,15 +415,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // API returns: fastest (high priority), fast (medium), average (low priority)
       // UI expects: slow (low priority), average (medium), fastest (high priority)
       const fees = {
-        slow: feeRates.data.average.toString(),    // Use 'average' for slow
-        average: feeRates.data.fast.toString(),     // Use 'fast' for average
-        fastest: feeRates.data.fastest.toString()   // Use 'fastest' for fastest
+        slow: feeData.average.toString(),    // Use 'average' for slow
+        average: feeData.fast.toString(),     // Use 'fast' for average
+        fastest: feeData.fastest.toString()   // Use 'fastest' for fastest
       };
       
       // Log the fee unit if provided
-      if (feeRates.data.unit) {
-        console.log('Fee unit:', feeRates.data.unit);
-        console.log('Fee description:', feeRates.data.description);
+      if (feeData.unit) {
+        console.log('Fee unit:', feeData.unit);
+        console.log('Fee description:', feeData.description);
       }
       
       console.log('Using fees from API:', fees);
@@ -409,7 +432,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setFeeOptions(fees);
       
       // For EVM chains with Gwei fees, calculate actual transaction fee
-      if (feeRates.data.unit === 'gwei') {
+      if (feeData.unit === 'gwei') {
         // Gas price is in Gwei, need to calculate with gas limit (21000 for simple transfer)
         const gasLimit = 21000; // Standard ETH transfer
         const gasPriceGwei = parseFloat(fees[selectedFeeLevel]);
@@ -641,9 +664,54 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       try {
         let feeValue = null;
         
+        // Log the entire unsigned transaction for debugging
+        console.log('Full unsigned transaction result:', JSON.stringify(unsignedTxResult, null, 2));
+        
         if (unsignedTxResult && typeof unsignedTxResult === 'object') {
-          // Look for fee in the transaction result - it should be there from buildTx
-          if (unsignedTxResult.fee) {
+          // Check if this is a UTXO transaction (Bitcoin, Litecoin, etc.)
+          const caipId = assetContext?.caip || assetContext?.assetId;
+          const isUtxoNetwork = UTXO_NETWORKS.includes(caipId);
+          
+          if (isUtxoNetwork && unsignedTxResult.inputs && unsignedTxResult.outputs) {
+            // For UTXO chains, calculate fee as: total_inputs - total_outputs
+            console.log('Calculating UTXO fee from inputs and outputs');
+            console.log('Transaction structure:', {
+              inputs: unsignedTxResult.inputs,
+              outputs: unsignedTxResult.outputs
+            });
+            
+            // Sum up all input values (amount field is in satoshis as string)
+            const totalInputs = unsignedTxResult.inputs.reduce((sum: number, input: any) => {
+              // The amount field is in satoshis as a string
+              const value = input.amount || input.value || '0';
+              const satoshis = typeof value === 'string' ? parseInt(value, 10) : value;
+              console.log(`Input ${input.txid}:${input.vout} = ${satoshis} sats`);
+              return sum + satoshis;
+            }, 0);
+            
+            // Sum up all output values (amount field is in satoshis as string)
+            const totalOutputs = unsignedTxResult.outputs.reduce((sum: number, output: any) => {
+              // The amount field is in satoshis as a string
+              const value = output.amount || output.value || '0';
+              const satoshis = typeof value === 'string' ? parseInt(value, 10) : value;
+              console.log(`Output to ${output.address || 'change'} = ${satoshis} sats`);
+              return sum + satoshis;
+            }, 0);
+            
+            // Fee is the difference (in satoshis)
+            const feeInSatoshis = totalInputs - totalOutputs;
+            
+            // Convert satoshis to BTC for display
+            feeValue = (feeInSatoshis / 100000000).toFixed(8);
+            
+            console.log('UTXO fee calculation:', {
+              totalInputs,
+              totalOutputs,
+              feeInSatoshis,
+              feeInBTC: feeValue
+            });
+          } else if (unsignedTxResult.fee) {
+            // Direct fee field
             feeValue = typeof unsignedTxResult.fee === 'string' 
               ? unsignedTxResult.fee 
               : unsignedTxResult.fee.toString();
@@ -673,15 +741,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               feeValue = '0.000012'; // 12 drops in XRP
               console.log('Using default XRP fee:', feeValue, 'XRP (12 drops)');
             }
-          } else if (unsignedTxResult.gasPrice && unsignedTxResult.gas) {
+          } else if (unsignedTxResult.gasPrice && (unsignedTxResult.gas || unsignedTxResult.gasLimit)) {
             // EVM chains provide gasPrice and gas limit - calculate the fee
-            // gasPrice is in hex Wei, gas is hex gas units
-            const gasPriceHex = unsignedTxResult.gasPrice.startsWith('0x') 
-              ? unsignedTxResult.gasPrice 
-              : '0x' + unsignedTxResult.gasPrice;
-            const gasLimitHex = unsignedTxResult.gas.startsWith('0x')
-              ? unsignedTxResult.gas
-              : '0x' + unsignedTxResult.gas;
+            // gasPrice is in hex Wei, gas/gasLimit is hex gas units
+            const gasPriceStr = String(unsignedTxResult.gasPrice);
+            const gasLimitStr = String(unsignedTxResult.gas || unsignedTxResult.gasLimit);
+            
+            const gasPriceHex = gasPriceStr.startsWith('0x') 
+              ? gasPriceStr 
+              : '0x' + gasPriceStr;
+            const gasLimitHex = gasLimitStr.startsWith('0x')
+              ? gasLimitStr
+              : '0x' + gasLimitStr;
               
             const gasPrice = BigInt(gasPriceHex);
             const gasLimit = BigInt(gasLimitHex);
@@ -700,36 +771,37 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               feeInWei: feeInWei.toString(),
               feeInEth: feeValue
             });
-          } else if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
-            // Alternative field name for gas limit
-            const gasPriceHex = unsignedTxResult.gasPrice.startsWith('0x') 
-              ? unsignedTxResult.gasPrice 
-              : '0x' + unsignedTxResult.gasPrice;
-            const gasLimitHex = unsignedTxResult.gasLimit.startsWith('0x')
-              ? unsignedTxResult.gasLimit
-              : '0x' + unsignedTxResult.gasLimit;
+          } else {
+            // Try to find fee-related fields in any nested structure
+            console.log('Could not find fee in standard locations, checking nested structures...');
+            
+            // Check if the result has a tx or transaction property
+            const nestedTx = unsignedTxResult.tx || unsignedTxResult.transaction || unsignedTxResult.unsignedTx;
+            if (nestedTx) {
+              console.log('Found nested transaction:', nestedTx);
               
-            const gasPrice = BigInt(gasPriceHex);
-            const gasLimit = BigInt(gasLimitHex);
-            const feeInWei = gasPrice * gasLimit;
-            
-            // Convert Wei to ETH string for display
-            const feeInEth = Number(feeInWei) / 1e18;
-            feeValue = feeInEth.toFixed(9);
-            
-            console.log('Gas calculation (gasLimit):', {
-              gasPrice: gasPriceHex,
-              gasPriceGwei: Number(gasPrice) / 1e9,
-              gasLimit: gasLimitHex,
-              gasLimitDecimal: gasLimit.toString(),
-              feeInWei: feeInWei.toString(),
-              feeInEth: feeValue
-            });
+              // Try to extract fee from nested structure
+              if (nestedTx.gasPrice && (nestedTx.gas || nestedTx.gasLimit)) {
+                const gasPriceStr = String(nestedTx.gasPrice);
+                const gasLimitStr = String(nestedTx.gas || nestedTx.gasLimit);
+                
+                const gasPriceHex = gasPriceStr.startsWith('0x') 
+                  ? gasPriceStr 
+                  : '0x' + gasPriceStr;
+                const gasLimitHex = gasLimitStr.startsWith('0x')
+                  ? gasLimitStr
+                  : '0x' + gasLimitStr;
+                  
+                const gasPrice = BigInt(gasPriceHex);
+                const gasLimit = BigInt(gasLimitHex);
+                const feeInWei = gasPrice * gasLimit;
+                const feeInEth = Number(feeInWei) / 1e18;
+                feeValue = feeInEth.toFixed(9);
+                
+                console.log('Calculated fee from nested transaction:', feeValue);
+              }
+            }
           }
-        }
-        
-        if (!feeValue) {
-          throw new Error('No fee information in transaction result');
         }
         
         // The fee from the API should already be in the correct units
@@ -1228,7 +1300,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             recycle={false}
             numberOfPieces={300}
             gravity={0.2}
-            colors={['#FFD700', '#FFFFFF', '#E5C100', '#FFF8D9']}
+            colors={[assetColor, '#FFFFFF', `${assetColor}DD`, `${assetColor}44`]}
           />
           
           <Box 
@@ -1250,7 +1322,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               bg={theme.cardBg}
             >
               <Flex justify="space-between" align="center">
-                <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
+                <Text fontSize="lg" fontWeight="bold" color={assetColor}>
                   Transaction Complete
                 </Text>
                 <IconButton
@@ -1258,7 +1330,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   onClick={resetForm}
                   size="sm"
                   variant="ghost"
-                  color={theme.gold}
+                  color={assetColor}
                 >
                   <FaTimes />
                 </IconButton>
@@ -1355,7 +1427,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       <Box 
                         as="span" 
                         cursor="pointer" 
-                        _hover={{ color: theme.goldHover }}
+                        _hover={{ color: assetColorHover }}
                         onClick={viewOnExplorer}
                         display="inline-flex"
                         alignItems="center"
@@ -1377,10 +1449,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Stack gap={4}>
                 <Button
                   width="100%"
-                  bg={theme.gold}
+                  bg={assetColor}
                   color="black"
                   _hover={{
-                    bg: theme.goldHover,
+                    bg: assetColorHover,
                   }}
                   onClick={viewOnExplorer}
                   height="56px"
@@ -1394,11 +1466,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Button
                   width="100%"
                   variant="outline"
-                  color={theme.gold}
+                  color={assetColor}
                   borderColor={theme.border}
                   _hover={{
-                    bg: 'rgba(255, 215, 0, 0.1)',
-                    borderColor: theme.gold,
+                    bg: assetColorLight,
+                    borderColor: assetColor,
                   }}
                   onClick={resetForm}
                   height="56px"
@@ -1434,7 +1506,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             bg={theme.cardBg}
           >
             <Flex justify="space-between" align="center">
-              <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
+              <Text fontSize="lg" fontWeight="bold" color={assetColor}>
                 {transactionStep === 'review' ? 'Review Transaction' : 
                  transactionStep === 'sign' ? 'Signing Transaction' : 
                  transactionStep === 'broadcast' ? 'Broadcasting Transaction' : 'Confirm Transaction'}
@@ -1444,7 +1516,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 onClick={closeConfirmation}
                 size="sm"
                 variant="ghost"
-                color={theme.gold}
+                color={assetColor}
                 disabled={loading}
               >
                 <FaTimes />
@@ -1482,7 +1554,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       width="200px"
                       mb={6}
                     />
-                    <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
+                    <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
                       Check Your KeepKey Device
                     </Text>
                     <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px" mb={2}>
@@ -1496,11 +1568,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <>
                     <KeepKeyUiGlyph
                       boxSize="80px"
-                      color={theme.gold}
+                      color={assetColor}
                       animation={`${scale} 2s ease-in-out infinite`}
                       mb={6}
                     />
-                    <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
+                    <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
                       Broadcasting Transaction...
                     </Text>
                     <Text color="gray.400" fontSize="md" textAlign="center">
@@ -1632,7 +1704,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     borderColor={theme.border}
                     borderRadius="md"
                     color="white"
-                    _hover={{ borderColor: theme.gold }}
+                    _hover={{ borderColor: assetColor }}
                   >
                     <Text fontSize="sm">
                       {showTxDetails ? 'Hide Transaction Details' : 'Show Transaction Details'}
@@ -1660,8 +1732,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                         variant="outline"
                         width="100%"
                         borderColor={theme.border}
-                        color={theme.gold}
-                        _hover={{ borderColor: theme.gold, bg: 'rgba(255, 215, 0, 0.1)' }}
+                        color={assetColor}
+                        _hover={{ borderColor: assetColor, bg: assetColorLight }}
                         onClick={openRawTxDialog}
                       >
                         Edit Raw Transaction JSON
@@ -1706,14 +1778,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       justifyContent="space-between"
                       alignItems="center"
                     >
-                      <Text color={theme.gold} fontWeight="bold" fontSize="lg">
+                      <Text color={assetColor} fontWeight="bold" fontSize="lg">
                         Raw Transaction JSON
                       </Text>
                       <IconButton
                         aria-label="Close"
                         size="sm"
                         variant="ghost"
-                        color={theme.gold}
+                        color={assetColor}
                         onClick={closeRawTxDialog}
                       >
                         <FaTimes />
@@ -1743,7 +1815,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                         borderRadius="md"
                         resize="vertical"
                         _focus={{
-                          borderColor: theme.gold,
+                          borderColor: assetColor,
                           outline: "none"
                         }}
                       />
@@ -1766,9 +1838,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                         Cancel
                       </Button>
                       <Button
-                        bg={theme.gold}
+                        bg={assetColor}
                         color="black"
-                        _hover={{ bg: theme.goldHover }}
+                        _hover={{ bg: assetColorHover }}
                         onClick={applyEditedJson}
                       >
                         Apply Changes
@@ -1789,16 +1861,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Stack gap={3}>
               <Button
                 width="100%"
-                bg={theme.gold}
+                bg={assetColor}
                 color="black"
                 _hover={{
-                  bg: theme.goldHover,
+                  bg: assetColorHover,
                 }}
                 onClick={confirmTransaction}
                 loading={loading}
                 height="56px"
                 fontSize="lg"
-                boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
+                boxShadow={`0px 4px 12px ${assetColor}4D`}
               >
                 Sign & Send
               </Button>
@@ -1806,11 +1878,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Button
                 width="100%"
                 variant="outline"
-                color={theme.gold}
+                color={assetColor}
                 borderColor={theme.border}
                 _hover={{
                   bg: 'rgba(255, 215, 0, 0.1)',
-                  borderColor: theme.gold,
+                  borderColor: assetColor,
                 }}
                 onClick={closeConfirmation}
                 height="56px"
@@ -1828,8 +1900,22 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   return (
     <Box 
       width="100%" 
+      height="100vh"
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
+      overflow="hidden"
+      display="flex"
+      flexDirection="column"
+      sx={{
+        '&::-webkit-scrollbar': {
+          width: '0px',
+          background: 'transparent',
+        },
+        '& *::-webkit-scrollbar': {
+          width: '0px',
+          background: 'transparent',
+        },
+      }}
     >
       {/* Transaction Building Overlay */}
       {isBuildingTx && (
@@ -1849,11 +1935,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         >
           <KeepKeyUiGlyph
             boxSize="80px"
-            color={theme.gold}
+            color={assetColor}
             animation={`${scale} 2s ease-in-out infinite`}
             mb={6}
           />
-          <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
+          <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
             Building Transaction...
           </Text>
           <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px">
@@ -1984,10 +2070,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 
                 <Button
                   width="100%"
-                  bg={theme.gold}
+                  bg={assetColor}
                   color="black"
                   _hover={{
-                    bg: theme.goldHover,
+                    bg: assetColorHover,
                   }}
                   onClick={closeErrorDialog}
                   height="50px"
@@ -2015,15 +2101,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Button
             size="sm"
             variant="ghost"
-            color={theme.gold}
+            color={assetColor}
             onClick={onBackClick}
-            _hover={{ color: theme.goldHover }}
+            _hover={{ color: assetColorHover }}
           >
             <Flex align="center" gap={2}>
               <Text>Back</Text>
             </Flex>
           </Button>
-          <Text color={theme.gold} fontWeight="bold">
+          <Text color={assetColor} fontWeight="bold">
             Send {assetContext?.name || 'Asset'}
           </Text>
           <Box w="20px"></Box> {/* Spacer for alignment */}
@@ -2031,7 +2117,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       </Box>
       
       {/* Main Content */}
-      <Box p={5}>
+      <Box 
+        p={5} 
+        flex="1" 
+        overflowY="auto"
+        sx={{
+          '&::-webkit-scrollbar': {
+            width: '0px',
+            background: 'transparent',
+          },
+        }}
+      >
         <Stack gap={6} align="center">
           {/* Asset Avatar and Info */}
           <Box 
@@ -2069,7 +2165,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <Text color="gray.400" fontSize="sm" textAlign="center">
                     Balance: {balance} {assetContext.symbol}
                   </Text>
-                  <Text color={theme.gold} fontSize="md" textAlign="center" fontWeight="medium">
+                  <Text color={assetColor} fontSize="md" textAlign="center" fontWeight="medium">
                     {formatUsd(totalBalanceUsd)}
                   </Text>
                 </Stack>
@@ -2096,7 +2192,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 >
                   {isUsdInput && (
                     <Box position="absolute" left="12px" zIndex="1">
-                      <Text color={theme.gold} fontWeight="bold">$</Text>
+                      <Text color={assetColor} fontWeight="bold">$</Text>
                     </Box>
                   )}
                   <Input
@@ -2105,8 +2201,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     placeholder="0.00"
                     color="white"
                     borderColor={theme.border}
-                    _hover={{ borderColor: theme.goldHover }}
-                    _focus={{ borderColor: theme.gold }}
+                    _hover={{ borderColor: assetColorHover }}
+                    _focus={{ borderColor: assetColor }}
                     p={3}
                     pl={isUsdInput ? "28px" : "12px"}
                     height="50px"
@@ -2122,14 +2218,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Button
                   ml={3}
                   bg={theme.cardBg}
-                  color={theme.gold}
+                  color={assetColor}
                   borderColor={theme.border}
                   borderWidth="1px"
                   height="50px"
                   px={4}
                   _hover={{
-                    bg: 'rgba(255, 215, 0, 0.1)',
-                    borderColor: theme.gold,
+                    bg: assetColorLight,
+                    borderColor: assetColor,
                   }}
                   onClick={handleSetMax}
                 >
@@ -2141,7 +2237,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 color="gray.500" 
                 ml={2} 
                 cursor="pointer" 
-                _hover={{ color: theme.goldHover }}
+                _hover={{ color: assetColorHover }}
                 onClick={toggleInputMode}
                 display="flex"
                 alignItems="center"
@@ -2173,8 +2269,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 placeholder={`${assetContext.symbol} Address`}
                 color="white"
                 borderColor={theme.border}
-                _hover={{ borderColor: theme.goldHover }}
-                _focus={{ borderColor: theme.gold }}
+                _hover={{ borderColor: assetColorHover }}
+                _focus={{ borderColor: assetColor }}
                 p={3}
                 height="50px"
                 fontSize="md"
@@ -2202,8 +2298,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
                   color="white"
                   borderColor={theme.border}
-                  _hover={{ borderColor: theme.goldHover }}
-                  _focus={{ borderColor: theme.gold }}
+                  _hover={{ borderColor: assetColorHover }}
+                  _focus={{ borderColor: assetColor }}
                   p={3}
                   height="50px"
                   fontSize="md"
@@ -2217,11 +2313,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <>
               <Box 
                 width="100%" 
-                bg="rgba(255, 215, 0, 0.05)" 
+                bg={assetColorLight} 
                 borderRadius={theme.borderRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
-                borderColor="rgba(255, 215, 0, 0.2)"
+                borderColor={`${assetColor}33`}
               >
                 <FeeSelection
                   networkId={assetContext?.networkId || ''}
@@ -2237,23 +2333,27 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   }}
                   customFeeAmount={customFeeAmount}
                   onCustomFeeChange={setCustomFeeAmount}
-                  theme={theme}
+                  theme={{
+                    gold: assetColor,
+                    goldHover: assetColorHover,
+                    border: theme.border
+                  }}
                 />
               </Box>
               
               {/* Fee Estimate */}
               <Box 
                 width="100%" 
-                bg="rgba(255, 215, 0, 0.05)" 
+                bg={assetColorLight} 
                 borderRadius={theme.borderRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
-                borderColor="rgba(255, 215, 0, 0.2)"
+                borderColor={`${assetColor}33`}
               >
                 <Flex justify="space-between" align="center">
                   <Text color="gray.400">Estimated Fee</Text>
                   <Stack gap={0} align="flex-end">
-                    <Text color={theme.gold} fontWeight="medium">
+                    <Text color={assetColor} fontWeight="medium">
                       {estimatedFee} {assetContext.symbol}
                     </Text>
                     <Text color="gray.500" fontSize="xs">
@@ -2269,16 +2369,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Button
             mt={4}
             width="100%"
-            bg={theme.gold}
+            bg={assetColor}
             color="black"
             _hover={{
-              bg: theme.goldHover,
+              bg: assetColorHover,
             }}
             onClick={handleSend}
             disabled={!amount || !recipient}
             height="56px"
             fontSize="lg"
-            boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
+            boxShadow={`0px 4px 12px ${assetColor}4D`}
           >
             <Flex gap={3} align="center" justify="center">
               <FaPaperPlane />

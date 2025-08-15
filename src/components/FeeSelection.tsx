@@ -160,7 +160,7 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
             height="60px"
             variant={selectedFeeLevel === level ? 'solid' : 'outline'}
             bg={selectedFeeLevel === level ? theme.gold : 'transparent'}
-            color={selectedFeeLevel === level ? 'white' : theme.gold}
+            color={selectedFeeLevel === level ? 'black' : theme.gold}
             borderColor={theme.gold}
             borderWidth="2px"
             borderRadius="8px"
@@ -200,7 +200,7 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
               px={4}
               variant={customFeeOption ? 'solid' : 'outline'}
               bg={customFeeOption ? theme.gold : 'transparent'}
-              color={customFeeOption ? 'white' : theme.gold}
+              color={customFeeOption ? 'black' : theme.gold}
               borderColor={theme.gold}
               borderWidth="2px"
               borderRadius="6px"
