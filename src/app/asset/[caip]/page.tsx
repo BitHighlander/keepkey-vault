@@ -99,24 +99,28 @@ const getExplorerForNetwork = (networkId: string) => {
       return {
         explorer: 'https://blockstream.info',
         explorerAddressLink: 'https://blockstream.info/address/',
+        explorerXpubLink: 'https://blockstream.info/xpub/', // For viewing full wallet history
         explorerTxLink: 'https://blockstream.info/tx/'
       };
     } else if (networkId.includes('12a765e31ffd4059bada1e25190f6e98')) { // Litecoin
       return {
         explorer: 'https://blockchair.com/litecoin',
         explorerAddressLink: 'https://blockchair.com/litecoin/address/',
+        explorerXpubLink: 'https://blockchair.com/litecoin/xpub/', // For viewing full wallet history
         explorerTxLink: 'https://blockchair.com/litecoin/transaction/'
       };
     } else if (networkId.includes('000000000933ea01ad0ee984209779ba')) { // Dogecoin
       return {
         explorer: 'https://blockchair.com/dogecoin',
         explorerAddressLink: 'https://blockchair.com/dogecoin/address/',
+        explorerXpubLink: 'https://blockchair.com/dogecoin/xpub/', // For viewing full wallet history
         explorerTxLink: 'https://blockchair.com/dogecoin/transaction/'
       };
     } else if (networkId.includes('000000000000000000651ef99cb9fcbe')) { // Bitcoin Cash
       return {
         explorer: 'https://blockchair.com/bitcoin-cash',
         explorerAddressLink: 'https://blockchair.com/bitcoin-cash/address/',
+        explorerXpubLink: 'https://blockchair.com/bitcoin-cash/xpub/', // For viewing full wallet history
         explorerTxLink: 'https://blockchair.com/bitcoin-cash/transaction/'
       };
     }

@@ -757,7 +757,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                       Wallet Information
                     </Text>
                     <VStack align="stretch" gap={2}>
-                      <Text color="gray.400" fontSize="sm">Address</Text>
+                      <Text color="gray.400" fontSize="sm">{assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}</Text>
                       <Box 
                         p={3}
                         bg={theme.bg}
@@ -766,7 +766,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                         borderColor={theme.border}
                       >
                         <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                          {assetContext.pubkeys[0].address}
+                          {assetContext.networkId?.startsWith('bip122:') 
+                            ? assetContext.pubkeys[0].pubkey 
+                            : assetContext.pubkeys[0].address}
                         </Text>
                       </Box>
                       <HStack justify="space-between" mt={1}>
@@ -810,7 +812,15 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                             bg: 'rgba(255, 215, 0, 0.1)',
                             borderColor: theme.gold,
                           }}
-                          onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
+                          onClick={() => {
+                            // For UTXO coins, use XPUB explorer if available
+                            if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
+                              window.open(`${assetContext.explorerXpubLink}${assetContext.pubkeys[0].pubkey}`, '_blank');
+                            } else {
+                              // Fallback to address explorer
+                              window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank');
+                            }
+                          }}
                           flex="1"
                         >
                           TX History
@@ -928,7 +938,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     Wallet Information
                   </Text>
                   <VStack align="stretch" gap={2}>
-                    <Text color="gray.400" fontSize="sm">Address</Text>
+                    <Text color="gray.400" fontSize="sm">{assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}</Text>
                     <Box 
                       p={3}
                       bg={theme.bg}
@@ -937,7 +947,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                       borderColor={theme.border}
                     >
                       <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                        {assetContext.pubkeys[0].address}
+                        {assetContext.networkId?.startsWith('bip122:') 
+                          ? assetContext.pubkeys[0].pubkey 
+                          : assetContext.pubkeys[0].address}
                       </Text>
                     </Box>
                     <HStack justify="space-between" mt={1}>
@@ -981,10 +993,18 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                           bg: 'rgba(255, 215, 0, 0.1)',
                           borderColor: theme.gold,
                         }}
-                        onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
+                        onClick={() => {
+                          // For UTXO coins, use XPUB explorer if available
+                          if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
+                            window.open(`${assetContext.explorerXpubLink}${assetContext.pubkeys[0].pubkey}`, '_blank');
+                          } else {
+                            // Fallback to address explorer
+                            window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank');
+                          }
+                        }}
                         flex="1"
                       >
-                        View Address
+                        {assetContext.networkId?.startsWith('bip122:') ? 'View XPUB' : 'View Address'}
                       </Button>
                     )}
                   </HStack>
