@@ -92,10 +92,11 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const aggregatedBalance: AggregatedBalance | null = useMemo(() => {
     if (!app?.balances || !assetContext?.networkId || !assetContext?.symbol) return null;
     
-    // Get balances for this asset
+    // Get balances for this asset - only include addresses with actual balance
     const assetBalances = app.balances.filter((balance: any) => 
       balance.networkId === assetContext.networkId && 
-      balance.symbol === assetContext.symbol
+      balance.symbol === assetContext.symbol &&
+      parseFloat(balance.balance || '0') > 0  // Only include addresses with balance > 0
     );
     
     if (assetBalances.length <= 1) return null; // Only show if multiple addresses
