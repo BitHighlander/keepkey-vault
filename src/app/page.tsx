@@ -1,12 +1,26 @@
 'use client'
 // @ts-nocheck
 
-import { Box, Flex, Spinner } from "@chakra-ui/react"
+import { Box, Flex } from "@chakra-ui/react"
+import { keyframes } from '@emotion/react'
+import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import Dashboard from '@/components/dashboard/Dashboard'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { useState, useEffect } from 'react'
 // Background image path
 const splashBg = '/images/backgrounds/splash-bg.png'
+
+// Animated KeepKey logo pulse effect
+const pulseAnimation = keyframes`
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+`;
 import {
   DialogRoot,
   DialogContent,
@@ -28,13 +42,12 @@ export default function Home() {
   const pioneer = usePioneerContext();
   const { 
     state = {},
-    isTransitioning = false,
   } = pioneer || {};
-
-  // Use the normal loading state
-  const showLoading = isTransitioning;
   
   const { app } = state;
+  
+  // Show loading state only when data is not ready
+  const showLoading = !app?.dashboard;
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
@@ -49,11 +62,11 @@ export default function Home() {
     console.log('🔄 [Page] State update:', {
       hasApp: !!app,
       hasAssetContext: !!app?.assetContext,
-      isTransitioning,
+      hasDashboard: !!app?.dashboard,
       hasPioneer: !!pioneer,
       splashBgPath: splashBg // Debug: check if image imported correctly
     });
-  }, [app, isTransitioning, pioneer]);
+  }, [app, pioneer]);
 
   // Debug loading screen state
   useEffect(() => {
@@ -77,7 +90,16 @@ export default function Home() {
   // Show loading state if pioneer is not ready
   if (!pioneer) {
     return (
-      <Box bg="black" minHeight="100vh" width="100vw" overflow="hidden">
+      <Box 
+        bg="black" 
+        minHeight="100vh" 
+        width="100vw" 
+        overflow="hidden"
+        backgroundImage={`url(${splashBg})`}
+        backgroundSize="cover"
+        backgroundPosition="center"
+        backgroundRepeat="no-repeat"
+      >
         <Box 
           width="100%"
           height="100vh"
@@ -85,7 +107,15 @@ export default function Home() {
           alignItems="center"
           justifyContent="center"
         >
-          <Spinner size="xl" color="gold" />
+          <Box
+            animation={`${pulseAnimation} 2s ease-in-out infinite`}
+          >
+            <KeepKeyUiGlyph 
+              width="100px" 
+              height="100px" 
+              color="#FFD700"
+            />
+          </Box>
         </Box>
       </Box>
     );
@@ -115,8 +145,8 @@ export default function Home() {
           left={0}
           right={0}
           bottom={0}
-          opacity={isTransitioning ? 1 : 0}
-          display={isTransitioning ? 'flex' : 'none'}
+          opacity={showLoading ? 1 : 0}
+          display={showLoading ? 'flex' : 'none'}
           justifyContent="center"
           alignItems="center"
           backgroundImage={`url(${splashBg})`}
@@ -126,10 +156,15 @@ export default function Home() {
           zIndex={999}
           transition="opacity 0.3s ease"
         >
-          <Spinner 
-            size="xl"
-            color="gold"
-          />
+          <Box
+            animation={`${pulseAnimation} 2s ease-in-out infinite`}
+          >
+            <KeepKeyUiGlyph 
+              width="100px" 
+              height="100px" 
+              color="#FFD700"
+            />
+          </Box>
         </Box>
 
         <Box

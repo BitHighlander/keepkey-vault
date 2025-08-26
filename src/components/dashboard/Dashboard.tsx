@@ -14,7 +14,8 @@ import {
   GridItem,
   useDisclosure,
 } from '@chakra-ui/react';
-import { Skeleton, SkeletonCircle } from "@/components/ui/skeleton"
+import { keyframes } from '@emotion/react';
+import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
@@ -95,18 +96,41 @@ interface DashboardProps {
   onAddNetworkClick: () => void;
 }
 
-const NetworkSkeleton = () => (
-  <HStack gap="4" p={5} bg={theme.cardBg} borderRadius="2xl" boxShadow="lg">
-    <SkeletonCircle size="12" />
-    <Stack flex="1">
-      <Skeleton height="5" width="120px" />
-      <Skeleton height="4" width="80px" />
-    </Stack>
-    <Stack align="flex-end">
-      <Skeleton height="5" width="70px" />
-      <Skeleton height="4" width="40px" />
-    </Stack>
-  </HStack>
+// Animated KeepKey logo pulse effect
+const pulseAnimation = keyframes`
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+`;
+
+const LoadingScreen = () => (
+  <Flex 
+    direction="column" 
+    align="center" 
+    justify="center" 
+    height="100%"
+    width="100%"
+    position="relative"
+  >
+    <Box
+      animation={`${pulseAnimation} 2s ease-in-out infinite`}
+      mb={8}
+    >
+      <KeepKeyUiGlyph 
+        width="100px" 
+        height="100px" 
+        color={theme.gold}
+      />
+    </Box>
+    <Text fontSize="lg" color={theme.gold} fontWeight="medium">
+      Loading portfolio...
+    </Text>
+  </Flex>
 );
 
 const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
@@ -423,12 +447,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               gap={6}
               width="100%"
             >
-              {loading ? (
-                <Flex direction="column" align="center" justify="center" py={6} width="100%">
-                  <SkeletonCircle size="180px" />
-                  <Skeleton height="4" width="140px" mt={4} />
-                </Flex>
-              ) : dashboard ? (
+              {loading || !dashboard ? (
+                <LoadingScreen />
+              ) : dashboard && chartData.length > 0 ? (
                 <>
                   <Box 
                     width="100%"
@@ -471,7 +492,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   </Box>
                 </>
               ) : (
-                <Text color={theme.gold}>No portfolio data available</Text>
+                <LoadingScreen />
               )}
             </Flex>
           </Box>
@@ -498,11 +519,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             
             <VStack gap={4}>
               {loading || !dashboard ? (
-                <>
-                  <NetworkSkeleton />
-                  <NetworkSkeleton />
-                  <NetworkSkeleton />
-                </>
+                <LoadingScreen />
               ) : (
                 <>
                   {dashboard?.networks?.map((network: Network) => {

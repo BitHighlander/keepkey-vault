@@ -11,11 +11,24 @@ import {
   VStack,
   HStack,
   IconButton,
-  Spinner,
   useDisclosure,
   Icon,
   Badge,
 } from '@chakra-ui/react';
+import { keyframes } from '@emotion/react';
+import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
+
+// Animated KeepKey logo pulse effect
+const pulseAnimation = keyframes`
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+`;
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -246,9 +259,22 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         flexDirection="column"
         width="100%" 
         mx="auto"
+        backgroundImage="url(/images/backgrounds/splash-bg.png)"
+        backgroundSize="cover"
+        backgroundPosition="center"
+        backgroundRepeat="no-repeat"
       >
-        <Spinner color={theme.gold} size="xl" mb={4} />
-        <Text color="gray.400">Loading asset data...</Text>
+        <Box
+          animation={`${pulseAnimation} 2s ease-in-out infinite`}
+          mb={8}
+        >
+          <KeepKeyUiGlyph 
+            width="100px" 
+            height="100px" 
+            color={theme.gold}
+          />
+        </Box>
+        <Text color={theme.gold} fontSize="lg" fontWeight="medium">Loading asset data...</Text>
       </Box>
     );
   }
