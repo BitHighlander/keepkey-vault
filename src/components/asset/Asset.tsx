@@ -380,12 +380,15 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
     return numBalance.toFixed(8);
   };
 
-  // Calculate the USD value
-  const usdValue = (assetContext.value !== undefined && assetContext.value !== null) 
-    ? assetContext.value 
-    : (assetContext.balance && assetContext.priceUsd) 
-      ? parseFloat(assetContext.balance) * assetContext.priceUsd 
-      : 0;
+  // Calculate the USD value - use aggregated balance if available
+  const displayBalance = aggregatedBalance?.totalBalance || assetContext.balance || '0';
+  const usdValue = aggregatedBalance 
+    ? aggregatedBalance.totalValueUsd
+    : (assetContext.value !== undefined && assetContext.value !== null) 
+      ? assetContext.value 
+      : (assetContext.balance && assetContext.priceUsd) 
+        ? parseFloat(assetContext.balance) * assetContext.priceUsd 
+        : 0;
 
   return (
     <Box 
@@ -564,13 +567,26 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     />
                   </Text>
                   
+                  {/* Show if balance is aggregated from multiple addresses */}
+                  {aggregatedBalance && (
+                    <Badge 
+                      colorScheme="blue" 
+                      variant="subtle"
+                      fontSize="xs"
+                      px={2}
+                      py={1}
+                    >
+                      Combined from {aggregatedBalance.balances.length} Pubkeys
+                    </Badge>
+                  )}
+                  
                   {/* For tokens, show BOTH balances clearly */}
                   {assetContext.isToken ? (
                     <VStack gap={2}>
                       {/* Token Balance */}
                       <Box textAlign="center">
                         <Text fontSize="lg" fontWeight="bold" color="white">
-                          {formatBalance(assetContext.balance)} {assetContext.symbol}
+                          {formatBalance(displayBalance)} {assetContext.symbol}
                         </Text>
                         <Text fontSize="xs" color="gray.500">Token Balance</Text>
                       </Box>
@@ -633,7 +649,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   ) : (
                     /* Native Asset Balance */
                     <Text fontSize="md" color="white">
-                      {formatBalance(assetContext.balance)} {assetContext.symbol}
+                      {formatBalance(displayBalance)} {assetContext.symbol}
                     </Text>
                   )}
                 </Stack>
