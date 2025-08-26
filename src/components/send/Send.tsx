@@ -2173,7 +2173,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </VStack>
           </Box>
           
-          {/* Amount */}
+          {/* Amount - Enhanced Dual Input Mode */}
           <Box 
             width="100%" 
             bg={theme.cardBg} 
@@ -2183,46 +2183,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             borderColor={theme.border}
           >
             <Stack gap={3}>
-              <Text color="white" fontWeight="medium">Amount</Text>
-              <Flex>
-                <Flex 
-                  position="relative" 
-                  flex="1"
-                  align="center"
-                >
-                  {isUsdInput && (
-                    <Box position="absolute" left="12px" zIndex="1">
-                      <Text color={assetColor} fontWeight="bold">$</Text>
-                    </Box>
-                  )}
-                  <Input
-                    value={amount}
-                    onChange={handleAmountChange}
-                    placeholder="0.00"
-                    color="white"
-                    borderColor={theme.border}
-                    _hover={{ borderColor: assetColorHover }}
-                    _focus={{ borderColor: assetColor }}
-                    p={3}
-                    pl={isUsdInput ? "28px" : "12px"}
-                    height="50px"
-                    fontSize="lg"
-                    flex="1"
-                  />
-                  {!isUsdInput && (
-                    <Box position="absolute" right="12px" zIndex="1">
-                      <Text color="gray.500" fontWeight="medium">{assetContext.symbol}</Text>
-                    </Box>
-                  )}
-                </Flex>
+              <Flex justify="space-between" align="center">
+                <Text color="white" fontWeight="medium">Amount</Text>
                 <Button
-                  ml={3}
+                  size="sm"
                   bg={theme.cardBg}
                   color={assetColor}
                   borderColor={theme.border}
                   borderWidth="1px"
-                  height="50px"
-                  px={4}
+                  height="30px"
+                  px={3}
                   _hover={{
                     bg: assetColorLight,
                     borderColor: assetColor,
@@ -2232,22 +2202,118 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   MAX
                 </Button>
               </Flex>
-              <Text 
-                fontSize="sm" 
-                color="gray.500" 
-                ml={2} 
-                cursor="pointer" 
-                _hover={{ color: assetColorHover }}
-                onClick={toggleInputMode}
-                display="flex"
-                alignItems="center"
+              
+              {/* Active Input (Larger) */}
+              <Box 
+                onClick={() => !isUsdInput && toggleInputMode()}
+                cursor={!isUsdInput ? "pointer" : "default"}
+                transition="all 0.2s"
               >
-                {isUsdInput ? (
-                  <>≈ {amount ? parseFloat(usdToNative(amount)).toFixed(8) : '0'} {assetContext.symbol}</>
-                ) : (
-                  <>≈ {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}</>
-                )}
-                <Box as="span" ml={1} fontSize="xs">(click to switch)</Box>
+                <Flex 
+                  position="relative" 
+                  align="center"
+                  opacity={isUsdInput ? 1 : 0.6}
+                  transform={isUsdInput ? "scale(1)" : "scale(0.95)"}
+                  transition="all 0.2s"
+                >
+                  <Box position="absolute" left="12px" zIndex="1">
+                    <Text color={isUsdInput ? assetColor : "gray.500"} fontWeight="bold" fontSize={isUsdInput ? "lg" : "md"}>$</Text>
+                  </Box>
+                  <Input
+                    value={isUsdInput ? amount : nativeToUsd(amount)}
+                    onChange={isUsdInput ? handleAmountChange : undefined}
+                    placeholder="0.00"
+                    color={isUsdInput ? "white" : "gray.400"}
+                    borderColor={isUsdInput ? assetColor : theme.border}
+                    borderWidth={isUsdInput ? "2px" : "1px"}
+                    bg={isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
+                    _hover={{ borderColor: isUsdInput ? assetColorHover : theme.border }}
+                    _focus={{ borderColor: isUsdInput ? assetColor : theme.border }}
+                    p={3}
+                    pl="35px"
+                    pr="60px"
+                    height={isUsdInput ? "56px" : "48px"}
+                    fontSize={isUsdInput ? "xl" : "lg"}
+                    fontWeight={isUsdInput ? "bold" : "medium"}
+                    readOnly={!isUsdInput}
+                    cursor={!isUsdInput ? "pointer" : "text"}
+                  />
+                  <Box position="absolute" right="12px" zIndex="1">
+                    <Text color={isUsdInput ? "gray.400" : "gray.500"} fontSize={isUsdInput ? "md" : "sm"} fontWeight="medium">USD</Text>
+                  </Box>
+                </Flex>
+              </Box>
+
+              {/* Divider with Switch Icon */}
+              <Flex align="center" justify="center" position="relative" my={1}>
+                <Box position="absolute" width="100%" height="1px" bg={theme.border} />
+                <Box 
+                  position="relative"
+                  bg={theme.cardBg}
+                  borderRadius="full"
+                  border="1px solid"
+                  borderColor={theme.border}
+                  p={2}
+                  cursor="pointer"
+                  onClick={toggleInputMode}
+                  _hover={{ 
+                    borderColor: assetColor,
+                    bg: assetColorLight,
+                    transform: "rotate(180deg)"
+                  }}
+                  transition="all 0.3s"
+                  zIndex={1}
+                >
+                  <Text fontSize="sm" color={assetColor}>⇅</Text>
+                </Box>
+              </Flex>
+
+              {/* Secondary Input (Smaller) */}
+              <Box 
+                onClick={() => isUsdInput && toggleInputMode()}
+                cursor={isUsdInput ? "pointer" : "default"}
+                transition="all 0.2s"
+              >
+                <Flex 
+                  position="relative" 
+                  align="center"
+                  opacity={!isUsdInput ? 1 : 0.6}
+                  transform={!isUsdInput ? "scale(1)" : "scale(0.95)"}
+                  transition="all 0.2s"
+                >
+                  <Input
+                    value={!isUsdInput ? amount : usdToNative(amount)}
+                    onChange={!isUsdInput ? handleAmountChange : undefined}
+                    placeholder="0.00000000"
+                    color={!isUsdInput ? "white" : "gray.400"}
+                    borderColor={!isUsdInput ? assetColor : theme.border}
+                    borderWidth={!isUsdInput ? "2px" : "1px"}
+                    bg={!isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
+                    _hover={{ borderColor: !isUsdInput ? assetColorHover : theme.border }}
+                    _focus={{ borderColor: !isUsdInput ? assetColor : theme.border }}
+                    p={3}
+                    pl="12px"
+                    pr="80px"
+                    height={!isUsdInput ? "56px" : "48px"}
+                    fontSize={!isUsdInput ? "xl" : "lg"}
+                    fontWeight={!isUsdInput ? "bold" : "medium"}
+                    readOnly={isUsdInput}
+                    cursor={isUsdInput ? "pointer" : "text"}
+                  />
+                  <Box position="absolute" right="12px" zIndex="1">
+                    <Text color={!isUsdInput ? assetColor : "gray.500"} fontSize={!isUsdInput ? "md" : "sm"} fontWeight="bold">{assetContext.symbol}</Text>
+                  </Box>
+                </Flex>
+              </Box>
+
+              {/* Helper text */}
+              <Text 
+                fontSize="xs" 
+                color="gray.500" 
+                textAlign="center"
+                fontStyle="italic"
+              >
+                Click on either field to switch input mode
               </Text>
             </Stack>
           </Box>

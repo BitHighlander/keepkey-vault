@@ -504,10 +504,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   <NetworkSkeleton />
                 </>
               ) : (
-                dashboard?.networks
-                  .map((network: Network) => {
+                <>
+                  {dashboard?.networks?.map((network: Network) => {
                     const { integer, largePart, smallPart } = formatBalance(network.totalNativeBalance);
-                    const percentage = dashboard.networkPercentages.find(
+                    const percentage = dashboard.networkPercentages?.find(
                       (np: NetworkPercentage) => np.networkId === network.networkId
                     )?.percentage || 0;
 
@@ -618,12 +618,28 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              <Image 
-                                src={network.icon} 
-                                alt={network.networkId}
-                                boxSize="44px"
-                                objectFit="cover"
-                              />
+                              {network.icon ? (
+                                <Image 
+                                  src={network.icon} 
+                                  alt={network.networkId}
+                                  boxSize="44px"
+                                  objectFit="cover"
+                                />
+                              ) : (
+                                <Box
+                                  boxSize="44px"
+                                  borderRadius="50%"
+                                  bg={`${network.color}20`}
+                                  display="flex"
+                                  alignItems="center"
+                                  justifyContent="center"
+                                  fontSize="lg"
+                                  fontWeight="bold"
+                                  color={network.color}
+                                >
+                                  {network.gasAssetSymbol?.slice(0, 2)}
+                                </Box>
+                              )}
                             </Box>
                             <Stack gap={0.5}>
                               <Text fontSize="md" fontWeight="bold" color={network.color}>
@@ -707,7 +723,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         </Flex>
                       </Box>
                     );
-                  })
+                  })}
+                </>
               )}
             </VStack>
           </Box>

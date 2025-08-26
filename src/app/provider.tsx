@@ -394,7 +394,7 @@ export function Provider({ children }: ProviderProps) {
                 });
               }
               
-              await appInit.refresh();
+              //appInit.refresh();
               console.log('🔑 ✅ refresh() completed - dashboard should now be available');
               
               // Now that we have pubkeys after pairing, fetch chart data including staking positions

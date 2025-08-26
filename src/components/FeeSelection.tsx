@@ -8,8 +8,8 @@ import {
   Input,
   Spinner,
   Alert,
-  AlertIcon,
 } from '@chakra-ui/react';
+import { AlertTriangle } from 'lucide-react';
 import { useFeeRates, type FeeRatesData } from '@/hooks/useFeeRates';
 
 export type FeeLevel = 'slow' | 'average' | 'fastest';
@@ -133,8 +133,8 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
   if (error) {
     return (
       <Alert status="warning" size="sm">
-        <AlertIcon />
-        <Box flex="1">
+        <AlertTriangle size={16} />
+        <Box flex="1" ml={2}>
           <Text fontSize="sm">Failed to load fee rates</Text>
           <Button size="xs" variant="ghost" onClick={refetch} mt={1}>
             Retry
