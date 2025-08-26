@@ -21,6 +21,7 @@ import {
 
 interface BalanceDistributionProps {
   aggregatedBalance: AggregatedBalance;
+  selectedAddress?: string | null;
   onAddressClick?: (address: string) => void;
 }
 
@@ -38,9 +39,10 @@ const BalanceCard: React.FC<{
   balance: BalanceDetail;
   aggregatedBalance: AggregatedBalance;
   isExpanded: boolean;
+  isSelected: boolean;
   onToggle: () => void;
   onAddressClick?: (address: string) => void;
-}> = ({ balance, aggregatedBalance, isExpanded, onToggle, onAddressClick }) => {
+}> = ({ balance, aggregatedBalance, isExpanded, isSelected, onToggle, onAddressClick }) => {
   const { hasCopied, onCopy } = useClipboard(balance.address);
 
   const formatUsd = (value: number) => {
@@ -60,12 +62,14 @@ const BalanceCard: React.FC<{
 
   return (
     <Box
-      bg={theme.cardBg}
+      bg={isSelected ? theme.cardHover : theme.cardBg}
       borderRadius="lg"
-      border="1px solid"
-      borderColor={theme.border}
+      border="2px solid"
+      borderColor={isSelected ? theme.gold : theme.border}
       overflow="hidden"
       transition="all 0.2s"
+      cursor="pointer"
+      onClick={() => onAddressClick?.(balance.address)}
       _hover={{
         bg: theme.cardHover,
         borderColor: theme.gold,
@@ -218,6 +222,7 @@ const BalanceCard: React.FC<{
 
 export const BalanceDistribution: React.FC<BalanceDistributionProps> = ({
   aggregatedBalance,
+  selectedAddress,
   onAddressClick,
 }) => {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -332,6 +337,7 @@ export const BalanceDistribution: React.FC<BalanceDistributionProps> = ({
             balance={balance}
             aggregatedBalance={aggregatedBalance}
             isExpanded={expandedCards.has(balance.address)}
+            isSelected={selectedAddress === balance.address}
             onToggle={() => toggleCard(balance.address)}
             onAddressClick={onAddressClick}
           />

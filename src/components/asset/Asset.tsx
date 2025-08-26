@@ -76,6 +76,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [previousBalance, setPreviousBalance] = useState<string>('0');
   // Add flag to track if this is the initial load to prevent sound on first balance set
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  // Add state to track selected address in Balance Distribution
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -756,6 +758,32 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               
               {/* Details content */}
               <VStack align="stretch" p={4} gap={4}>
+                {/* Balance Distribution for multi-address assets - MOVED TO TOP */}
+                {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
+                  <VStack align="stretch" gap={3}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                      Balance Distribution
+                    </Text>
+                    <Box
+                      p={3}
+                      bg={theme.bg}
+                      borderRadius="lg"
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                    >
+                      <BalanceDistribution
+                        aggregatedBalance={aggregatedBalance}
+                        selectedAddress={selectedAddress}
+                        onAddressClick={(address) => {
+                          // Update selected address when clicked
+                          setSelectedAddress(address);
+                          console.log('Address selected:', address);
+                        }}
+                      />
+                    </Box>
+                  </VStack>
+                )}
+
                 {/* Network Info */}
                 <VStack align="stretch" gap={3}>
                   <Text color="gray.400" fontSize="sm" fontWeight="medium">
@@ -816,58 +844,83 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </HStack>
                 </VStack>
 
-                {/* Address Info */}
+                {/* Address Info - Updates based on selected address */}
                 {assetContext.pubkeys?.[0] && (
                   <VStack align="stretch" gap={3}>
                     <Text color="gray.400" fontSize="sm" fontWeight="medium">
                       Wallet Information
                     </Text>
                     <VStack align="stretch" gap={2}>
-                      <Text color="gray.400" fontSize="sm">{assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}</Text>
-                      <Box 
-                        p={3}
-                        bg={theme.bg}
-                        borderRadius="lg"
-                        borderWidth="1px"
-                        borderColor={theme.border}
-                      >
-                        <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                          {assetContext.networkId?.startsWith('bip122:') 
-                            ? assetContext.pubkeys[0].pubkey 
-                            : assetContext.pubkeys[0].address}
-                        </Text>
-                      </Box>
-                      <HStack justify="space-between" mt={1}>
-                        <Text color="gray.400" fontSize="xs">Path</Text>
-                        <Text color="white" fontSize="xs" fontFamily="mono">
-                          {assetContext.pubkeys[0].path}
-                        </Text>
-                      </HStack>
+                      {(() => {
+                        // Find the selected address info or use first pubkey
+                        let displayPubkey = assetContext.pubkeys[0];
+                        if (selectedAddress && aggregatedBalance) {
+                          // Try to find matching balance for selected address
+                          const matchingBalance = aggregatedBalance.balances.find(b => b.address === selectedAddress);
+                          if (matchingBalance && matchingBalance.pubkey) {
+                            // Find corresponding pubkey by comparing pubkey strings
+                            const matchingPubkey = assetContext.pubkeys.find((pk: any) => {
+                              // Check if this pubkey matches the balance's pubkey
+                              // The pubkey might be stored as 'pubkey' or could be derived from address
+                              return pk.pubkey === matchingBalance.pubkey || 
+                                     pk.address === matchingBalance.address ||
+                                     pk.master === matchingBalance.pubkey;
+                            });
+                            if (matchingPubkey) {
+                              displayPubkey = matchingPubkey;
+                              console.log('Found matching pubkey for address:', selectedAddress, matchingPubkey);
+                            } else {
+                              // Create a display object from the balance if no pubkey found
+                              console.log('No matching pubkey found, using balance data');
+                              displayPubkey = {
+                                pubkey: matchingBalance.pubkey || matchingBalance.address,
+                                address: matchingBalance.address,
+                                path: 'Unknown', // Will be updated if we find it
+                                ...displayPubkey // Keep other properties from default
+                              };
+                            }
+                          }
+                        }
+                        
+                        return (
+                          <>
+                            {selectedAddress && (
+                              <Badge 
+                                colorScheme="blue" 
+                                variant="subtle"
+                                fontSize="xs"
+                                mb={2}
+                              >
+                                Selected Address
+                              </Badge>
+                            )}
+                            <Text color="gray.400" fontSize="sm">
+                              {assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}
+                            </Text>
+                            <Box 
+                              p={3}
+                              bg={theme.bg}
+                              borderRadius="lg"
+                              borderWidth="1px"
+                              borderColor={selectedAddress ? theme.gold : theme.border}
+                              transition="all 0.2s"
+                            >
+                              <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                                {assetContext.networkId?.startsWith('bip122:') 
+                                  ? displayPubkey.pubkey 
+                                  : displayPubkey.address}
+                              </Text>
+                            </Box>
+                            <HStack justify="space-between" mt={1}>
+                              <Text color="gray.400" fontSize="xs">Path</Text>
+                              <Text color="white" fontSize="xs" fontFamily="mono">
+                                {displayPubkey.path}
+                              </Text>
+                            </HStack>
+                          </>
+                        );
+                      })()}
                     </VStack>
-                  </VStack>
-                )}
-
-                {/* Balance Distribution for multi-address assets */}
-                {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
-                  <VStack align="stretch" gap={3}>
-                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                      Balance Distribution
-                    </Text>
-                    <Box
-                      p={3}
-                      bg={theme.bg}
-                      borderRadius="lg"
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                    >
-                      <BalanceDistribution
-                        aggregatedBalance={aggregatedBalance}
-                        onAddressClick={(address) => {
-                          // Optional: Handle address click (e.g., copy to clipboard, show explorer)
-                          console.log('Address clicked:', address);
-                        }}
-                      />
-                    </Box>
                   </VStack>
                 )}
 
