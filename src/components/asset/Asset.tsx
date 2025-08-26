@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Flex,
@@ -47,6 +47,8 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
 import { isFeatureEnabled } from '@/config/features';
+import { BalanceDistribution } from '../balance/BalanceDistribution';
+import { aggregateBalances, AggregatedBalance } from '@/types/balance';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -82,6 +84,30 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const assetContext = app?.assetContext;
   
   const router = useRouter();
+
+  // Calculate the price (moved up for use in useMemo)
+  const priceUsd = assetContext?.priceUsd || 0;
+
+  // Prepare aggregated balance for multi-pubkey display (must be called with other hooks)
+  const aggregatedBalance: AggregatedBalance | null = useMemo(() => {
+    if (!app?.balances || !assetContext?.networkId || !assetContext?.symbol) return null;
+    
+    // Get balances for this asset
+    const assetBalances = app.balances.filter((balance: any) => 
+      balance.networkId === assetContext.networkId && 
+      balance.symbol === assetContext.symbol
+    );
+    
+    if (assetBalances.length <= 1) return null; // Only show if multiple addresses
+    
+    return aggregateBalances(
+      assetBalances,
+      assetContext.pubkeys || [],
+      assetContext.networkId,
+      assetContext.symbol,
+      priceUsd
+    );
+  }, [app?.balances, assetContext, priceUsd]);
 
   // Format USD value
   const formatUsd = (value: number | null | undefined) => {
@@ -359,9 +385,6 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
     : (assetContext.balance && assetContext.priceUsd) 
       ? parseFloat(assetContext.balance) * assetContext.priceUsd 
       : 0;
-
-  // Calculate the price
-  const priceUsd = assetContext.priceUsd || 0;
 
   return (
     <Box 
@@ -804,6 +827,30 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                         </Text>
                       </HStack>
                     </VStack>
+                  </VStack>
+                )}
+
+                {/* Balance Distribution for multi-address assets */}
+                {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
+                  <VStack align="stretch" gap={3}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                      Balance Distribution
+                    </Text>
+                    <Box
+                      p={3}
+                      bg={theme.bg}
+                      borderRadius="lg"
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                    >
+                      <BalanceDistribution
+                        aggregatedBalance={aggregatedBalance}
+                        onAddressClick={(address) => {
+                          // Optional: Handle address click (e.g., copy to clipboard, show explorer)
+                          console.log('Address clicked:', address);
+                        }}
+                      />
+                    </Box>
                   </VStack>
                 )}
 
