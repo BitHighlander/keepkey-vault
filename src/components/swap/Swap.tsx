@@ -27,6 +27,14 @@ import { SwapQuote } from './SwapQuote';
 import { SwapConfirm } from './SwapConfirm';
 import { AssetPicker } from './AssetPicker';
 
+// Import THORChain services
+import { 
+  getThorchainQuote, 
+  getExchangeRate, 
+  toBaseUnit, 
+  fromBaseUnit 
+} from '@/services/thorchain';
+
 interface SwapProps {
   onBackClick?: () => void;
 }
@@ -135,9 +143,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [inputAmount, setInputAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quote, setQuote] = useState<any>(null);
   const [error, setError] = useState<string>('');
   const [confirmMode, setConfirmMode] = useState<boolean>(false);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   
   // USD input mode states
   const [inputIsUSD, setInputIsUSD] = useState(false);
@@ -345,7 +355,60 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets]);
 
-  const handleInputChange = (value: string) => {
+  // Fetch quote from THORChain
+  const fetchQuote = async (amount: string, fromSymbol: string, toSymbol: string) => {
+    setIsLoadingQuote(true);
+    setError('');
+    
+    try {
+      // Convert to base units
+      const baseAmount = toBaseUnit(amount, fromSymbol);
+      
+      // Get quote from THORChain
+      const quoteData = await getThorchainQuote(fromSymbol, toSymbol, baseAmount);
+      
+      if (quoteData) {
+        setQuote(quoteData);
+        
+        // Convert output from base units and set it
+        const outputInDisplay = fromBaseUnit(quoteData.expected_amount_out, toSymbol);
+        setOutputAmount(outputInDisplay);
+        
+        // Calculate USD value for output
+        if (app?.outboundAssetContext?.priceUsd) {
+          const outputUsd = (parseFloat(outputInDisplay) * parseFloat(app.outboundAssetContext.priceUsd)).toFixed(2);
+          setOutputUSDValue(outputUsd);
+        }
+        
+        // Calculate exchange rate
+        const rate = parseFloat(outputInDisplay) / parseFloat(amount);
+        setExchangeRate(rate);
+      } else {
+        setError('Unable to fetch quote from THORChain');
+      }
+    } catch (err) {
+      console.error('Error fetching quote:', err);
+      setError('Failed to fetch swap quote');
+    } finally {
+      setIsLoadingQuote(false);
+    }
+  };
+
+  // Fetch exchange rate when assets change
+  useEffect(() => {
+    const fetchRate = async () => {
+      if (app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
+        const rate = await getExchangeRate(app.assetContext.symbol, app.outboundAssetContext.symbol);
+        if (rate) {
+          setExchangeRate(rate);
+        }
+      }
+    };
+    
+    fetchRate();
+  }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol]);
+
+  const handleInputChange = async (value: string) => {
     setInputAmount(value);
     // Automatically calculate and update USD value
     if (app?.assetContext?.priceUsd && value) {
@@ -354,14 +417,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     } else {
       setInputUSDValue('');
     }
+    
+    // Clear previous output
     setOutputAmount('');
     setOutputUSDValue('');
-    // Reset quote when input changes
     setQuote(null);
     setError('');
+    
+    // Fetch quote if we have valid input
+    if (value && parseFloat(value) > 0 && app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
+      await fetchQuote(value, app.assetContext.symbol, app.outboundAssetContext.symbol);
+    }
   };
 
-  const handleMaxClick = () => {
+  const handleMaxClick = async () => {
     const maxBalance = getUserBalance(app?.assetContext?.caip);
     if (maxBalance && parseFloat(maxBalance) > 0) {
       // Leave a small amount for gas fees if it's a native token
@@ -379,9 +448,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       }
       setOutputAmount('');
       setOutputUSDValue('');
-      // Reset quote when max is clicked
       setQuote(null);
       setError('');
+      
+      // Fetch quote for max amount
+      if (app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
+        await fetchQuote(adjustedMax, app.assetContext.symbol, app.outboundAssetContext.symbol);
+      }
     }
   };
 
@@ -424,6 +497,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         icon: asset.icon,
         priceUsd: asset.priceUsd
       });
+      
+      // Fetch new quote if we have input amount
+      if (inputAmount && parseFloat(inputAmount) > 0 && app?.outboundAssetContext?.symbol) {
+        await fetchQuote(inputAmount, asset.symbol, app.outboundAssetContext.symbol);
+      }
     } else {
       if (asset.caip === app?.assetContext?.caip) {
         // If selecting the same asset as "from", swap them
@@ -438,15 +516,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         icon: asset.icon,
         priceUsd: asset.priceUsd
       });
+      
+      // Fetch new quote if we have input amount
+      if (inputAmount && parseFloat(inputAmount) > 0 && app?.assetContext?.symbol) {
+        await fetchQuote(inputAmount, app.assetContext.symbol, asset.symbol);
+      }
     }
     
-    // Reset amounts when changing assets
-    setInputAmount('');
-    setOutputAmount('');
-    setInputUSDValue('');
-    setOutputUSDValue('');
-    setQuote(null);
-    setError('');
+    // Only clear if no input amount
+    if (!inputAmount) {
+      setOutputAmount('');
+      setOutputUSDValue('');
+      setQuote(null);
+      setError('');
+    }
   };
 
   // Swap from and to assets
@@ -468,6 +551,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       return;
     }
     
+    // Store current values if we're swapping output to input
+    const shouldFetchNewQuote = outputAmount && parseFloat(outputAmount) > 0;
+    const newInputAmount = outputAmount;
+    
     await app.setAssetContext({
       caip: toSel.caip,
       networkId: toSel.networkId || caipToNetworkId(toSel.caip),
@@ -486,12 +573,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       priceUsd: fromSel.priceUsd
     });
     
-    setInputAmount('');
-    setOutputAmount('');
-    setInputUSDValue('');
-    setOutputUSDValue('');
-    setQuote(null);
-    setError('');
+    // If we had an output amount, use it as the new input
+    if (shouldFetchNewQuote) {
+      setInputAmount(newInputAmount);
+      setInputUSDValue(outputUSDValue);
+      setOutputAmount('');
+      setOutputUSDValue('');
+      // Fetch quote for the swapped amounts
+      await fetchQuote(newInputAmount, toSel.symbol, fromSel.symbol);
+    } else {
+      setInputAmount('');
+      setOutputAmount('');
+      setInputUSDValue('');
+      setOutputUSDValue('');
+      setQuote(null);
+      setError('');
+    }
   };
 
   const getAssetDisplay = (isFromAsset: boolean = false) => {
@@ -573,17 +670,43 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             <Card.Body p={4}>
               {isLoadingAssets ? (
                 <VStack py={20} gap={4}>
-                  <Spinner 
-                    size="xl" 
-                    color="blue.500" 
-                    thickness="3px"
-                    speed="0.8s"
-                  />
-                  <Text color="gray.400" fontSize="lg">
-                    Loading assets...
+                  <Box position="relative">
+                    <Spinner 
+                      size="xl" 
+                      color="blue.500" 
+                      thickness="3px"
+                      speed="0.8s"
+                    />
+                    <Box
+                      position="absolute"
+                      top="50%"
+                      left="50%"
+                      transform="translate(-50%, -50%)"
+                    >
+                      <Image 
+                        src="https://pioneers.dev/coins/thorchain.png" 
+                        alt="Loading" 
+                        boxSize="32px"
+                        opacity={0.8}
+                      />
+                    </Box>
+                  </Box>
+                  <VStack gap={1}>
+                    <Text color="gray.300" fontSize="lg" fontWeight="medium">
+                      Loading your assets
+                    </Text>
+                    <Text color="gray.500" fontSize="sm">
+                      Fetching balances and current prices...
+                    </Text>
+                  </VStack>
+                </VStack>
+              ) : availableAssets.length === 0 ? (
+                <VStack py={20} gap={4}>
+                  <Text color="orange.400" fontSize="lg" fontWeight="medium">
+                    No assets available
                   </Text>
-                  <Text color="gray.500" fontSize="sm">
-                    Fetching your balances and prices
+                  <Text color="gray.500" fontSize="sm" textAlign="center" px={4}>
+                    You need at least $0.01 worth of assets to start swapping
                   </Text>
                 </VStack>
               ) : (
@@ -643,16 +766,27 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         showMaxButton={false}
                       />
                       
-                      <Box mt={2}>
+                      <Box mt={2} position="relative">
+                        {isLoadingQuote && (
+                          <Box 
+                            position="absolute" 
+                            right="12px" 
+                            top="50%" 
+                            transform="translateY(-50%)"
+                            zIndex={2}
+                          >
+                            <Spinner size="sm" color="blue.500" />
+                          </Box>
+                        )}
                         <SwapInput
                           value={outputAmount}
                           onChange={() => {}} // Disabled, so no-op
                           disabled={true}
-                          placeholder="0"
+                          placeholder={isLoadingQuote ? "Fetching quote..." : "0"}
                           showMaxButton={false}
-                          usdAmount={outputAmount && app?.outboundAssetContext?.priceUsd ? 
+                          usdAmount={outputUSDValue || (outputAmount && app?.outboundAssetContext?.priceUsd ? 
                             (parseFloat(outputAmount) * parseFloat(app.outboundAssetContext.priceUsd)).toFixed(2) : 
-                            undefined}
+                            undefined)}
                           symbol={app?.outboundAssetContext?.symbol}
                           priceUsd={app?.outboundAssetContext?.priceUsd ? parseFloat(app.outboundAssetContext.priceUsd) : undefined}
                           onToggleMode={() => setOutputIsUSD(!outputIsUSD)}
@@ -660,6 +794,27 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         />
                       </Box>
                     </Box>
+
+                    {/* Exchange Rate Display */}
+                    {exchangeRate && inputAmount && parseFloat(inputAmount) > 0 && (
+                      <Box 
+                        bg="gray.800" 
+                        borderRadius="lg" 
+                        p={3}
+                        borderWidth="1px"
+                        borderColor="gray.700"
+                      >
+                        <HStack justify="center" gap={2}>
+                          <Text fontSize="sm" color="gray.400">
+                            1 {app?.assetContext?.symbol}
+                          </Text>
+                          <Text fontSize="sm" color="gray.500">=</Text>
+                          <Text fontSize="sm" color="white" fontWeight="medium">
+                            {exchangeRate.toFixed(6)} {app?.outboundAssetContext?.symbol}
+                          </Text>
+                        </HStack>
+                      </Box>
+                    )}
 
                     {/* Quote Display */}
                     <SwapQuote
