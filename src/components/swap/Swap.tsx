@@ -181,6 +181,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   };
 
+  // Helper function to get USD balance
+  const getUserBalanceUSD = (caip: string): string => {
+    if (!app?.balances || !caip) return '0';
+    try {
+      const asset = availableAssets.find((x: any) => 
+        x.caip === caip || 
+        x.caips?.includes(caip) || 
+        x.symbol === (app.balances.find((b: any) => b.caip === caip)?.symbol)
+      );
+      return asset?.balanceUsd?.toString() || '0';
+    } catch (e) {
+      return '0';
+    }
+  };
+
   // Get available assets with balances - COPY FROM DASHBOARD
   const availableAssets = useMemo(() => {
     if (!app?.balances || app.balances.length === 0) {
@@ -222,7 +237,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
     // Convert to array and sort by USD value (exact copy from dashboard)
     const assets = Array.from(balanceMap.values())
-      .filter((asset: any) => asset.balanceUsd > 1)
+      .filter((asset: any) => asset.balanceUsd > 0.01) // Lower threshold for more assets
       .sort((a: any, b: any) => b.balanceUsd - a.balanceUsd);
 
     console.log('availableAssets: Final sorted assets', assets);
@@ -264,19 +279,32 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
     setOutputAmount('');
     setOutputUSDValue('');
+    // Reset quote when input changes
+    setQuote(null);
+    setError('');
   };
 
   const handleMaxClick = () => {
     const maxBalance = getUserBalance(app?.assetContext?.caip);
     if (maxBalance && parseFloat(maxBalance) > 0) {
-      setInputAmount(maxBalance);
+      // Leave a small amount for gas fees if it's a native token
+      const isNativeToken = app?.assetContext?.symbol && 
+        ['ETH', 'BNB', 'AVAX', 'MATIC'].includes(app.assetContext.symbol);
+      const adjustedMax = isNativeToken ? 
+        (parseFloat(maxBalance) * 0.98).toFixed(8) : // Keep 2% for gas
+        maxBalance;
+      
+      setInputAmount(adjustedMax);
       // Automatically calculate and update USD value
       if (app?.assetContext?.priceUsd) {
-        const usdValue = (parseFloat(maxBalance) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
+        const usdValue = (parseFloat(adjustedMax) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
         setInputUSDValue(usdValue);
       }
       setOutputAmount('');
       setOutputUSDValue('');
+      // Reset quote when max is clicked
+      setQuote(null);
+      setError('');
     }
   };
 
@@ -452,20 +480,26 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <AssetSelector
                         asset={getAssetDisplay(true)}
                         balance={getUserBalance(app?.assetContext?.caip)}
+                        balanceUsd={getUserBalanceUSD(app?.assetContext?.caip)}
                         label="From"
                         onClick={() => setShowAssetPicker('from')}
+                        onMaxClick={handleMaxClick}
+                        showMaxButton={true}
                       />
                       
                       <Box mt={2}>
                         <SwapInput
                           value={inputAmount}
                           onChange={handleInputChange}
-                          showMaxButton={true}
+                          showMaxButton={false} // Max button is now in AssetSelector
                           onMaxClick={handleMaxClick}
                           usdAmount={inputAmount && app?.assetContext?.priceUsd ? 
                             (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) : 
                             undefined}
                           symbol={app?.assetContext?.symbol}
+                          priceUsd={app?.assetContext?.priceUsd ? parseFloat(app.assetContext.priceUsd) : undefined}
+                          onToggleMode={() => setInputIsUSD(!inputIsUSD)}
+                          isUsdMode={inputIsUSD}
                         />
                       </Box>
                     </Box>
@@ -488,8 +522,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <AssetSelector
                         asset={getAssetDisplay(false)}
                         balance={getUserBalance(app?.outboundAssetContext?.caip)}
+                        balanceUsd={getUserBalanceUSD(app?.outboundAssetContext?.caip)}
                         label="To"
                         onClick={() => setShowAssetPicker('to')}
+                        showMaxButton={false}
                       />
                       
                       <Box mt={2}>
@@ -498,10 +534,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           onChange={() => {}} // Disabled, so no-op
                           disabled={true}
                           placeholder="0"
+                          showMaxButton={false}
                           usdAmount={outputAmount && app?.outboundAssetContext?.priceUsd ? 
                             (parseFloat(outputAmount) * parseFloat(app.outboundAssetContext.priceUsd)).toFixed(2) : 
                             undefined}
                           symbol={app?.outboundAssetContext?.symbol}
+                          priceUsd={app?.outboundAssetContext?.priceUsd ? parseFloat(app.outboundAssetContext.priceUsd) : undefined}
+                          onToggleMode={() => setOutputIsUSD(!outputIsUSD)}
+                          isUsdMode={outputIsUSD}
+                          label="You receive"
                         />
                       </Box>
                     </Box>
@@ -538,8 +579,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
                     {/* Info message */}
                     {fromAssets.length === 0 && (
-                      <Text fontSize="sm" color="orange.400" textAlign="center">
-                        No assets with sufficient balance (minimum $10) for swapping
+                      <Text fontSize="sm" color="orange.400" textAlign="center" mt={2}>
+                        No assets with sufficient balance (minimum $1) for swapping
                       </Text>
                     )}
                   </>
