@@ -116,6 +116,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const { state } = pioneer;
   const { app } = state;
 
+  // Debug app state
+  useEffect(() => {
+    console.log('🔄 [Swap] Component mounted/updated with app state:', {
+      hasApp: !!app,
+      hasBalances: !!app?.balances,
+      balanceCount: app?.balances?.length || 0,
+      hasAssetContext: !!app?.assetContext,
+      assetContext: app?.assetContext,
+      hasOutboundAssetContext: !!app?.outboundAssetContext,
+      outboundAssetContext: app?.outboundAssetContext
+    });
+  }, [app]);
+
   // State for swap form
   const [inputAmount, setInputAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState('');
@@ -133,13 +146,24 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
 
-  // Helper function to get balance
+  // Helper function to get aggregated balance by symbol
   const getUserBalance = (caip: string): string => {
-    if (!app?.balances || !caip) return '0';
+    if (!app?.balances || !caip) {
+      console.log('getUserBalance: Missing balances or caip', { balances: app?.balances?.length, caip });
+      return '0';
+    }
     try {
-      const balance = app.balances.find((x: any) => x.caip === caip);
-      return balance?.balance || '0';
+      // Find the asset in our availableAssets which has aggregated balances
+      const asset = availableAssets.find((x: any) => 
+        x.caip === caip || 
+        x.caips?.includes(caip) || 
+        x.symbol === (app.balances.find((b: any) => b.caip === caip)?.symbol)
+      );
+      
+      console.log('getUserBalance: Found aggregated balance for', caip, asset?.balance);
+      return asset?.balance?.toString() || '0';
     } catch (e) {
+      console.log('getUserBalance: Error finding balance', e);
       return '0';
     }
   };
@@ -157,42 +181,56 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   };
 
-  // Get available assets with balances and filter by native + balance > $10
+  // Get available assets with balances - COPY FROM DASHBOARD
   const availableAssets = useMemo(() => {
     if (!app?.balances || app.balances.length === 0) {
-      return NATIVE_ASSETS.map(asset => ({
-        ...asset,
-        balance: '0',
-        balanceUsd: 0,
-        networkId: caipToNetworkId(asset.caip)
-      }));
+      return [];
     }
 
-    // Map balances to native assets only
-    return NATIVE_ASSETS.map(nativeAsset => {
-      const balance = app.balances.find((b: any) => 
-        b.caip === nativeAsset.caip || 
-        b.symbol === nativeAsset.symbol
-      );
+    // Create a map to aggregate balances by symbol (exact copy from dashboard logic)
+    const balanceMap = new Map();
+    
+    app.balances.forEach((balance: any) => {
+      const ticker = balance.ticker || balance.symbol;
+      if (!ticker) return;
       
-      const balanceAmount = balance?.balance || '0';
-      const priceUsd = parseFloat(balance?.priceUsd || '0');
-      const balanceUsd = parseFloat(balanceAmount) * priceUsd;
+      // Find matching native asset
+      const nativeAsset = NATIVE_ASSETS.find(asset => asset.symbol === ticker);
+      if (!nativeAsset) return;
       
-      return {
-        ...nativeAsset,
-        balance: balanceAmount,
-        balanceUsd,
-        priceUsd,
-        networkId: balance?.networkId || caipToNetworkId(nativeAsset.caip)
-      };
+      const balanceAmount = parseFloat(balance.balance || '0');
+      const valueUsd = parseFloat(balance.valueUsd || '0');
+      
+      if (balanceMap.has(ticker)) {
+        // Aggregate existing balance
+        const existing = balanceMap.get(ticker);
+        existing.balance += balanceAmount;
+        existing.balanceUsd += valueUsd;
+      } else {
+        // Create new entry
+        balanceMap.set(ticker, {
+          caip: balance.caip,
+          symbol: ticker,
+          name: nativeAsset.name,
+          icon: nativeAsset.icon,
+          balance: balanceAmount,
+          balanceUsd: valueUsd,
+          priceUsd: parseFloat(balance.priceUsd || '0')
+        });
+      }
     });
+
+    // Convert to array and sort by USD value (exact copy from dashboard)
+    const assets = Array.from(balanceMap.values())
+      .filter((asset: any) => asset.balanceUsd > 1)
+      .sort((a: any, b: any) => b.balanceUsd - a.balanceUsd);
+
+    console.log('availableAssets: Final sorted assets', assets);
+    return assets;
   }, [app?.balances]);
 
-  // Filter assets for "from" selection (only assets with > $10 balance)
-  const fromAssets = useMemo(() => {
-    return availableAssets.filter(asset => asset.balanceUsd > 10);
-  }, [availableAssets]);
+  // fromAssets are already filtered and sorted in availableAssets
+  const fromAssets = availableAssets;
 
   // All native assets available for "to" selection (no balance requirement)
   const toAssets = useMemo(() => {
@@ -215,26 +253,31 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   }, [fromAssets, toAssets, app?.assetContext?.caip]);
 
-  const handleInputChange = (value: string, isUSD: boolean) => {
-    if (isUSD) {
-      setInputUSDValue(value);
-      if (app?.assetContext?.priceUsd && value) {
-        const nativeAmount = (parseFloat(value) / parseFloat(app.assetContext.priceUsd)).toFixed(8);
-        setInputAmount(nativeAmount);
-      } else {
-        setInputAmount('');
-      }
+  const handleInputChange = (value: string) => {
+    setInputAmount(value);
+    // Automatically calculate and update USD value
+    if (app?.assetContext?.priceUsd && value) {
+      const usdValue = (parseFloat(value) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
+      setInputUSDValue(usdValue);
     } else {
-      setInputAmount(value);
-      if (app?.assetContext?.priceUsd && value) {
-        const usdValue = (parseFloat(value) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
-        setInputUSDValue(usdValue);
-      } else {
-        setInputUSDValue('');
-      }
+      setInputUSDValue('');
     }
     setOutputAmount('');
     setOutputUSDValue('');
+  };
+
+  const handleMaxClick = () => {
+    const maxBalance = getUserBalance(app?.assetContext?.caip);
+    if (maxBalance && parseFloat(maxBalance) > 0) {
+      setInputAmount(maxBalance);
+      // Automatically calculate and update USD value
+      if (app?.assetContext?.priceUsd) {
+        const usdValue = (parseFloat(maxBalance) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
+        setInputUSDValue(usdValue);
+      }
+      setOutputAmount('');
+      setOutputUSDValue('');
+    }
   };
 
   const handleOutputChange = (value: string, isUSD: boolean) => {
@@ -296,10 +339,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     const toSel = app?.outboundAssetContext;
     if (!fromSel || !toSel || !app?.setAssetContext || !app?.setOutboundAssetContext) return;
     
-    // Check if the "to" asset has enough balance to become the "from" asset
-    const toAssetBalance = getUSDValue(toSel.caip, getUserBalance(toSel.caip));
-    if (toAssetBalance <= 10) {
-      setError('Selected asset does not have sufficient balance (minimum $10)');
+    // Check if the "to" asset has any balance to become the "from" asset
+    const toAssetBalance = parseFloat(getUserBalance(toSel.caip));
+    if (toAssetBalance <= 0) {
+      setError('Selected asset does not have any balance');
       return;
     }
     
@@ -393,60 +436,75 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       >
         <Box maxW="480px" width="full">
           <Card.Root 
-            bg="rgba(17, 17, 17, 0.9)" 
+            bg="rgba(17, 17, 17, 0.95)" 
             backdropFilter="blur(20px)"
             borderColor="gray.800"
             borderWidth="1px"
-            boxShadow="0 8px 32px 0 rgba(0, 0, 0, 0.37)"
+            borderRadius="2xl"
+            boxShadow="0 4px 24px 0 rgba(0, 0, 0, 0.5)"
           >
-            <Card.Body p={6}>
-              <Stack gap={4}>
+            <Card.Body p={4}>
+              <Stack gap={2}>
                 {!confirmMode ? (
                   <>
-                    {/* From Asset (only assets with > $10 balance) */}
-                    <AssetSelector
-                      asset={getAssetDisplay(true)}
-                      balance={getUserBalance(app?.assetContext?.caip)}
-                      label="From (min. $10 balance)"
-                      onClick={() => setShowAssetPicker('from')}
-                    />
-                    
-                    <SwapInput
-                      value={inputIsUSD ? inputUSDValue : inputAmount}
-                      onChange={(value) => handleInputChange(value, inputIsUSD)}
-                      isUSD={inputIsUSD}
-                      onToggleUSD={() => setInputIsUSD(!inputIsUSD)}
-                      label="Amount"
-                    />
+                    {/* From Section */}
+                    <Box>
+                      <AssetSelector
+                        asset={getAssetDisplay(true)}
+                        balance={getUserBalance(app?.assetContext?.caip)}
+                        label="From"
+                        onClick={() => setShowAssetPicker('from')}
+                      />
+                      
+                      <Box mt={2}>
+                        <SwapInput
+                          value={inputAmount}
+                          onChange={handleInputChange}
+                          showMaxButton={true}
+                          onMaxClick={handleMaxClick}
+                          usdAmount={inputAmount && app?.assetContext?.priceUsd ? 
+                            (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) : 
+                            undefined}
+                          symbol={app?.assetContext?.symbol}
+                        />
+                      </Box>
+                    </Box>
 
                     {/* Swap Button */}
-                    <HStack justify="center">
-                      <Button
+                    <HStack justify="center" py={1}>
+                      <IconButton
+                        size="sm"
                         variant="ghost"
                         onClick={swapAssets}
                         aria-label="Swap assets"
+                        icon={<FaExchangeAlt />}
                         _hover={{ bg: 'gray.700' }}
-                      >
-                        <FaExchangeAlt size={20} />
-                      </Button>
+                        borderRadius="full"
+                      />
                     </HStack>
 
-                    {/* To Asset (any native asset) */}
-                    <AssetSelector
-                      asset={getAssetDisplay(false)}
-                      balance={getUserBalance(app?.outboundAssetContext?.caip)}
-                      label="To"
-                      onClick={() => setShowAssetPicker('to')}
-                    />
-                    
-                    <SwapInput
-                      value={outputIsUSD ? outputUSDValue : outputAmount}
-                      onChange={(value) => handleOutputChange(value, outputIsUSD)}
-                      isUSD={outputIsUSD}
-                      onToggleUSD={() => setOutputIsUSD(!outputIsUSD)}
-                      label="Receive (estimated)"
-                      disabled={true}
-                    />
+                    {/* To Section */}
+                    <Box>
+                      <AssetSelector
+                        asset={getAssetDisplay(false)}
+                        balance={getUserBalance(app?.outboundAssetContext?.caip)}
+                        label="To"
+                        onClick={() => setShowAssetPicker('to')}
+                      />
+                      
+                      <Box mt={2}>
+                        <SwapInput
+                          value={outputAmount}
+                          onChange={() => {}} // Disabled, so no-op
+                          disabled={true}
+                          placeholder="0"
+                          usdAmount={outputAmount && app?.outboundAssetContext?.priceUsd ? 
+                            (parseFloat(outputAmount) * parseFloat(app.outboundAssetContext.priceUsd)).toFixed(2) : 
+                            undefined}
+                          symbol={app?.outboundAssetContext?.symbol}
+                        />
+                      </Box>
+                    </Box>
 
                     {/* Quote Display */}
                     <SwapQuote
@@ -458,17 +516,24 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     {/* Swap Button */}
                     <Button
                       size="lg"
-                      bg="green.500"
-                      color="black"
-                      _hover={{ bg: 'green.400' }}
-                      _active={{ bg: 'green.600' }}
+                      bg="blue.500"
+                      color="white"
+                      _hover={{ bg: 'blue.400' }}
+                      _active={{ bg: 'blue.600' }}
                       onClick={() => setConfirmMode(true)}
                       width="full"
-                      height="50px"
-                      mt={3}
+                      height="48px"
+                      borderRadius="xl"
+                      fontWeight="semibold"
+                      mt={2}
                       isDisabled={!inputAmount || parseFloat(inputAmount) <= 0}
+                      _disabled={{
+                        bg: 'gray.600',
+                        color: 'gray.400',
+                        cursor: 'not-allowed'
+                      }}
                     >
-                      Preview Swap
+                      {!inputAmount || parseFloat(inputAmount) <= 0 ? 'Enter an amount' : 'Swap'}
                     </Button>
 
                     {/* Info message */}

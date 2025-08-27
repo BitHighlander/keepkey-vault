@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react';
-import { Box, HStack, Text, Image } from '@chakra-ui/react';
+import { Box, HStack, Text, Image, Button } from '@chakra-ui/react';
 import { FaChevronDown } from 'react-icons/fa';
 import { middleEllipsis } from '@/utils/strings';
 
@@ -16,19 +16,21 @@ export const AssetSelector = ({ asset, balance, label, onClick }: AssetSelectorP
   if (!asset) {
     return (
       <Box>
-        <Text fontSize="sm" color="gray.500" mb={1}>{label}</Text>
-        <HStack
+        <Text fontSize="xs" color="gray.500" mb={1}>{label}</Text>
+        <Button
           onClick={onClick}
-          cursor="pointer"
-          bg="gray.700"
-          p={3}
-          borderRadius="lg"
+          variant="ghost"
+          bg="gray.800"
+          borderRadius="xl"
+          p={2}
+          height="auto"
           justify="space-between"
-          _hover={{ bg: 'gray.600' }}
+          width="full"
+          _hover={{ bg: 'gray.700' }}
         >
-          <Text color="gray.400">Select asset</Text>
-          <FaChevronDown color="gray" />
-        </HStack>
+          <Text color="gray.400" fontSize="sm">Select token</Text>
+          <FaChevronDown color="gray" size={12} />
+        </Button>
       </Box>
     );
   }
@@ -36,31 +38,32 @@ export const AssetSelector = ({ asset, balance, label, onClick }: AssetSelectorP
   return (
     <Box>
       <HStack justify="space-between" mb={1}>
-        <Text fontSize="sm" color="gray.500">{label}</Text>
+        <Text fontSize="xs" color="gray.500">{label}</Text>
         {balance && (
-          <Text fontSize="sm" color="gray.400">
-            Balance: {middleEllipsis(balance, 10)}
+          <Text fontSize="xs" color="gray.500">
+            Balance: {middleEllipsis(balance, 8)}
           </Text>
         )}
       </HStack>
-      <HStack
+      <Button
         onClick={onClick}
-        cursor="pointer"
-        bg="gray.700"
-        p={3}
-        borderRadius="lg"
-        justify="space-between"
-        _hover={{ bg: 'gray.600' }}
+        variant="ghost"
+        bg="gray.800"
+        borderRadius="xl"
+        p={2}
+        height="auto"
+        width="full"
+        justify="flex-start"
+        _hover={{ bg: 'gray.700' }}
       >
-        <HStack>
-          <Image src={asset.icon} alt={asset.name} boxSize="24px" />
-          <Box>
-            <Text fontWeight="medium" color="white">{asset.symbol}</Text>
-            <Text fontSize="xs" color="gray.400">{asset.name}</Text>
-          </Box>
+        <HStack justify="space-between" width="full">
+          <HStack gap={2}>
+            <Image src={asset.icon} alt={asset.name} boxSize="20px" />
+            <Text fontWeight="medium" color="white" fontSize="sm">{asset.symbol}</Text>
+          </HStack>
+          <FaChevronDown color="gray" size={12} />
         </HStack>
-        <FaChevronDown color="gray" />
-      </HStack>
+      </Button>
     </Box>
   );
 };

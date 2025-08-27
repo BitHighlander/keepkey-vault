@@ -23,7 +23,7 @@ interface Asset {
   name: string;
   symbol: string;
   icon: string;
-  balance?: string;
+  balance?: string | number;
   networkId?: string;
 }
 
@@ -95,8 +95,13 @@ export const AssetPicker = ({
                       Balance
                     </Text>
                     <Text fontSize="sm" color="white" fontWeight="medium">
-                      {middleEllipsis(asset.balance, 10)}
+                      {middleEllipsis(asset.balance.toString(), 10)}
                     </Text>
+                    {asset.balanceUsd && asset.balanceUsd > 0 && (
+                      <Text fontSize="xs" color="gray.500">
+                        ${asset.balanceUsd.toFixed(2)}
+                      </Text>
+                    )}
                   </Box>
                 )}
               </HStack>

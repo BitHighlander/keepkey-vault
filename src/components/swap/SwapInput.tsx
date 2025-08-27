@@ -1,54 +1,89 @@
 'use client'
 
 import React from 'react';
-import { Box, HStack, Input, Button, Text } from '@chakra-ui/react';
+import { Box, HStack, Input, Button, Text, VStack } from '@chakra-ui/react';
 
 interface SwapInputProps {
   value: string;
   onChange: (value: string) => void;
-  isUSD: boolean;
-  onToggleUSD: () => void;
-  label: string;
+  label?: string;
   placeholder?: string;
   disabled?: boolean;
+  onMaxClick?: () => void;
+  showMaxButton?: boolean;
+  nativeAmount?: string;
+  usdAmount?: string;
+  symbol?: string;
 }
 
 export const SwapInput = ({
   value,
   onChange,
-  isUSD,
-  onToggleUSD,
   label,
-  placeholder = '0.00',
-  disabled = false
+  placeholder = '0',
+  disabled = false,
+  onMaxClick,
+  showMaxButton = false,
+  nativeAmount,
+  usdAmount,
+  symbol
 }: SwapInputProps) => {
   return (
-    <Box>
-      <HStack justify="space-between" mb={1}>
-        <Text fontSize="sm" color="gray.500">{label}</Text>
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={onToggleUSD}
-          color={isUSD ? 'blue.400' : 'gray.400'}
-        >
-          {isUSD ? 'USD' : 'Native'}
-        </Button>
-      </HStack>
-      <HStack>
-        {isUSD && <Text color="gray.400" fontSize="lg">$</Text>}
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          size="lg"
-          variant="filled"
-          bg="gray.700"
-          _hover={{ bg: 'gray.600' }}
-          _focus={{ bg: 'gray.600' }}
-          type="number"
-          disabled={disabled}
-        />
+    <Box 
+      bg="gray.800" 
+      borderRadius="xl" 
+      p={3}
+      borderWidth="1px"
+      borderColor="gray.700"
+      _hover={{ borderColor: disabled ? 'gray.700' : 'gray.600' }}
+    >
+      {label && (
+        <HStack justify="space-between" mb={2}>
+          <Text fontSize="xs" color="gray.500">{label}</Text>
+          {showMaxButton && !disabled && (
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={onMaxClick}
+              color="blue.400"
+              _hover={{ bg: 'gray.700' }}
+              height="20px"
+              px={2}
+              fontSize="xs"
+            >
+              MAX
+            </Button>
+          )}
+        </HStack>
+      )}
+      
+      <HStack justify="space-between" align="flex-start">
+        <VStack align="flex-start" gap={0} flex={1}>
+          <Input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            fontSize="2xl"
+            fontWeight="medium"
+            variant="unstyled"
+            type="number"
+            disabled={disabled}
+            px={2}
+            height="36px"
+            _placeholder={{ color: 'gray.500' }}
+          />
+          {usdAmount && (
+            <Text fontSize="sm" color="gray.500" px={2}>
+              ${usdAmount}
+            </Text>
+          )}
+        </VStack>
+        
+        {symbol && (
+          <Text fontSize="lg" color="gray.400" pr={2}>
+            {symbol}
+          </Text>
+        )}
       </HStack>
     </Box>
   );
