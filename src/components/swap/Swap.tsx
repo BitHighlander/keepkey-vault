@@ -12,7 +12,9 @@ import {
   Flex,
   Card,
   IconButton,
-  Container
+  Container,
+  Spinner,
+  VStack
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaArrowLeft } from 'react-icons/fa';
 // @ts-ignore
@@ -249,24 +251,99 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // All native assets available for "to" selection (no balance requirement)
   const toAssets = useMemo(() => {
+    // Get all available assets except the currently selected "from" asset
+    // This ensures we can swap to any asset we have, even with 0 balance
+    const allNativeAssets = NATIVE_ASSETS.map(native => {
+      const balance = availableAssets.find(a => a.symbol === native.symbol);
+      return {
+        ...native,
+        balance: balance?.balance || 0,
+        balanceUsd: balance?.balanceUsd || 0,
+        priceUsd: balance?.priceUsd || 0
+      };
+    });
+    
     // Exclude the currently selected "from" asset
-    return availableAssets.filter(asset => 
-      asset.caip !== app?.assetContext?.caip
+    return allNativeAssets.filter(asset => 
+      asset.symbol !== app?.assetContext?.symbol
     );
-  }, [availableAssets, app?.assetContext?.caip]);
+  }, [availableAssets, app?.assetContext?.symbol]);
 
   // Initialize default assets if not set
   useEffect(() => {
-    if (!app?.assetContext?.caip && fromAssets.length > 0) {
-      const defaultFrom = fromAssets[0];
-      const defaultTo = toAssets[0] || availableAssets[0];
+    if (!app?.assetContext?.caip && !app?.outboundAssetContext?.caip && availableAssets.length > 0) {
+      // Select the top USD value asset for "from"
+      const defaultFrom = availableAssets[0];
       
-      if (app?.setAssetContext && app?.setOutboundAssetContext) {
+      // Find a different asset for "to" - preferably the second highest value
+      let defaultTo = null;
+      if (availableAssets.length > 1) {
+        // Use the second highest value asset
+        defaultTo = availableAssets[1];
+      } else {
+        // If we only have one asset with balance, find any other native asset
+        const otherAsset = NATIVE_ASSETS.find(asset => 
+          asset.symbol !== defaultFrom?.symbol
+        );
+        if (otherAsset) {
+          defaultTo = {
+            ...otherAsset,
+            balance: 0,
+            balanceUsd: 0,
+            priceUsd: 0
+          };
+        }
+      }
+      
+      // Ensure we never set the same asset for both
+      if (defaultFrom && defaultTo && defaultFrom.symbol !== defaultTo.symbol) {
+        if (app?.setAssetContext && app?.setOutboundAssetContext) {
+          app.setAssetContext(defaultFrom);
+          app.setOutboundAssetContext(defaultTo);
+        }
+      } else if (defaultFrom && app?.setAssetContext && app?.setOutboundAssetContext) {
+        // Fallback: if somehow we still have the same, force ETH/BTC or BTC/ETH
         app.setAssetContext(defaultFrom);
-        app.setOutboundAssetContext(defaultTo);
+        const fallbackTo = defaultFrom.symbol === 'BTC' ? 
+          NATIVE_ASSETS.find(a => a.symbol === 'ETH') : 
+          NATIVE_ASSETS.find(a => a.symbol === 'BTC');
+        if (fallbackTo) {
+          app.setOutboundAssetContext({
+            ...fallbackTo,
+            balance: 0,
+            balanceUsd: 0,
+            priceUsd: 0
+          });
+        }
       }
     }
-  }, [fromAssets, toAssets, app?.assetContext?.caip]);
+  }, [availableAssets, app?.assetContext?.caip, app?.outboundAssetContext?.caip]);
+
+  // Validate that we never have the same asset for both from and to
+  useEffect(() => {
+    if (app?.assetContext?.symbol && 
+        app?.outboundAssetContext?.symbol && 
+        app.assetContext.symbol === app.outboundAssetContext.symbol &&
+        app?.setOutboundAssetContext &&
+        availableAssets.length > 0) {
+      console.warn('⚠️ [Swap] Same asset detected for both from and to, fixing...');
+      
+      // Find an alternative asset for "to"
+      const alternativeAsset = availableAssets.find(a => a.symbol !== app.assetContext.symbol) ||
+                               NATIVE_ASSETS.find(a => a.symbol !== app.assetContext.symbol);
+      
+      if (alternativeAsset) {
+        app.setOutboundAssetContext({
+          caip: alternativeAsset.caip,
+          networkId: alternativeAsset.networkId || caipToNetworkId(alternativeAsset.caip),
+          symbol: alternativeAsset.symbol,
+          name: alternativeAsset.name,
+          icon: alternativeAsset.icon,
+          priceUsd: alternativeAsset.priceUsd || 0
+        });
+      }
+    }
+  }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets]);
 
   const handleInputChange = (value: string) => {
     setInputAmount(value);
@@ -332,7 +409,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const handleAssetSelect = async (asset: any, isFrom: boolean) => {
     if (!app?.setAssetContext || !app?.setOutboundAssetContext) return;
     
+    // Check if selecting the same asset for both from and to
     if (isFrom) {
+      if (asset.caip === app?.outboundAssetContext?.caip) {
+        // If selecting the same asset as "to", swap them
+        await swapAssets();
+        return;
+      }
       await app.setAssetContext({
         caip: asset.caip,
         networkId: asset.networkId || caipToNetworkId(asset.caip),
@@ -342,6 +425,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         priceUsd: asset.priceUsd
       });
     } else {
+      if (asset.caip === app?.assetContext?.caip) {
+        // If selecting the same asset as "from", swap them
+        await swapAssets();
+        return;
+      }
       await app.setOutboundAssetContext({
         caip: asset.caip,
         networkId: asset.networkId || caipToNetworkId(asset.caip),
@@ -367,10 +455,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     const toSel = app?.outboundAssetContext;
     if (!fromSel || !toSel || !app?.setAssetContext || !app?.setOutboundAssetContext) return;
     
+    // Prevent swapping if they're the same asset
+    if (fromSel.symbol === toSel.symbol) {
+      setError('Cannot swap the same asset');
+      return;
+    }
+    
     // Check if the "to" asset has any balance to become the "from" asset
     const toAssetBalance = parseFloat(getUserBalance(toSel.caip));
     if (toAssetBalance <= 0) {
-      setError('Selected asset does not have any balance');
+      setError('Cannot swap - target asset has no balance');
       return;
     }
     
@@ -380,6 +474,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       symbol: toSel.symbol,
       name: toSel.name,
       icon: toSel.icon,
+      priceUsd: toSel.priceUsd
     });
     
     await app.setOutboundAssetContext({
@@ -388,6 +483,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       symbol: fromSel.symbol,
       name: fromSel.name,
       icon: fromSel.icon,
+      priceUsd: fromSel.priceUsd
     });
     
     setInputAmount('');
@@ -412,6 +508,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     console.log('Swap execution placeholder');
     setError('Swap functionality coming soon');
   };
+
+  // Check if we're still loading assets - only show spinner if no balances at all
+  const isLoadingAssets = !app?.balances || (app.balances.length === 0 && !app?.assetContext);
 
   return (
     <Box bg="bg.primary" minH="100vh" position="relative">
@@ -472,6 +571,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             boxShadow="0 4px 24px 0 rgba(0, 0, 0, 0.5)"
           >
             <Card.Body p={4}>
+              {isLoadingAssets ? (
+                <VStack py={20} gap={4}>
+                  <Spinner 
+                    size="xl" 
+                    color="blue.500" 
+                    thickness="3px"
+                    speed="0.8s"
+                  />
+                  <Text color="gray.400" fontSize="lg">
+                    Loading assets...
+                  </Text>
+                  <Text color="gray.500" fontSize="sm">
+                    Fetching your balances and prices
+                  </Text>
+                </VStack>
+              ) : (
               <Stack gap={2}>
                 {!confirmMode ? (
                   <>
@@ -542,7 +657,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           priceUsd={app?.outboundAssetContext?.priceUsd ? parseFloat(app.outboundAssetContext.priceUsd) : undefined}
                           onToggleMode={() => setOutputIsUSD(!outputIsUSD)}
                           isUsdMode={outputIsUSD}
-                          label="You receive"
                         />
                       </Box>
                     </Box>
@@ -567,14 +681,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       borderRadius="xl"
                       fontWeight="semibold"
                       mt={2}
-                      isDisabled={!inputAmount || parseFloat(inputAmount) <= 0}
+                      isDisabled={
+                        !inputAmount || 
+                        parseFloat(inputAmount) <= 0 || 
+                        app?.assetContext?.symbol === app?.outboundAssetContext?.symbol
+                      }
                       _disabled={{
                         bg: 'gray.600',
                         color: 'gray.400',
                         cursor: 'not-allowed'
                       }}
                     >
-                      {!inputAmount || parseFloat(inputAmount) <= 0 ? 'Enter an amount' : 'Swap'}
+                      {app?.assetContext?.symbol === app?.outboundAssetContext?.symbol ? 
+                        'Select different assets' : 
+                        (!inputAmount || parseFloat(inputAmount) <= 0 ? 'Enter an amount' : 'Swap')
+                      }
                     </Button>
 
                     {/* Info message */}
@@ -597,6 +718,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   />
                 )}
               </Stack>
+              )}
             </Card.Body>
           </Card.Root>
         </Box>
@@ -607,7 +729,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           onClose={() => setShowAssetPicker(null)}
           onSelect={(asset) => handleAssetSelect(asset, true)}
           assets={fromAssets}
-          title="Select Asset to Swap From (min. $10 balance)"
+          title="Select Asset to Swap From"
           currentAsset={app?.assetContext}
         />
         
