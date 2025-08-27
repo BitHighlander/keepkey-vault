@@ -78,21 +78,28 @@ const BalanceCard: React.FC<{
       }}
     >
       {/* Main Card Content */}
-      <Box p={4}>
-        <VStack align="stretch" spacing={3}>
+      <Box p={3}>
+        <VStack align="stretch" spacing={2}>
           {/* Header Row */}
           <HStack justify="space-between">
-            <HStack spacing={3}>
-              <Text fontSize="lg">
+            <HStack spacing={2}>
+              <Text fontSize="md">
                 {getAddressTypeIcon(balance.addressType)}
               </Text>
               <VStack align="start" spacing={0}>
-                <Text fontSize="sm" fontWeight="bold" color="white">
-                  {balance.label}
-                </Text>
-                <HStack spacing={2}>
+                <HStack spacing={1}>
+                  <Text fontSize="sm" fontWeight="medium" color="white">
+                    {balance.label}
+                  </Text>
+                  {balance.percentage && balance.percentage > 0 && (
+                    <Text fontSize="xs" color={theme.gold}>
+                      {balance.percentage.toFixed(0)}%
+                    </Text>
+                  )}
+                </HStack>
+                <HStack spacing={1}>
                   <Text fontSize="xs" color="gray.400" fontFamily="mono">
-                    {formatAddress(balance.address, 24)}
+                    {formatAddress(balance.address, 20)}
                   </Text>
                   <IconButton
                     aria-label="Copy address"
@@ -116,38 +123,28 @@ const BalanceCard: React.FC<{
               size="sm"
               variant="ghost"
               color="gray.400"
-              onClick={onToggle}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
               _hover={{ color: 'white' }}
             />
           </HStack>
 
           {/* Balance Row */}
           <HStack justify="space-between">
-            <VStack align="start" spacing={1}>
-              <Text fontSize="lg" fontWeight="bold" color="white">
+            <HStack spacing={3}>
+              <Text fontSize="sm" fontWeight="medium" color="white">
                 {formatBalance(balance.balance)} {aggregatedBalance.symbol}
               </Text>
               <Text fontSize="sm" color="gray.400">
                 ${formatUsd(balance.valueUsd)}
               </Text>
-            </VStack>
-            
-            <VStack align="end" spacing={1}>
-              <Badge
-                colorScheme="yellow"
-                variant="subtle"
-                fontSize="sm"
-                px={2}
-                py={1}
-                borderRadius="md"
-              >
-                {balance.percentage?.toFixed(1)}%
-              </Badge>
-            </VStack>
+            </HStack>
           </HStack>
 
           {/* Progress Bar */}
-          <Box position="relative" height="4px" bg="whiteAlpha.100" borderRadius="full" overflow="hidden">
+          <Box position="relative" height="2px" bg="whiteAlpha.100" borderRadius="full" overflow="hidden">
             <Box
               position="absolute"
               top="0"
@@ -276,61 +273,33 @@ export const BalanceDistribution: React.FC<BalanceDistributionProps> = ({
   }
 
   return (
-    <VStack align="stretch" spacing={4} width="100%">
-      {/* Section Header */}
-      <Box>
-        <HStack justify="space-between" align="center" mb={3}>
-          <Text fontSize="lg" fontWeight="bold" color="white">
-            Balance Distribution
-          </Text>
-          <HStack spacing={2}>
-            <Text fontSize="xs" color="gray.400">Sort by:</Text>
-            <HStack spacing={1}>
-              {(['value', 'type', 'percentage'] as const).map((option) => (
-                <Button
-                  key={option}
-                  size="xs"
-                  variant={sortBy === option ? 'solid' : 'ghost'}
-                  bg={sortBy === option ? theme.gold : 'transparent'}
-                  color={sortBy === option ? 'black' : 'gray.400'}
-                  onClick={() => setSortBy(option)}
-                  _hover={{
-                    bg: sortBy === option ? theme.goldHover : 'whiteAlpha.100',
-                  }}
-                >
-                  {option.charAt(0).toUpperCase() + option.slice(1)}
-                </Button>
-              ))}
-            </HStack>
-          </HStack>
+    <VStack align="stretch" spacing={2} width="100%">
+      {/* Compact Header with Sort */}
+      <HStack justify="space-between" align="center">
+        <Text fontSize="sm" color="gray.400">
+          {aggregatedBalance.balances.length} addresses · {formatBalance(aggregatedBalance.totalBalance)} {aggregatedBalance.symbol}
+        </Text>
+        <HStack spacing={1}>
+          {(['value', 'type'] as const).map((option) => (
+            <Button
+              key={option}
+              size="xs"
+              variant={sortBy === option ? 'solid' : 'ghost'}
+              bg={sortBy === option ? theme.gold : 'transparent'}
+              color={sortBy === option ? 'black' : 'gray.400'}
+              onClick={() => setSortBy(option)}
+              _hover={{
+                bg: sortBy === option ? theme.goldHover : 'whiteAlpha.100',
+              }}
+            >
+              {option === 'value' ? '$' : 'Type'}
+            </Button>
+          ))}
         </HStack>
-        
-        {/* Total Summary Bar */}
-        <Box
-          bg={theme.cardBg}
-          p={3}
-          borderRadius="md"
-          border="1px solid"
-          borderColor={theme.border}
-        >
-          <HStack justify="space-between">
-            <Text fontSize="sm" color="gray.400">
-              Total across {aggregatedBalance.balances.length} addresses
-            </Text>
-            <HStack spacing={4}>
-              <Text fontSize="md" fontWeight="bold" color="white">
-                {formatBalance(aggregatedBalance.totalBalance)} {aggregatedBalance.symbol}
-              </Text>
-              <Text fontSize="md" fontWeight="bold" color={theme.gold}>
-                ${formatUsd(aggregatedBalance.totalValueUsd)}
-              </Text>
-            </HStack>
-          </HStack>
-        </Box>
-      </Box>
+      </HStack>
 
       {/* Balance Cards */}
-      <VStack align="stretch" spacing={3}>
+      <VStack align="stretch" spacing={2}>
         {sortedBalances.map((balance, index) => (
           <BalanceCard
             key={`${balance.address}-${index}`}

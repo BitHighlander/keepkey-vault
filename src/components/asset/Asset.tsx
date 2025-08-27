@@ -103,13 +103,20 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
     
     if (assetBalances.length <= 1) return null; // Only show if multiple addresses
     
-    return aggregateBalances(
+    const result = aggregateBalances(
       assetBalances,
       assetContext.pubkeys || [],
       assetContext.networkId,
       assetContext.symbol,
       priceUsd
     );
+    
+    // Debug logging to understand structure
+    console.log('📊 Aggregated Balance:', result);
+    console.log('🔑 Asset Context Pubkeys:', assetContext.pubkeys);
+    console.log('💰 Asset Balances:', assetBalances);
+    
+    return result;
   }, [app?.balances, assetContext, priceUsd]);
 
   // Format USD value
@@ -760,28 +767,17 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               <VStack align="stretch" p={4} gap={4}>
                 {/* Balance Distribution for multi-address assets - MOVED TO TOP */}
                 {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
-                  <VStack align="stretch" gap={3}>
-                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                      Balance Distribution
-                    </Text>
-                    <Box
-                      p={3}
-                      bg={theme.bg}
-                      borderRadius="lg"
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                    >
-                      <BalanceDistribution
-                        aggregatedBalance={aggregatedBalance}
-                        selectedAddress={selectedAddress}
-                        onAddressClick={(address) => {
-                          // Update selected address when clicked
-                          setSelectedAddress(address);
-                          console.log('Address selected:', address);
-                        }}
-                      />
-                    </Box>
-                  </VStack>
+                  <Box>
+                    <BalanceDistribution
+                      aggregatedBalance={aggregatedBalance}
+                      selectedAddress={selectedAddress}
+                      onAddressClick={(address) => {
+                        // Update selected address when clicked
+                        setSelectedAddress(address);
+                        console.log('Address selected:', address);
+                      }}
+                    />
+                  </Box>
                 )}
 
                 {/* Network Info */}
@@ -854,31 +850,50 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                       {(() => {
                         // Find the selected address info or use first pubkey
                         let displayPubkey = assetContext.pubkeys[0];
+                        let xpubLabel = 'XPUB';
+                        
                         if (selectedAddress && aggregatedBalance) {
                           // Try to find matching balance for selected address
                           const matchingBalance = aggregatedBalance.balances.find(b => b.address === selectedAddress);
-                          if (matchingBalance && matchingBalance.pubkey) {
-                            // Find corresponding pubkey by comparing pubkey strings
+                          if (matchingBalance) {
+                            // Find corresponding pubkey that has this address
                             const matchingPubkey = assetContext.pubkeys.find((pk: any) => {
-                              // Check if this pubkey matches the balance's pubkey
-                              // The pubkey might be stored as 'pubkey' or could be derived from address
-                              return pk.pubkey === matchingBalance.pubkey || 
-                                     pk.address === matchingBalance.address ||
-                                     pk.master === matchingBalance.pubkey;
+                              // The pubkey object should have an address field that matches
+                              return pk.address === matchingBalance.address;
                             });
+                            
                             if (matchingPubkey) {
                               displayPubkey = matchingPubkey;
                               console.log('Found matching pubkey for address:', selectedAddress, matchingPubkey);
                             } else {
-                              // Create a display object from the balance if no pubkey found
-                              console.log('No matching pubkey found, using balance data');
-                              displayPubkey = {
-                                pubkey: matchingBalance.pubkey || matchingBalance.address,
-                                address: matchingBalance.address,
-                                path: 'Unknown', // Will be updated if we find it
-                                ...displayPubkey // Keep other properties from default
-                              };
+                              // If no exact match, try to find by pubkey string or create from balance
+                              const fallbackPubkey = assetContext.pubkeys.find((pk: any) => 
+                                pk.pubkey === matchingBalance.pubkey
+                              );
+                              if (fallbackPubkey) {
+                                displayPubkey = fallbackPubkey;
+                              } else {
+                                // Use first pubkey as fallback but note it might not be correct
+                                console.log('No matching pubkey found for address:', selectedAddress);
+                              }
                             }
+                            
+                            // Determine the correct XPUB label based on address type
+                            if (matchingBalance.addressType === 'segwit') {
+                              xpubLabel = 'ZPUB'; // P2SH-wrapped SegWit
+                            } else if (matchingBalance.addressType === 'native-segwit') {
+                              xpubLabel = 'ZPUB'; // Native SegWit
+                            } else if (matchingBalance.addressType === 'taproot') {
+                              xpubLabel = 'XPUB'; // Taproot uses xpub
+                            } else {
+                              xpubLabel = 'XPUB'; // Legacy
+                            }
+                          }
+                        } else if (!selectedAddress && aggregatedBalance && aggregatedBalance.balances.length > 0) {
+                          // Auto-select first address if none selected
+                          const firstBalance = aggregatedBalance.balances[0];
+                          if (firstBalance.addressType === 'segwit' || firstBalance.addressType === 'native-segwit') {
+                            xpubLabel = 'ZPUB';
                           }
                         }
                         
@@ -886,16 +901,16 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                           <>
                             {selectedAddress && (
                               <Badge 
-                                colorScheme="blue" 
+                                colorScheme="yellow" 
                                 variant="subtle"
                                 fontSize="xs"
                                 mb={2}
                               >
-                                Selected Address
+                                {aggregatedBalance?.balances.find(b => b.address === selectedAddress)?.label || 'Selected Address'}
                               </Badge>
                             )}
                             <Text color="gray.400" fontSize="sm">
-                              {assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}
+                              {assetContext.networkId?.startsWith('bip122:') ? xpubLabel : 'Address'}
                             </Text>
                             <Box 
                               p={3}
@@ -914,9 +929,17 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                             <HStack justify="space-between" mt={1}>
                               <Text color="gray.400" fontSize="xs">Path</Text>
                               <Text color="white" fontSize="xs" fontFamily="mono">
-                                {displayPubkey.path}
+                                {displayPubkey.path || 'N/A'}
                               </Text>
                             </HStack>
+                            {displayPubkey.address && (
+                              <HStack justify="space-between" mt={1}>
+                                <Text color="gray.400" fontSize="xs">Address</Text>
+                                <Text color="white" fontSize="xs" fontFamily="mono">
+                                  {formatAddress(displayPubkey.address, 16)}
+                                </Text>
+                              </HStack>
+                            )}
                           </>
                         );
                       })()}
