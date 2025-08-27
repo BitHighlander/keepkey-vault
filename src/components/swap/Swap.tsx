@@ -601,6 +601,38 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     };
   };
 
+  // Get address for an asset
+  const getAddressForAsset = (symbol: string): string => {
+    if (!app?.pubkeys || !symbol) return '';
+    
+    // Map symbols to blockchain/network identifiers
+    const symbolToNetwork: Record<string, string> = {
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum', 
+      'BCH': 'bitcoincash',
+      'LTC': 'litecoin',
+      'DOGE': 'dogecoin',
+      'RUNE': 'thorchain',
+      'ATOM': 'cosmos',
+      'AVAX': 'avalanche',
+      'BNB': 'binance',
+      'CACAO': 'mayachain',
+      'OSMO': 'osmosis'
+    };
+    
+    const network = symbolToNetwork[symbol];
+    if (!network) return '';
+    
+    // Find matching pubkey
+    const pubkey = app.pubkeys.find((pk: any) => 
+      pk.networks?.includes(network) || 
+      pk.symbol === symbol ||
+      pk.blockchain === network
+    );
+    
+    return pubkey?.address || pubkey?.master || pubkey?.pubkey || '';
+  };
+
   const executeSwap = async () => {
     console.log('Swap execution placeholder');
     setError('Swap functionality coming soon');
@@ -870,6 +902,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     onConfirm={executeSwap}
                     onCancel={() => setConfirmMode(false)}
                     isLoading={isLoading}
+                    inputUsdValue={inputUSDValue || (inputAmount && app?.assetContext?.priceUsd ? 
+                      (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) : 
+                      undefined)}
+                    outputUsdValue={outputUSDValue || (outputAmount && app?.outboundAssetContext?.priceUsd ? 
+                      (parseFloat(outputAmount) * parseFloat(app.outboundAssetContext.priceUsd)).toFixed(2) : 
+                      undefined)}
+                    fromAddress={getAddressForAsset(app?.assetContext?.symbol)}
+                    toAddress={getAddressForAsset(app?.outboundAssetContext?.symbol)}
                   />
                 )}
               </Stack>

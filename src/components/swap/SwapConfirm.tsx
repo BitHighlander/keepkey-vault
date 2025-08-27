@@ -1,8 +1,8 @@
 'use client'
 
 import React from 'react';
-import { Box, Stack, HStack, Text, Button, Image } from '@chakra-ui/react';
-import { FaArrowRight } from 'react-icons/fa';
+import { Box, Stack, HStack, VStack, Text, Button, Image } from '@chakra-ui/react';
+import { FaArrowDown } from 'react-icons/fa';
 
 interface SwapConfirmProps {
   fromAsset: any;
@@ -13,6 +13,10 @@ interface SwapConfirmProps {
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+  fromAddress?: string;
+  toAddress?: string;
+  inputUsdValue?: string;
+  outputUsdValue?: string;
 }
 
 export const SwapConfirm = ({
@@ -23,87 +27,95 @@ export const SwapConfirm = ({
   quote,
   onConfirm,
   onCancel,
-  isLoading = false
+  isLoading = false,
+  fromAddress,
+  toAddress,
+  inputUsdValue,
+  outputUsdValue
 }: SwapConfirmProps) => {
   return (
-    <Box bg="gray.700" p={6} borderRadius="lg">
-      <Text fontSize="lg" fontWeight="bold" mb={4} color="white">Confirm Swap</Text>
-      
-      <Stack gap={4}>
-        {/* Swap Summary */}
-        <Box bg="gray.800" p={4} borderRadius="lg">
-          <HStack justify="space-between" align="center">
-            <HStack>
-              <Image src={fromAsset?.icon} alt={fromAsset?.name} boxSize="32px" />
-              <Box>
-                <Text fontWeight="medium" color="white">{inputAmount}</Text>
-                <Text fontSize="sm" color="gray.400">{fromAsset?.symbol}</Text>
-              </Box>
-            </HStack>
-            
-            <FaArrowRight color="gray" />
-            
-            <HStack>
-              <Image src={toAsset?.icon} alt={toAsset?.name} boxSize="32px" />
-              <Box>
-                <Text fontWeight="medium" color="white">{outputAmount || quote?.expectedAmountOut || '...'}</Text>
-                <Text fontSize="sm" color="gray.400">{toAsset?.symbol}</Text>
-              </Box>
-            </HStack>
-          </HStack>
+    <VStack gap={8} width="full" align="stretch">
+      {/* Title */}
+      <Text fontSize="lg" fontWeight="medium" color="gray.400" textAlign="center">
+        Confirm your swap
+      </Text>
+
+      {/* One-line swap summary */}
+      <HStack justify="center" align="center" gap={4} py={4}>
+        {/* From */}
+        <HStack gap={2}>
+          <Image src={fromAsset?.icon} alt={fromAsset?.name} boxSize="28px" />
+          <Text fontSize="2xl" fontWeight="bold" color="white">
+            {inputAmount}
+          </Text>
+          <Text fontSize="xl" color="gray.400">
+            {fromAsset?.symbol}
+          </Text>
+        </HStack>
+
+        {/* Arrow */}
+        <Box color="gray.500" px={2}>
+          →
         </Box>
 
-        {/* Quote Details */}
-        {quote && (
-          <Box bg="gray.800" p={4} borderRadius="lg">
-            <Stack gap={2}>
-              {quote.slippagePercent && (
-                <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.400">Max Slippage</Text>
-                  <Text fontSize="sm" color="white">{quote.slippagePercent}%</Text>
-                </HStack>
-              )}
-              {quote.fees?.network && (
-                <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.400">Network Fee</Text>
-                  <Text fontSize="sm" color="white">{quote.fees.network}</Text>
-                </HStack>
-              )}
-              {quote.router && (
-                <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.400">Route</Text>
-                  <Text fontSize="sm" color="white">{quote.router}</Text>
-                </HStack>
-              )}
-            </Stack>
-          </Box>
-        )}
-
-        {/* Action Buttons */}
-        <HStack gap={3}>
-          <Button
-            variant="outline"
-            colorScheme="gray"
-            onClick={onCancel}
-            width="full"
-            isDisabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button
-            bg="green.500"
-            color="black"
-            _hover={{ bg: 'green.400' }}
-            _active={{ bg: 'green.600' }}
-            onClick={onConfirm}
-            width="full"
-            isLoading={isLoading}
-            loadingText="Swapping..."
-          >
-            Confirm Swap
-          </Button>
+        {/* To */}
+        <HStack gap={2}>
+          <Image src={toAsset?.icon} alt={toAsset?.name} boxSize="28px" />
+          <Text fontSize="2xl" fontWeight="bold" color="green.400">
+            {outputAmount}
+          </Text>
+          <Text fontSize="xl" color="gray.400">
+            {toAsset?.symbol}
+          </Text>
         </HStack>
-      </Stack>
-    </Box>
+      </HStack>
+
+      {/* USD Values */}
+      {(inputUsdValue || outputUsdValue) && (
+        <HStack justify="center" gap={4}>
+          <Text fontSize="sm" color="gray.500">
+            ${inputUsdValue || '0.00'}
+          </Text>
+          <Text fontSize="sm" color="gray.600">→</Text>
+          <Text fontSize="sm" color="gray.500">
+            ${outputUsdValue || '0.00'}
+          </Text>
+        </HStack>
+      )}
+
+      {/* Action Buttons */}
+      <VStack gap={3} pt={4}>
+        <Button
+          size="lg"
+          bg="blue.500"
+          color="white"
+          _hover={{ bg: 'blue.600' }}
+          _active={{ bg: 'blue.700' }}
+          onClick={onConfirm}
+          width="full"
+          height="56px"
+          borderRadius="xl"
+          fontSize="lg"
+          fontWeight="semibold"
+          isLoading={isLoading}
+          loadingText="Confirming..."
+        >
+          Confirm Swap
+        </Button>
+        
+        <Button
+          variant="ghost"
+          color="gray.500"
+          _hover={{ bg: 'gray.800' }}
+          onClick={onCancel}
+          width="full"
+          height="48px"
+          fontSize="md"
+          isDisabled={isLoading}
+        >
+          Cancel
+        </Button>
+      </VStack>
+    </VStack>
   );
 };
