@@ -601,41 +601,55 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     };
   };
 
-  // Get address for an asset
-  const getAddressForAsset = (symbol: string): string => {
-    if (!app?.pubkeys || !symbol) return '';
-    
-    // Map symbols to blockchain/network identifiers
-    const symbolToNetwork: Record<string, string> = {
-      'BTC': 'bitcoin',
-      'ETH': 'ethereum', 
-      'BCH': 'bitcoincash',
-      'LTC': 'litecoin',
-      'DOGE': 'dogecoin',
-      'RUNE': 'thorchain',
-      'ATOM': 'cosmos',
-      'AVAX': 'avalanche',
-      'BNB': 'binance',
-      'CACAO': 'mayachain',
-      'OSMO': 'osmosis'
-    };
-    
-    const network = symbolToNetwork[symbol];
-    if (!network) return '';
-    
-    // Find matching pubkey
-    const pubkey = app.pubkeys.find((pk: any) => 
-      pk.networks?.includes(network) || 
-      pk.symbol === symbol ||
-      pk.blockchain === network
-    );
-    
-    return pubkey?.address || pubkey?.master || pubkey?.pubkey || '';
-  };
-
   const executeSwap = async () => {
-    console.log('Swap execution placeholder');
-    setError('Swap functionality coming soon');
+    if (!quote || !app) {
+      setError('No quote available');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      // Ensure SDK has an outbound address context
+      if (app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
+        await app.setOutboundAssetContext({
+          caip: app.outboundAssetContext.caip,
+          networkId: app.outboundAssetContext.networkId || caipToNetworkId(app.outboundAssetContext.caip),
+          symbol: app.outboundAssetContext.symbol,
+          name: app.outboundAssetContext.name,
+          icon: app.outboundAssetContext.icon,
+          address: app.outboundAssetContext.address,
+        });
+      }
+      
+      // Use SDK swap function
+      if (typeof app.swap === 'function') {
+        console.log('🚀 Executing swap via SDK.swap...');
+        const result = await app.swap({
+          caipIn: app?.assetContext?.caip,
+          caipOut: app?.outboundAssetContext?.caip,
+          amount: inputAmount,
+        });
+        console.log('✅ Swap executed:', result);
+        setInputAmount('');
+        setOutputAmount('');
+        setQuote(null);
+        setError('');
+        setConfirmMode(false);
+        const txid = result?.txHash || result?.hash || result?.txid || result;
+        if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
+        return;
+      }
+      
+      throw new Error('Swap operation not available in SDK.');
+    } catch (error: any) {
+      console.error('Error executing swap:', error);
+      const msg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Check if we're still loading assets - only show spinner if no balances at all
@@ -908,8 +922,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     outputUsdValue={outputUSDValue || (outputAmount && app?.outboundAssetContext?.priceUsd ? 
                       (parseFloat(outputAmount) * parseFloat(app.outboundAssetContext.priceUsd)).toFixed(2) : 
                       undefined)}
-                    fromAddress={getAddressForAsset(app?.assetContext?.symbol)}
-                    toAddress={getAddressForAsset(app?.outboundAssetContext?.symbol)}
+                    fromAddress={app?.assetContext?.address}
+                    outboundAssetContext={app?.outboundAssetContext}
                   />
                 )}
               </Stack>

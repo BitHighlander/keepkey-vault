@@ -14,7 +14,7 @@ interface SwapConfirmProps {
   onCancel: () => void;
   isLoading?: boolean;
   fromAddress?: string;
-  toAddress?: string;
+  outboundAssetContext?: any;
   inputUsdValue?: string;
   outputUsdValue?: string;
 }
@@ -29,7 +29,7 @@ export const SwapConfirm = ({
   onCancel,
   isLoading = false,
   fromAddress,
-  toAddress,
+  outboundAssetContext,
   inputUsdValue,
   outputUsdValue
 }: SwapConfirmProps) => {
@@ -70,15 +70,13 @@ export const SwapConfirm = ({
         </HStack>
       </HStack>
 
-      {/* USD Values */}
-      {(inputUsdValue || outputUsdValue) && (
-        <HStack justify="center" gap={4}>
+
+
+      {/* Destination Address */}
+      {outboundAssetContext && (
+        <HStack justify="center">
           <Text fontSize="sm" color="gray.500">
-            ${inputUsdValue || '0.00'}
-          </Text>
-          <Text fontSize="sm" color="gray.600">→</Text>
-          <Text fontSize="sm" color="gray.500">
-            ${outputUsdValue || '0.00'}
+            To: {JSON.stringify(outboundAssetContext)}
           </Text>
         </HStack>
       )}
