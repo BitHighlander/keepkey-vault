@@ -76,6 +76,41 @@ export function caipToThorchainAsset(caip: string, symbol: string): string | nul
   return THORCHAIN_ASSETS[symbol] || null;
 }
 
+// Get THORChain inbound address (vault) for a specific chain
+export async function getThorchainInboundAddress(chain: string): Promise<{ address: string; chain: string; gas_rate?: string } | null> {
+  try {
+    const url = `${THORNODE_URL}/thorchain/inbound_addresses`;
+    console.log('🔍 [THORChain] Fetching inbound addresses from:', url);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('Failed to fetch inbound addresses:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log('✅ [THORChain] Inbound addresses received:', data);
+    
+    // Find the inbound address for the specified chain
+    const inboundInfo = data.find((item: any) => item.chain === chain);
+    
+    if (inboundInfo) {
+      console.log(`✅ [THORChain] Found inbound address for ${chain}:`, inboundInfo.address);
+      return {
+        address: inboundInfo.address,
+        chain: inboundInfo.chain,
+        gas_rate: inboundInfo.gas_rate
+      };
+    }
+    
+    console.error(`❌ [THORChain] No inbound address found for chain: ${chain}`);
+    return null;
+  } catch (error) {
+    console.error('Error fetching THORChain inbound address:', error);
+    return null;
+  }
+}
+
 // Get swap quote from THORChain
 export async function getThorchainQuote(
   fromAsset: string,
