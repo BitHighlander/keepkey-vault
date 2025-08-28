@@ -261,42 +261,8 @@ export function Provider({ children }: ProviderProps) {
           console.warn('⚠️ No balances found - this is OK if wallet is empty');
         }
 
-        // Set default asset contexts like pioneer-react does
-        let assets_enabled = [
-          'eip155:1/slip44:60', // ETH
-          'bip122:000000000019d6689c085ae165831e93/slip44:0', // BTC
-        ];
-        const defaultInput = {
-          caip: assets_enabled[0],
-          networkId: caipToNetworkId(assets_enabled[0]),
-        };
-        const defaultOutput = {
-          caip: assets_enabled[1],
-          networkId: caipToNetworkId(assets_enabled[1]),
-        };
-
-        // Helper derive address for CAIP from pubkeys
-        const getAddressForCaip = (targetCaip?: string): string => {
-          try {
-            if (!targetCaip) return '';
-            const networkId = caipToNetworkId(targetCaip);
-            if (!networkId) return '';
-            const prefix = networkId.split(':')[0];
-            const pk = appInit?.pubkeys?.find(
-              (p: any) => Array.isArray(p.networks) && (p.networks.includes(networkId) || p.networks.includes(`${prefix}:*`))
-            );
-            return pk?.address || pk?.pubkey || '';
-          } catch {
-            return '';
-          }
-        };
-        
-        console.log('🔧 Setting default asset contexts...');
-        await appInit.setAssetContext(defaultInput);
-        await appInit.setOutboundAssetContext({
-          ...defaultOutput,
-          address: getAddressForCaip(defaultOutput.caip),
-        });
+        // Skip setting default asset contexts - will be done later when needed
+        console.log('🔧 Skipping default asset contexts - will set later when needed');
 
         // Try to get some data to verify the SDK is working
         try {
