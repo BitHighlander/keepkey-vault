@@ -156,11 +156,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       hasApp: !!app,
       hasBalances: !!app?.balances,
       balanceCount: app?.balances?.length || 0,
+      hasDashboard: !!app?.dashboard,
+      dashboardNetworks: app?.dashboard?.networks?.length || 0,
+      dashboardTotalValue: app?.dashboard?.totalValueUsd || 0,
       hasAssetContext: !!app?.assetContext,
       assetContext: app?.assetContext,
       hasOutboundAssetContext: !!app?.outboundAssetContext,
       outboundAssetContext: app?.outboundAssetContext
     });
+    
+    // Log dashboard networks for comparison
+    if (app?.dashboard?.networks) {
+      console.log('📊 [SWAP] Dashboard networks:', app.dashboard.networks);
+      const btcNetwork = app.dashboard.networks.find((n: any) => n.name === 'Bitcoin' || n.symbol === 'BTC');
+      if (btcNetwork) {
+        console.log('🔍 [SWAP] BTC from dashboard:', btcNetwork);
+      }
+    }
   }, [app]);
 
   // State for swap form
@@ -172,6 +184,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [error, setError] = useState<string>('');
   const [confirmMode, setConfirmMode] = useState<boolean>(false);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [isMaxAmount, setIsMaxAmount] = useState(false); // Track if MAX button was used
   
   // USD input mode states
   const [inputIsUSD, setInputIsUSD] = useState(false);
@@ -186,7 +199,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [showDeviceVerificationDialog, setShowDeviceVerificationDialog] = useState(false);
   const [pendingSwap, setPendingSwap] = useState(false);
   const [vaultAddress, setVaultAddress] = useState<string | null>(null);
-  const [verificationStep, setVerificationStep] = useState<'destination' | 'vault'>('destination');
+  const [verificationStep, setVerificationStep] = useState<'destination' | 'swap'>('destination');
 
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
@@ -244,28 +257,42 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Get available assets with balances - COPY FROM DASHBOARD
   const availableAssets = useMemo(() => {
     if (!app?.balances || app.balances.length === 0) {
+      console.log('🔍 [SWAP] No balances available');
       return [];
     }
+
+    console.log('🔍 [SWAP] Processing balances:', app.balances.length, 'total balances');
+    console.log('🔍 [SWAP] Raw balances:', app.balances);
+    console.log('🔍 [SWAP] NATIVE_ASSETS available:', NATIVE_ASSETS.map(a => a.symbol));
 
     // Create a map to aggregate balances by symbol (exact copy from dashboard logic)
     const balanceMap = new Map();
     
-    app.balances.forEach((balance: any) => {
+    app.balances.forEach((balance: any, index: number) => {
       const ticker = balance.ticker || balance.symbol;
-      if (!ticker) return;
+      if (!ticker) {
+        console.log(`⚠️ [SWAP] Balance #${index} missing ticker/symbol:`, balance);
+        return;
+      }
       
       // Find matching native asset
       const nativeAsset = NATIVE_ASSETS.find(asset => asset.symbol === ticker);
-      if (!nativeAsset) return;
+      if (!nativeAsset) {
+        console.log(`⚠️ [SWAP] No native asset found for ticker: ${ticker} (caip: ${balance.caip})`);
+        return;
+      }
       
       const balanceAmount = parseFloat(balance.balance || '0');
       const valueUsd = parseFloat(balance.valueUsd || '0');
+      
+      console.log(`💰 [SWAP] Processing ${ticker}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}`);
       
       if (balanceMap.has(ticker)) {
         // Aggregate existing balance
         const existing = balanceMap.get(ticker);
         existing.balance += balanceAmount;
         existing.balanceUsd += valueUsd;
+        console.log(`➕ [SWAP] Aggregating ${ticker}: total balance=${existing.balance}, total USD=${existing.balanceUsd}`);
       } else {
         // Create new entry
         balanceMap.set(ticker, {
@@ -277,15 +304,36 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           balanceUsd: valueUsd,
           priceUsd: parseFloat(balance.priceUsd || '0')
         });
+        console.log(`✅ [SWAP] Added ${ticker} to balance map`);
       }
     });
 
+    console.log('📊 [SWAP] Balance map before filtering:', Array.from(balanceMap.values()));
+
     // Convert to array and sort by USD value (exact copy from dashboard)
     const assets = Array.from(balanceMap.values())
-      .filter((asset: any) => asset.balanceUsd > 0.01) // Lower threshold for more assets
+      .filter((asset: any) => {
+        const passesFilter = asset.balanceUsd > 0.01;
+        if (!passesFilter) {
+          console.log(`❌ [SWAP] Filtered out ${asset.symbol}: USD value ${asset.balanceUsd} below $0.01 threshold`);
+        }
+        return passesFilter;
+      })
       .sort((a: any, b: any) => b.balanceUsd - a.balanceUsd);
 
-    console.log('availableAssets: Final sorted assets', assets);
+    console.log('✅ [SWAP] Final sorted assets:', assets);
+    console.log('✅ [SWAP] Asset count:', assets.length);
+    
+    // If we have BTC but it's being filtered out, log why
+    const btcBalance = app.balances.find((b: any) => b.symbol === 'BTC' || b.ticker === 'BTC');
+    if (btcBalance) {
+      console.log('🔍 [SWAP] BTC balance found in raw data:', btcBalance);
+      const btcInAssets = assets.find((a: any) => a.symbol === 'BTC');
+      if (!btcInAssets) {
+        console.log('⚠️ [SWAP] BTC was filtered out! Check valueUsd calculation');
+      }
+    }
+    
     return assets;
   }, [app?.balances]);
 
@@ -478,6 +526,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   const handleInputChange = async (value: string) => {
     setInputAmount(value);
+    if (isMaxAmount) {
+      console.log('🔄 Clearing isMax flag - user manually changed amount');
+      setIsMaxAmount(false); // Clear isMax flag when user manually changes the amount
+    }
     // Automatically calculate and update USD value
     if (app?.assetContext?.priceUsd && value) {
       const usdValue = (parseFloat(value) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
@@ -509,6 +561,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         maxBalance;
       
       setInputAmount(adjustedMax);
+      console.log('💰 MAX button clicked - setting isMax flag to true');
+      setIsMaxAmount(true); // Set isMax flag when MAX button is clicked
       // Automatically calculate and update USD value
       if (app?.assetContext?.priceUsd) {
         const usdValue = (parseFloat(adjustedMax) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
@@ -619,6 +673,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       return;
     }
     
+    // Clear isMax flag when swapping assets
+    setIsMaxAmount(false);
+    
     // Store current values if we're swapping output to input
     const shouldFetchNewQuote = outputAmount && parseFloat(outputAmount) > 0;
     const newInputAmount = outputAmount;
@@ -669,11 +726,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     };
   };
 
-  // Reset device verification when changing assets or amounts
+  // Reset device verification and isMax flag when changing assets or amounts
   useEffect(() => {
     setHasViewedOnDevice(false);
     setDeviceVerificationError(null);
-  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, inputAmount]);
+    setIsMaxAmount(false); // Reset isMax flag when assets change
+  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip]);
 
   const executeSwap = () => {
     console.log('🎯 executeSwap called');
@@ -833,10 +891,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         // Address verified successfully
         console.log('✅ Destination address verified successfully on device!');
         
-        // Now move to vault address verification
-        setVerificationStep('vault');
-        
-        // Get the THORChain vault address (inbound address from quote)
+        // Get the THORChain vault address for display (but don't verify on device)
         const thorchainVault = quote?.inbound_address;
         if (!thorchainVault) {
           // If not in quote, fetch it
@@ -856,16 +911,50 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setVaultAddress(thorchainVault);
         }
         
-        // Show vault address on device
-        console.log('📱 Now showing THORChain vault address on device...');
-        console.log('Vault address:', thorchainVault || vaultAddress);
+        console.log('📱 THORChain vault address:', thorchainVault || vaultAddress);
+        console.log('🚀 Now building and executing swap...');
         
-        // Keep showing the dialog for vault verification
+        // Move directly to swap execution
+        setVerificationStep('swap');
         setIsVerifyingOnDevice(true);
         
-        // Dialog will stay open for vault verification
-        // User will click "Verify Vault Address on Device" button to continue
-        setIsVerifyingOnDevice(false);
+        // Execute the actual swap
+        if (typeof app.swap === 'function') {
+          console.log('🚀 Executing swap transaction...');
+          const swapPayload: any = {
+            caipIn: app?.assetContext?.caip,
+            caipOut: app?.outboundAssetContext?.caip,
+          };
+          
+          // Set isMax flag if MAX button was used
+          if (isMaxAmount) {
+            console.log('🔥 MAX swap detected - setting isMax: true in payload');
+            swapPayload.isMax = true;
+            swapPayload.amount = inputAmount;
+          } else {
+            console.log('📊 Regular swap - providing amount in payload');
+            swapPayload.amount = inputAmount;
+          }
+          
+          console.log('📦 Swap payload:', swapPayload);
+          console.log('🔍 isMaxAmount state:', isMaxAmount);
+          const result = await app.swap(swapPayload);
+          console.log('✅ Swap executed:', result);
+          
+          // Now close everything
+          setHasViewedOnDevice(true);
+          setIsVerifyingOnDevice(false);
+          setShowDeviceVerificationDialog(false);
+          setInputAmount('');
+          setOutputAmount('');
+          setQuote(null);
+          setError('');
+          setConfirmMode(false);
+          setPendingSwap(false);
+          setVerificationStep('destination'); // Reset for next swap
+          const txid = result?.txHash || result?.hash || result?.txid || result;
+          if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
+        }
       } catch (error: any) {
         console.error('❌ Device verification failed:', error);
         setDeviceVerificationError(error?.message || 'Failed to verify address on device');
@@ -933,13 +1022,86 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             <HStack gap={3} mb={4}>
               <FaShieldAlt color="#3182ce" size="20" />
               <Text fontSize="lg" fontWeight="bold">
-                {verificationStep === 'destination' ? 'Verify Destination Address' : 'Verify THORChain Vault'}
+                {verificationStep === 'destination' ? 'Verify Destination Address' : 
+                 'Confirm Swap Transaction'}
               </Text>
             </HStack>
             
             <VStack gap={4} align="stretch">
               {/* Show different content based on verification step */}
-              {verificationStep === 'destination' ? (
+              {verificationStep === 'swap' ? (
+                <>
+                  {/* SWAP CONFIRMATION STEP */}
+                  <Box 
+                    bg="green.900/30" 
+                    borderWidth="1px" 
+                    borderColor="green.700/50" 
+                    borderRadius="lg" 
+                    p={4}
+                  >
+                    <HStack gap={3} align="start">
+                      <FaExchangeAlt color="#68d391" size="20" style={{ marginTop: '2px' }} />
+                      <VStack align="start" gap={2} flex={1}>
+                        <Text fontWeight="semibold" color="green.300">
+                          Building Swap Transaction
+                        </Text>
+                        <Text fontSize="sm" color="gray.300">
+                          Your swap transaction is being built and prepared for signing.
+                        </Text>
+                        
+                        {/* Swap Summary */}
+                        <Box bg="gray.800" p={3} borderRadius="md" width="full">
+                          <VStack align="start" gap={2}>
+                            <HStack justify="space-between" width="full">
+                              <Text fontSize="xs" color="gray.400">From:</Text>
+                              <HStack gap={1}>
+                                <Text fontSize="xs" fontWeight="medium">{inputAmount} {app?.assetContext?.symbol}</Text>
+                              </HStack>
+                            </HStack>
+                            <HStack justify="space-between" width="full">
+                              <Text fontSize="xs" color="gray.400">To:</Text>
+                              <HStack gap={1}>
+                                <Text fontSize="xs" fontWeight="medium">{outputAmount} {app?.outboundAssetContext?.symbol}</Text>
+                              </HStack>
+                            </HStack>
+                            {vaultAddress && (
+                              <HStack justify="space-between" width="full">
+                                <Text fontSize="xs" color="gray.400">Via Vault:</Text>
+                                <Text fontSize="xs" fontFamily="mono" color="gray.300" noOfLines={1}>
+                                  {vaultAddress.slice(0, 8)}...{vaultAddress.slice(-6)}
+                                </Text>
+                              </HStack>
+                            )}
+                          </VStack>
+                        </Box>
+                      </VStack>
+                    </HStack>
+                  </Box>
+                  
+                  {/* Device Confirmation Prompt */}
+                  <Box 
+                    bg="blue.900/50" 
+                    borderWidth="2px" 
+                    borderColor="blue.500" 
+                    borderRadius="lg" 
+                    p={6}
+                    boxShadow="0 0 20px rgba(59, 130, 246, 0.5)"
+                  >
+                    <VStack gap={3}>
+                      <Spinner size="lg" color="blue.500" thickness="4px" />
+                      <Text fontSize="lg" fontWeight="bold" color="white">
+                        Confirm on your KeepKey device!
+                      </Text>
+                      <Text fontSize="sm" color="gray.300" textAlign="center">
+                        Please review and confirm the swap transaction on your device
+                      </Text>
+                      <Text fontSize="xs" color="gray.400" textAlign="center">
+                        This will send {inputAmount} {app?.assetContext?.symbol} to THORChain for swapping
+                      </Text>
+                    </VStack>
+                  </Box>
+                </>
+              ) : verificationStep === 'destination' ? (
                 <>
               {/* Security Notice */}
               <Box 
@@ -1028,168 +1190,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               )}
 
                 </>
-              ) : (
-                <>
-                  {/* VAULT VERIFICATION STEP */}
-                  <Box 
-                    bg="purple.900/30" 
-                    borderWidth="1px" 
-                    borderColor="purple.700/50" 
-                    borderRadius="lg" 
-                    p={4}
-                  >
-                    <HStack gap={3} align="start">
-                      <FaShieldAlt color="#b794f6" size="20" style={{ marginTop: '2px' }} />
-                      <VStack align="start" gap={2} flex={1}>
-                        <Text fontWeight="semibold" color="purple.300">
-                          THORChain Vault Address
-                        </Text>
-                        <Text fontSize="sm" color="gray.300">
-                          Your {app?.assetContext?.symbol} will be sent to this THORChain vault address for the swap.
-                        </Text>
-                        
-                        {/* Vault Address Display */}
-                        <Box 
-                          bg="gray.800" 
-                          p={3} 
-                          borderRadius="md" 
-                          width="full"
-                          borderWidth="1px"
-                          borderColor="purple.600"
-                        >
-                          <Text fontSize="xs" fontFamily="mono" color="white" wordBreak="break-all">
-                            {vaultAddress || quote?.inbound_address || 'Loading...'}
-                          </Text>
-                        </Box>
-                        
-                        {/* API Source Info */}
-                        <VStack align="start" gap={1} width="full">
-                          <Text fontSize="xs" color="gray.400">
-                            Source: <Text as="span" color="blue.400" cursor="pointer" textDecoration="underline" onClick={() => window.open('https://thornode.ninerealms.com/', '_blank')}>https://thornode.ninerealms.com/</Text>
-                          </Text>
-                          <HStack gap={2}>
-                            <Button
-                              size="xs"
-                              variant="link"
-                              color="blue.400"
-                              onClick={() => window.open('https://thornode.ninerealms.com/thorchain/inbound_addresses', '_blank')}
-                            >
-                              View Inbound Addresses API ↗
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="link"
-                              color="blue.400"
-                              onClick={() => window.open(`https://thornode.ninerealms.com/thorchain/quote/swap?from_asset=${THORCHAIN_ASSETS[app?.assetContext?.symbol]}&to_asset=${THORCHAIN_ASSETS[app?.outboundAssetContext?.symbol]}&amount=${toBaseUnit(inputAmount, app?.assetContext?.symbol)}`, '_blank')}
-                            >
-                              View Quote API ↗
-                            </Button>
-                          </HStack>
-                        </VStack>
-                        
-                        {/* Memo Display */}
-                        {quote?.memo && (
-                          <Box bg="gray.800" p={2} borderRadius="md" width="full" mt={2}>
-                            <Text fontSize="xs" color="gray.400">Memo:</Text>
-                            <Text fontSize="xs" fontFamily="mono" color="gray.300" wordBreak="break-all">
-                              {quote.memo}
-                            </Text>
-                          </Box>
-                        )}
-                      </VStack>
-                    </HStack>
-                  </Box>
-                  
-                  {/* Validation Status */}
-                  <Box 
-                    bg="green.900/30" 
-                    borderWidth="1px" 
-                    borderColor="green.700/50" 
-                    borderRadius="lg" 
-                    p={3}
-                  >
-                    <HStack gap={2} align="start">
-                      <Box color="green.400" fontSize="20">✓</Box>
-                      <VStack align="start" gap={1}>
-                        <Text fontSize="sm" fontWeight="semibold" color="green.300">
-                          THORChain Values Validated
-                        </Text>
-                        <Text fontSize="xs" color="gray.300">
-                          • Vault address retrieved from official THORChain API
-                        </Text>
-                        <Text fontSize="xs" color="gray.300">
-                          • Quote parameters verified and active
-                        </Text>
-                        <Text fontSize="xs" color="gray.300">
-                          • Estimated completion time: {quote?.total_swap_seconds ? Math.ceil(quote.total_swap_seconds / 60) : '10'} minutes
-                        </Text>
-                      </VStack>
-                    </HStack>
-                  </Box>
-                  
-                  {/* Continue Button for Vault Step */}
-                  {verificationStep === 'vault' && !isVerifyingOnDevice && (
-                    <Button
-                      width="full"
-                      size="lg"
-                      colorScheme="purple"
-                      onClick={async () => {
-                        setIsVerifyingOnDevice(true);
-                        // Simulate showing vault on device
-                        console.log('📱 Showing vault address on KeepKey device...');
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        
-                        // Mark as complete and close dialog
-                        setHasViewedOnDevice(true);
-                        setIsVerifyingOnDevice(false);
-                        setShowDeviceVerificationDialog(false);
-                        
-                        // Execute the actual swap
-                        if (typeof app.swap === 'function') {
-                          console.log('🚀 Executing swap after vault verification...');
-                          const result = await app.swap({
-                            caipIn: app?.assetContext?.caip,
-                            caipOut: app?.outboundAssetContext?.caip,
-                            amount: inputAmount,
-                          });
-                          console.log('✅ Swap executed:', result);
-                          setInputAmount('');
-                          setOutputAmount('');
-                          setQuote(null);
-                          setError('');
-                          setConfirmMode(false);
-                          setPendingSwap(false);
-                          setVerificationStep('destination'); // Reset for next swap
-                          const txid = result?.txHash || result?.hash || result?.txid || result;
-                          if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
-                        }
-                      }}
-                      isLoading={isVerifyingOnDevice}
-                      loadingText="Verifying on device..."
-                    >
-                      Verify Vault Address on Device
-                    </Button>
-                  )}
-                </>
-              )}
-              
-              {/* Success Message */}
-              {hasViewedOnDevice && !isVerifyingOnDevice && !deviceVerificationError && verificationStep === 'vault' && (
-                <Box 
-                  bg="green.900/30" 
-                  borderWidth="1px" 
-                  borderColor="green.700/50" 
-                  borderRadius="lg" 
-                  p={3}
-                >
-                  <HStack gap={2}>
-                    <FaShieldAlt color="#68d391" size="16" />
-                    <Text fontSize="sm" color="green.400">
-                      Address verified successfully! Executing swap...
-                    </Text>
-                  </HStack>
-                </Box>
-              )}
+              ) : null}
 
               {/* Action Buttons */}
               {!isVerifyingOnDevice && deviceVerificationError && (
