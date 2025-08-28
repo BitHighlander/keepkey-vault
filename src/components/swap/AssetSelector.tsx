@@ -84,6 +84,7 @@ export const AssetSelector = ({
                 variant="solid"
                 onClick={(e) => {
                   e.stopPropagation();
+                  console.log('🟢 MAX BUTTON CLICKED IN ASSETSELECTOR');
                   onMaxClick();
                 }}
                 bg="blue.500"

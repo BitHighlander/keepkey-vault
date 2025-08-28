@@ -936,7 +936,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                               <HStack justify="space-between" mt={1}>
                                 <Text color="gray.400" fontSize="xs">Address</Text>
                                 <Text color="white" fontSize="xs" fontFamily="mono">
-                                  {formatAddress(displayPubkey.address, 16)}
+                                  {middleEllipsis(displayPubkey.address, 16)}
                                 </Text>
                               </HStack>
                             )}

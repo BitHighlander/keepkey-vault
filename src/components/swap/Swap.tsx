@@ -527,8 +527,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const handleInputChange = async (value: string) => {
     setInputAmount(value);
     if (isMaxAmount) {
-      console.log('🔄 Clearing isMax flag - user manually changed amount');
+      console.log('🔄 Clearing isMax flag - user manually changed amount from:', inputAmount, 'to:', value);
       setIsMaxAmount(false); // Clear isMax flag when user manually changes the amount
+      console.log('🔴 isMaxAmount is now FALSE due to manual input change');
     }
     // Automatically calculate and update USD value
     if (app?.assetContext?.priceUsd && value) {
@@ -551,6 +552,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   };
 
   const handleMaxClick = async () => {
+    console.log('🟡 MAX BUTTON CLICKED - BEFORE STATE CHANGE');
     const maxBalance = getUserBalance(app?.assetContext?.caip);
     if (maxBalance && parseFloat(maxBalance) > 0) {
       // Leave a small amount for gas fees if it's a native token
@@ -563,6 +565,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       setInputAmount(adjustedMax);
       console.log('💰 MAX button clicked - setting isMax flag to true');
       setIsMaxAmount(true); // Set isMax flag when MAX button is clicked
+      console.log('🟢 MAX BUTTON CLICKED - AFTER STATE CHANGE - isMaxAmount should now be TRUE');
       // Automatically calculate and update USD value
       if (app?.assetContext?.priceUsd) {
         const usdValue = (parseFloat(adjustedMax) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
@@ -726,12 +729,18 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     };
   };
 
-  // Reset device verification and isMax flag when changing assets or amounts
+  // Reset device verification when changing assets
   useEffect(() => {
+    console.log('🔄 ASSET CHANGE DETECTED - Resetting device verification');
     setHasViewedOnDevice(false);
     setDeviceVerificationError(null);
-    setIsMaxAmount(false); // Reset isMax flag when assets change
   }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip]);
+
+  // Only reset isMaxAmount when the INPUT asset changes (not output asset)
+  useEffect(() => {
+    console.log('🔄 INPUT ASSET CHANGED - Resetting isMax flag');
+    setIsMaxAmount(false);
+  }, [app?.assetContext?.caip]);
 
   const executeSwap = () => {
     console.log('🎯 executeSwap called');
@@ -927,6 +936,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           };
           
           // Set isMax flag if MAX button was used
+          console.log('🔍 Debug swap payload creation:', {
+            isMaxAmount,
+            inputAmount,
+            swapPayloadBefore: { ...swapPayload }
+          });
           if (isMaxAmount) {
             console.log('🔥 MAX swap detected - setting isMax: true in payload');
             swapPayload.isMax = true;
@@ -1329,7 +1343,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <Box>
                       <AssetSelector
                         asset={getAssetDisplay(true)}
-                        balance={getUserBalance(app?.assetContext?.caip)}
+                        balance={(() => {
+                          const balance = getUserBalance(app?.assetContext?.caip);
+                          console.log('🔍 AssetSelector balance check:', {
+                            caip: app?.assetContext?.caip,
+                            balance,
+                            balanceType: typeof balance,
+                            truthyCheck: !!balance
+                          });
+                          return balance;
+                        })()}
                         balanceUsd={getUserBalanceUSD(app?.assetContext?.caip)}
                         label="From"
                         onClick={() => setShowAssetPicker('from')}
