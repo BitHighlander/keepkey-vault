@@ -24,7 +24,8 @@ import {
   DialogRoot
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle } from 'react-icons/fa';
-import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, NetworkIdToChain } from '@pioneer-platform/pioneer-coins'
+import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG } from '@pioneer-platform/pioneer-coins'
+import { NetworkIdToChain } from '@coinmasters/types'
 // @ts-ignore
 import { caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 
@@ -678,24 +679,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         });
       }
       
-      // Use SDK swap function only after device verification
-      if (typeof app.swap === 'function' && hasViewedOnDevice) {
-        console.log('🚀 Executing swap via SDK.swap...');
-        const result = await app.swap({
-          caipIn: app?.assetContext?.caip,
-          caipOut: app?.outboundAssetContext?.caip,
-          amount: inputAmount,
-        });
-        console.log('✅ Swap executed:', result);
-        setInputAmount('');
-        setOutputAmount('');
-        setQuote(null);
-        setError('');
-        setConfirmMode(false);
-        const txid = result?.txHash || result?.hash || result?.txid || result;
-        if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
-        return;
-      } else if (!hasViewedOnDevice) {
+      // Always verify address on device first (unless already verified)
+      if (!hasViewedOnDevice) {
+        console.log('🔐 Starting device verification flow...');
         // Need to verify address on device first
         setShowDeviceVerificationDialog(true);
         setIsVerifyingOnDevice(true);
@@ -721,19 +707,54 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           'zcash:main': 'UTXO',
         }
         let networkType = networkIdToType[app.outboundAssetContext.networkId]
+        
+        console.log('🔍 Device verification context:', {
+          networkId: app.outboundAssetContext.networkId,
+          networkType,
+          pathMaster: app.outboundAssetContext.pathMaster,
+          scriptType: app.outboundAssetContext.scriptType,
+          NetworkIdToChain,
+          chainFromNetworkId: NetworkIdToChain?.[app.outboundAssetContext.networkId]
+        });
+
+        // Get the chain name for the coin map
+        const chainName = NetworkIdToChain[app.outboundAssetContext.networkId];
+        
+        if (!chainName) {
+          console.error('❌ Chain name not found for network ID:', app.outboundAssetContext.networkId);
+          console.error('Available network mappings:', NetworkIdToChain);
+          throw new Error(`Chain mapping not found for network: ${app.outboundAssetContext.networkId}`);
+        }
 
         let addressInfo = {
           address_n: bip32ToAddressNList(app.outboundAssetContext.pathMaster),
           script_type:app.outboundAssetContext.scriptType,
           // @ts-ignore
-          coin:COIN_MAP_KEEPKEY_LONG[NetworkIdToChain[app.outboundAssetContext.networkId]],
+          coin:COIN_MAP_KEEPKEY_LONG[chainName],
           show_display: true
         }
         console.log('addressInfo: ',addressInfo)
+        
+        // Verify we have keepKeySdk
+        if (!app.keepKeySdk) {
+          console.error('❌ KeepKey SDK not found on app object');
+          console.error('Available app properties:', Object.keys(app));
+          throw new Error('KeepKey SDK not initialized - check app structure');
+        }
+        
+        console.log('🔍 KeepKey SDK verification:', {
+          hasKeepKeySdk: !!app.keepKeySdk,
+          hasAddress: !!app.keepKeySdk.address,
+          addressMethods: app.keepKeySdk.address ? Object.keys(app.keepKeySdk.address) : [],
+          networkType,
+          chainName
+        });
+        
+        // Get address from device based on network type (matching updated reference)
         let address
         switch (networkType) {
           case 'UTXO':
-            ({ address } = await app.address.utxoGetAddress(addressInfo));
+            ({ address } = await app.keepKeySdk.address.utxoGetAddress(addressInfo));
             break;
           case 'EVM':
             ({ address } = await app.keepKeySdk.address.ethereumGetAddress(addressInfo));
@@ -794,10 +815,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         throw error;
       }
       } else {
-        throw new Error('Swap operation not available.');
+        console.log('✅ Device verification completed, swap already executed');
       }
-      
-      throw new Error('Swap operation not available in SDK.');
     } catch (error: any) {
       console.error('Error executing swap:', error);
       const msg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
