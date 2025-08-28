@@ -94,6 +94,16 @@ export async function getThorchainQuote(
       return null;
     }
 
+    console.log('🔍 [THORChain] Preparing quote request:', {
+      fromAsset,
+      toAsset,
+      fromThorAsset,
+      toThorAsset,
+      amount,
+      amountFormatted: amount.toLocaleString(),
+      destinationAddress
+    });
+
     // Build query parameters
     const params = new URLSearchParams({
       from_asset: fromThorAsset,
@@ -105,20 +115,49 @@ export async function getThorchainQuote(
     });
 
     const url = `${THORNODE_URL}/thorchain/quote/swap?${params.toString()}`;
-    console.log('Fetching THORChain quote:', url);
+    console.log('📡 [THORChain] Fetching quote from:', url);
 
     const response = await fetch(url);
+    
     if (!response.ok) {
-      console.error('Failed to fetch quote:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('❌ [THORChain] Failed to fetch quote:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      
+      // Try to parse error message
+      try {
+        const errorData = JSON.parse(errorText);
+        console.error('❌ [THORChain] Error details:', errorData);
+      } catch (e) {
+        // Not JSON, log as is
+      }
+      
       return null;
     }
 
     const data = await response.json();
-    console.log('THORChain quote response:', data);
+    console.log('✅ [THORChain] Quote response:', {
+      expectedAmountOut: data.expected_amount_out,
+      fees: data.fees,
+      memo: data.memo,
+      inboundAddress: data.inbound_address,
+      warning: data.warning,
+      notes: data.notes,
+      fullResponse: data
+    });
+    
+    // Validate the response has required fields
+    if (!data.expected_amount_out || data.expected_amount_out === "0") {
+      console.error('⚠️ [THORChain] Invalid quote - zero or missing expected_amount_out:', data);
+      return null;
+    }
     
     return data;
   } catch (error) {
-    console.error('Error fetching THORChain quote:', error);
+    console.error('❌ [THORChain] Error fetching quote:', error);
     return null;
   }
 }
@@ -210,11 +249,23 @@ export function toBaseUnit(amount: string, symbol: string): number {
   };
   
   const decimal = decimals[symbol] || 8;
-  return Math.floor(value * Math.pow(10, decimal));
+  const result = Math.floor(value * Math.pow(10, decimal));
+  
+  console.log('🔢 [THORChain] Converting to base units:', {
+    symbol,
+    inputAmount: amount,
+    value,
+    decimals: decimal,
+    result,
+    resultFormatted: result.toLocaleString()
+  });
+  
+  return result;
 }
 
 // Convert from base units to display units
-export function fromBaseUnit(amount: string, symbol: string): string {
+// IMPORTANT: THORChain uses 8 decimals for ALL assets internally
+export function fromBaseUnit(amount: string, symbol: string, isThorchainResponse: boolean = false): string {
   const value = parseFloat(amount);
   
   const decimals: Record<string, number> = {
@@ -231,12 +282,23 @@ export function fromBaseUnit(amount: string, symbol: string): string {
     'OSMO': 6,
   };
   
-  const decimal = decimals[symbol] || 8;
+  // THORChain always uses 8 decimals internally, regardless of the asset
+  const decimal = isThorchainResponse ? 8 : (decimals[symbol] || 8);
   const result = value / Math.pow(10, decimal);
   
-  // Format based on size
+  console.log('💱 [THORChain] Converting from base units:', {
+    symbol,
+    baseAmount: amount,
+    value,
+    decimals: decimal,
+    isThorchainResponse,
+    result,
+    resultFormatted: result.toFixed(18)
+  });
+  
+  // Format based on size - handle very small numbers better
   if (result === 0) return '0';
-  if (result < 0.00000001) return '< 0.00000001';
+  if (result < 0.000001) return result.toExponential(2); // Use scientific notation for very small numbers
   if (result < 0.0001) return result.toFixed(8);
   if (result < 1) return result.toFixed(6);
   if (result < 100) return result.toFixed(4);

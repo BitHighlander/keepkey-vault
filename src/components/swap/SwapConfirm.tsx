@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Box, Stack, HStack, VStack, Text, Button, Image } from '@chakra-ui/react';
 import { FaArrowDown, FaShieldAlt } from 'react-icons/fa';
 import { usePioneerContext } from '@/components/providers/pioneer';
@@ -36,37 +36,6 @@ export const SwapConfirm = ({
 }: SwapConfirmProps) => {
   const { state } = usePioneerContext();
   const app = state?.app;
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [addressVerified, setAddressVerified] = useState(false);
-  const [verificationError, setVerificationError] = useState<string | null>(null);
-
-  const handleVerifyAddress = async () => {
-    if (!app || !outboundAssetContext) {
-      setVerificationError('No address context available');
-      return;
-    }
-
-    setIsVerifying(true);
-    setVerificationError(null);
-
-    try {
-      console.log('🔐 Verifying address on device...');
-      
-      // Get the address and show it on device for verification
-      await app.getAddress({
-        networkId: outboundAssetContext.networkId,
-        showDevice: true
-      });
-      
-      setAddressVerified(true);
-      console.log('✅ Address verified on device');
-    } catch (error: any) {
-      console.error('❌ Address verification failed:', error);
-      setVerificationError(error?.message || 'Failed to verify address on device');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
   return (
     <VStack gap={8} width="full" align="stretch">
       {/* Title */}
@@ -115,36 +84,13 @@ export const SwapConfirm = ({
             </Text>
           </HStack>
           
-          {/* Address Verification Section */}
-          <VStack gap={2} align="center">
-            {verificationError && (
-              <Text fontSize="sm" color="red.400">
-                {verificationError}
-              </Text>
-            )}
-            
-            {addressVerified ? (
-              <HStack gap={2} color="green.400">
-                <FaShieldAlt />
-                <Text fontSize="sm" fontWeight="medium">
-                  Address verified on device
-                </Text>
-              </HStack>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                colorScheme="blue"
-                leftIcon={<FaShieldAlt />}
-                onClick={handleVerifyAddress}
-                isLoading={isVerifying}
-                loadingText="Verifying..."
-                isDisabled={!outboundAssetContext?.address && !outboundAssetContext?.master}
-              >
-                Verify Address on Device
-              </Button>
-            )}
-          </VStack>
+          {/* Security Notice */}
+          <HStack gap={2} color="blue.400">
+            <FaShieldAlt size="14" />
+            <Text fontSize="xs" fontWeight="medium">
+              Address will be verified on device before swap
+            </Text>
+          </HStack>
         </VStack>
       )}
 
@@ -164,9 +110,9 @@ export const SwapConfirm = ({
           fontWeight="semibold"
           isLoading={isLoading}
           loadingText="Confirming..."
-          isDisabled={isLoading || (outboundAssetContext && !addressVerified)}
+          isDisabled={isLoading}
         >
-          {outboundAssetContext && !addressVerified ? 'Verify Address First' : 'Confirm Swap'}
+          Confirm Swap
         </Button>
         
         <Button

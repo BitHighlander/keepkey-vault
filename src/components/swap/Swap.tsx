@@ -14,9 +14,17 @@ import {
   IconButton,
   Container,
   Spinner,
-  VStack
+  VStack,
+  Dialog,
+  DialogBody,
+  DialogCloseTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogRoot
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaArrowLeft } from 'react-icons/fa';
+import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle } from 'react-icons/fa';
+import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, NetworkIdToChain } from '@pioneer-platform/pioneer-coins'
 // @ts-ignore
 import { caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 
@@ -154,6 +162,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [outputIsUSD, setOutputIsUSD] = useState(false);
   const [inputUSDValue, setInputUSDValue] = useState('');
   const [outputUSDValue, setOutputUSDValue] = useState('');
+  
+  // Device verification states
+  const [hasViewedOnDevice, setHasViewedOnDevice] = useState(false);
+  const [isVerifyingOnDevice, setIsVerifyingOnDevice] = useState(false);
+  const [deviceVerificationError, setDeviceVerificationError] = useState<string | null>(null);
+  const [showDeviceVerificationDialog, setShowDeviceVerificationDialog] = useState(false);
 
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
@@ -364,14 +378,44 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Convert to base units
       const baseAmount = toBaseUnit(amount, fromSymbol);
       
-      // Get quote from THORChain
-      const quoteData = await getThorchainQuote(fromSymbol, toSymbol, baseAmount);
+      console.log('🔍 [Swap] Fetching quote:', {
+        fromSymbol,
+        toSymbol,
+        inputAmount: amount,
+        baseAmount,
+        destinationAddress: app?.outboundAssetContext?.address
+      });
       
-      if (quoteData) {
+      // Get quote from THORChain
+      // Note: THORChain requires a valid destination address for accurate quotes
+      // If no address is available, we can still get an estimate
+      const quoteData = await getThorchainQuote(
+        fromSymbol, 
+        toSymbol, 
+        baseAmount
+        // Omit destination address for now as it may not be available yet
+        // app?.outboundAssetContext?.address
+      );
+      
+      console.log('📊 [Swap] Quote received:', {
+        quote: quoteData,
+        expectedOut: quoteData?.expected_amount_out,
+        fees: quoteData?.fees
+      });
+      
+      if (quoteData && quoteData.expected_amount_out) {
         setQuote(quoteData);
         
         // Convert output from base units and set it
-        const outputInDisplay = fromBaseUnit(quoteData.expected_amount_out, toSymbol);
+        // THORChain always returns amounts in 8 decimal format, not native decimals
+        const outputInDisplay = fromBaseUnit(quoteData.expected_amount_out, toSymbol, true);
+        console.log('💱 [Swap] Converted output:', {
+          baseUnits: quoteData.expected_amount_out,
+          displayUnits: outputInDisplay,
+          toSymbol,
+          note: 'THORChain uses 8 decimals for all assets'
+        });
+        
         setOutputAmount(outputInDisplay);
         
         // Calculate USD value for output
@@ -384,11 +428,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         const rate = parseFloat(outputInDisplay) / parseFloat(amount);
         setExchangeRate(rate);
       } else {
-        setError('Unable to fetch quote from THORChain');
+        console.error('❌ [Swap] Invalid quote data:', quoteData);
+        setError('Unable to fetch valid quote from THORChain');
+        setOutputAmount('');
+        setOutputUSDValue('');
       }
     } catch (err) {
-      console.error('Error fetching quote:', err);
+      console.error('❌ [Swap] Error fetching quote:', err);
       setError('Failed to fetch swap quote');
+      setOutputAmount('');
+      setOutputUSDValue('');
     } finally {
       setIsLoadingQuote(false);
     }
@@ -601,6 +650,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     };
   };
 
+  // Reset device verification when changing assets or amounts
+  useEffect(() => {
+    setHasViewedOnDevice(false);
+    setDeviceVerificationError(null);
+  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, inputAmount]);
+
   const executeSwap = async () => {
     if (!quote || !app) {
       setError('No quote available');
@@ -623,8 +678,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         });
       }
       
-      // Use SDK swap function
-      if (typeof app.swap === 'function') {
+      // Use SDK swap function only after device verification
+      if (typeof app.swap === 'function' && hasViewedOnDevice) {
         console.log('🚀 Executing swap via SDK.swap...');
         const result = await app.swap({
           caipIn: app?.assetContext?.caip,
@@ -640,6 +695,106 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         const txid = result?.txHash || result?.hash || result?.txid || result;
         if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
         return;
+      } else if (!hasViewedOnDevice) {
+        // Need to verify address on device first
+        setShowDeviceVerificationDialog(true);
+        setIsVerifyingOnDevice(true);
+        setDeviceVerificationError(null);
+        
+        try {
+          // Prepare address verification on device
+        const networkIdToType: any = {
+          'bip122:000000000019d6689c085ae165831e93': 'UTXO',
+          'bip122:000000000000000000651ef99cb9fcbe': 'UTXO',
+          'bip122:000007d91d1254d60e2dd1ae58038307': 'UTXO',
+          'bip122:00000000001a91e3dace36e2be3bf030': 'UTXO',
+          'bip122:12a765e31ffd4059bada1e25190f6e98': 'UTXO',
+          'cosmos:mayachain-mainnet-v1': 'MAYACHAIN',
+          'cosmos:osmosis-1': 'OSMOSIS',
+          'cosmos:cosmoshub-4': 'COSMOS',
+          'cosmos:kaiyo-1': 'COSMOS',
+          'cosmos:thorchain-mainnet-v1': 'THORCHAIN',
+          'eip155:1': 'EVM',
+          'eip155:137': 'EVM',
+          'eip155:*': 'EVM',
+          'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
+          'zcash:main': 'UTXO',
+        }
+        let networkType = networkIdToType[app.outboundAssetContext.networkId]
+
+        let addressInfo = {
+          address_n: bip32ToAddressNList(app.outboundAssetContext.pathMaster),
+          script_type:app.outboundAssetContext.scriptType,
+          // @ts-ignore
+          coin:COIN_MAP_KEEPKEY_LONG[NetworkIdToChain[app.outboundAssetContext.networkId]],
+          show_display: true
+        }
+        console.log('addressInfo: ',addressInfo)
+        let address
+        switch (networkType) {
+          case 'UTXO':
+            ({ address } = await app.address.utxoGetAddress(addressInfo));
+            break;
+          case 'EVM':
+            ({ address } = await app.keepKeySdk.address.ethereumGetAddress(addressInfo));
+            break;
+          case 'OSMOSIS':
+            ({ address } = await app.keepKeySdk.address.osmosisGetAddress(addressInfo));
+            break;
+          case 'COSMOS':
+            ({ address } = await app.keepKeySdk.address.cosmosGetAddress(addressInfo));
+            break;
+          case 'MAYACHAIN':
+            ({ address } = await app.keepKeySdk.address.mayachainGetAddress(addressInfo));
+            break;
+          case 'THORCHAIN':
+            ({ address } = await app.keepKeySdk.address.thorchainGetAddress(addressInfo));
+            break;
+          case 'XRP':
+            ({ address } = await app.keepKeySdk.address.xrpGetAddress(addressInfo));
+            break;
+          default:
+            throw new Error(`Unsupported network type for networkId: ${app.outboundAssetContext.networkId}`);
+        }
+
+        console.log('deviceProofAddress: ', address);
+        console.log('app.outboundAssetContext.address: ', app.outboundAssetContext.address);
+        
+        if (address !== app.outboundAssetContext.address) {
+          throw new Error('Address mismatch! Device shows different address than expected.');
+        }
+        
+        // Address verified successfully
+        setHasViewedOnDevice(true);
+        setIsVerifyingOnDevice(false);
+        setShowDeviceVerificationDialog(false);
+        
+        // Now execute the swap with verified address
+        if (typeof app.swap === 'function') {
+          console.log('🚀 Executing swap with verified address...');
+          const result = await app.swap({
+            caipIn: app?.assetContext?.caip,
+            caipOut: app?.outboundAssetContext?.caip,
+            amount: inputAmount,
+          });
+          console.log('✅ Swap executed:', result);
+          setInputAmount('');
+          setOutputAmount('');
+          setQuote(null);
+          setError('');
+          setConfirmMode(false);
+          setHasViewedOnDevice(false); // Reset for next swap
+          const txid = result?.txHash || result?.hash || result?.txid || result;
+          if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
+        }
+      } catch (error: any) {
+        console.error('❌ Device verification failed:', error);
+        setDeviceVerificationError(error?.message || 'Failed to verify address on device');
+        setIsVerifyingOnDevice(false);
+        throw error;
+      }
+      } else {
+        throw new Error('Swap operation not available.');
       }
       
       throw new Error('Swap operation not available in SDK.');
@@ -657,6 +812,158 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   return (
     <Box bg="bg.primary" minH="100vh" position="relative">
+      {/* Device Verification Dialog */}
+      <DialogRoot
+        isOpen={showDeviceVerificationDialog}
+        onClose={() => {
+          if (!isVerifyingOnDevice) {
+            setShowDeviceVerificationDialog(false);
+            setDeviceVerificationError(null);
+          }
+        }}
+        motionPreset="slide-in-bottom"
+        trapFocus={false}
+      >
+        <DialogContent
+          maxW="md"
+          bg="gray.900"
+          borderWidth="1px"
+          borderColor="gray.700"
+          borderRadius="xl"
+        >
+          <DialogHeader>
+            <DialogTitle>
+              <HStack gap={3}>
+                <FaShieldAlt color="#3182ce" />
+                <Text>Security Verification Required</Text>
+              </HStack>
+            </DialogTitle>
+          </DialogHeader>
+          {!isVerifyingOnDevice && (
+            <DialogCloseTrigger color="gray.400" />
+          )}
+          <DialogBody pb={6}>
+            <VStack gap={4} align="stretch">
+              {/* Security Notice */}
+              <Box 
+                bg="blue.900/30" 
+                borderWidth="1px" 
+                borderColor="blue.700/50" 
+                borderRadius="lg" 
+                p={4}
+              >
+                <HStack gap={3} align="start">
+                  <FaEye color="#63b3ed" size="20" style={{ marginTop: '2px' }} />
+                  <VStack align="start" gap={2}>
+                    <Text fontWeight="semibold" color="blue.300">
+                      Verify Destination Address on Device
+                    </Text>
+                    <Text fontSize="sm" color="gray.300">
+                      For your security, please verify the destination address on your KeepKey device.
+                      Check that the address shown on your device matches the expected destination.
+                    </Text>
+                  </VStack>
+                </HStack>
+              </Box>
+
+              {/* Address Info */}
+              <Box bg="gray.800" borderRadius="lg" p={4}>
+                <VStack align="stretch" gap={3}>
+                  <HStack justify="space-between">
+                    <Text fontSize="sm" color="gray.400">Destination Network:</Text>
+                    <HStack gap={2}>
+                      <Image src={app?.outboundAssetContext?.icon} boxSize="16px" />
+                      <Text fontSize="sm" fontWeight="medium">
+                        {app?.outboundAssetContext?.name || app?.outboundAssetContext?.symbol}
+                      </Text>
+                    </HStack>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text fontSize="sm" color="gray.400">Address:</Text>
+                    <Text fontSize="xs" fontFamily="mono" color="gray.300" noOfLines={1}>
+                      {app?.outboundAssetContext?.address?.slice(0, 8)}...{app?.outboundAssetContext?.address?.slice(-6)}
+                    </Text>
+                  </HStack>
+                </VStack>
+              </Box>
+
+              {/* Status */}
+              {isVerifyingOnDevice && (
+                <HStack justify="center" py={4}>
+                  <Spinner size="sm" color="blue.500" />
+                  <Text color="gray.300">
+                    Check your KeepKey device...
+                  </Text>
+                </HStack>
+              )}
+
+              {/* Error Message */}
+              {deviceVerificationError && (
+                <Box 
+                  bg="red.900/30" 
+                  borderWidth="1px" 
+                  borderColor="red.700/50" 
+                  borderRadius="lg" 
+                  p={3}
+                >
+                  <HStack gap={2}>
+                    <FaExclamationTriangle color="#fc8181" size="16" />
+                    <Text fontSize="sm" color="red.400">
+                      {deviceVerificationError}
+                    </Text>
+                  </HStack>
+                </Box>
+              )}
+
+              {/* Success Message */}
+              {hasViewedOnDevice && !isVerifyingOnDevice && !deviceVerificationError && (
+                <Box 
+                  bg="green.900/30" 
+                  borderWidth="1px" 
+                  borderColor="green.700/50" 
+                  borderRadius="lg" 
+                  p={3}
+                >
+                  <HStack gap={2}>
+                    <FaShieldAlt color="#68d391" size="16" />
+                    <Text fontSize="sm" color="green.400">
+                      Address verified successfully! Executing swap...
+                    </Text>
+                  </HStack>
+                </Box>
+              )}
+
+              {/* Action Buttons */}
+              {!isVerifyingOnDevice && deviceVerificationError && (
+                <HStack gap={3} pt={2}>
+                  <Button
+                    flex={1}
+                    variant="ghost"
+                    onClick={() => {
+                      setShowDeviceVerificationDialog(false);
+                      setDeviceVerificationError(null);
+                      setIsLoading(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    flex={1}
+                    colorScheme="blue"
+                    onClick={() => {
+                      setDeviceVerificationError(null);
+                      executeSwap();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </HStack>
+              )}
+            </VStack>
+          </DialogBody>
+        </DialogContent>
+      </DialogRoot>
+      
       {/* Top Header */}
       <Box 
         position="absolute" 
