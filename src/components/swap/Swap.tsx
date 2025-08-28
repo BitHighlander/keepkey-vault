@@ -169,6 +169,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [isVerifyingOnDevice, setIsVerifyingOnDevice] = useState(false);
   const [deviceVerificationError, setDeviceVerificationError] = useState<string | null>(null);
   const [showDeviceVerificationDialog, setShowDeviceVerificationDialog] = useState(false);
+  const [pendingSwap, setPendingSwap] = useState(false);
 
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
@@ -657,14 +658,29 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setDeviceVerificationError(null);
   }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, inputAmount]);
 
-  const executeSwap = async () => {
+  const executeSwap = () => {
+    console.log('🎯 executeSwap called');
     if (!quote || !app) {
       setError('No quote available');
       return;
     }
     
+    // Just set the states - actual swap will happen in useEffect
     setIsLoading(true);
     setError('');
+    setPendingSwap(true);
+    setShowDeviceVerificationDialog(true);
+    setIsVerifyingOnDevice(true);
+    setDeviceVerificationError(null);
+    console.log('✅ States set, dialog should be showing');
+  };
+
+  // Handle the actual swap in useEffect when pendingSwap is true
+  useEffect(() => {
+    if (!pendingSwap) return;
+    
+    const performSwap = async () => {
+      console.log('🚀 Performing swap with device verification...');
     
     try {
       // Ensure SDK has an outbound address context
@@ -682,10 +698,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Always verify address on device first (unless already verified)
       if (!hasViewedOnDevice) {
         console.log('🔐 Starting device verification flow...');
-        // Need to verify address on device first
-        setShowDeviceVerificationDialog(true);
-        setIsVerifyingOnDevice(true);
-        setDeviceVerificationError(null);
         
         try {
           // Prepare address verification on device
@@ -731,9 +743,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           script_type:app.outboundAssetContext.scriptType,
           // @ts-ignore
           coin:COIN_MAP_KEEPKEY_LONG[chainName],
-          show_display: true
+          show_display: true  // This MUST be true to show on device
         }
+        console.log('📱 DEVICE VERIFICATION - Address will be shown on KeepKey');
         console.log('addressInfo: ',addressInfo)
+        console.log('⚠️ Please check your KeepKey device to verify the address!');
         
         // Verify we have keepKeySdk
         if (!app.keepKeySdk) {
@@ -751,31 +765,45 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         });
         
         // Get address from device based on network type (matching updated reference)
+        console.log('📱 Calling device to show address...');
         let address
-        switch (networkType) {
-          case 'UTXO':
-            ({ address } = await app.keepKeySdk.address.utxoGetAddress(addressInfo));
-            break;
-          case 'EVM':
-            ({ address } = await app.keepKeySdk.address.ethereumGetAddress(addressInfo));
-            break;
-          case 'OSMOSIS':
-            ({ address } = await app.keepKeySdk.address.osmosisGetAddress(addressInfo));
-            break;
-          case 'COSMOS':
-            ({ address } = await app.keepKeySdk.address.cosmosGetAddress(addressInfo));
-            break;
-          case 'MAYACHAIN':
-            ({ address } = await app.keepKeySdk.address.mayachainGetAddress(addressInfo));
-            break;
-          case 'THORCHAIN':
-            ({ address } = await app.keepKeySdk.address.thorchainGetAddress(addressInfo));
-            break;
-          case 'XRP':
-            ({ address } = await app.keepKeySdk.address.xrpGetAddress(addressInfo));
-            break;
-          default:
-            throw new Error(`Unsupported network type for networkId: ${app.outboundAssetContext.networkId}`);
+        try {
+          switch (networkType) {
+            case 'UTXO':
+              console.log('Calling utxoGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.utxoGetAddress(addressInfo));
+              break;
+            case 'EVM':
+              console.log('Calling ethereumGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.ethereumGetAddress(addressInfo));
+              break;
+            case 'OSMOSIS':
+              console.log('Calling osmosisGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.osmosisGetAddress(addressInfo));
+              break;
+            case 'COSMOS':
+              console.log('Calling cosmosGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.cosmosGetAddress(addressInfo));
+              break;
+            case 'MAYACHAIN':
+              console.log('Calling mayachainGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.mayachainGetAddress(addressInfo));
+              break;
+            case 'THORCHAIN':
+              console.log('Calling thorchainGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.thorchainGetAddress(addressInfo));
+              break;
+            case 'XRP':
+              console.log('Calling xrpGetAddress with show_display=true');
+              ({ address } = await app.keepKeySdk.address.xrpGetAddress(addressInfo));
+              break;
+            default:
+              throw new Error(`Unsupported network type for networkId: ${app.outboundAssetContext.networkId}`);
+          }
+          console.log('✅ Device call completed, address received:', address);
+        } catch (deviceError) {
+          console.error('❌ Device call failed:', deviceError);
+          throw deviceError;
         }
 
         console.log('deviceProofAddress: ', address);
@@ -786,7 +814,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         }
         
         // Address verified successfully
+        console.log('✅ Address verified successfully on device!');
         setHasViewedOnDevice(true);
+        
+        // Keep the dialog open for a moment to show success
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         setIsVerifyingOnDevice(false);
         setShowDeviceVerificationDialog(false);
         
@@ -823,45 +856,59 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       setError(msg);
     } finally {
       setIsLoading(false);
+      setPendingSwap(false);
     }
   };
+  
+  performSwap();
+  }, [pendingSwap, app, quote, inputAmount]);
 
   // Check if we're still loading assets - only show spinner if no balances at all
   const isLoadingAssets = !app?.balances || (app.balances.length === 0 && !app?.assetContext);
 
   return (
     <Box bg="bg.primary" minH="100vh" position="relative">
-      {/* Device Verification Dialog */}
-      <DialogRoot
-        isOpen={showDeviceVerificationDialog}
-        onClose={() => {
-          if (!isVerifyingOnDevice) {
-            setShowDeviceVerificationDialog(false);
-            setDeviceVerificationError(null);
-          }
-        }}
-        motionPreset="slide-in-bottom"
-        trapFocus={false}
-      >
-        <DialogContent
-          maxW="md"
-          bg="gray.900"
-          borderWidth="1px"
-          borderColor="gray.700"
-          borderRadius="xl"
-        >
-          <DialogHeader>
-            <DialogTitle>
-              <HStack gap={3}>
-                <FaShieldAlt color="#3182ce" />
-                <Text>Security Verification Required</Text>
-              </HStack>
-            </DialogTitle>
-          </DialogHeader>
-          {!isVerifyingOnDevice && (
-            <DialogCloseTrigger color="gray.400" />
-          )}
-          <DialogBody pb={6}>
+      {/* Device Verification Modal - Using simple overlay approach */}
+      {showDeviceVerificationDialog && (
+        <>
+          {console.log('🔵 DIALOG RENDERING NOW')}
+          {/* Backdrop */}
+          <Box
+            position="fixed"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            bg="blackAlpha.800"
+            zIndex={1000}
+            onClick={() => {
+              if (!isVerifyingOnDevice) {
+                setShowDeviceVerificationDialog(false);
+                setDeviceVerificationError(null);
+              }
+            }}
+          />
+          
+          {/* Modal Content */}
+          <Box
+            position="fixed"
+            top="50%"
+            left="50%"
+            transform="translate(-50%, -50%)"
+            zIndex={1001}
+            maxW="md"
+            width="90%"
+            bg="gray.900"
+            borderWidth="1px"
+            borderColor="gray.700"
+            borderRadius="xl"
+            p={6}
+          >
+            {/* Header */}
+            <HStack gap={3} mb={4}>
+              <FaShieldAlt color="#3182ce" size="20" />
+              <Text fontSize="lg" fontWeight="bold">Security Verification Required</Text>
+            </HStack>
             <VStack gap={4} align="stretch">
               {/* Security Notice */}
               <Box 
@@ -906,14 +953,29 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 </VStack>
               </Box>
 
-              {/* Status */}
+              {/* Status - Make this VERY prominent */}
               {isVerifyingOnDevice && (
-                <HStack justify="center" py={4}>
-                  <Spinner size="sm" color="blue.500" />
-                  <Text color="gray.300">
-                    Check your KeepKey device...
-                  </Text>
-                </HStack>
+                <Box 
+                  bg="blue.900/50" 
+                  borderWidth="2px" 
+                  borderColor="blue.500" 
+                  borderRadius="lg" 
+                  p={6}
+                  boxShadow="0 0 20px rgba(59, 130, 246, 0.5)"
+                >
+                  <VStack gap={3}>
+                    <Spinner size="lg" color="blue.500" thickness="4px" />
+                    <Text fontSize="lg" fontWeight="bold" color="white">
+                      Look at your KeepKey device!
+                    </Text>
+                    <Text fontSize="sm" color="gray.300" textAlign="center">
+                      Please verify the destination address shown on your device screen
+                    </Text>
+                    <Text fontSize="xs" color="gray.400" textAlign="center">
+                      Press the button on your device to confirm or hold to reject
+                    </Text>
+                  </VStack>
+                </Box>
               )}
 
               {/* Error Message */}
@@ -979,9 +1041,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 </HStack>
               )}
             </VStack>
-          </DialogBody>
-        </DialogContent>
-      </DialogRoot>
+          </Box>
+        </>
+      )}
       
       {/* Top Header */}
       <Box 

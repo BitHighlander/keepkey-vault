@@ -102,15 +102,19 @@ export const SwapConfirm = ({
           color="white"
           _hover={{ bg: 'blue.600' }}
           _active={{ bg: 'blue.700' }}
-          onClick={onConfirm}
+          onClick={() => {
+            console.log('🔴 CONFIRM BUTTON CLICKED!');
+            onConfirm();
+          }}
           width="full"
           height="56px"
           borderRadius="xl"
           fontSize="lg"
           fontWeight="semibold"
           isLoading={isLoading}
-          loadingText="Confirming..."
+          loadingText="Check your KeepKey device..."
           isDisabled={isLoading}
+          spinnerPlacement="start"
         >
           Confirm Swap
         </Button>
