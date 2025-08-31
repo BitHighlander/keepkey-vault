@@ -932,6 +932,26 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         setVerificationStep('swap');
         setIsVerifyingOnDevice(true);
         
+        // Check for dev flag to skip actual swap
+        const fakeTxid = process.env.NEXT_PUBLIC_DEV_FAKE_SWAP_TXID;
+        if (fakeTxid) {
+          console.log('🚧 DEVELOPMENT MODE: Using fake transaction ID:', fakeTxid);
+          
+          // Close verification dialog
+          setHasViewedOnDevice(true);
+          setIsVerifyingOnDevice(false);
+          setShowDeviceVerificationDialog(false);
+          
+          // Show success screen with fake txid
+          setSuccessTxid(fakeTxid);
+          setShowSuccess(true);
+          setConfirmMode(false);
+          setPendingSwap(false);
+          setVerificationStep('destination');
+          
+          return; // Skip actual swap execution
+        }
+        
         // Execute the actual swap
         if (typeof app.swap === 'function') {
           console.log('🚀 Executing swap transaction...');

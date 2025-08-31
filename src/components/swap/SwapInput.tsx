@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Box, HStack, Input, Button, Text, VStack, IconButton } from '@chakra-ui/react';
-import { FaExchangeAlt } from 'react-icons/fa';
+import { FaExchangeAlt, FaChevronUp, FaChevronDown } from 'react-icons/fa';
 
 interface SwapInputProps {
   value: string;
@@ -36,11 +36,42 @@ export const SwapInput = ({
   isUsdMode = false
 }: SwapInputProps) => {
   const [localIsUsdMode, setLocalIsUsdMode] = useState(isUsdMode);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   const handleToggle = () => {
     setLocalIsUsdMode(!localIsUsdMode);
     if (onToggleMode) {
       onToggleMode();
+    }
+  };
+  
+  const handleIncrement = () => {
+    if (disabled) return;
+    const currentValue = parseFloat(displayValue || '0');
+    const step = localIsUsdMode ? 1 : 0.0001;
+    const newValue = (currentValue + step).toFixed(localIsUsdMode ? 2 : 8);
+    
+    if (localIsUsdMode && priceUsd) {
+      const nativeVal = (parseFloat(newValue) / priceUsd).toFixed(8);
+      onChange(nativeVal);
+    } else {
+      onChange(newValue);
+    }
+  };
+  
+  const handleDecrement = () => {
+    if (disabled) return;
+    const currentValue = parseFloat(displayValue || '0');
+    if (currentValue <= 0) return;
+    
+    const step = localIsUsdMode ? 1 : 0.0001;
+    const newValue = Math.max(0, currentValue - step).toFixed(localIsUsdMode ? 2 : 8);
+    
+    if (localIsUsdMode && priceUsd) {
+      const nativeVal = (parseFloat(newValue) / priceUsd).toFixed(8);
+      onChange(nativeVal);
+    } else {
+      onChange(newValue);
     }
   };
   
@@ -80,20 +111,21 @@ export const SwapInput = ({
       
       <HStack justify="space-between" align="flex-start">
         <VStack align="flex-start" gap={0} flex={1}>
-          <HStack width="full">
+          <HStack width="full" position="relative">
             {localIsUsdMode && (
               <Text fontSize="2xl" fontWeight="medium" color={disabled ? 'gray.500' : 'white'} pl={2}>
                 $
               </Text>
             )}
             <Input
+              ref={inputRef}
               value={displayValue}
               onChange={(e) => {
                 if (!disabled) {
                   const val = e.target.value;
                   // Allow empty string, numbers, and decimal point
-                  // Prevent invalid characters
-                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                  // Prevent invalid characters and multiple decimal points
+                  if (val === '' || (/^\d*\.?\d*$/.test(val) && val.split('.').length <= 2)) {
                     if (localIsUsdMode && priceUsd) {
                       const nativeVal = val ? (parseFloat(val) / priceUsd).toFixed(8) : '';
                       onChange(nativeVal);
@@ -102,6 +134,10 @@ export const SwapInput = ({
                     }
                   }
                 }
+              }}
+              onFocus={(e) => {
+                // Select all text on focus for easy editing
+                e.target.select();
               }}
               onKeyDown={(e) => {
                 // Allow: backspace, delete, tab, escape, enter, decimal point
@@ -135,15 +171,83 @@ export const SwapInput = ({
               pattern="[0-9]*"
               disabled={disabled}
               px={localIsUsdMode ? 0 : 2}
+              pr={!disabled ? 10 : 2}
               height="36px"
               _placeholder={{ color: 'gray.500' }}
+              _focus={{
+                outline: 'none',
+                boxShadow: 'none',
+                borderColor: 'transparent'
+              }}
+              _selection={{
+                background: 'blue.600',
+                color: 'white'
+              }}
               sx={{
-                userSelect: 'text',
-                WebkitUserSelect: 'text',
-                MozUserSelect: 'text',
-                msUserSelect: 'text'
+                cursor: 'text',
+                caretColor: 'white',
+                '::selection': {
+                  background: 'rgba(56, 178, 172, 0.4)',
+                  color: 'white'
+                },
+                '::-moz-selection': {
+                  background: 'rgba(56, 178, 172, 0.4)',
+                  color: 'white'
+                },
+                '&::-webkit-inner-spin-button': {
+                  display: 'none'
+                },
+                '&::-webkit-outer-spin-button': {
+                  display: 'none'
+                }
               }}
             />
+            
+            {/* Arrow buttons for increment/decrement */}
+            {!disabled && (
+              <VStack 
+                gap={0} 
+                position="absolute" 
+                right={2} 
+                top="50%" 
+                transform="translateY(-50%)"
+                zIndex={2}
+              >
+                <IconButton
+                  size="xs"
+                  variant="solid"
+                  onClick={handleIncrement}
+                  aria-label="Increase value"
+                  icon={<FaChevronUp size={12} />}
+                  bg="gray.700"
+                  color="white"
+                  _hover={{ bg: 'gray.600' }}
+                  _active={{ bg: 'gray.500' }}
+                  height="18px"
+                  width="24px"
+                  minW="24px"
+                  fontSize="xs"
+                  borderRadius="md"
+                />
+                <IconButton
+                  size="xs"
+                  variant="solid"
+                  onClick={handleDecrement}
+                  aria-label="Decrease value"
+                  icon={<FaChevronDown size={12} />}
+                  bg="gray.700"
+                  color="white"
+                  _hover={{ bg: 'gray.600' }}
+                  _active={{ bg: 'gray.500' }}
+                  height="18px"
+                  width="24px"
+                  minW="24px"
+                  fontSize="xs"
+                  borderRadius="md"
+                  isDisabled={!displayValue || parseFloat(displayValue) <= 0}
+                />
+              </VStack>
+            )}
           </HStack>
           {secondaryValue && (
             <Text fontSize="sm" color="gray.500" px={2}>

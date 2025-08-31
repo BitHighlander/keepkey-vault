@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, HStack, VStack, Text, Button, Image, Link, keyframes } from '@chakra-ui/react';
+import { Box, Stack, HStack, VStack, Text, Button, Image, Link } from '@chakra-ui/react';
+import { keyframes } from '@emotion/react';
 import { FaCheckCircle, FaExternalLinkAlt } from 'react-icons/fa';
 import Confetti from 'react-confetti';
 
