@@ -90,24 +90,59 @@ export const SwapInput = ({
               value={displayValue}
               onChange={(e) => {
                 if (!disabled) {
-                  if (localIsUsdMode && priceUsd) {
-                    const usdVal = e.target.value;
-                    const nativeVal = usdVal ? (parseFloat(usdVal) / priceUsd).toFixed(8) : '';
-                    onChange(nativeVal);
-                  } else {
-                    onChange(e.target.value);
+                  const val = e.target.value;
+                  // Allow empty string, numbers, and decimal point
+                  // Prevent invalid characters
+                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                    if (localIsUsdMode && priceUsd) {
+                      const nativeVal = val ? (parseFloat(val) / priceUsd).toFixed(8) : '';
+                      onChange(nativeVal);
+                    } else {
+                      onChange(val);
+                    }
                   }
+                }
+              }}
+              onKeyDown={(e) => {
+                // Allow: backspace, delete, tab, escape, enter, decimal point
+                if (
+                  [8, 9, 27, 13, 46, 110, 190].indexOf(e.keyCode) !== -1 ||
+                  // Allow: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+                  (e.keyCode === 65 && e.ctrlKey === true) ||
+                  (e.keyCode === 67 && e.ctrlKey === true) ||
+                  (e.keyCode === 86 && e.ctrlKey === true) ||
+                  (e.keyCode === 88 && e.ctrlKey === true) ||
+                  // Allow: home, end, left, right
+                  (e.keyCode >= 35 && e.keyCode <= 39)
+                ) {
+                  // let it happen, don't do anything
+                  return;
+                }
+                // Ensure that it is a number and stop the keypress
+                if (
+                  (e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) &&
+                  (e.keyCode < 96 || e.keyCode > 105)
+                ) {
+                  e.preventDefault();
                 }
               }}
               placeholder={localIsUsdMode ? '0.00' : placeholder}
               fontSize="2xl"
               fontWeight="medium"
               variant="unstyled"
-              type="number"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*"
               disabled={disabled}
               px={localIsUsdMode ? 0 : 2}
               height="36px"
               _placeholder={{ color: 'gray.500' }}
+              sx={{
+                userSelect: 'text',
+                WebkitUserSelect: 'text',
+                MozUserSelect: 'text',
+                msUserSelect: 'text'
+              }}
             />
           </HStack>
           {secondaryValue && (

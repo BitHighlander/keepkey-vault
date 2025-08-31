@@ -35,6 +35,7 @@ import { SwapInput } from './SwapInput';
 import { SwapQuote } from './SwapQuote';
 import { SwapConfirm } from './SwapConfirm';
 import { AssetPicker } from './AssetPicker';
+import { SwapSuccess } from './SwapSuccess';
 
 // Import THORChain services
 import { 
@@ -203,6 +204,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
+  
+  // Success state
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successTxid, setSuccessTxid] = useState<string>('');
 
   // Helper function to get aggregated balance by symbol
   const getUserBalance = (caip: string): string => {
@@ -959,15 +964,27 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setHasViewedOnDevice(true);
           setIsVerifyingOnDevice(false);
           setShowDeviceVerificationDialog(false);
-          setInputAmount('');
-          setOutputAmount('');
-          setQuote(null);
-          setError('');
-          setConfirmMode(false);
+          
+          // Extract transaction ID
+          const txid = result?.txHash || result?.hash || result?.txid || result?.data?.result || result;
+          console.log('🎉 Swap successful! Transaction ID:', txid);
+          
+          if (txid) {
+            // Show success screen
+            setSuccessTxid(String(txid));
+            setShowSuccess(true);
+            setConfirmMode(false);
+          } else {
+            // If no txid, reset normally
+            setInputAmount('');
+            setOutputAmount('');
+            setQuote(null);
+            setError('');
+            setConfirmMode(false);
+          }
+          
           setPendingSwap(false);
           setVerificationStep('destination'); // Reset for next swap
-          const txid = result?.txHash || result?.hash || result?.txid || result;
-          if (txid) setError(`Swap submitted! TX: ${String(txid)}`);
         }
       } catch (error: any) {
         console.error('❌ Device verification failed:', error);
@@ -1335,6 +1352,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     You need at least $0.01 worth of assets to start swapping
                   </Text>
                 </VStack>
+              ) : showSuccess ? (
+                <SwapSuccess
+                  txid={successTxid}
+                  fromAsset={getAssetDisplay(true)}
+                  toAsset={getAssetDisplay(false)}
+                  inputAmount={inputAmount}
+                  outputAmount={outputAmount}
+                  outboundAssetContext={app?.outboundAssetContext}
+                  onClose={() => {
+                    setShowSuccess(false);
+                    setSuccessTxid('');
+                    setInputAmount('');
+                    setOutputAmount('');
+                    setQuote(null);
+                    setError('');
+                  }}
+                />
               ) : (
               <Stack gap={2}>
                 {!confirmMode ? (
