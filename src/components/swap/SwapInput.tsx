@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { Box, HStack, Input, Button, Text, VStack, IconButton } from '@chakra-ui/react';
 import { FaExchangeAlt, FaChevronUp, FaChevronDown } from 'react-icons/fa';
+import CountUp from 'react-countup';
 
 interface SwapInputProps {
   value: string;
@@ -117,6 +118,19 @@ export const SwapInput = ({
                 $
               </Text>
             )}
+            {disabled && displayValue && parseFloat(displayValue) > 0 ? (
+              <Box px={localIsUsdMode ? 0 : 2} pr={!disabled ? 10 : 2}>
+                <Text fontSize="2xl" fontWeight="medium" color="green.400">
+                  <CountUp
+                    end={parseFloat(displayValue)}
+                    decimals={parseFloat(displayValue) < 1 ? 8 : (parseFloat(displayValue) < 100 ? 4 : 2)}
+                    duration={1.5}
+                    separator=","
+                    preserveValue={true}
+                  />
+                </Text>
+              </Box>
+            ) : (
             <Input
               ref={inputRef}
               value={displayValue}
@@ -202,6 +216,7 @@ export const SwapInput = ({
                 }
               }}
             />
+            )}
             
             {/* Arrow buttons for increment/decrement */}
             {!disabled && (
@@ -251,10 +266,35 @@ export const SwapInput = ({
           </HStack>
           {secondaryValue && (
             <Text fontSize="sm" color="gray.500" px={2}>
-              {localIsUsdMode ? 
-                `${secondaryValue} ${symbol}` : 
-                `$${secondaryValue}`
-              }
+              {localIsUsdMode ? (
+                <>
+                  {disabled && parseFloat(secondaryValue) > 0 ? (
+                    <Text as="span" color="green.400">
+                      <CountUp
+                        end={parseFloat(secondaryValue)}
+                        decimals={parseFloat(secondaryValue) < 1 ? 8 : (parseFloat(secondaryValue) < 100 ? 4 : 2)}
+                        duration={1.5}
+                        separator=","
+                        preserveValue={true}
+                      />
+                    </Text>
+                  ) : secondaryValue} {symbol}
+                </>
+              ) : (
+                <>
+                  ${disabled && parseFloat(secondaryValue) > 0 ? (
+                    <Text as="span" color="green.400">
+                      <CountUp
+                        end={parseFloat(secondaryValue)}
+                        decimals={2}
+                        duration={1.5}
+                        separator=","
+                        preserveValue={true}
+                      />
+                    </Text>
+                  ) : secondaryValue}
+                </>
+              )}
             </Text>
           )}
         </VStack>

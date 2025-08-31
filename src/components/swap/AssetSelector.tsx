@@ -3,6 +3,7 @@
 import React from 'react';
 import { Box, HStack, Text, Image, Button } from '@chakra-ui/react';
 import { FaChevronDown } from 'react-icons/fa';
+import CountUp from 'react-countup';
 
 interface AssetSelectorProps {
   asset: any;
@@ -70,11 +71,27 @@ export const AssetSelector = ({
           <HStack gap={2}>
             <HStack gap={1}>
               <Text fontSize="xs" color="gray.400">
-                Balance: {formatBalance(balance)} {asset.symbol}
+                Balance: <Text as="span" color="green.400" fontWeight="medium">
+                  <CountUp
+                    end={parseFloat(balance)}
+                    decimals={parseFloat(balance) < 1 ? 6 : (parseFloat(balance) < 100 ? 4 : 2)}
+                    duration={1.5}
+                    separator=","
+                    preserveValue={true}
+                  />
+                </Text> {asset.symbol}
               </Text>
               {balanceUsd && (
                 <Text fontSize="xs" color="gray.500">
-                  ({formatUsdBalance(balanceUsd)})
+                  ($<Text as="span" color="green.400">
+                    <CountUp
+                      end={parseFloat(balanceUsd)}
+                      decimals={2}
+                      duration={1.5}
+                      separator=","
+                      preserveValue={true}
+                    />
+                  </Text>)
                 </Text>
               )}
             </HStack>

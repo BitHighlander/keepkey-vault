@@ -24,6 +24,8 @@ import {
   DialogRoot
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle } from 'react-icons/fa';
+import { keyframes } from '@emotion/react';
+import CountUp from 'react-countup';
 import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG } from '@pioneer-platform/pioneer-coins'
 import { NetworkIdToChain } from '@coinmasters/types'
 // @ts-ignore
@@ -1594,8 +1596,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             1 {app?.assetContext?.symbol}
                           </Text>
                           <Text fontSize="sm" color="gray.500">=</Text>
-                          <Text fontSize="sm" color="white" fontWeight="medium">
-                            {exchangeRate.toFixed(6)} {app?.outboundAssetContext?.symbol}
+                          <Text fontSize="sm" color="green.400" fontWeight="medium">
+                            <CountUp
+                              end={exchangeRate}
+                              decimals={6}
+                              duration={1.5}
+                              separator=","
+                              preserveValue={true}
+                            />
+                            {' '}{app?.outboundAssetContext?.symbol}
                           </Text>
                         </HStack>
                       </Box>
