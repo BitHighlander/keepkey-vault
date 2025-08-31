@@ -51,20 +51,38 @@ export const SwapSuccess = ({
   `;
 
   return (
-    <>
-      {/* Confetti animation */}
+    <Box position="relative" width="full" minH="100vh">
+      {/* Confetti animation - centered in viewport */}
       {showConfetti && (
-        <Confetti
-          width={window.innerWidth}
-          height={window.innerHeight}
-          recycle={false}
-          numberOfPieces={200}
-          gravity={0.1}
-          colors={['#10B981', '#059669', '#047857', '#065F46', '#064E3B']}
-        />
+        <Box
+          position="fixed"
+          top="0"
+          left="0"
+          width="100vw"
+          height="100vh"
+          pointerEvents="none"
+          zIndex={9999}
+        >
+          <Confetti
+            width={window.innerWidth}
+            height={window.innerHeight}
+            recycle={false}
+            numberOfPieces={200}
+            gravity={0.1}
+            colors={['#10B981', '#059669', '#047857', '#065F46', '#064E3B']}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none'
+            }}
+          />
+        </Box>
       )}
 
-      <VStack gap={8} width="full" align="center" py={8}>
+      <VStack gap={8} width="full" align="center" py={8} position="relative">
         {/* Success Icon */}
         <Box position="relative">
           <Box
@@ -185,6 +203,6 @@ export const SwapSuccess = ({
           It may take a few minutes for your transaction to be confirmed on the blockchain
         </Text>
       </VStack>
-    </>
+    </Box>
   );
 };
