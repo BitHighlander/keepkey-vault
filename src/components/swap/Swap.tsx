@@ -371,49 +371,118 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Select the top USD value asset for "from"
       const defaultFrom = availableAssets[0];
       
-      // Find a different asset for "to" - preferably the second highest value
+      // Smart selection for output asset based on input
       let defaultTo = null;
-      if (availableAssets.length > 1) {
-        // Use the second highest value asset
-        defaultTo = availableAssets[1];
-      } else {
-        // If we only have one asset with balance, find any other native asset
-        const otherAsset = NATIVE_ASSETS.find(asset => 
-          asset.symbol !== defaultFrom?.symbol
-        );
-        if (otherAsset) {
-          defaultTo = {
-            ...otherAsset,
-            balance: 0,
-            balanceUsd: 0,
-            priceUsd: 0
-          };
-        }
+      
+      // If input is Bitcoin, default to Ethereum
+      if (defaultFrom?.symbol === 'BTC') {
+        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'ETH');
+      } 
+      // If input is anything else, default to Bitcoin
+      else {
+        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'BTC');
       }
       
-      // Ensure we never set the same asset for both
+      // If we couldn't find the preferred output, use the second highest value asset
+      if (!defaultTo && availableAssets.length > 1) {
+        defaultTo = availableAssets[1];
+      }
+      
+      // If still no output asset, find any other native asset
+      if (!defaultTo) {
+        defaultTo = NATIVE_ASSETS.find(asset => 
+          asset.symbol !== defaultFrom?.symbol
+        );
+      }
+      
+      // Ensure we have balance data for the output asset
+      if (defaultTo) {
+        const balanceData = availableAssets.find(a => a.symbol === defaultTo.symbol);
+        defaultTo = {
+          ...defaultTo,
+          balance: balanceData?.balance || 0,
+          balanceUsd: balanceData?.balanceUsd || 0,
+          priceUsd: balanceData?.priceUsd || 0
+        };
+      }
+      
+      // Set the assets
       if (defaultFrom && defaultTo && defaultFrom.symbol !== defaultTo.symbol) {
         if (app?.setAssetContext && app?.setOutboundAssetContext) {
           app.setAssetContext(defaultFrom);
           app.setOutboundAssetContext(defaultTo);
-        }
-      } else if (defaultFrom && app?.setAssetContext && app?.setOutboundAssetContext) {
-        // Fallback: if somehow we still have the same, force ETH/BTC or BTC/ETH
-        app.setAssetContext(defaultFrom);
-        const fallbackTo = defaultFrom.symbol === 'BTC' ? 
-          NATIVE_ASSETS.find(a => a.symbol === 'ETH') : 
-          NATIVE_ASSETS.find(a => a.symbol === 'BTC');
-        if (fallbackTo) {
-          app.setOutboundAssetContext({
-            ...fallbackTo,
-            balance: 0,
-            balanceUsd: 0,
-            priceUsd: 0
-          });
+          // The default amount will be set by the dedicated useEffect
         }
       }
     }
   }, [availableAssets, app?.assetContext?.caip, app?.outboundAssetContext?.caip]);
+  
+  // Auto-select output asset when input asset changes
+  useEffect(() => {
+    if (app?.assetContext?.symbol && !app?.outboundAssetContext?.symbol && app?.setOutboundAssetContext) {
+      let defaultTo = null;
+      
+      // If input is Bitcoin, default to Ethereum
+      if (app.assetContext.symbol === 'BTC') {
+        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'ETH');
+      } 
+      // If input is anything else, default to Bitcoin
+      else {
+        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'BTC');
+      }
+      
+      if (defaultTo) {
+        const balanceData = availableAssets.find(a => a.symbol === defaultTo.symbol);
+        app.setOutboundAssetContext({
+          ...defaultTo,
+          balance: balanceData?.balance || 0,
+          balanceUsd: balanceData?.balanceUsd || 0,
+          priceUsd: balanceData?.priceUsd || 0
+        });
+      }
+    }
+  }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets]);
+  
+  // Set default input amount when both assets are selected and input is empty
+  useEffect(() => {
+    if (app?.assetContext?.symbol && 
+        app?.outboundAssetContext?.symbol && 
+        !inputAmount && 
+        availableAssets.length > 0) {
+      
+      const fromAsset = availableAssets.find(a => a.symbol === app.assetContext.symbol);
+      
+      if (fromAsset && fromAsset.balance > 0 && fromAsset.priceUsd > 0) {
+        const maxUsdValue = fromAsset.balance * fromAsset.priceUsd;
+        
+        console.log('💰 Setting default input amount:', {
+          asset: fromAsset.symbol,
+          balance: fromAsset.balance,
+          priceUsd: fromAsset.priceUsd,
+          maxUsdValue
+        });
+        
+        if (maxUsdValue <= 100) {
+          // If MAX is less than $100, use MAX
+          setInputAmount(fromAsset.balance.toString());
+          setIsMaxAmount(true);
+          setInputUSDValue(maxUsdValue.toFixed(2));
+        } else {
+          // If MAX is more than $100, use $100 worth
+          const amountFor100Usd = 100 / fromAsset.priceUsd;
+          setInputAmount(amountFor100Usd.toFixed(8));
+          setIsMaxAmount(false);
+          setInputUSDValue('100.00');
+        }
+        
+        // Fetch quote for the default amount
+        const amount = maxUsdValue <= 100 ? fromAsset.balance.toString() : (100 / fromAsset.priceUsd).toFixed(8);
+        if (amount) {
+          fetchQuote(amount, app.assetContext.symbol, app.outboundAssetContext.symbol);
+        }
+      }
+    }
+  }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets.length]);
 
   // Validate that we never have the same asset for both from and to
   useEffect(() => {
@@ -628,8 +697,30 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         priceUsd: asset.priceUsd
       });
       
-      // Fetch new quote if we have input amount
-      if (inputAmount && parseFloat(inputAmount) > 0 && app?.outboundAssetContext?.symbol) {
+      // Set default input amount when changing input asset: MAX or $100, whichever is less
+      if (asset.balance > 0 && asset.priceUsd > 0) {
+        const maxUsdValue = asset.balance * asset.priceUsd;
+        
+        if (maxUsdValue <= 100) {
+          // If MAX is less than $100, use MAX
+          setInputAmount(asset.balance.toString());
+          setIsMaxAmount(true);
+          setInputUSDValue(maxUsdValue.toFixed(2));
+        } else {
+          // If MAX is more than $100, use $100 worth
+          const amountFor100Usd = 100 / asset.priceUsd;
+          setInputAmount(amountFor100Usd.toFixed(8));
+          setIsMaxAmount(false);
+          setInputUSDValue('100.00');
+        }
+        
+        // Fetch quote for the new amount
+        const amount = maxUsdValue <= 100 ? asset.balance.toString() : (100 / asset.priceUsd).toFixed(8);
+        if (amount && app?.outboundAssetContext?.symbol) {
+          await fetchQuote(amount, asset.symbol, app.outboundAssetContext.symbol);
+        }
+      } else if (inputAmount && parseFloat(inputAmount) > 0 && app?.outboundAssetContext?.symbol) {
+        // Keep existing amount if asset has no balance
         await fetchQuote(inputAmount, asset.symbol, app.outboundAssetContext.symbol);
       }
     } else {
@@ -1290,14 +1381,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         <Container maxW="container.xl">
           <HStack justify="space-between">
             {/* Left side - Back button */}
-            <IconButton
-              variant="ghost"
-              aria-label="Go back"
-              icon={<FaArrowLeft />}
+            <Button
+              leftIcon={<FaArrowLeft size={18} />}
+              variant="solid"
               onClick={onBackClick}
-              color="gray.400"
-              _hover={{ color: 'white', bg: 'gray.800' }}
-            />
+              color="white"
+              bg="gray.800"
+              _hover={{ bg: 'gray.700', transform: 'translateX(-2px)' }}
+              _active={{ bg: 'gray.600' }}
+              size="sm"
+              px={3}
+            >
+              Back
+            </Button>
             
             {/* Center - Title */}
             <HStack gap={2}>
