@@ -196,13 +196,47 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [error, setError] = useState<string | null>(null)
   const [showErrorDialog, setShowErrorDialog] = useState<boolean>(false)
 
-  // Calculate total balance
+  // Calculate total balance - sum all pubkey balances for UTXO chains
   useEffect(() => {
     if (assetContext) {
       try {
         // Store previous balance for comparison
         const prevBalance = balance;
-        const newBalance = assetContext.balance || '0';
+        
+        let newBalance = '0';
+        
+        // Check if this is a UTXO network (Bitcoin, etc.)
+        const networkId = assetContext.networkId || assetContext.caip || '';
+        const isUtxoNetwork = UTXO_NETWORKS.some(id => networkId.includes(id)) || networkId.startsWith('bip122:');
+        
+        if (isUtxoNetwork && assetContext.pubkeys && assetContext.pubkeys.length > 0) {
+          // For UTXO chains, sum all pubkey balances
+          console.log('Calculating UTXO balance from pubkeys:', assetContext.pubkeys);
+          
+          let totalBalance = 0;
+          for (const pubkey of assetContext.pubkeys) {
+            // Find corresponding balance for this pubkey
+            const pubkeyBalance = app?.balances?.find((b: any) => 
+              b.pubkey === pubkey.pubkey || 
+              b.address === pubkey.address ||
+              b.master === pubkey.master
+            );
+            
+            if (pubkeyBalance && pubkeyBalance.balance) {
+              const balanceValue = parseFloat(pubkeyBalance.balance);
+              if (!isNaN(balanceValue)) {
+                totalBalance += balanceValue;
+                console.log(`Added balance for ${pubkey.addressType || 'address'}: ${balanceValue}`);
+              }
+            }
+          }
+          
+          newBalance = totalBalance.toFixed(8);
+          console.log('Total UTXO balance calculated:', newBalance);
+        } else {
+          // For non-UTXO chains or if no pubkeys, use the single balance
+          newBalance = assetContext.balance || '0';
+        }
         
         setBalance(newBalance)
         setTotalBalanceUsd(parseFloat(newBalance) * (assetContext.priceUsd || 0))
@@ -1900,6 +1934,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   return (
     <Box 
       width="100%" 
+      maxWidth="600px"
+      mx="auto"
       height="100vh"
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
