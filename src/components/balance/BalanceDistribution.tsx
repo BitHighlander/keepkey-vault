@@ -134,12 +134,21 @@ const BalanceCard: React.FC<{
           {/* Balance Row */}
           <HStack justify="space-between">
             <HStack spacing={3}>
-              <Text fontSize="sm" fontWeight="medium" color="white">
+              <Text 
+                fontSize="sm" 
+                fontWeight="medium" 
+                color={parseFloat(balance.balance) === 0 ? "gray.500" : "white"}
+              >
                 {formatBalance(balance.balance)} {aggregatedBalance.symbol}
               </Text>
-              <Text fontSize="sm" color="gray.400">
+              <Text fontSize="sm" color={parseFloat(balance.balance) === 0 ? "gray.600" : "gray.400"}>
                 ${formatUsd(balance.valueUsd)}
               </Text>
+              {parseFloat(balance.balance) === 0 && (
+                <Badge colorScheme="gray" size="sm" variant="subtle">
+                  Empty
+                </Badge>
+              )}
             </HStack>
           </HStack>
 
@@ -267,8 +276,8 @@ export const BalanceDistribution: React.FC<BalanceDistributionProps> = ({
     setExpandedCards(newExpanded);
   };
 
-  // Don't show distribution section if only one address
-  if (aggregatedBalance.balances.length <= 1) {
+  // Don't show distribution section if no addresses (removed the <= 1 check to allow showing single address)
+  if (aggregatedBalance.balances.length === 0) {
     return null;
   }
 

@@ -78,6 +78,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   // Add state to track selected address in Balance Distribution
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+  // Add state to toggle between showing all pubkeys or only with balance
+  const [showAllPubkeys, setShowAllPubkeys] = useState(false);
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -92,20 +94,54 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
 
   // Prepare aggregated balance for multi-pubkey display (must be called with other hooks)
   const aggregatedBalance: AggregatedBalance | null = useMemo(() => {
-    if (!app?.balances || !assetContext?.networkId || !assetContext?.symbol) return null;
+    if (!assetContext?.networkId || !assetContext?.symbol) return null;
     
-    // Get balances for this asset - only include addresses with actual balance
-    const assetBalances = app.balances.filter((balance: any) => 
+    // Get all pubkeys for this network
+    const networkPubkeys = assetContext.pubkeys || [];
+    if (networkPubkeys.length === 0) return null; // Only return null if no pubkeys at all
+    
+    // Get balances for this asset
+    const assetBalances = app?.balances?.filter((balance: any) => 
       balance.networkId === assetContext.networkId && 
-      balance.symbol === assetContext.symbol &&
-      parseFloat(balance.balance || '0') > 0  // Only include addresses with balance > 0
-    );
+      balance.symbol === assetContext.symbol
+    ) || [];
     
-    if (assetBalances.length <= 1) return null; // Only show if multiple addresses
+    // Create a comprehensive list that includes all pubkeys, even those with 0 balance
+    const allPubkeyBalances = networkPubkeys.map((pubkey: any) => {
+      // Find existing balance for this pubkey
+      const existingBalance = assetBalances.find((balance: any) => 
+        balance.address === pubkey.address || 
+        balance.pubkey === pubkey.pubkey ||
+        balance.master === pubkey.master
+      );
+      
+      if (existingBalance) {
+        return existingBalance;
+      } else {
+        // Create a 0 balance entry for pubkeys without balance
+        return {
+          address: pubkey.address || pubkey.pubkey,
+          pubkey: pubkey.pubkey,
+          balance: '0',
+          valueUsd: 0,
+          networkId: assetContext.networkId,
+          symbol: assetContext.symbol,
+          path: pubkey.path,
+          master: pubkey.master
+        };
+      }
+    });
+    
+    // Filter based on showAllPubkeys toggle
+    const filteredBalances = showAllPubkeys 
+      ? allPubkeyBalances 
+      : allPubkeyBalances.filter((balance: any) => parseFloat(balance.balance || '0') > 0);
+    
+    if (filteredBalances.length === 0) return null; // No balances to show
     
     const result = aggregateBalances(
-      assetBalances,
-      assetContext.pubkeys || [],
+      filteredBalances,
+      networkPubkeys,
       assetContext.networkId,
       assetContext.symbol,
       priceUsd
@@ -113,11 +149,12 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
     
     // Debug logging to understand structure
     console.log('📊 Aggregated Balance:', result);
-    console.log('🔑 Asset Context Pubkeys:', assetContext.pubkeys);
-    console.log('💰 Asset Balances:', assetBalances);
+    console.log('🔑 Network Pubkeys:', networkPubkeys);
+    console.log('💰 Filtered Balances:', filteredBalances);
+    console.log('🔄 Show All Pubkeys:', showAllPubkeys);
     
     return result;
-  }, [app?.balances, assetContext, priceUsd]);
+  }, [app?.balances, assetContext, priceUsd, showAllPubkeys]);
 
   // Format USD value
   const formatUsd = (value: number | null | undefined) => {
@@ -577,7 +614,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </Text>
                   
                   {/* Show if balance is aggregated from multiple addresses */}
-                  {aggregatedBalance && (
+                  {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
                     <Badge 
                       colorScheme="blue" 
                       variant="subtle"
@@ -766,17 +803,40 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               {/* Details content */}
               <VStack align="stretch" p={4} gap={4}>
                 {/* Balance Distribution for multi-address assets - MOVED TO TOP */}
-                {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
+                {aggregatedBalance && (
                   <Box>
-                    <BalanceDistribution
-                      aggregatedBalance={aggregatedBalance}
-                      selectedAddress={selectedAddress}
-                      onAddressClick={(address) => {
-                        // Update selected address when clicked
-                        setSelectedAddress(address);
-                        console.log('Address selected:', address);
-                      }}
-                    />
+                    <VStack align="stretch" gap={3}>
+                      {/* Toggle for showing all pubkeys */}
+                      {aggregatedBalance.balances.length > 0 && (
+                        <HStack justify="space-between" align="center" mb={2}>
+                          <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                            Pubkey Balances
+                          </Text>
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            color={theme.gold}
+                            borderColor={theme.border}
+                            onClick={() => setShowAllPubkeys(!showAllPubkeys)}
+                            _hover={{
+                              bg: 'rgba(255, 215, 0, 0.1)',
+                              borderColor: theme.gold,
+                            }}
+                          >
+                            {showAllPubkeys ? 'Show With Balance' : 'Show All Pubkeys'}
+                          </Button>
+                        </HStack>
+                      )}
+                      <BalanceDistribution
+                        aggregatedBalance={aggregatedBalance}
+                        selectedAddress={selectedAddress}
+                        onAddressClick={(address) => {
+                          // Update selected address when clicked
+                          setSelectedAddress(address);
+                          console.log('Address selected:', address);
+                        }}
+                      />
+                    </VStack>
                   </Box>
                 )}
 
