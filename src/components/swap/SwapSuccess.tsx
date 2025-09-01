@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, HStack, VStack, Text, Button, Image, Link, Code } from '@chakra-ui/react';
+import { Box, Stack, HStack, VStack, Text, Button, Image, Link, Code, Input } from '@chakra-ui/react';
+import { InputGroup } from '@/components/ui/input-group';
 import { keyframes } from '@emotion/react';
 import { FaCheckCircle, FaExternalLinkAlt, FaEnvelope } from 'react-icons/fa';
 import Confetti from 'react-confetti';
@@ -33,6 +34,8 @@ export const SwapSuccess = ({
   const [decodedMemo, setDecodedMemo] = useState<string>('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [emailError, setEmailError] = useState<string>('');
 
   useEffect(() => {
     // Stop confetti after 5 seconds
@@ -103,14 +106,44 @@ export const SwapSuccess = ({
     return `${clean.slice(0, 8).toUpperCase()}...${clean.slice(-8).toUpperCase()}`;
   };
 
+  // Validate email format
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Handle email input change
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value;
+    setUserEmail(email);
+    setEmailError('');
+    
+    if (email && !validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+    }
+  };
+
   // Handle email sending
   const handleEmailSwapInfo = async () => {
+    // Validate email first
+    if (!userEmail) {
+      setEmailError('Please enter your email address');
+      return;
+    }
+    
+    if (!validateEmail(userEmail)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
     setIsSendingEmail(true);
     setEmailStatus('sending');
+    setEmailError('');
     
     try {
       // Prepare comprehensive swap data
       const swapData = {
+        userEmail: userEmail,
         txid: txid,
         cleanTxid: cleanTxid,
         thorchainTrackerLink: thorchainTrackerLink,
@@ -142,17 +175,19 @@ export const SwapSuccess = ({
 
       if (response.ok) {
         setEmailStatus('success');
-        console.log('✅ Email sent successfully!');
-        // Reset status after 3 seconds
-        setTimeout(() => setEmailStatus('idle'), 3000);
+        console.log('✅ Email sent successfully to:', userEmail);
+        // Don't reset status for success - keep it visible
       } else {
         throw new Error('Failed to send email');
       }
     } catch (error) {
       console.error('❌ Error sending email:', error);
       setEmailStatus('error');
-      // Reset status after 3 seconds
-      setTimeout(() => setEmailStatus('idle'), 3000);
+      // Reset error status after 5 seconds
+      setTimeout(() => {
+        setEmailStatus('idle');
+        setEmailError('');
+      }, 5000);
     } finally {
       setIsSendingEmail(false);
     }
@@ -341,23 +376,105 @@ export const SwapSuccess = ({
           </Button>
         </Link>
 
-        {/* Email Swap Info Button */}
-        <Button
-          variant="outline"
-          colorScheme={emailStatus === 'success' ? 'green' : emailStatus === 'error' ? 'red' : 'purple'}
-          width="full"
-          height="48px"
+        {/* Email Swap Info Card */}
+        <Box
+          bg="gray.900"
           borderRadius="xl"
-          leftIcon={<FaEnvelope />}
-          onClick={handleEmailSwapInfo}
-          isLoading={isSendingEmail}
-          loadingText="Sending..."
-          isDisabled={emailStatus === 'success'}
+          p={5}
+          width="full"
+          borderWidth="1px"
+          borderColor={emailStatus === 'success' ? 'green.500' : emailStatus === 'error' ? 'red.500' : 'purple.600'}
+          position="relative"
+          overflow="hidden"
         >
-          {emailStatus === 'success' ? '✅ Email Sent!' : 
-           emailStatus === 'error' ? '❌ Failed - Try Again' : 
-           'Email Me Swap Details'}
-        </Button>
+          {/* Purple gradient accent */}
+          <Box
+            position="absolute"
+            top="0"
+            left="0"
+            right="0"
+            height="2px"
+            bg="linear-gradient(90deg, #9F7AEA 0%, #805AD5 100%)"
+          />
+          
+          <VStack gap={3} width="full">
+            {emailStatus === 'success' ? (
+              <>
+                <Box color="green.400" fontSize="48px">
+                  ✅
+                </Box>
+                <Text fontSize="lg" fontWeight="bold" color="green.400">
+                  Email Sent Successfully!
+                </Text>
+                <Text fontSize="sm" color="gray.400" textAlign="center">
+                  Swap details have been sent to {userEmail}
+                </Text>
+              </>
+            ) : (
+              <>
+                <HStack gap={2} width="full" justify="center">
+                  <FaEnvelope size="20" color="#9F7AEA" />
+                  <Text fontSize="md" fontWeight="semibold" color="white">
+                    Get Swap Details via Email
+                  </Text>
+                </HStack>
+                
+                <Text fontSize="xs" color="gray.400" textAlign="center">
+                  Receive a comprehensive summary of your swap transaction
+                </Text>
+                
+                <InputGroup 
+                  width="full"
+                  startElement={<FaEnvelope color="gray" size="14" />}
+                >
+                  <Input
+                    placeholder="Enter your email address"
+                    value={userEmail}
+                    onChange={handleEmailChange}
+                    borderColor={emailError ? 'red.500' : 'gray.600'}
+                    _hover={{ borderColor: emailError ? 'red.400' : 'purple.500' }}
+                    _focus={{ borderColor: emailError ? 'red.400' : 'purple.400', boxShadow: 'none' }}
+                    bg="gray.800"
+                    color="white"
+                    borderRadius="lg"
+                    isDisabled={isSendingEmail}
+                    size="md"
+                  />
+                </InputGroup>
+                
+                {emailError && (
+                  <Text fontSize="xs" color="red.400" width="full">
+                    {emailError}
+                  </Text>
+                )}
+                
+                <Button
+                  width="full"
+                  height="40px"
+                  bg="purple.600"
+                  color="white"
+                  _hover={{ bg: 'purple.500' }}
+                  _active={{ bg: 'purple.700' }}
+                  onClick={handleEmailSwapInfo}
+                  isLoading={isSendingEmail}
+                  loadingText="Sending Email..."
+                  borderRadius="lg"
+                  isDisabled={!userEmail || !!emailError || emailStatus === 'success'}
+                  fontSize="sm"
+                  fontWeight="semibold"
+                >
+                  {emailStatus === 'error' ? 'Retry Sending Email' : 'Send Email'}
+                </Button>
+                
+                {emailStatus === 'error' && (
+                  <Text fontSize="xs" color="red.400" textAlign="center">
+                    Failed to send email. Please check your connection and try again.
+                  </Text>
+                )}
+              </>
+            )}
+          </VStack>
+        </Box>
 
         {/* Done Button */}
         <Button
