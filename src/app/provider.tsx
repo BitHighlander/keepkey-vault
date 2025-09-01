@@ -13,6 +13,7 @@ import { LogoIcon } from '@/components/logo'
 import { keyframes } from '@emotion/react'
 import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
+import ConnectionError from '@/components/error/ConnectionError'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -36,6 +37,7 @@ export function Provider({ children }: ProviderProps) {
   const [pioneerSdk, setPioneerSdk] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [isVaultUnavailable, setIsVaultUnavailable] = useState(false);
 
   useEffect(() => {
     // Prevent multiple initializations
@@ -109,10 +111,11 @@ export function Provider({ children }: ProviderProps) {
         let detectedKeeperEndpoint = undefined;
         
         // Try multiple endpoints to find the vault
+        // swagger.json is the most reliable as it doesn't require auth
         const vaultEndpoints = [
-          'http://localhost:1646/api/health',
-          'http://localhost:1646/api/v1/health/fast',
-          'http://127.0.0.1:1646/api/health'
+          'http://localhost:1646/spec/swagger.json',
+          'http://127.0.0.1:1646/spec/swagger.json',
+          'http://localhost:1646/auth/pair' // This should return 400 if running
         ];
         
         for (const endpoint of vaultEndpoints) {
@@ -132,8 +135,10 @@ export function Provider({ children }: ProviderProps) {
               statusText: healthCheck.statusText
             });
             
-            if (healthCheck.ok) {
-              const baseUrl = endpoint.replace(/\/api.*$/, '');
+            // Check if we got a successful response (200 for swagger.json, or 400 for auth/pair)
+            if (healthCheck.ok || (endpoint.includes('/auth/pair') && healthCheck.status === 400)) {
+              // Extract base URL from the endpoint
+              const baseUrl = endpoint.replace(/\/(spec\/swagger\.json|auth\/pair|api.*)$/, '');
               detectedKeeperEndpoint = baseUrl;
               console.log(`✅ [KKAPI DEBUG] Vault detected at: ${detectedKeeperEndpoint}`);
               break;
@@ -144,7 +149,11 @@ export function Provider({ children }: ProviderProps) {
         }
         
         if (!detectedKeeperEndpoint) {
-          console.log('⚠️ [KKAPI DEBUG] Vault not detected - using legacy mode');
+          console.log('⚠️ [KKAPI DEBUG] Vault not detected - showing connection error');
+          setIsVaultUnavailable(true);
+          setIsLoading(false);
+          PIONEER_INITIALIZED = false; // Reset flag so retry can work
+          return; // Stop initialization if vault is not available
         }
         
         const appInit = new SDK(PIONEER_URL, {
@@ -490,6 +499,30 @@ export function Provider({ children }: ProviderProps) {
       });
     }
   }, [pioneerSdk, pioneerSdk?.outboundAssetContext?.caip, pioneerSdk?.pubkeys]);
+
+  // Handler for retry button in ConnectionError
+  const handleRetry = () => {
+    console.log('🔄 Retrying vault connection...');
+    setIsVaultUnavailable(false);
+    setIsLoading(true);
+    setError(null);
+    PIONEER_INITIALIZED = false; // Reset the flag to allow re-initialization
+    // Force a re-render and re-run the effect
+    setPioneerSdk(null);
+    // Trigger re-initialization
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
+
+  // Show connection error if vault is unavailable
+  if (isVaultUnavailable) {
+    return (
+      <ChakraProvider>
+        <ConnectionError onRetry={handleRetry} />
+      </ChakraProvider>
+    );
+  }
 
   if (error) {
     return (
