@@ -19,6 +19,7 @@ import { usePioneerContext } from '@/components/providers/pioneer';
 import QRCode from 'qrcode';
 import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
 import { motion } from 'framer-motion';
+import { getAndVerifyAddress } from '@/utils/keepkeyAddress';
 
 // Define animation keyframes
 const pulseRing = keyframes`
@@ -56,6 +57,7 @@ interface Pubkey {
   note: string;
   pathMaster: string;
   networks: string[];
+  scriptType?: string;
 }
 
 const MotionFlex = motion(Flex);
@@ -72,6 +74,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
   const [addressIndices, setAddressIndices] = useState<{changeIndex: number, receiveIndex: number} | null>(null);
   const [viewingOnDevice, setViewingOnDevice] = useState(false);
   const [addressVerified, setAddressVerified] = useState(false);
+  const [loadingIndices, setLoadingIndices] = useState(false);
 
   // Use the Pioneer context to get asset context
   const pioneer = usePioneerContext();
@@ -103,13 +106,40 @@ export function Receive({ onBackClick }: ReceiveProps) {
       const availablePubkeys = (assetContext.pubkeys || []) as Pubkey[];
       console.log('📊 [Receive] Available pubkeys:', availablePubkeys);
       
-      // Set initial pubkey and address
+      // Set initial pubkey but DON'T set address or generate QR until verified
       if (availablePubkeys.length > 0) {
         const initialPubkey = availablePubkeys[0];
-        const initialAddress = initialPubkey.address || initialPubkey.master || '';
         setSelectedPubkey(initialPubkey);
-        setSelectedAddress(initialAddress);
-        generateQrCode(initialAddress);
+        // DO NOT set address or generate QR code until verified on device!
+        
+        // Get initial indices for the first pubkey
+        if (pioneer.api) {
+          setLoadingIndices(true);
+          const xpub = initialPubkey.master || initialPubkey.address;
+          pioneer.api.GetChangeAddress({
+            network: assetContext.symbol || 'BTC',
+            xpub
+          }).then(addressInfo => {
+            console.log('📊 [Receive] Initial indices:', addressInfo);
+            if (addressInfo?.data) {
+              setAddressIndices({
+                changeIndex: addressInfo.data.changeIndex || 0,
+                receiveIndex: addressInfo.data.receiveIndex || 0
+              });
+            } else {
+              // Use defaults if no data
+              setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
+            }
+            setLoadingIndices(false);
+          }).catch(error => {
+            console.error('❌ [Receive] Error getting initial indices:', error);
+            setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
+            setLoadingIndices(false);
+          });
+        } else {
+          // No API, use defaults
+          setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
+        }
       }
       
       setLoading(false);
@@ -119,65 +149,104 @@ export function Receive({ onBackClick }: ReceiveProps) {
     }
   }, [assetContext]);
 
-  // Handle address change
-  const handleAddressChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const address = event.target.value;
+  // Handle pubkey selection change - DO NOT show address yet!
+  const handlePubkeyChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const pubkeyPath = event.target.value;
     
-    // Find the pubkey that matches the selected address
+    // Find the pubkey that matches the selected path
     if (assetContext?.pubkeys) {
       const result = assetContext.pubkeys.find((pubkey: Pubkey) => 
-        (pubkey.address || pubkey.master) === address
+        pubkey.pathMaster === pubkeyPath
       );
       
       if (result) {
         setSelectedPubkey(result as Pubkey);
+        // Reset verification state when changing selection
+        setAddressVerified(false);
+        setSelectedAddress('');
+        setQrCodeDataUrl(null);
+        
+        // Get the indices for this xpub from Pioneer
+        if (pioneer.api) {
+          setLoadingIndices(true);
+          try {
+            const xpub = result.master || result.address;
+            console.log('🔍 [Receive] Getting indices for xpub:', xpub);
+            
+            const addressInfo = await pioneer.api.GetChangeAddress({
+              network: assetContext.symbol || 'BTC',
+              xpub
+            });
+            
+            console.log('📊 [Receive] Address indices received:', addressInfo);
+            
+            if (addressInfo?.data) {
+              setAddressIndices({
+                changeIndex: addressInfo.data.changeIndex || 0,
+                receiveIndex: addressInfo.data.receiveIndex || 0
+              });
+            } else {
+              // If no data, use defaults
+              setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
+            }
+          } catch (error) {
+            console.error('❌ [Receive] Error getting indices:', error);
+            // Use defaults on error
+            setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
+          } finally {
+            setLoadingIndices(false);
+          }
+        } else {
+          // No pioneer API, use defaults
+          setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
+        }
       }
     }
-    
-    setSelectedAddress(address);
-    generateQrCode(address);
   };
 
   // Handle view on device - this is a security verification step
   const handleViewOnDevice = async () => {
-    if (!selectedPubkey || !pioneer.api) return;
+    if (!selectedPubkey || !app?.keepKeySdk) return;
     
     try {
       setViewingOnDevice(true);
       console.log('👁️ [Receive] Viewing on device for verification...');
+      console.log('📊 [Receive] Using indices - Change:', addressIndices?.changeIndex, 'Receive:', addressIndices?.receiveIndex);
+      console.log('🔐 [Receive] Network ID:', assetContext.networkId);
+      console.log('📝 [Receive] Script Type:', assetContext.scriptType);
       
-      // Get the xpub from the selected pubkey
-      const xpub = selectedPubkey.master || selectedPubkey.address;
-      
-      // First get the address indices
-      const addressInfo = await pioneer.api.GetChangeAddress({
-        network: assetContext.symbol || 'BTC',
-        xpub
-      });
-      
-      console.log('📊 [Receive] Address indices:', addressInfo);
-      
-      if (addressInfo?.data) {
-        setAddressIndices({
-          changeIndex: addressInfo.data.changeIndex || 0,
-          receiveIndex: addressInfo.data.receiveIndex || 0
-        });
-      }
-      
-      // Now display the address on the device for verification
-      // This is the critical security step - user must verify the address shown on device
-      const verifyResult = await pioneer.api.getAddress({
-        addressNList: selectedPubkey.pathMaster ? 
-          selectedPubkey.pathMaster.split('/').map(p => parseInt(p.replace("'", ""))) : 
-          [44, 0, 0, 0, 0], // Default path if not specified
-        coin: assetContext.symbol || 'BTC',
+      // Use the KeepKey SDK directly to get and display the address
+      const deviceAddress = await getAndVerifyAddress({
+        keepKeySdk: app.keepKeySdk,
+        networkId: assetContext.networkId,
+        pathMaster: selectedPubkey.pathMaster,
+        scriptType: selectedPubkey.scriptType || assetContext.scriptType,
+        receiveIndex: addressIndices?.receiveIndex || 0,
         showDisplay: true // CRITICAL: This shows the address on the device screen
       });
       
-      console.log('✅ [Receive] Address verified on device:', verifyResult);
+      console.log('✅ [Receive] Address from device:', deviceAddress);
+      
+      // Optionally verify against the expected address if we have one
+      const expectedAddress = selectedPubkey.address || selectedPubkey.master;
+      if (expectedAddress && deviceAddress !== expectedAddress) {
+        console.warn('⚠️ [Receive] Address mismatch!', {
+          device: deviceAddress,
+          expected: expectedAddress
+        });
+        // You might want to show an error to the user here
+        // For now, we'll use the device address as the source of truth
+      }
+      
+      // NOW it's safe to show the address after device verification
+      setSelectedAddress(deviceAddress);
+      generateQrCode(deviceAddress);
+      setAddressVerified(true);
       
     } catch (error) {
       console.error('❌ [Receive] Error viewing on device:', error);
+      setAddressVerified(false);
+      // Optionally show error message to user
     } finally {
       setViewingOnDevice(false);
     }
@@ -473,12 +542,12 @@ export function Receive({ onBackClick }: ReceiveProps) {
             {assetContext.networkName || assetContext.networkId?.split(':').pop() || 'Network'}
           </Badge>
           
-          {/* Pubkey Selector */}
+          {/* Pubkey Selector - Shows path only, NOT address */}
           <Box width="100%" maxW="sm" mt={4}>
-            <Text color="gray.400" fontSize="sm" mb={2}>Select Bitcoin Address</Text>
+            <Text color="gray.400" fontSize="sm" mb={2}>Select Address Path</Text>
             <select
-              value={selectedAddress}
-              onChange={handleAddressChange}
+              value={selectedPubkey?.pathMaster || ''}
+              onChange={handlePubkeyChange}
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -493,105 +562,121 @@ export function Receive({ onBackClick }: ReceiveProps) {
               }}
             >
               {assetContext.pubkeys?.map((pubkey: Pubkey) => {
-                const address = pubkey.address || pubkey.master || '';
                 return (
-                  <option key={address} value={address} style={{ background: '#111', color: 'white' }}>
-                    {pubkey.note || 'Bitcoin Address'} - {formatWithEllipsis(address, 20)}
+                  <option key={pubkey.pathMaster} value={pubkey.pathMaster} style={{ background: '#111', color: 'white' }}>
+                    {pubkey.note || 'Bitcoin'} - Path: {pubkey.pathMaster}
                   </option>
                 );
               })}
             </select>
           </Box>
 
-          {/* View on Device Button */}
-          <MotionBox
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.98 }}
-            mt={4}
-          >
-            <Button
-              onClick={handleViewOnDevice}
-              isLoading={viewingOnDevice}
-              loadingText="Viewing on Device..."
-              leftIcon={<FaEye />}
-              bg={theme.gold}
-              color="black"
-              _hover={{ bg: theme.goldHover }}
-              size="lg"
-              px={8}
-              fontWeight="bold"
+          {/* Display indices when available */}
+          {(loadingIndices || addressIndices) && (
+            <Box 
+              mt={3} 
+              p={3} 
+              bg="rgba(255, 215, 0, 0.05)" 
+              borderRadius="md" 
+              borderWidth="1px" 
+              borderColor={theme.border}
+              width="100%"
+              maxW="sm"
             >
-              View on Device
-            </Button>
-          </MotionBox>
-          
-          {/* Display indices if available */}
-          {addressIndices && (
-            <Box mt={2} textAlign="center">
-              <Text color="gray.400" fontSize="xs">
-                Change Index: {addressIndices.changeIndex} | Receive Index: {addressIndices.receiveIndex}
-              </Text>
+              {loadingIndices ? (
+                <Flex justify="center" align="center" height="40px">
+                  <Text color="gray.400" fontSize="sm">Loading indices...</Text>
+                </Flex>
+              ) : addressIndices ? (
+                <Flex justify="space-around" align="center">
+                  <VStack spacing={0}>
+                    <Text color="gray.400" fontSize="xs">Change Index</Text>
+                    <Text color={theme.gold} fontSize="lg" fontWeight="bold">
+                      {addressIndices.changeIndex}
+                    </Text>
+                  </VStack>
+                  <Box width="1px" height="40px" bg={theme.border} />
+                  <VStack spacing={0}>
+                    <Text color="gray.400" fontSize="xs">Receive Index</Text>
+                    <Text color={theme.gold} fontSize="lg" fontWeight="bold">
+                      {addressIndices.receiveIndex}
+                    </Text>
+                  </VStack>
+                </Flex>
+              ) : null}
             </Box>
           )}
 
-          {/* QR Code Section */}
-          <MotionBox
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            mt={6}
-            mb={6}
-          >
-            <Box
-              bg={theme.cardBg}
-              borderRadius="xl"
-              borderWidth="1px"
-              borderColor={theme.border}
-              overflow="hidden"
-              p={6}
-              width="100%"
-              maxW="sm"
-              boxShadow="lg"
-              backdropFilter="blur(10px)"
-              bgGradient={theme.glassGradient}
+          {/* QR Code Section - ONLY SHOW AFTER VERIFICATION */}
+          {addressVerified ? (
+            <MotionBox
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              mt={6}
+              mb={6}
             >
-              <VStack gap={4} align="center">
-                {/* QR Code */}
-                <Box
-                  bg="white"
-                  p={4}
-                  borderRadius="xl"
-                  width="200px"
-                  height="200px"
-                  position="relative"
-                >
-                  {qrCodeDataUrl ? (
-                    <Image src={qrCodeDataUrl} alt="QR Code" width="100%" height="100%" />
-                  ) : (
-                    <Skeleton width="100%" height="100%" />
-                  )}
-                </Box>
-                
-                {/* Address */}
-                <VStack width="100%" gap={2}>
-                  <Text color="gray.400" fontSize="sm">Address</Text>
-                  <Box 
-                    bg="rgba(0, 0, 0, 0.3)" 
-                    p={3}
-                    borderRadius="md"
-                    width="100%"
-                    position="relative"
-                    borderWidth="1px"
-                    borderColor={theme.border}
+              <Box
+                bg={theme.cardBg}
+                borderRadius="xl"
+                borderWidth="1px"
+                borderColor={theme.border}
+                overflow="hidden"
+                p={6}
+                width="100%"
+                maxW="sm"
+                boxShadow="lg"
+                backdropFilter="blur(10px)"
+                bgGradient={theme.glassGradient}
+              >
+                <VStack gap={4} align="center">
+                  {/* Success Badge */}
+                  <Badge 
+                    colorScheme="green" 
+                    variant="solid" 
+                    px={3} 
+                    py={1} 
+                    borderRadius="full"
                   >
-                    <Text 
-                      color="white" 
-                      fontSize="sm" 
-                      fontFamily="mono" 
-                      wordBreak="break-all"
+                    ✅ Address Verified on Device
+                  </Badge>
+                  
+                  {/* QR Code */}
+                  <Box
+                    bg="white"
+                    p={4}
+                    borderRadius="xl"
+                    width="200px"
+                    height="200px"
+                    position="relative"
+                  >
+                    {qrCodeDataUrl ? (
+                      <Image src={qrCodeDataUrl} alt="QR Code" width="100%" height="100%" />
+                    ) : (
+                      <Skeleton width="100%" height="100%" />
+                    )}
+                  </Box>
+                  
+                  {/* Address */}
+                  <VStack width="100%" gap={2}>
+                    <Text color="gray.400" fontSize="sm">Verified Address</Text>
+                    <Box 
+                      bg="rgba(0, 0, 0, 0.3)" 
+                      p={3}
+                      borderRadius="md"
+                      width="100%"
+                      position="relative"
+                      borderWidth="1px"
+                      borderColor={theme.border}
                     >
-                      {selectedAddress}
-                    </Text>
+                      <Text 
+                        color="white" 
+                        fontSize="sm" 
+                        fontFamily="mono" 
+                        wordBreak="break-all"
+                      >
+                        {selectedAddress}
+                      </Text>
                     
                     <Box position="absolute" top={2} right={2}>
                       <MotionBox
@@ -613,6 +698,63 @@ export function Receive({ onBackClick }: ReceiveProps) {
                 </VStack>
               </VStack>
             </Box>
+          </MotionBox>
+          ) : (
+            /* Show placeholder when address not verified */
+            <Box
+              mt={6}
+              mb={6}
+              p={8}
+              bg={theme.cardBg}
+              borderRadius="xl"
+              borderWidth="1px"
+              borderColor={theme.border}
+              width="100%"
+              maxW="sm"
+              textAlign="center"
+              opacity={0.7}
+            >
+              <VStack gap={4}>
+                <Box fontSize="48px">🔒</Box>
+                <Text color={theme.gold} fontWeight="bold" fontSize="lg">
+                  Address Not Yet Verified
+                </Text>
+                <Text color="gray.400" fontSize="sm">
+                  Please select an address path above and click "View on Device" to verify the address on your KeepKey before receiving funds.
+                </Text>
+                <Text color="orange.400" fontSize="xs" fontStyle="italic">
+                  ⚠️ Never receive funds without verifying the address on your device first!
+                </Text>
+              </VStack>
+            </Box>
+          )}
+          
+          {/* View on Device Button - At the bottom with eye icon */}
+          <MotionBox
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            mt={6}
+            width="100%"
+            maxW="sm"
+          >
+            <Button
+              onClick={handleViewOnDevice}
+              isLoading={viewingOnDevice}
+              loadingText="Viewing on Device..."
+              leftIcon={<FaEye />}
+              bg={theme.gold}
+              color="black"
+              _hover={{ bg: theme.goldHover }}
+              size="lg"
+              width="100%"
+              fontWeight="bold"
+              isDisabled={!selectedPubkey || loadingIndices || !addressIndices}
+            >
+              <Flex align="center" gap={2}>
+                <FaEye />
+                <Text>View on Device</Text>
+              </Flex>
+            </Button>
           </MotionBox>
                   
           {/* Show/Hide Details */}
