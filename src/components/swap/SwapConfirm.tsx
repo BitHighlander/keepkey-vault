@@ -4,6 +4,7 @@ import React from 'react';
 import { Box, Stack, HStack, VStack, Text, Button, Image } from '@chakra-ui/react';
 import { FaArrowDown, FaShieldAlt } from 'react-icons/fa';
 import { usePioneerContext } from '@/components/providers/pioneer';
+const { createMemo, parseMemo, normalizeSwapMemo, validateThorchainSwapMemo } = require('@pioneer-platform/pioneer-coins');
 
 interface SwapConfirmProps {
   fromAsset: any;

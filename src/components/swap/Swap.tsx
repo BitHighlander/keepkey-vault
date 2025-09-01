@@ -21,12 +21,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogRoot
+  DialogRoot,
+  Code
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle } from 'react-icons/fa';
+import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
 import CountUp from 'react-countup';
-import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG } from '@pioneer-platform/pioneer-coins'
+import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, validateThorchainSwapMemo } from '@pioneer-platform/pioneer-coins'
 import { NetworkIdToChain } from '@coinmasters/types'
 // @ts-ignore
 import { caipToNetworkId } from '@pioneer-platform/pioneer-caip';
@@ -202,7 +203,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [showDeviceVerificationDialog, setShowDeviceVerificationDialog] = useState(false);
   const [pendingSwap, setPendingSwap] = useState(false);
   const [vaultAddress, setVaultAddress] = useState<string | null>(null);
-  const [verificationStep, setVerificationStep] = useState<'destination' | 'swap'>('destination');
+  const [verificationStep, setVerificationStep] = useState<'destination' | 'vault' | 'swap'>('destination');
+  const [vaultVerified, setVaultVerified] = useState(false);
+  const [memoValid, setMemoValid] = useState<boolean | null>(null);
 
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
@@ -832,6 +835,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     console.log('🔄 ASSET CHANGE DETECTED - Resetting device verification');
     setHasViewedOnDevice(false);
     setDeviceVerificationError(null);
+    setVaultVerified(false);
+    setMemoValid(null);
   }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip]);
 
   // Only reset isMaxAmount when the INPUT asset changes (not output asset)
@@ -998,7 +1003,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         // Address verified successfully
         console.log('✅ Destination address verified successfully on device!');
         
-        // Get the THORChain vault address for display (but don't verify on device)
+        // Move to vault verification step
+        setVerificationStep('vault');
+        setIsVerifyingOnDevice(false);
+        
+        // Get the THORChain vault address
         const thorchainVault = quote?.inbound_address;
         if (!thorchainVault) {
           // If not in quote, fetch it
@@ -1019,10 +1028,27 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         }
         
         console.log('📱 THORChain vault address:', thorchainVault || vaultAddress);
-        console.log('🚀 Now building and executing swap...');
         
-        // Move directly to swap execution
-        setVerificationStep('swap');
+        // Validate the memo
+        if (quote?.memo) {
+          try {
+            console.log('🔍 Validating THORChain memo:', quote.memo);
+            const isValid = validateThorchainSwapMemo(quote.memo);
+            console.log('✅ Memo validation result:', isValid);
+            setMemoValid(isValid);
+            
+            if (!isValid) {
+              throw new Error('Invalid THORChain swap memo - transaction cancelled for safety');
+            }
+          } catch (memoError) {
+            console.error('❌ Memo validation failed:', memoError);
+            setMemoValid(false);
+            throw memoError;
+          }
+        }
+        
+        // Wait for user to verify vault and proceed
+        console.log('⏳ Waiting for user to verify vault and proceed...');
         setIsVerifyingOnDevice(true);
         
         // Check for dev flag to skip actual swap
@@ -1077,9 +1103,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setHasViewedOnDevice(true);
           setIsVerifyingOnDevice(false);
           setShowDeviceVerificationDialog(false);
+          setVaultVerified(false);
+          setMemoValid(null);
           
-          // Extract transaction ID
-          const txid = result?.txHash || result?.hash || result?.txid || result?.data?.result || result;
+          // Extract transaction ID and remove 0x prefix if present
+          let txid = result?.txHash || result?.hash || result?.txid || result?.data?.result || result;
+          
+          // Remove 0x prefix if present (for Ethereum transactions)
+          if (typeof txid === 'string' && txid.startsWith('0x')) {
+            txid = txid.slice(2);
+          }
+          
           console.log('🎉 Swap successful! Transaction ID:', txid);
           
           if (txid) {
@@ -1143,6 +1177,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               if (!isVerifyingOnDevice) {
                 setShowDeviceVerificationDialog(false);
                 setDeviceVerificationError(null);
+                setPendingSwap(false);
+                setVerificationStep('destination');
+                setVaultVerified(false);
+                setMemoValid(null);
               }
             }}
           />
@@ -1167,13 +1205,207 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               <FaShieldAlt color="#3182ce" size="20" />
               <Text fontSize="lg" fontWeight="bold">
                 {verificationStep === 'destination' ? 'Verify Destination Address' : 
+                 verificationStep === 'vault' ? 'Verify THORChain Router' :
                  'Confirm Swap Transaction'}
               </Text>
             </HStack>
             
             <VStack gap={4} align="stretch">
               {/* Show different content based on verification step */}
-              {verificationStep === 'swap' ? (
+              {verificationStep === 'vault' ? (
+                <>
+                  {/* VAULT VERIFICATION STEP */}
+                  <Box 
+                    bg="purple.900/30" 
+                    borderWidth="1px" 
+                    borderColor="purple.700/50" 
+                    borderRadius="lg" 
+                    p={4}
+                  >
+                    <VStack align="start" gap={3}>
+                      <HStack gap={3} align="start">
+                        <FaShieldAlt color="#b794f4" size="20" style={{ marginTop: '2px' }} />
+                        <VStack align="start" gap={2} flex={1}>
+                          <Text fontWeight="semibold" color="purple.300">
+                            THORChain Router Verification
+                          </Text>
+                          <Text fontSize="sm" color="gray.300">
+                            Your funds will be sent to the THORChain router/vault address below.
+                            This is the official THORChain vault that will process your swap.
+                          </Text>
+                        </VStack>
+                      </HStack>
+                      
+                      {/* Vault Address Display */}
+                      {vaultAddress && (
+                        <Box bg="gray.800" p={4} borderRadius="lg" width="full">
+                          <VStack align="start" gap={3}>
+                            <HStack justify="space-between" width="full">
+                              <Text fontSize="sm" color="gray.400">THORChain Vault:</Text>
+                              {vaultVerified && (
+                                <HStack gap={1}>
+                                  <Text fontSize="xs" color="green.400">Verified</Text>
+                                  <Box color="green.400">✓</Box>
+                                </HStack>
+                              )}
+                            </HStack>
+                            <Code 
+                              fontSize="sm" 
+                              bg="gray.900" 
+                              color="cyan.400" 
+                              p={3} 
+                              borderRadius="md" 
+                              width="full"
+                              wordBreak="break-all"
+                            >
+                              {vaultAddress}
+                            </Code>
+                            <Button
+                              as="a"
+                              href={(() => {
+                                // Determine the explorer URL based on the chain
+                                const fromSymbol = app?.assetContext?.symbol;
+                                if (fromSymbol === 'ETH' || fromSymbol === 'USDC' || fromSymbol === 'USDT') {
+                                  return `https://etherscan.io/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'BTC') {
+                                  return `https://mempool.space/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'BCH') {
+                                  return `https://blockchair.com/bitcoin-cash/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'LTC') {
+                                  return `https://blockchair.com/litecoin/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'DOGE') {
+                                  return `https://blockchair.com/dogecoin/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'AVAX') {
+                                  return `https://snowtrace.io/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'BNB') {
+                                  return `https://bscscan.com/address/${vaultAddress}`;
+                                } else if (fromSymbol === 'RUNE') {
+                                  return `https://runescan.io/address/${vaultAddress}`;
+                                } else {
+                                  // Default to THORChain's own explorer
+                                  return `https://thorchain.net/address/${vaultAddress}`;
+                                }
+                              })()}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              size="sm"
+                              variant="outline"
+                              colorScheme="blue"
+                              width="full"
+                              leftIcon={<FaExternalLinkAlt />}
+                              _hover={{
+                                bg: 'blue.900',
+                                borderColor: 'blue.400'
+                              }}
+                            >
+                              Verify on Explorer
+                            </Button>
+                            <Text fontSize="xs" color="gray.500" textAlign="center" width="full">
+                              Click to verify this is an official THORChain vault address
+                            </Text>
+                          </VStack>
+                        </Box>
+                      )}
+                      
+                      {/* Memo Display and Validation */}
+                      {quote?.memo && (
+                        <Box bg="gray.800" p={4} borderRadius="lg" width="full">
+                          <VStack align="start" gap={3}>
+                            <HStack justify="space-between" width="full">
+                              <Text fontSize="sm" color="gray.400">Swap Memo:</Text>
+                              {memoValid !== null && (
+                                <HStack gap={1}>
+                                  {memoValid ? (
+                                    <>
+                                      <Text fontSize="xs" color="green.400">Valid Memo</Text>
+                                      <Box color="green.400">✓</Box>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Text fontSize="xs" color="red.400">Invalid Memo</Text>
+                                      <Box color="red.400">✗</Box>
+                                    </>
+                                  )}
+                                </HStack>
+                              )}
+                            </HStack>
+                            <Code 
+                              fontSize="sm" 
+                              bg="gray.900" 
+                              color={memoValid === false ? 'red.400' : 'cyan.400'}
+                              p={3} 
+                              borderRadius="md" 
+                              width="full"
+                              wordBreak="break-all"
+                            >
+                              {quote.memo}
+                            </Code>
+                            <Text fontSize="xs" color="gray.500">
+                              This memo contains your swap instructions and destination address
+                            </Text>
+                          </VStack>
+                        </Box>
+                      )}
+                      
+                      {/* Warning for invalid memo */}
+                      {memoValid === false && (
+                        <Box 
+                          bg="red.900/50" 
+                          borderWidth="1px" 
+                          borderColor="red.500" 
+                          borderRadius="lg" 
+                          p={3}
+                        >
+                          <HStack gap={2}>
+                            <FaExclamationTriangle color="#fc8181" size="16" />
+                            <Text fontSize="sm" color="red.300">
+                              Invalid memo detected! This transaction will be cancelled for your safety.
+                            </Text>
+                          </HStack>
+                        </Box>
+                      )}
+                    </VStack>
+                  </Box>
+                  
+                  {/* Action Buttons */}
+                  <HStack gap={3} width="full">
+                    <Button
+                      variant="ghost"
+                      color="gray.500"
+                      _hover={{ bg: 'gray.800' }}
+                      onClick={() => {
+                        setShowDeviceVerificationDialog(false);
+                        setDeviceVerificationError(null);
+                        setPendingSwap(false);
+                        setVerificationStep('destination');
+                        setVaultVerified(false);
+                        setMemoValid(null);
+                      }}
+                      flex={1}
+                      isDisabled={isVerifyingOnDevice}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      bg="blue.500"
+                      color="white"
+                      _hover={{ bg: 'blue.600' }}
+                      _active={{ bg: 'blue.700' }}
+                      onClick={() => {
+                        if (memoValid !== false) {
+                          setVaultVerified(true);
+                          setVerificationStep('swap');
+                          setIsVerifyingOnDevice(true);
+                        }
+                      }}
+                      flex={1}
+                      isDisabled={memoValid === false || isVerifyingOnDevice}
+                    >
+                      Proceed with Swap
+                    </Button>
+                  </HStack>
+                </>
+              ) : verificationStep === 'swap' ? (
                 <>
                   {/* SWAP CONFIRMATION STEP */}
                   <Box 
@@ -1218,6 +1450,34 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             )}
                           </VStack>
                         </Box>
+                        
+                        {/* THORChain Memo Display with Validation */}
+                        {quote?.memo && (
+                          <Box bg="gray.800" p={3} borderRadius="md" width="full" mt={2}>
+                            <VStack align="start" gap={2}>
+                              <HStack justify="space-between" width="full">
+                                <Text fontSize="xs" color="gray.400">THORChain Memo:</Text>
+                                {memoValid && (
+                                  <HStack gap={1}>
+                                    <Text fontSize="xs" color="green.400">Valid</Text>
+                                    <Box color="green.400">✓</Box>
+                                  </HStack>
+                                )}
+                              </HStack>
+                              <Code 
+                                fontSize="xs" 
+                                bg="gray.900" 
+                                color="cyan.400" 
+                                p={2} 
+                                borderRadius="md" 
+                                width="full"
+                                wordBreak="break-all"
+                              >
+                                {quote.memo}
+                              </Code>
+                            </VStack>
+                          </Box>
+                        )}
                       </VStack>
                     </HStack>
                   </Box>
@@ -1242,6 +1502,32 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <Text fontSize="xs" color="gray.400" textAlign="center">
                         This will send {inputAmount} {app?.assetContext?.symbol} to THORChain for swapping
                       </Text>
+                      {/* Show decoded memo if available from transaction data */}
+                      {app?.unsignedTx?.data && (
+                        <Box width="full" mt={2}>
+                          <Text fontSize="xs" color="gray.500" mb={1}>Transaction Data (Memo):</Text>
+                          <Code 
+                            fontSize="xs" 
+                            bg="gray.800" 
+                            color="cyan.400" 
+                            p={2} 
+                            borderRadius="md" 
+                            width="full"
+                            wordBreak="break-all"
+                          >
+                            {(() => {
+                              try {
+                                const hexData = app.unsignedTx.data.startsWith('0x') 
+                                  ? app.unsignedTx.data.slice(2) 
+                                  : app.unsignedTx.data;
+                                return Buffer.from(hexData, 'hex').toString('utf8');
+                              } catch {
+                                return app.unsignedTx.data;
+                              }
+                            })()}
+                          </Code>
+                        </Box>
+                      )}
                     </VStack>
                   </Box>
                 </>
@@ -1478,6 +1764,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   inputAmount={inputAmount}
                   outputAmount={outputAmount}
                   outboundAssetContext={app?.outboundAssetContext}
+                  memo={quote?.memo}
+                  txData={app?.unsignedTx}
                   onClose={() => {
                     setShowSuccess(false);
                     setSuccessTxid('');

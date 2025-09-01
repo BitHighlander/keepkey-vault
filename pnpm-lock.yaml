@@ -36,8 +36,8 @@ importers:
         specifier: ^9.2.38
         version: 9.2.38
       '@pioneer-platform/pioneer-coins':
-        specifier: ^9.2.26
-        version: 9.2.26(@types/node@20.19.11)
+        specifier: ^9.3.2
+        version: 9.3.2(@types/node@20.19.11)
       '@pioneer-platform/thorchain-client':
         specifier: ^0.0.33
         version: 0.0.33(@types/node@20.19.11)
@@ -714,8 +714,8 @@ packages:
   '@pioneer-platform/pioneer-client@9.2.8':
     resolution: {integrity: sha512-csnKigbiE05vz9tbyPfS/nKXeQfL9VIbto+2PDZFhG55t1G542lvdLaMkl6VilNbJRYX66NgVoSWAUDmwGXl1g==}
 
-  '@pioneer-platform/pioneer-coins@9.2.26':
-    resolution: {integrity: sha512-oTXb/Le69YcViDLWzj8BAh0S0KrBQfw/FiA9DOyTJkhQ05Ze5vcQyUf/HfIRL6V2YWwU/uhkC6DmGM5Pw1bqNA==}
+  '@pioneer-platform/pioneer-coins@9.3.2':
+    resolution: {integrity: sha512-LQe9aEnoggSCWuYe0DHcGZLBGo2XpKUIsZieS9sPKTLyt/H4Vqud0poNaYRBJWy5pUyEfnxsA0FGX+uOrg2Ufg==}
 
   '@pioneer-platform/pioneer-discovery@0.0.18':
     resolution: {integrity: sha512-l0PqcMsk8BEIWchbpTbKLEekfWphn4zOQUMc1Tp2hRGQpYvhoo8SOkE2i+bJ922Jp3DD0OUf6VcgNqmQ08rhzg==}
@@ -4503,7 +4503,7 @@ snapshots:
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.11)
       '@pioneer-platform/pioneer-caip': 9.2.38
       '@pioneer-platform/pioneer-client': 9.2.8
-      '@pioneer-platform/pioneer-coins': 9.2.26(@types/node@20.19.11)
+      '@pioneer-platform/pioneer-coins': 9.3.2(@types/node@20.19.11)
       '@pioneer-platform/pioneer-discovery': 0.0.18(@types/node@20.19.11)(bufferutil@4.0.9)(utf-8-validate@5.0.10)
       '@pioneer-platform/pioneer-events': 8.3.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
       coinselect: 3.1.13
@@ -5277,7 +5277,7 @@ snapshots:
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.11)
       '@pioneer-platform/maya-network': 8.3.10(@types/node@20.19.11)
       '@pioneer-platform/pioneer-caip': 9.2.38
-      '@pioneer-platform/pioneer-coins': 9.2.26(@types/node@20.19.11)
+      '@pioneer-platform/pioneer-coins': 9.3.2(@types/node@20.19.11)
       axios: 1.11.0
       dotenv: 8.6.0
       rango-sdk: 0.1.71
@@ -5301,7 +5301,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  '@pioneer-platform/pioneer-coins@9.2.26(@types/node@20.19.11)':
+  '@pioneer-platform/pioneer-coins@9.3.2(@types/node@20.19.11)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.11)
       bignumber.js: 9.3.1
@@ -5345,7 +5345,7 @@ snapshots:
     dependencies:
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.11)
       '@pioneer-platform/pioneer-caip': 9.2.38
-      '@pioneer-platform/pioneer-coins': 9.2.26(@types/node@20.19.11)
+      '@pioneer-platform/pioneer-coins': 9.3.2(@types/node@20.19.11)
       axios: 1.11.0
       dotenv: 8.6.0
       rango-sdk: 0.1.71

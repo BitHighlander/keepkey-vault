@@ -21,7 +21,7 @@
     "@emotion/react": "^11.14.0",
     "@pioneer-platform/mayachain-client": "^0.0.37",
     "@pioneer-platform/pioneer-caip": "^9.2.38",
-    "@pioneer-platform/pioneer-coins": "^9.2.26",
+    "@pioneer-platform/pioneer-coins": "^9.3.2",
     "@pioneer-platform/thorchain-client": "^0.0.33",
     "@types/d3": "^7.4.3",
     "@types/qrcode": "^1.5.5",
