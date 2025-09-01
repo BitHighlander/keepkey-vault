@@ -17,7 +17,7 @@ import { Skeleton, SkeletonCircle } from '@/components/ui/skeleton';
 import { Avatar } from '@/components/ui/avatar';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import QRCode from 'qrcode';
-import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown } from 'react-icons/fa';
+import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 
 // Define animation keyframes
@@ -69,6 +69,9 @@ export function Receive({ onBackClick }: ReceiveProps) {
   const [hasCopied, setHasCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [addressIndices, setAddressIndices] = useState<{changeIndex: number, receiveIndex: number} | null>(null);
+  const [viewingOnDevice, setViewingOnDevice] = useState(false);
+  const [addressVerified, setAddressVerified] = useState(false);
 
   // Use the Pioneer context to get asset context
   const pioneer = usePioneerContext();
@@ -133,6 +136,51 @@ export function Receive({ onBackClick }: ReceiveProps) {
     
     setSelectedAddress(address);
     generateQrCode(address);
+  };
+
+  // Handle view on device - this is a security verification step
+  const handleViewOnDevice = async () => {
+    if (!selectedPubkey || !pioneer.api) return;
+    
+    try {
+      setViewingOnDevice(true);
+      console.log('👁️ [Receive] Viewing on device for verification...');
+      
+      // Get the xpub from the selected pubkey
+      const xpub = selectedPubkey.master || selectedPubkey.address;
+      
+      // First get the address indices
+      const addressInfo = await pioneer.api.GetChangeAddress({
+        network: assetContext.symbol || 'BTC',
+        xpub
+      });
+      
+      console.log('📊 [Receive] Address indices:', addressInfo);
+      
+      if (addressInfo?.data) {
+        setAddressIndices({
+          changeIndex: addressInfo.data.changeIndex || 0,
+          receiveIndex: addressInfo.data.receiveIndex || 0
+        });
+      }
+      
+      // Now display the address on the device for verification
+      // This is the critical security step - user must verify the address shown on device
+      const verifyResult = await pioneer.api.getAddress({
+        addressNList: selectedPubkey.pathMaster ? 
+          selectedPubkey.pathMaster.split('/').map(p => parseInt(p.replace("'", ""))) : 
+          [44, 0, 0, 0, 0], // Default path if not specified
+        coin: assetContext.symbol || 'BTC',
+        showDisplay: true // CRITICAL: This shows the address on the device screen
+      });
+      
+      console.log('✅ [Receive] Address verified on device:', verifyResult);
+      
+    } catch (error) {
+      console.error('❌ [Receive] Error viewing on device:', error);
+    } finally {
+      setViewingOnDevice(false);
+    }
   };
 
   // Copy to clipboard function
@@ -425,6 +473,67 @@ export function Receive({ onBackClick }: ReceiveProps) {
             {assetContext.networkName || assetContext.networkId?.split(':').pop() || 'Network'}
           </Badge>
           
+          {/* Pubkey Selector */}
+          <Box width="100%" maxW="sm" mt={4}>
+            <Text color="gray.400" fontSize="sm" mb={2}>Select Bitcoin Address</Text>
+            <select
+              value={selectedAddress}
+              onChange={handleAddressChange}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: theme.cardBg,
+                borderColor: theme.border,
+                borderWidth: '1px',
+                borderRadius: '6px',
+                color: 'white',
+                fontSize: '14px',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {assetContext.pubkeys?.map((pubkey: Pubkey) => {
+                const address = pubkey.address || pubkey.master || '';
+                return (
+                  <option key={address} value={address} style={{ background: '#111', color: 'white' }}>
+                    {pubkey.note || 'Bitcoin Address'} - {formatWithEllipsis(address, 20)}
+                  </option>
+                );
+              })}
+            </select>
+          </Box>
+
+          {/* View on Device Button */}
+          <MotionBox
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.98 }}
+            mt={4}
+          >
+            <Button
+              onClick={handleViewOnDevice}
+              isLoading={viewingOnDevice}
+              loadingText="Viewing on Device..."
+              leftIcon={<FaEye />}
+              bg={theme.gold}
+              color="black"
+              _hover={{ bg: theme.goldHover }}
+              size="lg"
+              px={8}
+              fontWeight="bold"
+            >
+              View on Device
+            </Button>
+          </MotionBox>
+          
+          {/* Display indices if available */}
+          {addressIndices && (
+            <Box mt={2} textAlign="center">
+              <Text color="gray.400" fontSize="xs">
+                Change Index: {addressIndices.changeIndex} | Receive Index: {addressIndices.receiveIndex}
+              </Text>
+            </Box>
+          )}
+
           {/* QR Code Section */}
           <MotionBox
             initial={{ opacity: 0, y: 20 }}
