@@ -108,7 +108,44 @@ export function Receive({ onBackClick }: ReceiveProps) {
       
       // Set initial pubkey but DON'T set address or generate QR until verified
       if (availablePubkeys.length > 0) {
-        const initialPubkey = availablePubkeys[0];
+        // For Bitcoin, prefer Segwit addresses
+        let initialPubkey = availablePubkeys[0];
+        
+        // Check if this is Bitcoin (BTC or similar)
+        const isBitcoin = assetContext.symbol === 'BTC' || 
+                         assetContext.name?.toLowerCase().includes('bitcoin') ||
+                         assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
+        
+        if (isBitcoin) {
+          // Find Native Segwit pubkey (Bech32 - bc1 addresses)
+          // Native Segwit uses BIP84 (m/84'/0'/0') and p2wpkh script type
+          const nativeSegwitPubkey = availablePubkeys.find(pk => 
+            (pk.note?.toLowerCase().includes('native') && pk.note?.toLowerCase().includes('segwit')) ||
+            pk.note?.toLowerCase() === 'segwit native' ||
+            (pk.pathMaster?.includes("84'") && pk.scriptType === 'p2wpkh') ||
+            pk.scriptType === 'p2wpkh'
+          );
+          
+          if (nativeSegwitPubkey) {
+            console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
+            initialPubkey = nativeSegwitPubkey;
+          } else {
+            // Fallback to any Segwit if Native not found
+            const anySegwitPubkey = availablePubkeys.find(pk => 
+              pk.note?.toLowerCase().includes('segwit') || 
+              pk.pathMaster?.includes("84'") ||
+              pk.pathMaster?.includes("49'") // P2SH-Segwit
+            );
+            
+            if (anySegwitPubkey) {
+              console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
+              initialPubkey = anySegwitPubkey;
+            } else {
+              console.log('⚠️ [Receive] No Segwit address found, using first available');
+            }
+          }
+        }
+        
         setSelectedPubkey(initialPubkey);
         // DO NOT set address or generate QR code until verified on device!
         
@@ -561,13 +598,77 @@ export function Receive({ onBackClick }: ReceiveProps) {
                 cursor: 'pointer'
               }}
             >
-              {assetContext.pubkeys?.map((pubkey: Pubkey) => {
-                return (
-                  <option key={pubkey.pathMaster} value={pubkey.pathMaster} style={{ background: '#111', color: 'white' }}>
-                    {pubkey.note || 'Bitcoin'} - Path: {pubkey.pathMaster}
-                  </option>
-                );
-              })}
+              {(() => {
+                // Sort pubkeys to show Segwit first for Bitcoin
+                let sortedPubkeys = assetContext.pubkeys || [];
+                
+                const isBitcoin = assetContext.symbol === 'BTC' || 
+                                assetContext.name?.toLowerCase().includes('bitcoin') ||
+                                assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
+                
+                if (isBitcoin && sortedPubkeys.length > 0) {
+                  // Sort to put Native Segwit first, then other Segwit, then Legacy
+                  sortedPubkeys = [...sortedPubkeys].sort((a: Pubkey, b: Pubkey) => {
+                    // Check for Native Segwit (Bech32)
+                    const aIsNativeSegwit = (a.note?.toLowerCase().includes('native') && a.note?.toLowerCase().includes('segwit')) ||
+                                           a.note?.toLowerCase() === 'segwit native' ||
+                                           (a.pathMaster?.includes("84'") && a.scriptType === 'p2wpkh') ||
+                                           a.scriptType === 'p2wpkh';
+                    const bIsNativeSegwit = (b.note?.toLowerCase().includes('native') && b.note?.toLowerCase().includes('segwit')) ||
+                                           b.note?.toLowerCase() === 'segwit native' ||
+                                           (b.pathMaster?.includes("84'") && b.scriptType === 'p2wpkh') ||
+                                           b.scriptType === 'p2wpkh';
+                    
+                    // Check for P2SH-Segwit (wrapped Segwit)
+                    const aIsP2SHSegwit = a.pathMaster?.includes("49'") || 
+                                         (a.note?.toLowerCase().includes('segwit') && !aIsNativeSegwit);
+                    const bIsP2SHSegwit = b.pathMaster?.includes("49'") || 
+                                         (b.note?.toLowerCase().includes('segwit') && !bIsNativeSegwit);
+                    
+                    // Native Segwit comes first
+                    if (aIsNativeSegwit && !bIsNativeSegwit) return -1;
+                    if (!aIsNativeSegwit && bIsNativeSegwit) return 1;
+                    
+                    // Then P2SH-Segwit
+                    if (aIsP2SHSegwit && !bIsP2SHSegwit) return -1;
+                    if (!aIsP2SHSegwit && bIsP2SHSegwit) return 1;
+                    
+                    return 0;
+                  });
+                }
+                
+                return sortedPubkeys.map((pubkey: Pubkey) => {
+                  // Check address type for labeling
+                  const isNativeSegwit = (pubkey.note?.toLowerCase().includes('native') && pubkey.note?.toLowerCase().includes('segwit')) ||
+                                        pubkey.note?.toLowerCase() === 'segwit native' ||
+                                        (pubkey.pathMaster?.includes("84'") && pubkey.scriptType === 'p2wpkh') ||
+                                        pubkey.scriptType === 'p2wpkh';
+                  
+                  const isP2SHSegwit = pubkey.pathMaster?.includes("49'") || 
+                                      (pubkey.note?.toLowerCase().includes('segwit') && !isNativeSegwit);
+                  
+                  let label = pubkey.note || 'Bitcoin';
+                  
+                  // Add appropriate labels for Bitcoin addresses
+                  if (isBitcoin) {
+                    if (isNativeSegwit) {
+                      label = `${label} (Recommended - Lowest Fees)`;
+                    } else if (isP2SHSegwit) {
+                      label = `${label} (Compatible Segwit)`;
+                    } else {
+                      label = `${label} (Legacy - Higher Fees)`;
+                    }
+                  }
+                  
+                  label = `${label} - Path: ${pubkey.pathMaster}`;
+                  
+                  return (
+                    <option key={pubkey.pathMaster} value={pubkey.pathMaster} style={{ background: '#111', color: 'white' }}>
+                      {label}
+                    </option>
+                  );
+                });
+              })()}
             </select>
           </Box>
 
