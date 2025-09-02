@@ -91,24 +91,26 @@ const DonutChart: React.FC<DonutChartProps> = ({
           
           return (
             <AnimatedSlice key={i} index={i} isActive={isActive}>
-              {/* Visible slice */}
-              <path
-                stroke="#ffffff22" // Lighter stroke for a 3D effect
-                strokeWidth={lightStrokeEffect}
-                fill={d.data.color || theme.gold}
-                d={arcGen(d) || ''}
-                opacity={activeIndex !== undefined && activeIndex !== null && !isActive ? 0.7 : 1}
-                style={{ transition: 'all 0.15s ease-in-out' }}
-              />
-              
-              {/* Invisible hit area for better hover detection */}
-              <path
-                d={hitAreaGenerator(d) || ''}
-                fill="transparent"
-                onMouseEnter={() => onHoverSlice && onHoverSlice(i)}
-                onMouseLeave={() => onHoverSlice && onHoverSlice(null)}
-                style={{ cursor: 'pointer' }}
-              />
+              <g>
+                {/* Visible slice */}
+                <path
+                  stroke="#ffffff22" // Lighter stroke for a 3D effect
+                  strokeWidth={lightStrokeEffect}
+                  fill={d.data.color || theme.gold}
+                  d={arcGen(d) || ''}
+                  opacity={activeIndex !== undefined && activeIndex !== null && !isActive ? 0.7 : 1}
+                  style={{ transition: 'all 0.15s ease-in-out' }}
+                />
+                
+                {/* Invisible hit area for better hover detection */}
+                <path
+                  d={hitAreaGenerator(d) || ''}
+                  fill="transparent"
+                  onMouseEnter={() => onHoverSlice && onHoverSlice(i)}
+                  onMouseLeave={() => onHoverSlice && onHoverSlice(null)}
+                  style={{ cursor: 'pointer' }}
+                />
+              </g>
             </AnimatedSlice>
           );
         })}

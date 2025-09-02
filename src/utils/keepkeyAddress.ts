@@ -45,9 +45,10 @@ export const networkIdToType: Record<string, string> = {
   'cosmos:cosmoshub-4': 'COSMOS',
   'cosmos:kaiyo-1': 'COSMOS',
   'cosmos:thorchain-mainnet-v1': 'THORCHAIN',
-  'eip155:1': 'EVM',
-  'eip155:137': 'EVM',
-  'eip155:*': 'EVM',
+  'eip155:1': 'EVM',      // Ethereum mainnet
+  'eip155:137': 'EVM',    // Polygon
+  'eip155:8453': 'EVM',   // BASE
+  'eip155:*': 'EVM',      // Catch-all for other EVM chains
   'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
   'zcash:main': 'UTXO',
 };
@@ -117,15 +118,27 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
     showDisplay = true
   } = params;
 
-  const networkType = networkIdToType[networkId];
+  // Check for network type - handle EIP155 chains dynamically
+  let networkType = networkIdToType[networkId];
   if (!networkType) {
-    throw new Error(`Unsupported network ID: ${networkId}`);
+    // Check if it's an EIP155 chain (any EVM chain)
+    if (networkId.startsWith('eip155:')) {
+      networkType = 'EVM';
+    } else {
+      throw new Error(`Unsupported network ID: ${networkId}`);
+    }
   }
 
   // Get the chain name and coin for this network
-  const chainName = NetworkIdToChain[networkId];
+  // For EIP155 networks, normalize to mainnet for chain lookup
+  let lookupNetworkId = networkId;
+  if (networkId.indexOf('eip155') >= 0) {
+    lookupNetworkId = 'eip155:1';
+  }
+  
+  const chainName = NetworkIdToChain[lookupNetworkId];
   if (!chainName) {
-    throw new Error(`Unknown network ID: ${networkId}`);
+    throw new Error(`Unknown network ID: ${lookupNetworkId}`);
   }
   
   const coin = COIN_MAP_KEEPKEY[chainName];

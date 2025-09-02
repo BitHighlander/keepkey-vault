@@ -14,6 +14,7 @@ export function AnimatedSlice({
   isActive = false,
   children,
 }: AnimatedSliceProps) {
+  // Ensure we only render valid SVG elements
   return (
     <motion.g
       initial={{ opacity: 0, scale: 0.25, transformOrigin: 'center' }}
@@ -33,7 +34,7 @@ export function AnimatedSlice({
       }}
       style={{ originX: 0, originY: 0 }}
     >
-      {children}
+      {React.isValidElement(children) ? children : <g>{children}</g>}
     </motion.g>
   );
 }
