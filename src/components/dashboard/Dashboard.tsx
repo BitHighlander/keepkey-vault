@@ -19,6 +19,7 @@ import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
+import { deduplicateBalances, deduplicateNetworks } from '@/utils/deduplicatePubkeys';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -197,8 +198,25 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     setLoading(true);
     try {
       if(app && app.dashboard) {
-        const dashboard = app.dashboard;
+        let dashboard = app.dashboard;
         console.log('📊 [Dashboard] Dashboard data received:', dashboard);
+        
+        // Deduplicate networks to prevent phantom balances
+        if (dashboard.networks) {
+          const originalNetworkCount = dashboard.networks.length;
+          dashboard = {
+            ...dashboard,
+            networks: deduplicateNetworks(dashboard.networks)
+          };
+          
+          if (originalNetworkCount !== dashboard.networks.length) {
+            console.log('🔍 [Dashboard] Deduplicated networks:', {
+              original: originalNetworkCount,
+              deduplicated: dashboard.networks.length,
+              removed: originalNetworkCount - dashboard.networks.length
+            });
+          }
+        }
         
         // Compare new total value with previous total value
         const newTotalValue = dashboard.totalValueUsd || 0;
@@ -735,7 +753,18 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             // Filter tokens from balances if we have balances
             let tokenBalances: any[] = [];
             if (app?.balances) {
-              tokenBalances = app.balances.filter((balance: any) => {
+              // First deduplicate all balances to prevent phantom values
+              const deduplicatedBalances = deduplicateBalances(app.balances);
+              
+              if (deduplicatedBalances.length !== app.balances.length) {
+                console.log('🔍 [Dashboard] Deduplicated balances:', {
+                  original: app.balances.length,
+                  deduplicated: deduplicatedBalances.length,
+                  removed: app.balances.length - deduplicatedBalances.length
+                });
+              }
+              
+              tokenBalances = deduplicatedBalances.filter((balance: any) => {
                 // Check explicit type first
                 if (balance.type === 'token') return true;
                 

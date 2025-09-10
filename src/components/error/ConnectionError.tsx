@@ -156,4 +156,4 @@ const ConnectionError: React.FC<ConnectionErrorProps> = ({ onRetry }) => {
   );
 };
 
-export default ConnectionError; 
+export default ConnectionError;

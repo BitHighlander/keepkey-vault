@@ -13,6 +13,7 @@ import { LogoIcon } from '@/components/logo'
 import { keyframes } from '@emotion/react'
 import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
+import ConnectionError from '@/components/error/ConnectionError'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -36,6 +37,7 @@ export function Provider({ children }: ProviderProps) {
   const [pioneerSdk, setPioneerSdk] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [isVaultUnavailable, setIsVaultUnavailable] = useState(false);
 
   useEffect(() => {
     // Prevent multiple initializations
@@ -257,8 +259,20 @@ export function Provider({ children }: ProviderProps) {
         };
         
         console.log('🔧 Setting default asset contexts...');
-        await appInit.setAssetContext(defaultInput);
-        await appInit.setOutboundAssetContext(defaultOutput);
+        try {
+          await appInit.setAssetContext(defaultInput);
+          await appInit.setOutboundAssetContext(defaultOutput);
+        } catch (contextError: any) {
+          console.error('❌ Failed to set asset context:', contextError);
+          if (contextError?.message?.includes('Cannot set asset context') || 
+              contextError?.message?.includes('no pubkeys loaded')) {
+            console.error('❌ KeepKey Desktop is not running or wallet is not initialized');
+            setIsVaultUnavailable(true);
+            setIsLoading(false);
+            return;
+          }
+          throw contextError;
+        }
 
         // Try to get some data to verify the SDK is working
         try {
@@ -369,7 +383,16 @@ export function Provider({ children }: ProviderProps) {
           name: (e as Error)?.name
         });
         PIONEER_INITIALIZED = false; // Reset flag on error
-        setError(e as Error);
+        
+        // Check if it's a vault connectivity issue
+        if ((e as Error)?.message?.includes('Cannot set asset context') || 
+            (e as Error)?.message?.includes('no pubkeys loaded') ||
+            (e as Error)?.message?.includes('Failed to initialize Pioneer SDK')) {
+          console.error('❌ KeepKey Desktop is not running or wallet is not initialized');
+          setIsVaultUnavailable(true);
+        } else {
+          setError(e as Error);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -377,6 +400,30 @@ export function Provider({ children }: ProviderProps) {
 
     initPioneerSDK();
   }, []);
+
+  // Handler for retry button in ConnectionError
+  const handleRetry = () => {
+    console.log('🔄 Retrying vault connection...');
+    setIsVaultUnavailable(false);
+    setError(null);
+    setIsLoading(true);
+    PIONEER_INITIALIZED = false;
+    // Force a re-render and re-run the effect
+    setPioneerSdk(null);
+    // Trigger re-initialization
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
+
+  // Show connection error if vault is unavailable
+  if (isVaultUnavailable) {
+    return (
+      <ChakraProvider>
+        <ConnectionError onRetry={handleRetry} />
+      </ChakraProvider>
+    );
+  }
 
   if (error) {
     return (

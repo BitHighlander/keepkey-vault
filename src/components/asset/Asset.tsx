@@ -34,6 +34,7 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
 import { ReportDialog } from './ReportDialog';
+import { deduplicatePubkeys } from '@/utils/deduplicatePubkeys';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -767,13 +768,25 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                 </VStack>
 
                 {/* Address Info - Show all pubkeys/xpubs */}
-                {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
-                  <VStack align="stretch" gap={3}>
-                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                      Wallet Information ({assetContext.pubkeys.length} account{assetContext.pubkeys.length > 1 ? 's' : ''})
-                    </Text>
-                    <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
-                      {assetContext.pubkeys.map((pubkey: any, index: number) => (
+                {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (() => {
+                  // Deduplicate pubkeys to prevent phantom display
+                  const uniquePubkeys = deduplicatePubkeys(assetContext.pubkeys);
+                  
+                  if (uniquePubkeys.length !== assetContext.pubkeys.length) {
+                    console.log('🔍 [Asset] Deduplicated pubkeys:', {
+                      original: assetContext.pubkeys.length,
+                      deduplicated: uniquePubkeys.length,
+                      removed: assetContext.pubkeys.length - uniquePubkeys.length
+                    });
+                  }
+                  
+                  return (
+                    <VStack align="stretch" gap={3}>
+                      <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                        Wallet Information ({uniquePubkeys.length} account{uniquePubkeys.length > 1 ? 's' : ''})
+                      </Text>
+                      <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
+                        {uniquePubkeys.map((pubkey: any, index: number) => (
                         <Box 
                           key={index}
                           p={3}
@@ -809,7 +822,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                       ))}
                     </VStack>
                   </VStack>
-                )}
+                  );
+                })()}
 
                 {/* Explorer Links */}
                 {assetContext.explorer && (
@@ -970,13 +984,25 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
               </VStack>
 
               {/* Address Info - Show all pubkeys/xpubs */}
-              {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
-                <VStack align="stretch" gap={3}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                    Wallet Information ({assetContext.pubkeys.length} account{assetContext.pubkeys.length > 1 ? 's' : ''})
-                  </Text>
-                  <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
-                    {assetContext.pubkeys.map((pubkey: any, index: number) => (
+              {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (() => {
+                // Deduplicate pubkeys to prevent phantom display
+                const uniquePubkeys = deduplicatePubkeys(assetContext.pubkeys);
+                
+                if (uniquePubkeys.length !== assetContext.pubkeys.length) {
+                  console.log('🔍 [Asset] Deduplicated pubkeys (second location):', {
+                    original: assetContext.pubkeys.length,
+                    deduplicated: uniquePubkeys.length,
+                    removed: assetContext.pubkeys.length - uniquePubkeys.length
+                  });
+                }
+                
+                return (
+                  <VStack align="stretch" gap={3}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                      Wallet Information ({uniquePubkeys.length} account{uniquePubkeys.length > 1 ? 's' : ''})
+                    </Text>
+                    <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
+                      {uniquePubkeys.map((pubkey: any, index: number) => (
                       <Box 
                         key={index}
                         p={3}
@@ -1012,7 +1038,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                     ))}
                   </VStack>
                 </VStack>
-              )}
+                );
+              })()}
 
               {/* Explorer Links */}
               {assetContext.explorer && (

@@ -21,6 +21,7 @@ import QRCode from 'qrcode';
 import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getAndVerifyAddress } from '@/utils/keepkeyAddress';
+import { deduplicatePubkeys } from '@/utils/deduplicatePubkeys';
 
 // Define animation keyframes
 const pulseRing = keyframes`
@@ -104,7 +105,18 @@ export function Receive({ onBackClick }: ReceiveProps) {
     setLoading(true);
     
     try {
-      const availablePubkeys = (assetContext.pubkeys || []) as Pubkey[];
+      // Deduplicate pubkeys to prevent duplicate addresses
+      const rawPubkeys = (assetContext.pubkeys || []) as Pubkey[];
+      const availablePubkeys = deduplicatePubkeys(rawPubkeys);
+      
+      if (availablePubkeys.length !== rawPubkeys.length) {
+        console.log('🔍 [Receive] Deduplicated pubkeys:', {
+          original: rawPubkeys.length,
+          deduplicated: availablePubkeys.length,
+          removed: rawPubkeys.length - availablePubkeys.length
+        });
+      }
+      
       console.log('📊 [Receive] Available pubkeys:', availablePubkeys);
       
       // Set initial pubkey but DON'T set address or generate QR until verified
@@ -244,23 +256,36 @@ export function Receive({ onBackClick }: ReceiveProps) {
 
   // Handle view on device - this is a security verification step
   const handleViewOnDevice = async () => {
-    if (!selectedPubkey || !app?.keepKeySdk) return;
+    console.log('🔐 [Receive] handleViewOnDevice called');
+    console.log('🔍 [Receive] selectedPubkey:', selectedPubkey);
+    console.log('🔍 [Receive] app?.keepKeySdk:', !!app?.keepKeySdk);
+    
+    if (!selectedPubkey || !app?.keepKeySdk) {
+      console.error('❌ [Receive] Missing requirements:', {
+        selectedPubkey: !!selectedPubkey,
+        keepKeySdk: !!app?.keepKeySdk
+      });
+      return;
+    }
     
     try {
       setViewingOnDevice(true);
       console.log('👁️ [Receive] Viewing on device for verification...');
       console.log('📊 [Receive] Using indices - Change:', addressIndices?.changeIndex, 'Receive:', addressIndices?.receiveIndex);
       console.log('🔐 [Receive] Network ID:', assetContext.networkId);
-      console.log('📏 [Receive] Script Type:', assetContext.scriptType);
+      console.log('📏 [Receive] Script Type from pubkey:', selectedPubkey.scriptType);
+      console.log('📏 [Receive] Script Type from context:', assetContext.scriptType);
+      console.log('📏 [Receive] Final Script Type:', selectedPubkey.scriptType || assetContext.scriptType);
+      console.log('🔍 [Receive] PathMaster being used:', selectedPubkey.pathMaster);
       
-      // Use the KeepKey SDK directly to get and display the address
+      // Use our wrapper function which now properly handles everything
       const deviceAddress = await getAndVerifyAddress({
         keepKeySdk: app.keepKeySdk,
         networkId: assetContext.networkId,
         pathMaster: selectedPubkey.pathMaster,
         scriptType: selectedPubkey.scriptType || assetContext.scriptType,
         receiveIndex: addressIndices?.receiveIndex || 0,
-        showDisplay: true // CRITICAL: This shows the address on the device screen
+        showDisplay: true
       });
       
       console.log('✅ [Receive] Address from device:', deviceAddress);
@@ -281,10 +306,18 @@ export function Receive({ onBackClick }: ReceiveProps) {
       generateQrCode(deviceAddress);
       setAddressVerified(true);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ [Receive] Error viewing on device:', error);
+      console.error('❌ [Receive] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        code: error?.code
+      });
       setAddressVerified(false);
-      // Optionally show error message to user
+      
+      // Show user-friendly error message
+      alert(`Failed to display address on device: ${error?.message || 'Unknown error'}. Please ensure your device is connected and unlocked.`);
     } finally {
       setViewingOnDevice(false);
     }
@@ -582,7 +615,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                 <Button
                   onClick={handleViewOnDevice}
                   isLoading={viewingOnDevice}
-                  loadingText="Verifying on Device..."
+                  loadingText="Viewing on Device..."
                   leftIcon={<FaEye />}
                   bg="linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"
                   color="black"
@@ -738,8 +771,16 @@ export function Receive({ onBackClick }: ReceiveProps) {
                 }}
               >
                 {(() => {
-                  // Sort pubkeys to show Segwit first for Bitcoin
-                  let sortedPubkeys = assetContext.pubkeys || [];
+                  // Deduplicate and sort pubkeys to show Segwit first for Bitcoin
+                  const rawPubkeys = assetContext.pubkeys || [];
+                  let sortedPubkeys = deduplicatePubkeys(rawPubkeys);
+                  
+                  if (sortedPubkeys.length !== rawPubkeys.length) {
+                    console.log('🔍 [Receive] Deduplicated pubkeys in selector:', {
+                      original: rawPubkeys.length,
+                      deduplicated: sortedPubkeys.length
+                    });
+                  }
                   
                   const isBitcoin = assetContext.symbol === 'BTC' || 
                                   assetContext.name?.toLowerCase().includes('bitcoin') ||
