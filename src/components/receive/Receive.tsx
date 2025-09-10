@@ -128,40 +128,98 @@ export function Receive({ onBackClick }: ReceiveProps) {
       
       // Set initial pubkey but DON'T set address or generate QR until verified
       if (availablePubkeys.length > 0) {
-        // For Bitcoin, prefer Segwit addresses
         let initialPubkey = availablePubkeys[0];
         
-        // Check if this is Bitcoin (BTC or similar)
-        const isBitcoin = assetContext.symbol === 'BTC' || 
-                         assetContext.name?.toLowerCase().includes('bitcoin') ||
-                         assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
-        
-        if (isBitcoin) {
-          // Find Native Segwit pubkey (Bech32 - bc1 addresses)
-          // Native Segwit uses BIP84 (m/84'/0'/0') and p2wpkh script type
-          const nativeSegwitPubkey = availablePubkeys.find(pk => 
-            (pk.note?.toLowerCase().includes('native') && pk.note?.toLowerCase().includes('segwit')) ||
-            pk.note?.toLowerCase() === 'segwit native' ||
-            (pk.pathMaster?.includes("84'") && pk.scriptType === 'p2wpkh') ||
-            pk.scriptType === 'p2wpkh'
+        // Check if pubkeyContext is set and matches one of our pubkeys
+        if (app?.pubkeyContext) {
+          console.log('🔐 [Receive] Checking pubkeyContext:', app.pubkeyContext);
+          
+          // Find matching pubkey by various properties
+          const contextPubkey = availablePubkeys.find(pk => 
+            pk.address === app.pubkeyContext.address ||
+            pk.pathMaster === app.pubkeyContext.pathMaster ||
+            pk.path === app.pubkeyContext.path ||
+            pk.master === app.pubkeyContext.master ||
+            pk.pubkey === app.pubkeyContext.pubkey
           );
           
-          if (nativeSegwitPubkey) {
-            console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
-            initialPubkey = nativeSegwitPubkey;
+          if (contextPubkey) {
+            console.log('✅ [Receive] Using pubkey from context:', contextPubkey);
+            initialPubkey = contextPubkey;
           } else {
-            // Fallback to any Segwit if Native not found
-            const anySegwitPubkey = availablePubkeys.find(pk => 
-              pk.note?.toLowerCase().includes('segwit') || 
-              pk.pathMaster?.includes("84'") ||
-              pk.pathMaster?.includes("49'") // P2SH-Segwit
+            console.log('⚠️ [Receive] No matching pubkey found for context, using default selection');
+            
+            // For Bitcoin, prefer Segwit addresses
+            const isBitcoin = assetContext.symbol === 'BTC' || 
+                             assetContext.name?.toLowerCase().includes('bitcoin') ||
+                             assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
+            
+            if (isBitcoin) {
+              // Find Native Segwit pubkey (Bech32 - bc1 addresses)
+              // Native Segwit uses BIP84 (m/84'/0'/0') and p2wpkh script type
+              const nativeSegwitPubkey = availablePubkeys.find(pk => 
+                (pk.note?.toLowerCase().includes('native') && pk.note?.toLowerCase().includes('segwit')) ||
+                pk.note?.toLowerCase() === 'segwit native' ||
+                (pk.pathMaster?.includes("84'") && pk.scriptType === 'p2wpkh') ||
+                pk.scriptType === 'p2wpkh'
+              );
+              
+              if (nativeSegwitPubkey) {
+                console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
+                initialPubkey = nativeSegwitPubkey;
+              } else {
+                // Fallback to any Segwit if Native not found
+                const anySegwitPubkey = availablePubkeys.find(pk => 
+                  pk.note?.toLowerCase().includes('segwit') || 
+                  pk.pathMaster?.includes("84'") ||
+                  pk.pathMaster?.includes("49'") // P2SH-Segwit
+                );
+                
+                if (anySegwitPubkey) {
+                  console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
+                  initialPubkey = anySegwitPubkey;
+                } else {
+                  console.log('⚠️ [Receive] No Segwit address found, using first available');
+                }
+              }
+            }
+          }
+        } else {
+          // No pubkeyContext set, use default selection logic
+          console.log('ℹ️ [Receive] No pubkeyContext set, using default selection');
+          
+          // Check if this is Bitcoin (BTC or similar)
+          const isBitcoin = assetContext.symbol === 'BTC' || 
+                           assetContext.name?.toLowerCase().includes('bitcoin') ||
+                           assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
+          
+          if (isBitcoin) {
+            // Find Native Segwit pubkey (Bech32 - bc1 addresses)
+            // Native Segwit uses BIP84 (m/84'/0'/0') and p2wpkh script type
+            const nativeSegwitPubkey = availablePubkeys.find(pk => 
+              (pk.note?.toLowerCase().includes('native') && pk.note?.toLowerCase().includes('segwit')) ||
+              pk.note?.toLowerCase() === 'segwit native' ||
+              (pk.pathMaster?.includes("84'") && pk.scriptType === 'p2wpkh') ||
+              pk.scriptType === 'p2wpkh'
             );
             
-            if (anySegwitPubkey) {
-              console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
-              initialPubkey = anySegwitPubkey;
+            if (nativeSegwitPubkey) {
+              console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
+              initialPubkey = nativeSegwitPubkey;
             } else {
-              console.log('⚠️ [Receive] No Segwit address found, using first available');
+              // Fallback to any Segwit if Native not found
+              const anySegwitPubkey = availablePubkeys.find(pk => 
+                pk.note?.toLowerCase().includes('segwit') || 
+                pk.pathMaster?.includes("84'") ||
+                pk.pathMaster?.includes("49'") // P2SH-Segwit
+              );
+              
+              if (anySegwitPubkey) {
+                console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
+                initialPubkey = anySegwitPubkey;
+              } else {
+                console.log('⚠️ [Receive] No Segwit address found, using first available');
+              }
             }
           }
         }
@@ -218,6 +276,13 @@ export function Receive({ onBackClick }: ReceiveProps) {
       
       if (result) {
         setSelectedPubkey(result as Pubkey);
+        
+        // Update the pubkeyContext when user changes selection
+        if (app?.setPubkeyContext) {
+          console.log('🔐 [Receive] Updating pubkey context:', result);
+          await app.setPubkeyContext(result);
+        }
+        
         // Reset verification state when changing selection
         setAddressVerified(false);
         setSelectedAddress('');

@@ -29,7 +29,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaFileExport } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaFileExport, FaWallet } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
@@ -767,7 +767,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                   </HStack>
                 </VStack>
 
-                {/* Address Info - Show all pubkeys/xpubs */}
+                {/* Address Info - Show all pubkeys/xpubs with selection */}
                 {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (() => {
                   // Deduplicate pubkeys to prevent phantom display
                   const uniquePubkeys = deduplicatePubkeys(assetContext.pubkeys);
@@ -785,43 +785,133 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                       <Text color="gray.400" fontSize="sm" fontWeight="medium">
                         Wallet Information ({uniquePubkeys.length} account{uniquePubkeys.length > 1 ? 's' : ''})
                       </Text>
-                      <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
-                        {uniquePubkeys.map((pubkey: any, index: number) => (
-                        <Box 
-                          key={index}
-                          p={3}
-                          bg={theme.bg}
-                          borderRadius="lg"
-                          borderWidth="1px"
-                          borderColor={theme.border}
-                        >
-                          <VStack align="stretch" gap={2}>
-                            <HStack justify="space-between">
-                              <Text color="gray.400" fontSize="sm">
-                                {assetContext.networkId?.startsWith('bip122:') ? `XPUB ${index + 1}` : `Address ${index + 1}`}
-                              </Text>
-                              {pubkey.note && (
-                                <Text color="gray.500" fontSize="xs">
-                                  {pubkey.note}
-                                </Text>
-                              )}
-                            </HStack>
-                            <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                              {assetContext.networkId?.startsWith('bip122:') 
-                                ? pubkey.pubkey 
-                                : pubkey.address}
-                            </Text>
-                            <HStack justify="space-between" mt={1}>
-                              <Text color="gray.400" fontSize="xs">Path</Text>
-                              <Text color="white" fontSize="xs" fontFamily="mono">
-                                {pubkey.path}
-                              </Text>
-                            </HStack>
-                          </VStack>
+                      
+                      {/* Pubkey Context Selector */}
+                      {uniquePubkeys.length > 1 && (
+                        <Box>
+                          <Text color="gray.400" fontSize="xs" mb={2}>Active Account</Text>
+                          <select
+                            value={app?.pubkeyContext?.pathMaster || app?.pubkeyContext?.path || ''}
+                            onChange={async (e) => {
+                              const selectedPath = e.target.value;
+                              const selectedPubkey = uniquePubkeys.find((pk: any) => 
+                                pk.pathMaster === selectedPath || pk.path === selectedPath
+                              );
+                              if (selectedPubkey && app?.setPubkeyContext) {
+                                console.log('🔐 [Asset] Setting pubkey context:', selectedPubkey);
+                                await app.setPubkeyContext(selectedPubkey);
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              backgroundColor: theme.bg,
+                              borderColor: theme.border,
+                              borderWidth: '1px',
+                              borderRadius: '8px',
+                              color: 'white',
+                              fontSize: '14px',
+                              outline: 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            {uniquePubkeys.map((pubkey: any, index: number) => {
+                              const path = pubkey.pathMaster || pubkey.path;
+                              const label = pubkey.note || `Account ${index + 1}`;
+                              return (
+                                <option key={path} value={path} style={{ background: '#111', color: 'white' }}>
+                                  {label} - {path}
+                                </option>
+                              );
+                            })}
+                          </select>
                         </Box>
-                      ))}
+                      )}
+                      
+                      <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
+                        {uniquePubkeys.map((pubkey: any, index: number) => {
+                          const isActive = app?.pubkeyContext?.pathMaster === pubkey.pathMaster || 
+                                         app?.pubkeyContext?.path === pubkey.path ||
+                                         app?.pubkeyContext?.address === pubkey.address ||
+                                         app?.pubkeyContext?.master === pubkey.master ||
+                                         app?.pubkeyContext?.pubkey === pubkey.pubkey;
+                          return (
+                            <Box 
+                              key={index}
+                              p={3}
+                              bg={isActive ? 'rgba(255, 215, 0, 0.05)' : theme.bg}
+                              borderRadius="lg"
+                              borderWidth="2px"
+                              borderColor={isActive ? theme.gold : theme.border}
+                              position="relative"
+                              boxShadow={isActive ? `0 0 20px rgba(255, 215, 0, 0.4)` : 'none'}
+                              cursor="pointer"
+                              transition="all 0.2s ease"
+                              _hover={{
+                                borderColor: isActive ? theme.gold : 'rgba(255, 215, 0, 0.5)',
+                                bg: isActive ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 215, 0, 0.02)',
+                                transform: 'translateY(-2px)',
+                                boxShadow: isActive ? `0 0 25px rgba(255, 215, 0, 0.5)` : '0 4px 12px rgba(0, 0, 0, 0.4)'
+                              }}
+                              onClick={async () => {
+                                if (!isActive && app?.setPubkeyContext) {
+                                  console.log('🔐 [Asset] Setting pubkey context via click:', pubkey);
+                                  await app.setPubkeyContext(pubkey);
+                                  // Force re-render by updating state
+                                  setLastSync(Date.now());
+                                }
+                              }}
+                            >
+                              {isActive && (
+                                <Badge
+                                  position="absolute"
+                                  top={2}
+                                  right={2}
+                                  colorScheme="yellow"
+                                  variant="solid"
+                                  fontSize="xs"
+                                  bg={theme.gold}
+                                  color="black"
+                                >
+                                  Active
+                                </Badge>
+                              )}
+                              <VStack align="stretch" gap={2}>
+                                <HStack justify="space-between">
+                                  <HStack gap={2}>
+                                    <Icon 
+                                      as={FaWallet} 
+                                      color={isActive ? theme.gold : "gray.400"} 
+                                      boxSize={3}
+                                    />
+                                    <Text color={isActive ? theme.gold : "gray.400"} fontSize="sm" fontWeight={isActive ? "semibold" : "normal"}>
+                                      {assetContext.networkId?.startsWith('bip122:') ? `XPUB ${index + 1}` : `Address ${index + 1}`}
+                                    </Text>
+                                  </HStack>
+                                  {pubkey.note && (
+                                    <Text color={isActive ? theme.gold : "gray.500"} fontSize="xs">
+                                      {pubkey.note}
+                                    </Text>
+                                  )}
+                                </HStack>
+                                <Text color={isActive ? "white" : "gray.300"} fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                                  {assetContext.networkId?.startsWith('bip122:') 
+                                    ? pubkey.pubkey 
+                                    : pubkey.address}
+                                </Text>
+                                <HStack justify="space-between" mt={1}>
+                                  <Text color={isActive ? theme.gold : "gray.400"} fontSize="xs">Path</Text>
+                                  <Text color={isActive ? "white" : "gray.300"} fontSize="xs" fontFamily="mono">
+                                    {pubkey.path || pubkey.pathMaster}
+                                  </Text>
+                                </HStack>
+                              </VStack>
+                            </Box>
+                          );
+                        })}
+                      </VStack>
                     </VStack>
-                  </VStack>
                   );
                 })()}
 
@@ -983,7 +1073,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                 </HStack>
               </VStack>
 
-              {/* Address Info - Show all pubkeys/xpubs */}
+              {/* Address Info - Show all pubkeys/xpubs with selection */}
               {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (() => {
                 // Deduplicate pubkeys to prevent phantom display
                 const uniquePubkeys = deduplicatePubkeys(assetContext.pubkeys);
@@ -1001,43 +1091,133 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                     <Text color="gray.400" fontSize="sm" fontWeight="medium">
                       Wallet Information ({uniquePubkeys.length} account{uniquePubkeys.length > 1 ? 's' : ''})
                     </Text>
-                    <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
-                      {uniquePubkeys.map((pubkey: any, index: number) => (
-                      <Box 
-                        key={index}
-                        p={3}
-                        bg={theme.bg}
-                        borderRadius="lg"
-                        borderWidth="1px"
-                        borderColor={theme.border}
-                      >
-                        <VStack align="stretch" gap={2}>
-                          <HStack justify="space-between">
-                            <Text color="gray.400" fontSize="sm">
-                              {assetContext.networkId?.startsWith('bip122:') ? `XPUB ${index + 1}` : `Address ${index + 1}`}
-                            </Text>
-                            {pubkey.note && (
-                              <Text color="gray.500" fontSize="xs">
-                                {pubkey.note}
-                              </Text>
-                            )}
-                          </HStack>
-                          <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                            {assetContext.networkId?.startsWith('bip122:') 
-                              ? pubkey.pubkey 
-                              : pubkey.address}
-                          </Text>
-                          <HStack justify="space-between" mt={1}>
-                            <Text color="gray.400" fontSize="xs">Path</Text>
-                            <Text color="white" fontSize="xs" fontFamily="mono">
-                              {pubkey.path}
-                            </Text>
-                          </HStack>
-                        </VStack>
+                    
+                    {/* Pubkey Context Selector for mobile */}
+                    {uniquePubkeys.length > 1 && (
+                      <Box>
+                        <Text color="gray.400" fontSize="xs" mb={2}>Active Account</Text>
+                        <select
+                          value={app?.pubkeyContext?.pathMaster || app?.pubkeyContext?.path || ''}
+                          onChange={async (e) => {
+                            const selectedPath = e.target.value;
+                            const selectedPubkey = uniquePubkeys.find((pk: any) => 
+                              pk.pathMaster === selectedPath || pk.path === selectedPath
+                            );
+                            if (selectedPubkey && app?.setPubkeyContext) {
+                              console.log('🔐 [Asset] Setting pubkey context (mobile):', selectedPubkey);
+                              await app.setPubkeyContext(selectedPubkey);
+                              setLastSync(Date.now());
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            backgroundColor: theme.bg,
+                            borderColor: theme.border,
+                            borderWidth: '1px',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '14px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          {uniquePubkeys.map((pubkey: any, index: number) => {
+                            const path = pubkey.pathMaster || pubkey.path;
+                            const label = pubkey.note || `Account ${index + 1}`;
+                            return (
+                              <option key={path} value={path} style={{ background: '#111', color: 'white' }}>
+                                {label} - {path}
+                              </option>
+                            );
+                          })}
+                        </select>
                       </Box>
-                    ))}
+                    )}
+                    
+                    <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
+                      {uniquePubkeys.map((pubkey: any, index: number) => {
+                        const isActive = app?.pubkeyContext?.pathMaster === pubkey.pathMaster || 
+                                       app?.pubkeyContext?.path === pubkey.path ||
+                                       app?.pubkeyContext?.address === pubkey.address ||
+                                       app?.pubkeyContext?.master === pubkey.master ||
+                                       app?.pubkeyContext?.pubkey === pubkey.pubkey;
+                        return (
+                          <Box 
+                            key={index}
+                            p={3}
+                            bg={isActive ? 'rgba(255, 215, 0, 0.05)' : theme.bg}
+                            borderRadius="lg"
+                            borderWidth="2px"
+                            borderColor={isActive ? theme.gold : theme.border}
+                            position="relative"
+                            boxShadow={isActive ? `0 0 20px rgba(255, 215, 0, 0.4)` : 'none'}
+                            cursor="pointer"
+                            transition="all 0.2s ease"
+                            _hover={{
+                              borderColor: isActive ? theme.gold : 'rgba(255, 215, 0, 0.5)',
+                              bg: isActive ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 215, 0, 0.02)',
+                              transform: 'translateY(-2px)',
+                              boxShadow: isActive ? `0 0 25px rgba(255, 215, 0, 0.5)` : '0 4px 12px rgba(0, 0, 0, 0.4)'
+                            }}
+                            onClick={async () => {
+                              if (!isActive && app?.setPubkeyContext) {
+                                console.log('🔐 [Asset] Setting pubkey context via click (mobile):', pubkey);
+                                await app.setPubkeyContext(pubkey);
+                                setLastSync(Date.now());
+                              }
+                            }}
+                          >
+                            {isActive && (
+                              <Badge
+                                position="absolute"
+                                top={2}
+                                right={2}
+                                colorScheme="yellow"
+                                variant="solid"
+                                fontSize="xs"
+                                bg={theme.gold}
+                                color="black"
+                              >
+                                Active
+                              </Badge>
+                            )}
+                            <VStack align="stretch" gap={2}>
+                              <HStack justify="space-between">
+                                <HStack gap={2}>
+                                  <Icon 
+                                    as={FaWallet} 
+                                    color={isActive ? theme.gold : "gray.400"} 
+                                    boxSize={3}
+                                  />
+                                  <Text color={isActive ? theme.gold : "gray.400"} fontSize="sm" fontWeight={isActive ? "semibold" : "normal"}>
+                                    {assetContext.networkId?.startsWith('bip122:') ? `XPUB ${index + 1}` : `Address ${index + 1}`}
+                                  </Text>
+                                </HStack>
+                                {pubkey.note && (
+                                  <Text color={isActive ? theme.gold : "gray.500"} fontSize="xs">
+                                    {pubkey.note}
+                                  </Text>
+                                )}
+                              </HStack>
+                              <Text color={isActive ? "white" : "gray.300"} fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                                {assetContext.networkId?.startsWith('bip122:') 
+                                  ? pubkey.pubkey 
+                                  : pubkey.address}
+                              </Text>
+                              <HStack justify="space-between" mt={1}>
+                                <Text color={isActive ? theme.gold : "gray.400"} fontSize="xs">Path</Text>
+                                <Text color={isActive ? "white" : "gray.300"} fontSize="xs" fontFamily="mono">
+                                  {pubkey.path || pubkey.pathMaster}
+                                </Text>
+                              </HStack>
+                            </VStack>
+                          </Box>
+                        );
+                      })}
+                    </VStack>
                   </VStack>
-                </VStack>
                 );
               })()}
 
