@@ -61,7 +61,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [previousBalance, setPreviousBalance] = useState<string>('0');
   // Add flag to track if this is the initial load to prevent sound on first balance set
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  
+  const [pubkeys, setPubkeys] = useState<any>([])
+  const [balances, setBalances] = useState<any>([])
+
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
   const { state } = pioneer;
@@ -70,31 +72,31 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   
   const router = useRouter();
 
-  // Format USD value
-  const formatUsd = (value: number | null | undefined) => {
-    if (value === null || value === undefined || isNaN(value)) return '0.00';
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(numValue)) return '0.00';
-    return numValue.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
   // Add component mount/unmount logging and handle loading state
   useEffect(() => {
     console.log('🎯 [Asset] Component mounted with context:', assetContext);
-    
-    // For debugging - log the Pioneer context
-    console.log('🎯 [Asset] Pioneer context:', { 
-      app,
-      hasApp: !!app,
-      hasAssetContext: !!app?.assetContext,
-      hasSetAssetContext: !!app?.setAssetContext
-    });
-    
     // Check if asset context is already available
     if (assetContext) {
+
+
+      //get all pubkeys for networkId
+      const pubkeys = app.pubkeys.filter((pubkey: any) =>
+          pubkey.networks.some((n: string) => n.includes('cosmos:cosmoshub') || n.includes('cosmos:osmosis'))
+      );
+      console.log('[Asset component] pubkeys:', pubkeys)
+
+      //get all balances for networkId
+      const balances = app.balances.find((balance:any) => balance.caip === assetContext.caip);
+      console.log('[Asset component] balances: ', balances)
+      // Sort by USD value (highest first) and show ALL balances
+      const sortedBalances = balances
+          .sort((a: any, b: any) => parseFloat(b.valueUsd || '0') - parseFloat(a.valueUsd || '0'));
+      console.log('[Asset component] sortedBalances: ', sortedBalances)
+
+      //
+
+
+
       console.log('✅ [Asset] AssetContext already available on mount');
       // Initialize previousBalance when asset context is available
       if (assetContext.balance) {
@@ -114,26 +116,16 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
       // Re-access the latest context values
       const currentApp = pioneer?.state?.app;
       const currentAssetContext = currentApp?.assetContext;
-      
       if (currentAssetContext) {
         console.log('✅ [Asset] AssetContext became available on check', checkCount);
         setLoading(false);
         return true;
       }
-      
       checkCount++;
       if (checkCount >= maxChecks) {
-        console.log('❌ [Asset] AssetContext still null after', maxChecks, 'checks');
-        console.log('❌ [Asset] Current app state:', {
-          hasApp: !!currentApp,
-          hasAssetContext: !!currentApp?.assetContext,
-          hasSetAssetContext: !!currentApp?.setAssetContext,
-          isDashboardAvailable: !!currentApp?.dashboard
-        });
         setLoading(false);
         return true;
       }
-      
       return false;
     };
     
@@ -181,17 +173,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
               isInitialLoad
             });
-            
-            // Only play sound if this is not the initial load and balance actually increased
-            if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
-              console.log("🎵 [Asset] Balance increased! Playing chaching sound");
-              playSound(chachingSound);
-            }
-            
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);
           }
-          
           setLastSync(Date.now());
         })
         .catch((error: any) => {

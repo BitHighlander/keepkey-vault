@@ -769,19 +769,6 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 // Only show tokens that have a balance > 0
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
                 
-                // Debug logging for each balance
-                if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
-                  console.log('🔍 [Dashboard] Checking balance for token classification:', {
-                    caip: balance.caip,
-                    symbol: balance.symbol,
-                    balance: balance.balance,
-                    type: balance.type,
-                    isToken: isToken,
-                    hasBalance: hasBalance,
-                    willInclude: isToken && hasBalance
-                  });
-                }
-                
                 return isToken && hasBalance;
               });
 
