@@ -17,7 +17,6 @@ import {
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
-import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
 import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy } from 'react-icons/fa'
 import Confetti from 'react-confetti'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
@@ -39,7 +38,9 @@ const playSound = (sound: HTMLAudioElement | null) => {
 const theme = {
   bg: '#000000',
   cardBg: '#111111',
-  border: '#3A4A5C',
+  gold: '#FFD700',
+  goldHover: '#FFE135',
+  border: '#222222',
   formPadding: '16px', // Added for consistent form padding
   borderRadius: '12px', // Added for consistent border radius
 }
@@ -114,26 +115,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const { state } = pioneer
   const { app } = state
   const assetContext = app?.assetContext
-  
-  // Get the asset color dynamically, with fallback based on asset
-  const getAssetColor = () => {
-    if (assetContext?.color) return assetContext.color;
-    
-    // Fallback colors for common assets
-    const symbol = assetContext?.symbol?.toUpperCase();
-    switch(symbol) {
-      case 'BTC': return '#F7931A';  // Bitcoin orange
-      case 'ETH': return '#627EEA';  // Ethereum purple  
-      case 'BCH': return '#8DC351';  // Bitcoin Cash green
-      case 'LTC': return '#BFBBBB';  // Litecoin silver
-      case 'DOGE': return '#C2A633'; // Dogecoin gold
-      default: return '#F7931A';   // Default to Bitcoin orange
-    }
-  };
-  
-  const assetColor = getAssetColor();
-  const assetColorHover = `${assetColor}CC`; // Add transparency for hover
-  const assetColorLight = `${assetColor}22`; // 22 = ~13% opacity
 
   // State for input fields
   const [amount, setAmount] = useState<string>('')
@@ -162,8 +143,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [selectedFeeLevel, setSelectedFeeLevel] = useState<'slow' | 'average' | 'fastest'>('average')
   const [customFeeOption, setCustomFeeOption] = useState<boolean>(false)
   const [customFeeAmount, setCustomFeeAmount] = useState<string>('')
-  const [feeRates, setFeeRates] = useState<any>(null)
-  const [feeOptions, setFeeOptions] = useState<{slow: string, average: string, fastest: string}>({ slow: '0', average: '0', fastest: '0' })
   // Add state for raw transaction dialog
   const [showRawTxDialog, setShowRawTxDialog] = useState<boolean>(false)
   const [rawTxJson, setRawTxJson] = useState<string>('')
@@ -172,7 +151,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
   
-  // Fee options are now handled by the FeeSelection component
+  // Add state for fee options
+  const [feeOptions, setFeeOptions] = useState<{
+    slow: string;
+    average: string;
+    fastest: string;
+  }>({ slow: '0.0001', average: '0.0002', fastest: '0.0005' })
   
   // Manual copy to clipboard implementation
   const [hasCopied, setHasCopied] = useState(false)
@@ -246,23 +230,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Convert USD to native token amount
   const usdToNative = (usdAmount: string): string => {
     if (!usdAmount || !assetContext.priceUsd || parseFloat(assetContext.priceUsd) === 0) return '0';
-    const parsedUsd = parseFloat(usdAmount);
-    const parsedPrice = parseFloat(assetContext.priceUsd);
-    
-    // Check for NaN or invalid values
-    if (isNaN(parsedUsd) || isNaN(parsedPrice) || parsedPrice === 0) {
-      console.warn('Invalid USD to native conversion:', { usdAmount, priceUsd: assetContext.priceUsd });
-      return '0';
-    }
-    
-    const nativeAmount = parsedUsd / parsedPrice;
-    
-    // Check if result is NaN
-    if (isNaN(nativeAmount)) {
-      console.warn('NaN result in USD to native conversion:', { parsedUsd, parsedPrice });
-      return '0';
-    }
-    
+    const nativeAmount = parseFloat(usdAmount) / parseFloat(assetContext.priceUsd);
     // Return formatted with appropriate decimal places
     return nativeAmount.toFixed(8);
   }
@@ -286,16 +254,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       let feeValue = parseFloat(feeInNative);
       
       // Get network type for proper unit conversion
-      let networkId = assetContext.networkId || '';
-      
-      // Handle wildcard network IDs
-      if (networkId.includes('*') && assetContext.caip) {
-        const caipParts = assetContext.caip.split('/');
-        if (caipParts[0] && !caipParts[0].includes('*')) {
-          networkId = caipParts[0];
-        }
-      }
-      
+      const networkId = assetContext.networkId || '';
       const networkType = getNetworkType(networkId);
       
       // Special handling based on network type
@@ -334,166 +293,215 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     return 'OTHER';
   };
 
-  // Fetch fee rates from Pioneer API
+  // Update fetchFeeRates to handle network-specific fee formats
   const fetchFeeRates = async () => {
-    if (!assetContext) {
-      setError('Asset context not available');
-      return;
-    }
-    
-    // Try to get a valid network ID from various sources
-    let networkId = assetContext.networkId;
-    
-    // If networkId contains wildcard, try to extract from CAIP
-    if (networkId?.includes('*')) {
-      // Try to get from CAIP identifier (e.g., eip155:1/slip44:60 -> eip155:1)
-      if (assetContext.caip) {
-        const caipParts = assetContext.caip.split('/');
-        if (caipParts[0] && !caipParts[0].includes('*')) {
-          networkId = caipParts[0];
-        }
-      }
-      
-      // If still has wildcard, try assetId
-      if (networkId?.includes('*') && assetContext.assetId) {
-        const assetParts = assetContext.assetId.split('/');
-        if (assetParts[0] && !assetParts[0].includes('*')) {
-          networkId = assetParts[0];
-        }
-      }
-    }
-    
-    if (!networkId || networkId.includes('*')) {
-      setError('Cannot determine specific network chain ID');
-      console.error('Invalid network ID:', networkId, 'Asset context:', assetContext);
-      return;
-    }
+    if (!assetContext?.networkId) return;
     
     try {
-      if (!app?.pioneer) {
-        throw new Error('Pioneer API not available');
-      }
-
-      console.log('Fetching fee rates for network:', networkId);
+      // Get the blockchain type
+      const networkId = assetContext.networkId;
+      const networkType = getNetworkType(networkId);
       
-      // Try different API call methods to work around server-side routing issue
-      let feeRates;
-      try {
-        console.log('Fetching fee rates for network:', networkId);
+      // Network-specific default fees - much more accurate than generic defaults
+      const networkSpecificDefaults: Record<string, {slow: string, average: string, fastest: string}> = {
+        // EVM chains use gwei
+        'eip155:1': { slow: '20', average: '40', fastest: '80' }, // Ethereum
+        'eip155:56': { slow: '5', average: '7', fastest: '10' }, // BSC
+        'eip155:137': { slow: '30', average: '50', fastest: '100' }, // Polygon
+        'eip155:43114': { slow: '25', average: '35', fastest: '50' }, // Avalanche
+        'eip155:8453': { slow: '0.05', average: '0.1', fastest: '0.2' }, // Base
+        'eip155:10': { slow: '0.001', average: '0.01', fastest: '0.1' }, // Optimism
         
-        // Call the GetFeeRate API with proper CAIP network ID
-        if (app.pioneer.GetFeeRateByNetwork) {
-          feeRates = await app.pioneer.GetFeeRateByNetwork({ networkId: networkId });
-        } else {
-          feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
-        }
-      } catch (apiError) {
-        console.error('Primary API call failed:', apiError);
-        // Don't use network name fallbacks - the server now properly handles CAIP IDs
-        throw apiError;
-      }
-      
-      console.log('Fee rates from API:', feeRates);
-
-      // Store the complete fee rates data for use in the UI
-      setFeeRates(feeRates);
-      
-      // Handle both response formats: direct object or wrapped in data property
-      const feeData = feeRates?.data || feeRates;
-      
-      if (!feeData) {
-        throw new Error('No fee data returned from API');
-      }
-
-      //{slow: '1', average: '1', fastest: '1'}
-      // The API returns fastest, fast, average - map to our UI's slow, average, fastest
-      if (!feeData.average || !feeData.fast || !feeData.fastest) {
-        throw new Error('Incomplete fee data from API');
-      }
-      
-      // Map API response to UI fee levels
-      // API returns: fastest (high priority), fast (medium), average (low priority)
-      // UI expects: slow (low priority), average (medium), fastest (high priority)
-      const fees = {
-        slow: feeData.average.toString(),    // Use 'average' for slow
-        average: feeData.fast.toString(),     // Use 'fast' for average
-        fastest: feeData.fastest.toString()   // Use 'fastest' for fastest
+        // UTXO chains use sat/byte
+        'bip122:000000000019d6689c085ae165831e93': { slow: '2', average: '5', fastest: '10' }, // Bitcoin
+        'bip122:12a765e31ffd4059bada1e25190f6e98': { slow: '1', average: '2', fastest: '5' }, // Litecoin
+        'bip122:000000000933ea01ad0ee984209779ba': { slow: '1', average: '2', fastest: '4' }, // Dogecoin
+        'bip122:000000000000000000651ef99cb9fcbe': { slow: '1', average: '3', fastest: '6' }, // Bitcoin Cash - sat/byte
+        
+        // Tendermint chains use flat fees
+        'cosmos:cosmoshub-4/slip44:118': { slow: '0.005', average: '0.005', fastest: '0.005' },
+        'cosmos:osmosis-1/slip44:118': { slow: '0.035', average: '0.035', fastest: '0.035' },
+        'cosmos:thorchain-mainnet-v1/slip44:931': { slow: '0.02', average: '0.02', fastest: '0.02' },
+        'cosmos:mayachain-mainnet-v1/slip44:931': { slow: '0.2', average: '0.2', fastest: '0.2' },
+        
+        // Other chains
+        'ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144': { slow: '0.000012', average: '0.000012', fastest: '0.000012' }, // XRP
       };
       
-      // Log the fee unit if provided
-      if (feeData.unit) {
-        console.log('Fee unit:', feeData.unit);
-        console.log('Fee description:', feeData.description);
+      // Start with reasonable type-specific defaults if we don't have network-specific ones
+      let defaultFees;
+      switch (networkType) {
+        case 'EVM':
+          defaultFees = { slow: '30', average: '50', fastest: '80' }; // gwei
+          break;
+        case 'UTXO':
+          defaultFees = { slow: '3', average: '5', fastest: '10' }; // sat/byte
+          break;
+        case 'TENDERMINT':
+          defaultFees = { slow: '0.01', average: '0.01', fastest: '0.01' }; // native token
+          break;
+        default:
+          defaultFees = { slow: '0.001', average: '0.005', fastest: '0.01' }; // generic fallback
       }
       
-      console.log('Using fees from API:', fees);
-      
-      // Store the raw fee options (gas prices)
-      setFeeOptions(fees);
-      
-      // For EVM chains with Gwei fees, calculate actual transaction fee
-      if (feeData.unit === 'gwei') {
-        // Gas price is in Gwei, need to calculate with gas limit (21000 for simple transfer)
-        const gasLimit = 21000; // Standard ETH transfer
-        const gasPriceGwei = parseFloat(fees[selectedFeeLevel]);
-        const feeInGwei = gasPriceGwei * gasLimit;
-        const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
-        const feeString = feeInEth.toFixed(9);
-        
-        console.log('Calculated EVM fee:', {
-          gasPriceGwei,
-          gasLimit,
-          feeInGwei,
-          feeInEth,
-          feeString
-        });
-        
-        setEstimatedFee(feeString);
-        updateFeeInUsd(feeString);
+      // Use network-specific defaults if available
+      if (networkSpecificDefaults[networkId]) {
+        defaultFees = networkSpecificDefaults[networkId];
       } else {
-        // For non-EVM chains, use the fee directly
-        setEstimatedFee(fees[selectedFeeLevel]);
-        updateFeeInUsd(fees[selectedFeeLevel]);
+        // Try to match by chain type
+        const chainTypeMatch = Object.keys(networkSpecificDefaults).find(key => networkId.startsWith(key.split(':')[0]));
+        if (chainTypeMatch) {
+          console.log(`Using defaults from similar chain type: ${chainTypeMatch}`);
+          defaultFees = networkSpecificDefaults[chainTypeMatch];
+        }
+      }
+
+      // Special handling for BCH - ensure fees are shown in proper units
+      if (networkId.includes('bitcoincash') || networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
+        // These are sat/byte rates for BCH, but converted to show as BCH in the UI
+        // For BCH transaction size of ~250 bytes, this gives reasonable fee range
+        defaultFees = { 
+          slow: '0.00000250',    // 1 sat/byte * ~250 bytes / 100,000,000
+          average: '0.00000750', // 3 sat/byte * ~250 bytes / 100,000,000
+          fastest: '0.00001500'  // 6 sat/byte * ~250 bytes / 100,000,000
+        };
+        console.log('🔧 Using BCH-specific fee defaults:', defaultFees);
       }
       
-    } catch (error: any) {
-      console.error('Failed to fetch fee rates:', error);
-      console.error('Network ID sent to API:', networkId);
-      console.error('Full asset context:', assetContext);
+      console.log(`Using default fees for network ${networkId}:`, defaultFees);
       
-      // Extract more detailed error information
-      let errorDetail = error.message || 'Unknown error';
-      if (error.response?.data?.message) {
-        errorDetail = error.response.data.message;
-      } else if (error.response?.data?.error) {
-        errorDetail = JSON.stringify(error.response.data.error);
+      // Try to get fee rates from the API
+      try {
+        if (app?.pioneer) {
+          const feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
+          console.log('Fee rates from API:', feeRates);
+          
+          if (feeRates?.data) {
+            // Only update if API returned valid values
+            if (feeRates.data.slow && feeRates.data.average && feeRates.data.fastest) {
+              // Process fee rates based on network type
+              switch(networkType) {
+                case 'EVM':
+                  // Convert to gwei if necessary
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+                  break;
+                case 'UTXO':
+                  // UTXO chains use sats/byte for fee rates
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+                  break;
+                case 'TENDERMINT':
+                  // Tendermint chains often have fixed fees
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+                  break;
+                default:
+                  defaultFees = {
+                    slow: feeRates.data.slow.toString(),
+                    average: feeRates.data.average.toString(),
+                    fastest: feeRates.data.fastest.toString()
+                  };
+              }
+              console.log('Updated fees from API:', defaultFees);
+            } else {
+              console.warn('API returned incomplete fee data, using defaults');
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch fee rates from API, using network-specific defaults', error);
       }
       
-      // Check for the specific server-side routing bug
-      if (errorDetail.includes('missing node! for network eip155:*')) {
-        errorDetail = `Server routing issue: The Pioneer API server is incorrectly converting "${networkId}" to "eip155:*". This is a known server bug that needs to be fixed in the Pioneer API backend.`;
-        console.error('SERVER BUG DETECTED:', errorDetail);
-      }
+      // Set the fee options
+      setFeeOptions(defaultFees);
       
-      const errorMessage = `Failed to get network fees for ${networkId}: ${errorDetail}`;
-      setError(errorMessage);
-      setShowErrorDialog(true);
-      
-      // Don't proceed with fake fees - show the error to the user
-      setFeeOptions({ slow: '0', average: '0', fastest: '0' });
-      setEstimatedFee('0');
+      // Set the estimatedFee based on selected fee level
+      setEstimatedFee(defaultFees[selectedFeeLevel]);
+      updateFeeInUsd(defaultFees[selectedFeeLevel]);
+    } catch (error) {
+      console.error('Error fetching fee rates:', error);
     }
   };
   
+  // Get fee unit based on network type
+  const getFeeUnit = (): string => {
+    if (!assetContext?.networkId) return '';
+    
+    const networkType = getNetworkType(assetContext.networkId);
+    
+    switch (networkType) {
+      case 'EVM':
+        return 'GWEI';
+      case 'UTXO':
+        return 'sats/byte';
+      case 'TENDERMINT':
+        return assetContext.symbol || '';
+      case 'OTHER':
+        if (assetContext.networkId.includes('ripple')) {
+          return 'XRP';
+        }
+        return assetContext.symbol || '';
+      default:
+        return assetContext.symbol || '';
+    }
+  };
+  
+  // Format fee display based on network type
+  const formatFeeDisplay = (fee: string): string => {
+    if (!assetContext?.networkId) return fee;
+    
+    const networkId = assetContext.networkId;
+    const networkType = getNetworkType(networkId);
+    
+    try {
+      const feeValue = parseFloat(fee);
+      
+      switch (networkType) {
+        case 'EVM': {
+          // For EVM chains, we're storing the fee in GWEI but display in native token for consistency
+          return fee;
+        }
+        case 'UTXO': {
+          // For UTXO chains, check if we need to convert from satoshis
+          if (feeValue > 0.1) {
+            // If fee is large (likely in satoshis), convert and display in the main unit
+            return (feeValue / 100000000).toFixed(8);
+          }
+          // Otherwise, it's already in the correct unit
+          return fee;
+        }
+        case 'TENDERMINT': {
+          // For Tendermint chains, show in native token
+          return fee;
+        }
+        default:
+          return fee;
+      }
+    } catch (error) {
+      console.error('Error formatting fee display:', error);
+      return fee;
+    }
+  };
 
   // Handle fee selection change
-  const handleFeeSelectionChange = (feeLevel: FeeLevel) => {
+  const handleFeeSelectionChange = (feeLevel: 'slow' | 'average' | 'fastest') => {
     setSelectedFeeLevel(feeLevel);
     setCustomFeeOption(false);
     
-    // The FeeSelection component handles the fee data internally
-    // We just update the selection state here
-    // Fee calculation logic should be moved to a shared utility or hook
+    // Update the estimated fee
+    const newFee = feeOptions[feeLevel];
+    setEstimatedFee(newFee);
+    updateFeeInUsd(newFee);
   };
   
   // Handle custom fee input
@@ -554,6 +562,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return
     }
 
+    // Convert amount to native token if in USD mode
+    const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
+
     // Show loading spinner while building transaction
     setIsBuildingTx(true)
     setLoading(true)
@@ -586,34 +597,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Missing asset CAIP')
       }
       
-      // Log the asset context to debug network ID issues
-      console.log('Building transaction with asset context:', {
-        caip,
-        networkId: assetContext?.networkId,
-        assetId: assetContext?.assetId,
-        symbol: assetContext?.symbol
-      })
+      // Get network type
+      const networkId = assetContext?.networkId || '';
+      const networkType = getNetworkType(networkId);
+      
+      // Add BCH-specific debugging
+      const isBCH = networkId.includes('bitcoincash') || networkId.includes('bip122:000000000000000000651ef99cb9fcbe');
+      if (isBCH) {
+        console.log('🔍 Building Bitcoin Cash transaction:', {
+          networkId,
+          networkType,
+          caip,
+          assetContext
+        });
+      }
       
       // Convert amount to native token if in USD mode
       const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-      
-      // Validate the amount is not NaN or empty
-      if (!nativeAmount || nativeAmount === '0' || isNaN(parseFloat(nativeAmount))) {
-        console.error('Invalid amount for transaction:', { 
-          amount, 
-          nativeAmount, 
-          isUsdInput,
-          priceUsd: assetContext?.priceUsd 
-        });
-        throw new Error('Invalid amount: Please enter a valid amount');
-      }
-      
-      console.log('Transaction amount validation:', {
-        originalAmount: amount,
-        nativeAmount,
-        isUsdInput,
-        priceUsd: assetContext?.priceUsd
-      });
       
       // Map fee levels to SDK fee level values
       const feeLevelMap = {
@@ -630,10 +630,52 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         isMax,
       }
       
-      // Add custom fee if specified
-      if (customFeeOption && customFeeAmount) {
-        // @ts-ignore - Adding custom fee property
-        sendPayload.customFee = customFeeAmount;
+      // Add network-specific parameters based on chain type
+      switch (networkType) {
+        case 'EVM': {
+          // For EVM chains, we might need to specify gas settings
+          if (customFeeOption && customFeeAmount) {
+            // Add custom gas price for EVM chains
+            // @ts-ignore - Adding custom property for EVM
+            sendPayload.gasPrice = customFeeAmount;
+          }
+          break;
+        }
+        
+        case 'UTXO': {
+          // For UTXO chains, we might need to specify fee rate
+          if (customFeeOption && customFeeAmount) {
+            // Add custom fee rate for UTXO chains (sats/byte)
+            // @ts-ignore - Adding custom property for UTXO
+            sendPayload.feeRate = customFeeAmount;
+          }
+          
+          // Add BCH-specific parameters
+          if (isBCH) {
+            // BCH often requires explicit address format specification
+            // @ts-ignore - Adding custom property for BCH
+            sendPayload.addressFormat = 'cashaddr';
+            console.log('🔧 Added BCH-specific parameters to payload');
+          }
+          break;
+        }
+        
+        case 'TENDERMINT': {
+          // For Tendermint chains, add memo if provided
+          if (memo) {
+            sendPayload.memo = memo;
+          }
+          break;
+        }
+        
+        case 'OTHER': {
+          // Handle other chains like Ripple
+          if (networkId.includes('ripple') && memo) {
+            // In Ripple, this might be a "destination tag" instead of a memo
+            sendPayload.memo = memo;
+          }
+          break;
+        }
       }
       
       // Add memo for supported chains if provided
@@ -648,173 +690,178 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       try {
         unsignedTxResult = await app.buildTx(sendPayload);
         console.log('Unsigned TX Result:', unsignedTxResult);
-      } catch (buildError: any) {
+        
+        // Add BCH-specific debug logging
+        if (isBCH) {
+          console.log('🔍 BCH Transaction built successfully:', {
+            resultType: typeof unsignedTxResult,
+            hasInputs: unsignedTxResult?.inputs ? 'Yes' : 'No',
+            hasOutputs: unsignedTxResult?.outputs ? 'Yes' : 'No'
+          });
+        }
+      } catch (buildError) {
         console.error('Transaction build error:', buildError);
-        const errorMessage = `Failed to build transaction: ${buildError.message || 'Unknown error'}`;
-        setError(errorMessage);
-        setShowErrorDialog(true);
-        throw buildError;
+        if (isBCH) {
+          console.error('🚨 BCH Transaction build failed:', buildError);
+          
+          // Attempt a fallback approach for BCH
+          console.log('🔄 Attempting fallback approach for BCH...');
+          
+          // Try with a simpler payload or alternative approach
+          const simplifiedPayload = {
+            ...sendPayload,
+            // Force using specific fee level for BCH
+            feeLevel: 5
+          };
+          
+          console.log('🔄 Using simplified BCH payload:', simplifiedPayload);
+          unsignedTxResult = await app.buildTx(simplifiedPayload);
+          console.log('🔄 BCH Fallback transaction result:', unsignedTxResult);
+        } else {
+          throw buildError; // Re-throw for non-BCH chains
+        }
       }
       
       if (!unsignedTxResult) {
         throw new Error('Failed to build transaction: No result returned');
       }
       
-      // Extract fee from unsigned transaction result
+      // Extract fee from unsigned transaction result if available
       try {
-        let feeValue = null;
-        
-        // Log the entire unsigned transaction for debugging
-        console.log('Full unsigned transaction result:', JSON.stringify(unsignedTxResult, null, 2));
+        // Different chains have different formats for fee information
+        let feeValue = estimatedFee; // Use current estimate as fallback
         
         if (unsignedTxResult && typeof unsignedTxResult === 'object') {
-          // Check if this is a UTXO transaction (Bitcoin, Litecoin, etc.)
-          const caipId = assetContext?.caip || assetContext?.assetId;
-          const isUtxoNetwork = UTXO_NETWORKS.includes(caipId);
-          
-          if (isUtxoNetwork && unsignedTxResult.inputs && unsignedTxResult.outputs) {
-            // For UTXO chains, calculate fee as: total_inputs - total_outputs
-            console.log('Calculating UTXO fee from inputs and outputs');
-            console.log('Transaction structure:', {
-              inputs: unsignedTxResult.inputs,
-              outputs: unsignedTxResult.outputs
-            });
-            
-            // Sum up all input values (amount field is in satoshis as string)
-            const totalInputs = unsignedTxResult.inputs.reduce((sum: number, input: any) => {
-              // The amount field is in satoshis as a string
-              const value = input.amount || input.value || '0';
-              const satoshis = typeof value === 'string' ? parseInt(value, 10) : value;
-              console.log(`Input ${input.txid}:${input.vout} = ${satoshis} sats`);
-              return sum + satoshis;
-            }, 0);
-            
-            // Sum up all output values (amount field is in satoshis as string)
-            const totalOutputs = unsignedTxResult.outputs.reduce((sum: number, output: any) => {
-              // The amount field is in satoshis as a string
-              const value = output.amount || output.value || '0';
-              const satoshis = typeof value === 'string' ? parseInt(value, 10) : value;
-              console.log(`Output to ${output.address || 'change'} = ${satoshis} sats`);
-              return sum + satoshis;
-            }, 0);
-            
-            // Fee is the difference (in satoshis)
-            const feeInSatoshis = totalInputs - totalOutputs;
-            
-            // Convert satoshis to BTC for display
-            feeValue = (feeInSatoshis / 100000000).toFixed(8);
-            
-            console.log('UTXO fee calculation:', {
-              totalInputs,
-              totalOutputs,
-              feeInSatoshis,
-              feeInBTC: feeValue
-            });
-          } else if (unsignedTxResult.fee) {
-            // Direct fee field
-            feeValue = typeof unsignedTxResult.fee === 'string' 
-              ? unsignedTxResult.fee 
-              : unsignedTxResult.fee.toString();
-          } else if (unsignedTxResult.feeValue) {
-            feeValue = unsignedTxResult.feeValue.toString();
-          } else if (unsignedTxResult.tx && unsignedTxResult.tx.value && unsignedTxResult.tx.value.fee) {
-            // Cosmos-style transactions (including XRP wrapped in Cosmos format)
-            const cosmosStyleFee = unsignedTxResult.tx.value.fee;
-            if (cosmosStyleFee.amount && cosmosStyleFee.amount.length > 0) {
-              // Fee is in the amount array
-              feeValue = cosmosStyleFee.amount[0].amount;
-              console.log('Extracted fee from Cosmos-style tx:', feeValue);
-            }
-          } else if (unsignedTxResult.payment && unsignedTxResult.payment.amount) {
-            // XRP/Ripple transactions - use a default fee if not specified
-            // XRP fees are typically 10-20 drops (0.00001-0.00002 XRP)
-            // Check if there's a Fee field in the transaction first
-            if (unsignedTxResult.Fee) {
-              // Fee is specified in drops (1 XRP = 1,000,000 drops)
-              const feeInDrops = typeof unsignedTxResult.Fee === 'string' 
-                ? parseInt(unsignedTxResult.Fee) 
-                : unsignedTxResult.Fee;
-              feeValue = (feeInDrops / 1000000).toString();
-              console.log('Extracted XRP fee from Fee field:', feeInDrops, 'drops =', feeValue, 'XRP');
-            } else {
-              // Use default fee if not specified
-              feeValue = '0.000012'; // 12 drops in XRP
-              console.log('Using default XRP fee:', feeValue, 'XRP (12 drops)');
-            }
-          } else if (unsignedTxResult.gasPrice && (unsignedTxResult.gas || unsignedTxResult.gasLimit)) {
-            // EVM chains provide gasPrice and gas limit - calculate the fee
-            // gasPrice is in hex Wei, gas/gasLimit is hex gas units
-            const gasPriceStr = String(unsignedTxResult.gasPrice);
-            const gasLimitStr = String(unsignedTxResult.gas || unsignedTxResult.gasLimit);
-            
-            const gasPriceHex = gasPriceStr.startsWith('0x') 
-              ? gasPriceStr 
-              : '0x' + gasPriceStr;
-            const gasLimitHex = gasLimitStr.startsWith('0x')
-              ? gasLimitStr
-              : '0x' + gasLimitStr;
-              
-            const gasPrice = BigInt(gasPriceHex);
-            const gasLimit = BigInt(gasLimitHex);
-            const feeInWei = gasPrice * gasLimit;
-            
-            // Convert Wei to ETH string for display (more precise conversion)
-            const feeInEth = Number(feeInWei) / 1e18;
-            feeValue = feeInEth.toFixed(9);
-            
-            console.log('Gas calculation:', {
-              gasPrice: gasPriceHex,
-              gasPriceDecimal: gasPrice.toString(),
-              gasPriceGwei: Number(gasPrice) / 1e9,
-              gasLimit: gasLimitHex,
-              gasLimitDecimal: gasLimit.toString(),
-              feeInWei: feeInWei.toString(),
-              feeInEth: feeValue
-            });
-          } else {
-            // Try to find fee-related fields in any nested structure
-            console.log('Could not find fee in standard locations, checking nested structures...');
-            
-            // Check if the result has a tx or transaction property
-            const nestedTx = unsignedTxResult.tx || unsignedTxResult.transaction || unsignedTxResult.unsignedTx;
-            if (nestedTx) {
-              console.log('Found nested transaction:', nestedTx);
-              
-              // Try to extract fee from nested structure
-              if (nestedTx.gasPrice && (nestedTx.gas || nestedTx.gasLimit)) {
-                const gasPriceStr = String(nestedTx.gasPrice);
-                const gasLimitStr = String(nestedTx.gas || nestedTx.gasLimit);
+          // Extract fee based on network type
+          switch (networkType) {
+            case 'EVM': {
+              // For EVM chains, fee is gasPrice * gasLimit
+              if (unsignedTxResult.gasPrice && unsignedTxResult.gasLimit) {
+                const gasPrice = parseFloat(unsignedTxResult.gasPrice);
+                const gasLimit = parseFloat(unsignedTxResult.gasLimit);
                 
-                const gasPriceHex = gasPriceStr.startsWith('0x') 
-                  ? gasPriceStr 
-                  : '0x' + gasPriceStr;
-                const gasLimitHex = gasLimitStr.startsWith('0x')
-                  ? gasLimitStr
-                  : '0x' + gasLimitStr;
-                  
-                const gasPrice = BigInt(gasPriceHex);
-                const gasLimit = BigInt(gasLimitHex);
-                const feeInWei = gasPrice * gasLimit;
-                const feeInEth = Number(feeInWei) / 1e18;
-                feeValue = feeInEth.toFixed(9);
+                // Convert from wei to native token
+                const gweiToEth = 0.000000001;
+                feeValue = (gasPrice * gasLimit * gweiToEth).toFixed(8);
+              } else if (unsignedTxResult.maxFeePerGas && unsignedTxResult.gasLimit) {
+                // For EIP-1559 transactions
+                const maxFeePerGas = parseFloat(unsignedTxResult.maxFeePerGas);
+                const gasLimit = parseFloat(unsignedTxResult.gasLimit);
                 
-                console.log('Calculated fee from nested transaction:', feeValue);
+                // Convert from wei to native token
+                const gweiToEth = 0.000000001;
+                feeValue = (maxFeePerGas * gasLimit * gweiToEth).toFixed(8);
               }
+              break;
+            }
+            
+            case 'UTXO': {
+              // For UTXO chains, fee might be directly specified
+              if (unsignedTxResult.fee) {
+                feeValue = typeof unsignedTxResult.fee === 'string' 
+                  ? unsignedTxResult.fee 
+                  : unsignedTxResult.fee.toString();
+                
+                // Validate fee for UTXO chains to prevent unreasonable values
+                const parsedFee = parseFloat(feeValue);
+                const txAmount = parseFloat(nativeAmount);
+                
+                // Sanity check: Fee shouldn't be greater than 10% of tx amount unless extremely small tx
+                if (parsedFee > txAmount * 0.1 && txAmount > 0.001) {
+                  console.warn('⚠️ Fee is suspiciously high, likely in satoshis. Adjusting:', parsedFee);
+                  
+                  // For BCH and other UTXO chains, if fee seems too large, it's likely in satoshis
+                  // A typical BCH fee should be a very small fraction of a BCH
+                  if (parsedFee > 0.1) {
+                    // Convert from satoshis to full coin (1 BCH = 100,000,000 satoshis)
+                    feeValue = (parsedFee / 100000000).toFixed(8);
+                    console.log('🔄 Adjusted fee to BCH units:', feeValue);
+                  }
+                }
+              } else if (unsignedTxResult.feeValue) {
+                feeValue = unsignedTxResult.feeValue.toString();
+                
+                // Apply same validation to feeValue
+                const parsedFee = parseFloat(feeValue);
+                if (parsedFee > 0.1) {
+                  feeValue = (parsedFee / 100000000).toFixed(8);
+                }
+              }
+              
+              // Special handling for BCH - add double-check for reasonable fee values
+              if (isBCH) {
+                const parsedFee = parseFloat(feeValue);
+                
+                // If fee still seems unreasonably high for BCH (greater than 0.01 BCH), force a reasonable value
+                if (parsedFee > 0.01) {
+                  console.warn('⚠️ BCH fee still too high after adjustment, forcing reasonable value');
+                  feeValue = '0.00001'; // Set a reasonable BCH fee
+                }
+              }
+              break;
+            }
+            
+            case 'TENDERMINT': {
+              // For Tendermint chains, check common fee patterns
+              if (unsignedTxResult.fee) {
+                if (typeof unsignedTxResult.fee === 'string') {
+                  feeValue = unsignedTxResult.fee;
+                } else if (typeof unsignedTxResult.fee === 'object') {
+                  if (unsignedTxResult.fee.amount && Array.isArray(unsignedTxResult.fee.amount) && unsignedTxResult.fee.amount.length > 0) {
+                    // Cosmos format: fee.amount is an array of {denom, amount}
+                    feeValue = unsignedTxResult.fee.amount[0].amount || feeValue;
+                  } else {
+                    feeValue = unsignedTxResult.fee.amount || unsignedTxResult.fee.value || feeValue;
+                  }
+                }
+              }
+              break;
+            }
+            
+            case 'OTHER': {
+              // For other chains, try common patterns
+              if (unsignedTxResult.fee) {
+                feeValue = typeof unsignedTxResult.fee === 'string' 
+                  ? unsignedTxResult.fee 
+                  : unsignedTxResult.fee.toString();
+              }
+              break;
             }
           }
         }
         
-        // The fee from the API should already be in the correct units
-        console.log('Fee from transaction:', feeValue);
-        setEstimatedFee(feeValue);
-        updateFeeInUsd(feeValue);
+        // Final sanity check for all chains
+        const parsedFee = parseFloat(feeValue);
+        const txAmount = parseFloat(nativeAmount);
         
-      } catch (feeError: any) {
+        // If fee is more than 20% of the transaction amount and > 0.1 native units,
+        // it's likely an incorrect value (except for very small transactions)
+        if (parsedFee > txAmount * 0.2 && parsedFee > 0.1 && txAmount > 0.001) {
+          console.warn('⚠️ Fee unreasonably high after all checks, using default');
+          
+          // Use a reasonable default based on network type
+          switch (networkType) {
+            case 'UTXO':
+              feeValue = '0.00001';
+              break;
+            case 'EVM':
+              feeValue = '0.001';
+              break;
+            default:
+              feeValue = '0.001';
+          }
+        }
+        
+        // Update fee state
+        console.log('Final extracted fee:', feeValue);
+        setEstimatedFee(feeValue);
+        
+        // Calculate and update fee in USD
+        updateFeeInUsd(feeValue);
+      } catch (feeError) {
         console.error('Error extracting fee from transaction:', feeError);
-        const errorMessage = `Failed to calculate transaction fee: ${feeError.message}`;
-        setError(errorMessage);
-        setShowErrorDialog(true);
-        throw feeError; // Stop the transaction if we can't get the fee
+        // If we can't extract fee, we still have the default value
+        updateFeeInUsd(estimatedFee);
       }
       
       // Store the unsigned transaction
@@ -896,26 +943,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('Broadcast Result:', broadcastResult)
       
       // Extract the transaction hash from the result - handle different result formats
-      let finalTxHash = '';
-      
-      // Check if the result is an error object
-      if (broadcastResult && typeof broadcastResult === 'object' && 'error' in broadcastResult) {
-        // This is an error response
-        throw new Error(broadcastResult.error || 'Broadcast failed');
-      } else if (typeof broadcastResult === 'string') {
-        finalTxHash = broadcastResult;
-      } else if (broadcastResult?.txHash) {
-        finalTxHash = broadcastResult.txHash;
-      } else if (broadcastResult?.txid) {
-        finalTxHash = broadcastResult.txid;
-      } else if (broadcastResult) {
-        // Try to convert to string if it's something else
-        finalTxHash = String(broadcastResult);
-      }
-      
-      if (!finalTxHash) {
-        throw new Error('No transaction hash returned from broadcast');
-      }
+      const finalTxHash = typeof broadcastResult === 'string' 
+        ? broadcastResult 
+        : broadcastResult?.txHash || broadcastResult?.txid || broadcastResult || '';
       
       console.log('Final TX Hash:', finalTxHash);
       setTxHash(finalTxHash)
@@ -1112,14 +1142,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return;
     }
     
-    console.log('Viewing transaction on explorer:', {
-      txHash,
-      networkId: assetContext?.networkId,
-      explorerTxLink: assetContext?.explorerTxLink,
-      caip: assetContext?.caip,
-      symbol: assetContext?.symbol,
-      assetContext
-    });
+    console.log('Viewing transaction on explorer:', txHash);
+    console.log('Asset context:', assetContext);
     
     let explorerUrl;
     
@@ -1131,68 +1155,43 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         : `${assetContext.explorerTxLink}/`;
       
       explorerUrl = `${baseUrl}${txHash}`;
-      console.log('Using explorer from assetContext.explorerTxLink:', explorerUrl);
     } 
     // Fallback for different network types
     else if (assetContext?.networkId) {
       const networkId = assetContext.networkId;
       const networkType = getNetworkType(networkId);
       
-      console.log('Determining explorer from networkId:', {
-        networkId,
-        networkType,
-        isEVM: networkId.startsWith('eip155:'),
-        isCosmos: networkId.startsWith('cosmos:'),
-        isUTXO: networkId.startsWith('bip122:')
-      });
-      
       switch (networkType) {
         case 'UTXO': {
-          if (networkId.includes('bip122:000000000019d6689c085ae165831e93')) {
+          if (networkId.includes('bitcoin')) {
             explorerUrl = `https://blockstream.info/tx/${txHash}`;
-          } else if (networkId.includes('bip122:12a765e31ffd4059bada1e25190f6e98')) {
+          } else if (networkId.includes('litecoin')) {
             explorerUrl = `https://blockchair.com/litecoin/transaction/${txHash}`;
-          } else if (networkId.includes('bip122:000000000933ea01ad0ee984209779ba')) {
+          } else if (networkId.includes('dogecoin')) {
             explorerUrl = `https://blockchair.com/dogecoin/transaction/${txHash}`;
-          } else if (networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
+          } else if (networkId.includes('bitcoincash')) {
             explorerUrl = `https://blockchair.com/bitcoin-cash/transaction/${txHash}`;
           } else {
-            console.error(`Unsupported UTXO network: ${networkId}`);
-            alert(`Error: No explorer configured for UTXO network: ${networkId}`);
-            return;
+            explorerUrl = `https://blockchair.com/${networkId.split(':')[0]}/transaction/${txHash}`;
           }
           break;
         }
         
         case 'EVM': {
-          // Parse the chain ID from the network ID (e.g., "eip155:137" -> 137)
-          const chainId = networkId.split(':')[1];
-          
-          const evmExplorers: Record<string, string> = {
-            '1': 'https://etherscan.io/tx/',
-            '56': 'https://bscscan.com/tx/',
-            '137': 'https://polygonscan.com/tx/',
-            '43114': 'https://snowtrace.io/tx/',
-            '8453': 'https://basescan.org/tx/',
-            '10': 'https://optimistic.etherscan.io/tx/',
-            '42161': 'https://arbiscan.io/tx/',
-            '250': 'https://ftmscan.com/tx/',
-            '25': 'https://cronoscan.com/tx/',
-            '100': 'https://gnosisscan.io/tx/',
-            '1284': 'https://moonscan.io/tx/',
-            '1285': 'https://moonriver.moonscan.io/tx/',
-            '42220': 'https://celoscan.io/tx/',
-            '1313161554': 'https://explorer.aurora.dev/tx/',
-            '1666600000': 'https://explorer.harmony.one/tx/',
-            '9001': 'https://www.mintscan.io/evmos/tx/',
-          };
-          
-          if (evmExplorers[chainId]) {
-            explorerUrl = `${evmExplorers[chainId]}${txHash}`;
+          if (networkId.includes('eip155:1')) {
+            explorerUrl = `https://etherscan.io/tx/${txHash}`;
+          } else if (networkId.includes('eip155:56')) {
+            explorerUrl = `https://bscscan.com/tx/${txHash}`;
+          } else if (networkId.includes('eip155:137')) {
+            explorerUrl = `https://polygonscan.com/tx/${txHash}`;
+          } else if (networkId.includes('eip155:43114')) {
+            explorerUrl = `https://snowtrace.io/tx/${txHash}`;
+          } else if (networkId.includes('eip155:8453')) {
+            explorerUrl = `https://basescan.org/tx/${txHash}`;
+          } else if (networkId.includes('eip155:10')) {
+            explorerUrl = `https://optimistic.etherscan.io/tx/${txHash}`;
           } else {
-            console.error(`Unsupported EVM chain: ${networkId} (chainId: ${chainId})`);
-            alert(`Error: No explorer configured for EVM chain: ${networkId}. Please contact support to add explorer for chain ID ${chainId}.`);
-            return;
+            explorerUrl = `https://blockscan.com/tx/${txHash}`;
           }
           break;
         }
@@ -1206,12 +1205,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             explorerUrl = `https://viewblock.io/thorchain/tx/${txHash}`;
           } else if (networkId.includes('cosmos:mayachain')) {
             explorerUrl = `https://www.mintscan.io/mayachain/tx/${txHash}`;
-          } else if (networkId.includes('cosmos:kaiyo-1')) {
-            explorerUrl = `https://www.mintscan.io/kujira/tx/${txHash}`;
           } else {
-            const chainName = networkId.split(':')[1].split('/')[0];
-            console.warn(`Using generic Mintscan for Cosmos chain: ${chainName}`);
-            explorerUrl = `https://www.mintscan.io/${chainName}/tx/${txHash}`;
+            explorerUrl = `https://www.mintscan.io/${networkId.split(':')[1].split('/')[0]}/tx/${txHash}`;
           }
           break;
         }
@@ -1220,28 +1215,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           if (networkId.includes('ripple')) {
             explorerUrl = `https://xrpscan.com/tx/${txHash}`;
           } else {
-            console.error(`Unsupported network type for networkId: ${networkId}`);
-            alert(`Error: No explorer configured for network: ${networkId}. Please contact support.`);
-            return;
+            explorerUrl = `https://blockchair.com/search?q=${txHash}`;
           }
           break;
         }
         
         default:
-          console.error(`Unknown network type: ${networkType} for networkId: ${networkId}`);
-          alert(`Error: Unable to determine explorer for network: ${networkId}. Please contact support.`);
-          return;
+          explorerUrl = `https://blockchair.com/search?q=${txHash}`;
       }
     } else {
-      // No network information available
-      console.error('No network information available in assetContext');
-      alert('Error: Cannot determine blockchain explorer - no network information available. Please contact support.');
-      return;
+      // Generic fallback
+      explorerUrl = `https://blockchair.com/search?q=${txHash}`;
     }
     
     // Open the explorer in a new tab
     if (explorerUrl) {
-      console.log('Opening explorer URL:', explorerUrl);
       window.open(explorerUrl, '_blank');
     }
   }
@@ -1300,7 +1288,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             recycle={false}
             numberOfPieces={300}
             gravity={0.2}
-            colors={[assetColor, '#FFFFFF', `${assetColor}DD`, `${assetColor}44`]}
+            colors={['#FFD700', '#FFFFFF', '#E5C100', '#FFF8D9']}
           />
           
           <Box 
@@ -1322,7 +1310,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               bg={theme.cardBg}
             >
               <Flex justify="space-between" align="center">
-                <Text fontSize="lg" fontWeight="bold" color={assetColor}>
+                <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
                   Transaction Complete
                 </Text>
                 <IconButton
@@ -1330,7 +1318,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   onClick={resetForm}
                   size="sm"
                   variant="ghost"
-                  color={assetColor}
+                  color={theme.gold}
                 >
                   <FaTimes />
                 </IconButton>
@@ -1427,7 +1415,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       <Box 
                         as="span" 
                         cursor="pointer" 
-                        _hover={{ color: assetColorHover }}
+                        _hover={{ color: theme.goldHover }}
                         onClick={viewOnExplorer}
                         display="inline-flex"
                         alignItems="center"
@@ -1449,10 +1437,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Stack gap={4}>
                 <Button
                   width="100%"
-                  bg={assetColor}
+                  bg={theme.gold}
                   color="black"
                   _hover={{
-                    bg: assetColorHover,
+                    bg: theme.goldHover,
                   }}
                   onClick={viewOnExplorer}
                   height="56px"
@@ -1466,11 +1454,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Button
                   width="100%"
                   variant="outline"
-                  color={assetColor}
+                  color={theme.gold}
                   borderColor={theme.border}
                   _hover={{
-                    bg: assetColorLight,
-                    borderColor: assetColor,
+                    bg: 'rgba(255, 215, 0, 0.1)',
+                    borderColor: theme.gold,
                   }}
                   onClick={resetForm}
                   height="56px"
@@ -1506,7 +1494,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             bg={theme.cardBg}
           >
             <Flex justify="space-between" align="center">
-              <Text fontSize="lg" fontWeight="bold" color={assetColor}>
+              <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
                 {transactionStep === 'review' ? 'Review Transaction' : 
                  transactionStep === 'sign' ? 'Signing Transaction' : 
                  transactionStep === 'broadcast' ? 'Broadcasting Transaction' : 'Confirm Transaction'}
@@ -1516,7 +1504,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 onClick={closeConfirmation}
                 size="sm"
                 variant="ghost"
-                color={assetColor}
+                color={theme.gold}
                 disabled={loading}
               >
                 <FaTimes />
@@ -1554,7 +1542,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       width="200px"
                       mb={6}
                     />
-                    <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
+                    <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
                       Check Your KeepKey Device
                     </Text>
                     <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px" mb={2}>
@@ -1568,11 +1556,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <>
                     <KeepKeyUiGlyph
                       boxSize="80px"
-                      color={assetColor}
+                      color={theme.gold}
                       animation={`${scale} 2s ease-in-out infinite`}
                       mb={6}
                     />
-                    <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
+                    <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
                       Broadcasting Transaction...
                     </Text>
                     <Text color="gray.400" fontSize="md" textAlign="center">
@@ -1604,10 +1592,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 </Box>
                 <Box>
                   <Text fontWeight="bold" color="white">
-                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
+                    {amount} {assetContext.symbol}
                   </Text>
                   <Text color="gray.400" fontSize="sm">
-                    {formatUsd(parseFloat(isUsdInput ? amount : nativeToUsd(amount)))}
+                    {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}
                   </Text>
                 </Box>
               </Flex>
@@ -1640,53 +1628,45 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 )}
               </Box>
               
-              {/* Fee Details - Hide for XRP */}
-              {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
-                <Box 
-                  p={4}
-                  bg={theme.bg}
-                  border="1px solid"
-                  borderColor={theme.border}
-                  borderRadius="md"
-                  width="100%"
-                >
-                  <Flex justify="space-between" align="center">
-                    <Text fontSize="sm" color="gray.400">
-                      Network Fee
+              {/* Fee Details */}
+              <Box 
+                p={4}
+                bg={theme.bg}
+                border="1px solid"
+                borderColor={theme.border}
+                borderRadius="md"
+                width="100%"
+              >
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="sm" color="gray.400">
+                    Network Fee
+                  </Text>
+                  <Box textAlign="right">
+                    <Text color="white" fontSize="sm">
+                      {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
                     </Text>
-                    <Box textAlign="right">
-                      <Text color="white" fontSize="sm">
-                        {estimatedFee} {assetContext.symbol}
-                      </Text>
-                      <Text color="gray.400" fontSize="xs">
-                        ≈ ${estimatedFeeUsd} USD
-                      </Text>
-                    </Box>
-                  </Flex>
-                  
-                  <Flex justify="space-between" align="center" mt={3}>
-                    <Text fontSize="sm" color="gray.400">
-                      Total
+                    <Text color="gray.400" fontSize="xs">
+                      ≈ ${estimatedFeeUsd} USD
                     </Text>
-                    <Box textAlign="right">
-                      <Text color="white" fontWeight="bold" fontSize="sm">
-                        {(() => {
-                          const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-                          const totalNative = isMax ? balance : (parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0')).toFixed(8);
-                          return `${totalNative} ${assetContext.symbol}`;
-                        })()}
-                      </Text>
-                      <Text color="gray.400" fontSize="xs">
-                        {(() => {
-                          const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-                          const totalNative = parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0');
-                        return formatUsd(totalNative * (assetContext.priceUsd || 0));
-                      })()}
+                  </Box>
+                </Flex>
+                
+                <Flex justify="space-between" align="center" mt={3}>
+                  <Text fontSize="sm" color="gray.400">
+                    Total
+                  </Text>
+                  <Box textAlign="right">
+                    <Text color="white" fontWeight="bold" fontSize="sm">
+                      {isMax ? 
+                        balance : 
+                        (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(8)} {assetContext.symbol}
+                    </Text>
+                    <Text color="gray.400" fontSize="xs">
+                      {formatUsd((parseFloat(amount || '0') + parseFloat(estimatedFee)) * (assetContext.priceUsd || 0))}
                     </Text>
                   </Box>
                 </Flex>
               </Box>
-              )}
               
               {/* Transaction Details */}
               {unsignedTx && (
@@ -1704,7 +1684,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     borderColor={theme.border}
                     borderRadius="md"
                     color="white"
-                    _hover={{ borderColor: assetColor }}
+                    _hover={{ borderColor: theme.gold }}
                   >
                     <Text fontSize="sm">
                       {showTxDetails ? 'Hide Transaction Details' : 'Show Transaction Details'}
@@ -1732,8 +1712,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                         variant="outline"
                         width="100%"
                         borderColor={theme.border}
-                        color={assetColor}
-                        _hover={{ borderColor: assetColor, bg: assetColorLight }}
+                        color={theme.gold}
+                        _hover={{ borderColor: theme.gold, bg: 'rgba(255, 215, 0, 0.1)' }}
                         onClick={openRawTxDialog}
                       >
                         Edit Raw Transaction JSON
@@ -1778,14 +1758,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       justifyContent="space-between"
                       alignItems="center"
                     >
-                      <Text color={assetColor} fontWeight="bold" fontSize="lg">
+                      <Text color={theme.gold} fontWeight="bold" fontSize="lg">
                         Raw Transaction JSON
                       </Text>
                       <IconButton
                         aria-label="Close"
                         size="sm"
                         variant="ghost"
-                        color={assetColor}
+                        color={theme.gold}
                         onClick={closeRawTxDialog}
                       >
                         <FaTimes />
@@ -1815,7 +1795,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                         borderRadius="md"
                         resize="vertical"
                         _focus={{
-                          borderColor: assetColor,
+                          borderColor: theme.gold,
                           outline: "none"
                         }}
                       />
@@ -1838,9 +1818,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                         Cancel
                       </Button>
                       <Button
-                        bg={assetColor}
+                        bg={theme.gold}
                         color="black"
-                        _hover={{ bg: assetColorHover }}
+                        _hover={{ bg: theme.goldHover }}
                         onClick={applyEditedJson}
                       >
                         Apply Changes
@@ -1861,16 +1841,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Stack gap={3}>
               <Button
                 width="100%"
-                bg={assetColor}
+                bg={theme.gold}
                 color="black"
                 _hover={{
-                  bg: assetColorHover,
+                  bg: theme.goldHover,
                 }}
                 onClick={confirmTransaction}
                 loading={loading}
                 height="56px"
                 fontSize="lg"
-                boxShadow={`0px 4px 12px ${assetColor}4D`}
+                boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
               >
                 Sign & Send
               </Button>
@@ -1878,11 +1858,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Button
                 width="100%"
                 variant="outline"
-                color={assetColor}
+                color={theme.gold}
                 borderColor={theme.border}
                 _hover={{
                   bg: 'rgba(255, 215, 0, 0.1)',
-                  borderColor: assetColor,
+                  borderColor: theme.gold,
                 }}
                 onClick={closeConfirmation}
                 height="56px"
@@ -1900,22 +1880,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   return (
     <Box 
       width="100%" 
-      height="100vh"
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
-      overflow="hidden"
-      display="flex"
-      flexDirection="column"
-      sx={{
-        '&::-webkit-scrollbar': {
-          width: '0px',
-          background: 'transparent',
-        },
-        '& *::-webkit-scrollbar': {
-          width: '0px',
-          background: 'transparent',
-        },
-      }}
     >
       {/* Transaction Building Overlay */}
       {isBuildingTx && (
@@ -1935,11 +1901,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         >
           <KeepKeyUiGlyph
             boxSize="80px"
-            color={assetColor}
+            color={theme.gold}
             animation={`${scale} 2s ease-in-out infinite`}
             mb={6}
           />
-          <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
+          <Text color={theme.gold} fontSize="xl" fontWeight="bold" mb={2}>
             Building Transaction...
           </Text>
           <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px">
@@ -1969,7 +1935,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             borderWidth="1px"
             borderColor="red.500"
             width="90%"
-            maxWidth="600px"
+            maxWidth="500px"
             overflow="hidden"
             boxShadow="0px 4px 20px rgba(0, 0, 0, 0.5)"
           >
@@ -1977,112 +1943,41 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               bg="red.500"
               py={4}
               px={6}
+              textAlign="center"
             >
-              <Flex justify="space-between" align="center">
-                <Flex align="center">
-                  <Box fontSize="24px" mr={3}>
-                    <FaTimes />
-                  </Box>
-                  <Text fontSize="lg" fontWeight="bold" color="white">
-                    Transaction Error
-                  </Text>
-                </Flex>
-                <IconButton
-                  aria-label="Close"
-                  onClick={closeErrorDialog}
-                  size="sm"
-                  variant="ghost"
-                  color="white"
-                  _hover={{ bg: 'rgba(255,255,255,0.2)' }}
-                >
+              <Flex justify="center" align="center" mb={2}>
+                <Box fontSize="24px" mr={2}>
                   <FaTimes />
-                </IconButton>
+                </Box>
               </Flex>
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                Transaction Error
+              </Text>
+              <Text fontSize="md" color="white" mt={1}>
+                {error || 'An error occurred during transaction signing.'}
+              </Text>
             </Box>
             
             <Box p={5}>
-              <Stack gap={4}>
-                <Box>
-                  <Text color="white" fontWeight="bold" mb={2}>
-                    What went wrong:
-                  </Text>
-                  <Box 
-                    p={3} 
-                    bg="rgba(255,0,0,0.1)" 
-                    borderRadius="md"
-                    borderLeft="3px solid"
-                    borderLeftColor="red.500"
-                  >
-                    <Text color="white" fontSize="md">
-                      {error || 'An unexpected error occurred'}
-                    </Text>
-                  </Box>
-                </Box>
-                
-                <Box>
-                  <Text color="white" fontWeight="bold" mb={2}>
-                    What you can do:
-                  </Text>
-                  <Stack gap={2} fontSize="sm" color="gray.300">
-                    {error?.includes('fee') && (
-                      <>
-                        <Text>• Check your network connection and try again</Text>
-                        <Text>• The Pioneer API may be temporarily unavailable</Text>
-                        <Text>• Try selecting a different fee level</Text>
-                      </>
-                    )}
-                    {error?.includes('sign') && (
-                      <>
-                        <Text>• Make sure your KeepKey is connected and unlocked</Text>
-                        <Text>• Check the transaction details on your device screen</Text>
-                        <Text>• Hold the button to confirm or click to reject</Text>
-                      </>
-                    )}
-                    {error?.includes('broadcast') && (
-                      <>
-                        <Text>• The network may be congested - try again in a moment</Text>
-                        <Text>• Check if you have sufficient balance for the transaction</Text>
-                        <Text>• Verify the recipient address is valid</Text>
-                      </>
-                    )}
-                    {!error?.includes('fee') && !error?.includes('sign') && !error?.includes('broadcast') && (
-                      <>
-                        <Text>• Check your KeepKey connection</Text>
-                        <Text>• Ensure you have sufficient balance</Text>
-                        <Text>• Try refreshing the page and attempting again</Text>
-                      </>
-                    )}
-                  </Stack>
-                </Box>
-                
-                {/* Technical details collapsible */}
-                <Box>
-                  <Text 
-                    color="gray.400" 
-                    fontSize="xs" 
-                    cursor="pointer"
-                    _hover={{ color: 'gray.300' }}
-                    onClick={() => console.error('Full error:', error)}
-                  >
-                    Technical details (click to log to console)
-                  </Text>
-                </Box>
-                
-                <Button
-                  width="100%"
-                  bg={assetColor}
-                  color="black"
-                  _hover={{
-                    bg: assetColorHover,
-                  }}
-                  onClick={closeErrorDialog}
-                  height="50px"
-                  fontSize="md"
-                  fontWeight="bold"
-                >
-                  Try Again
-                </Button>
-              </Stack>
+              <Text color="white" mb={4}>
+                There was a problem signing your transaction with KeepKey. Please check your device and try again.
+              </Text>
+              <Text color="gray.400" fontSize="sm" mb={4}>
+                Error details: {error || 'Unknown error'}
+              </Text>
+              
+              <Button
+                width="100%"
+                bg={theme.gold}
+                color="black"
+                _hover={{
+                  bg: theme.goldHover,
+                }}
+                onClick={closeErrorDialog}
+                height="45px"
+              >
+                Close
+              </Button>
             </Box>
           </Box>
         </Box>
@@ -2101,15 +1996,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Button
             size="sm"
             variant="ghost"
-            color={assetColor}
+            color={theme.gold}
             onClick={onBackClick}
-            _hover={{ color: assetColorHover }}
+            _hover={{ color: theme.goldHover }}
           >
             <Flex align="center" gap={2}>
               <Text>Back</Text>
             </Flex>
           </Button>
-          <Text color={assetColor} fontWeight="bold">
+          <Text color={theme.gold} fontWeight="bold">
             Send {assetContext?.name || 'Asset'}
           </Text>
           <Box w="20px"></Box> {/* Spacer for alignment */}
@@ -2117,17 +2012,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       </Box>
       
       {/* Main Content */}
-      <Box 
-        p={5} 
-        flex="1" 
-        overflowY="auto"
-        sx={{
-          '&::-webkit-scrollbar': {
-            width: '0px',
-            background: 'transparent',
-          },
-        }}
-      >
+      <Box p={5}>
         <Stack gap={6} align="center">
           {/* Asset Avatar and Info */}
           <Box 
@@ -2165,7 +2050,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <Text color="gray.400" fontSize="sm" textAlign="center">
                     Balance: {balance} {assetContext.symbol}
                   </Text>
-                  <Text color={assetColor} fontSize="md" textAlign="center" fontWeight="medium">
+                  <Text color={theme.gold} fontSize="md" textAlign="center" fontWeight="medium">
                     {formatUsd(totalBalanceUsd)}
                   </Text>
                 </Stack>
@@ -2173,7 +2058,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </VStack>
           </Box>
           
-          {/* Amount - Enhanced Dual Input Mode */}
+          {/* Amount */}
           <Box 
             width="100%" 
             bg={theme.cardBg} 
@@ -2183,137 +2068,71 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             borderColor={theme.border}
           >
             <Stack gap={3}>
-              <Flex justify="space-between" align="center">
-                <Text color="white" fontWeight="medium">Amount</Text>
+              <Text color="white" fontWeight="medium">Amount</Text>
+              <Flex>
+                <Flex 
+                  position="relative" 
+                  flex="1"
+                  align="center"
+                >
+                  {isUsdInput && (
+                    <Box position="absolute" left="12px" zIndex="1">
+                      <Text color={theme.gold} fontWeight="bold">$</Text>
+                    </Box>
+                  )}
+                  <Input
+                    value={amount}
+                    onChange={handleAmountChange}
+                    placeholder="0.00"
+                    color="white"
+                    borderColor={theme.border}
+                    _hover={{ borderColor: theme.goldHover }}
+                    _focus={{ borderColor: theme.gold }}
+                    p={3}
+                    pl={isUsdInput ? "28px" : "12px"}
+                    height="50px"
+                    fontSize="lg"
+                    flex="1"
+                  />
+                  {!isUsdInput && (
+                    <Box position="absolute" right="12px" zIndex="1">
+                      <Text color="gray.500" fontWeight="medium">{assetContext.symbol}</Text>
+                    </Box>
+                  )}
+                </Flex>
                 <Button
-                  size="sm"
+                  ml={3}
                   bg={theme.cardBg}
-                  color={assetColor}
+                  color={theme.gold}
                   borderColor={theme.border}
                   borderWidth="1px"
-                  height="30px"
-                  px={3}
+                  height="50px"
+                  px={4}
                   _hover={{
-                    bg: assetColorLight,
-                    borderColor: assetColor,
+                    bg: 'rgba(255, 215, 0, 0.1)',
+                    borderColor: theme.gold,
                   }}
                   onClick={handleSetMax}
                 >
                   MAX
                 </Button>
               </Flex>
-              
-              {/* Active Input (Larger) */}
-              <Box 
-                onClick={() => !isUsdInput && toggleInputMode()}
-                cursor={!isUsdInput ? "pointer" : "default"}
-                transition="all 0.2s"
-              >
-                <Flex 
-                  position="relative" 
-                  align="center"
-                  opacity={isUsdInput ? 1 : 0.6}
-                  transform={isUsdInput ? "scale(1)" : "scale(0.95)"}
-                  transition="all 0.2s"
-                >
-                  <Box position="absolute" left="12px" zIndex="1">
-                    <Text color={isUsdInput ? assetColor : "gray.500"} fontWeight="bold" fontSize={isUsdInput ? "lg" : "md"}>$</Text>
-                  </Box>
-                  <Input
-                    value={isUsdInput ? amount : nativeToUsd(amount)}
-                    onChange={isUsdInput ? handleAmountChange : undefined}
-                    placeholder="0.00"
-                    color={isUsdInput ? "white" : "gray.400"}
-                    borderColor={isUsdInput ? assetColor : theme.border}
-                    borderWidth={isUsdInput ? "2px" : "1px"}
-                    bg={isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
-                    _hover={{ borderColor: isUsdInput ? assetColorHover : theme.border }}
-                    _focus={{ borderColor: isUsdInput ? assetColor : theme.border }}
-                    p={3}
-                    pl="35px"
-                    pr="60px"
-                    height={isUsdInput ? "56px" : "48px"}
-                    fontSize={isUsdInput ? "xl" : "lg"}
-                    fontWeight={isUsdInput ? "bold" : "medium"}
-                    readOnly={!isUsdInput}
-                    cursor={!isUsdInput ? "pointer" : "text"}
-                  />
-                  <Box position="absolute" right="12px" zIndex="1">
-                    <Text color={isUsdInput ? "gray.400" : "gray.500"} fontSize={isUsdInput ? "md" : "sm"} fontWeight="medium">USD</Text>
-                  </Box>
-                </Flex>
-              </Box>
-
-              {/* Divider with Switch Icon */}
-              <Flex align="center" justify="center" position="relative" my={1}>
-                <Box position="absolute" width="100%" height="1px" bg={theme.border} />
-                <Box 
-                  position="relative"
-                  bg={theme.cardBg}
-                  borderRadius="full"
-                  border="1px solid"
-                  borderColor={theme.border}
-                  p={2}
-                  cursor="pointer"
-                  onClick={toggleInputMode}
-                  _hover={{ 
-                    borderColor: assetColor,
-                    bg: assetColorLight,
-                    transform: "rotate(180deg)"
-                  }}
-                  transition="all 0.3s"
-                  zIndex={1}
-                >
-                  <Text fontSize="sm" color={assetColor}>⇅</Text>
-                </Box>
-              </Flex>
-
-              {/* Secondary Input (Smaller) */}
-              <Box 
-                onClick={() => isUsdInput && toggleInputMode()}
-                cursor={isUsdInput ? "pointer" : "default"}
-                transition="all 0.2s"
-              >
-                <Flex 
-                  position="relative" 
-                  align="center"
-                  opacity={!isUsdInput ? 1 : 0.6}
-                  transform={!isUsdInput ? "scale(1)" : "scale(0.95)"}
-                  transition="all 0.2s"
-                >
-                  <Input
-                    value={!isUsdInput ? amount : usdToNative(amount)}
-                    onChange={!isUsdInput ? handleAmountChange : undefined}
-                    placeholder="0.00000000"
-                    color={!isUsdInput ? "white" : "gray.400"}
-                    borderColor={!isUsdInput ? assetColor : theme.border}
-                    borderWidth={!isUsdInput ? "2px" : "1px"}
-                    bg={!isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
-                    _hover={{ borderColor: !isUsdInput ? assetColorHover : theme.border }}
-                    _focus={{ borderColor: !isUsdInput ? assetColor : theme.border }}
-                    p={3}
-                    pl="12px"
-                    pr="80px"
-                    height={!isUsdInput ? "56px" : "48px"}
-                    fontSize={!isUsdInput ? "xl" : "lg"}
-                    fontWeight={!isUsdInput ? "bold" : "medium"}
-                    readOnly={isUsdInput}
-                    cursor={isUsdInput ? "pointer" : "text"}
-                  />
-                  <Box position="absolute" right="12px" zIndex="1">
-                    <Text color={!isUsdInput ? assetColor : "gray.500"} fontSize={!isUsdInput ? "md" : "sm"} fontWeight="bold">{assetContext.symbol}</Text>
-                  </Box>
-                </Flex>
-              </Box>
-
-              {/* Helper text */}
               <Text 
-                fontSize="xs" 
+                fontSize="sm" 
                 color="gray.500" 
-                textAlign="center"
-                fontStyle="italic"
+                ml={2} 
+                cursor="pointer" 
+                _hover={{ color: theme.goldHover }}
+                onClick={toggleInputMode}
+                display="flex"
+                alignItems="center"
               >
-                Click on either field to switch input mode
+                {isUsdInput ? (
+                  <>≈ {amount ? parseFloat(usdToNative(amount)).toFixed(8) : '0'} {assetContext.symbol}</>
+                ) : (
+                  <>≈ {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}</>
+                )}
+                <Box as="span" ml={1} fontSize="xs">(click to switch)</Box>
               </Text>
             </Stack>
           </Box>
@@ -2335,8 +2154,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 placeholder={`${assetContext.symbol} Address`}
                 color="white"
                 borderColor={theme.border}
-                _hover={{ borderColor: assetColorHover }}
-                _focus={{ borderColor: assetColor }}
+                _hover={{ borderColor: theme.goldHover }}
+                _focus={{ borderColor: theme.gold }}
                 p={3}
                 height="50px"
                 fontSize="md"
@@ -2364,8 +2183,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
                   color="white"
                   borderColor={theme.border}
-                  _hover={{ borderColor: assetColorHover }}
-                  _focus={{ borderColor: assetColor }}
+                  _hover={{ borderColor: theme.goldHover }}
+                  _focus={{ borderColor: theme.gold }}
                   p={3}
                   height="50px"
                   fontSize="md"
@@ -2374,77 +2193,42 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Box>
           )}
           
-          {/* Fee Selection - Now using reusable component - Hide for XRP */}
-          {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
-            <>
-              <Box 
-                width="100%" 
-                bg={assetColorLight} 
-                borderRadius={theme.borderRadius} 
-                p={theme.formPadding}
-                borderWidth="1px"
-                borderColor={`${assetColor}33`}
-              >
-                <FeeSelection
-                  networkId={assetContext?.networkId || ''}
-                  assetId={assetContext?.assetId}
-                  selectedFeeLevel={selectedFeeLevel}
-                  onFeeSelectionChange={handleFeeSelectionChange}
-                  customFeeOption={customFeeOption}
-                  onCustomFeeToggle={() => {
-                    setCustomFeeOption(!customFeeOption);
-                    if (!customFeeOption) {
-                      setSelectedFeeLevel('average');
-                    }
-                  }}
-                  customFeeAmount={customFeeAmount}
-                  onCustomFeeChange={setCustomFeeAmount}
-                  theme={{
-                    gold: assetColor,
-                    goldHover: assetColorHover,
-                    border: theme.border
-                  }}
-                />
-              </Box>
-              
-              {/* Fee Estimate */}
-              <Box 
-                width="100%" 
-                bg={assetColorLight} 
-                borderRadius={theme.borderRadius} 
-                p={theme.formPadding}
-                borderWidth="1px"
-                borderColor={`${assetColor}33`}
-              >
-                <Flex justify="space-between" align="center">
-                  <Text color="gray.400">Estimated Fee</Text>
-                  <Stack gap={0} align="flex-end">
-                    <Text color={assetColor} fontWeight="medium">
-                      {estimatedFee} {assetContext.symbol}
-                    </Text>
-                    <Text color="gray.500" fontSize="xs">
-                      ≈ ${estimatedFeeUsd} USD
-                    </Text>
-                  </Stack>
-                </Flex>
-              </Box>
-            </>
-          )}
+          {/* Fee Estimate */}
+          <Box 
+            width="100%" 
+            bg="rgba(255, 215, 0, 0.05)" 
+            borderRadius={theme.borderRadius} 
+            p={theme.formPadding}
+            borderWidth="1px"
+            borderColor="rgba(255, 215, 0, 0.2)"
+          >
+            <Flex justify="space-between" align="center">
+              <Text color="gray.400">Estimated Fee</Text>
+              <Stack gap={0} align="flex-end">
+                <Text color={theme.gold} fontWeight="medium">
+                  {formatFeeDisplay(estimatedFee)} {assetContext.symbol}
+                </Text>
+                <Text color="gray.500" fontSize="xs">
+                  ≈ ${estimatedFeeUsd} USD
+                </Text>
+              </Stack>
+            </Flex>
+          </Box>
           
           {/* Send Button */}
           <Button
             mt={4}
             width="100%"
-            bg={assetColor}
+            bg={theme.gold}
             color="black"
             _hover={{
-              bg: assetColorHover,
+              bg: theme.goldHover,
             }}
             onClick={handleSend}
             disabled={!amount || !recipient}
             height="56px"
             fontSize="lg"
-            boxShadow={`0px 4px 12px ${assetColor}4D`}
+            boxShadow="0px 4px 12px rgba(255, 215, 0, 0.3)"
           >
             <Flex gap={3} align="center" justify="center">
               <FaPaperPlane />

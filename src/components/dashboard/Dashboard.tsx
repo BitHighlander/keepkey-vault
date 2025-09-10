@@ -303,21 +303,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   return (
-    <Box 
-      height="100vh" 
-      bg={theme.bg}
-      backgroundImage="url(/images/backgrounds/splash-bg.png)"
-      backgroundSize="cover"
-      backgroundPosition="center"
-      backgroundRepeat="no-repeat"
-    >
+    <Box height="100vh" bg={theme.bg}>
       {/* Header */}
       <Box 
         borderBottom="1px" 
         borderColor={theme.border}
         p={4}
         bg={theme.cardBg}
-        backdropFilter="blur(5px)"
+        backdropFilter="blur(10px)"
         position="relative"
         _after={{
           content: '""',
@@ -504,10 +497,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   <NetworkSkeleton />
                 </>
               ) : (
-                <>
-                  {dashboard?.networks?.map((network: Network) => {
+                dashboard?.networks
+                  .map((network: Network) => {
                     const { integer, largePart, smallPart } = formatBalance(network.totalNativeBalance);
-                    const percentage = dashboard.networkPercentages?.find(
+                    const percentage = dashboard.networkPercentages.find(
                       (np: NetworkPercentage) => np.networkId === network.networkId
                     )?.percentage || 0;
 
@@ -618,28 +611,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              {network.icon ? (
-                                <Image 
-                                  src={network.icon} 
-                                  alt={network.networkId}
-                                  boxSize="44px"
-                                  objectFit="cover"
-                                />
-                              ) : (
-                                <Box
-                                  boxSize="44px"
-                                  borderRadius="50%"
-                                  bg={`${network.color}20`}
-                                  display="flex"
-                                  alignItems="center"
-                                  justifyContent="center"
-                                  fontSize="lg"
-                                  fontWeight="bold"
-                                  color={network.color}
-                                >
-                                  {network.gasAssetSymbol?.slice(0, 2)}
-                                </Box>
-                              )}
+                              <Image 
+                                src={network.icon} 
+                                alt={network.networkId}
+                                boxSize="44px"
+                                objectFit="cover"
+                              />
                             </Box>
                             <Stack gap={0.5}>
                               <Text fontSize="md" fontWeight="bold" color={network.color}>
@@ -723,8 +700,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         </Flex>
                       </Box>
                     );
-                  })}
-                </>
+                  })
               )}
             </VStack>
           </Box>
@@ -768,6 +744,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 
                 // Only show tokens that have a balance > 0
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
+                
+                // Debug logging for each balance
+                if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
+                  console.log('🔍 [Dashboard] Checking balance for token classification:', {
+                    caip: balance.caip,
+                    symbol: balance.symbol,
+                    balance: balance.balance,
+                    type: balance.type,
+                    isToken: isToken,
+                    hasBalance: hasBalance,
+                    willInclude: isToken && hasBalance
+                  });
+                }
                 
                 return isToken && hasBalance;
               });
@@ -892,7 +881,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               }
                               
                               // Also get charts/tokens (with error handling for staking position bug)
-                              if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
+                              if (app && typeof app.getCharts === 'function') {
                                 console.log('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
@@ -900,8 +889,6 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                   console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
                                   // Don't throw - this is a known issue with the Pioneer SDK
                                 }
-                              } else if (app && typeof app.getCharts === 'function') {
-                                console.log('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');
                               }
                               
                               // Fetch dashboard data after refresh
@@ -1188,8 +1175,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               right: "-50%",
               bottom: "-50%",
               background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
-                          opacity: 0.4,
-            transition: "opacity 0.2s",
+              opacity: 0.2,
+              transition: "opacity 0.2s",
             }}
             transition="all 0.2s"
             cursor="pointer"

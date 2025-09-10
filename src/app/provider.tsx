@@ -59,13 +59,9 @@ export function Provider({ children }: ProviderProps) {
         const queryKey = localStorage.getItem('queryKey') || `key:${uuidv4()}`;
         localStorage.setItem('queryKey', queryKey);
 
-        // Load existing KeepKey API key from storage (generated after device pairing)
-        let keepkeyApiKey = localStorage.getItem('keepkeyApiKey') || 'keepkey-api-key-default';
-        if (localStorage.getItem('keepkeyApiKey')) {
-          console.log('🔐 Using stored keepkeyApiKey from previous pairing session');
-        } else {
-          console.log('🔐 No keepkeyApiKey found - using default, will be replaced after device pairing');
-        }
+        let keepkeyApiKey = localStorage.getItem('keepkeyApiKey');
+        if (!keepkeyApiKey) keepkeyApiKey = '57dd3fa6-9344-4bc5-8a92-924629076018';
+        localStorage.setItem('keepkeyApiKey', keepkeyApiKey);
 
         console.log('🔧 Pioneer credentials:', { username, queryKey, keepkeyApiKey });
         console.log('🔧 Pioneer URLs:', { PIONEER_URL, PIONEER_WSS });
@@ -82,24 +78,9 @@ export function Provider({ children }: ProviderProps) {
         console.log('🔧 Blockchains:', blockchains);
         console.log('🔧 Paths length:', paths.length);
         
-        // Filter out any unsupported networks that cause getCharts errors
-        const unsupportedNetworks = [
-          'eip155:100', // Gnosis/xDAI
-          'eip155:250', // Fantom
-          'eip155:534352', // Scroll
-          'eip155:324', // zkSync Era
-          'eip155:1101', // Polygon zkEVM
-        ];
-        
-        const originalLength = blockchains.length;
-        blockchains = blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
-        
-        console.log('🔧 Filtered blockchains:', {
-          original: originalLength,
-          filtered: blockchains.length,
-          removed: originalLength - blockchains.length,
-          removedNetworks: unsupportedNetworks
-        });
+        // Filter out any unsupported networks (like scroll)
+        console.log('🔧 Supported blockchains only:', blockchains);
+        console.log('🔧 Filtering out unsupported networks like scroll, fantom, etc.');
 
         // Create Pioneer SDK instance directly
         console.log('🔧 Creating Pioneer SDK instance...');
@@ -274,29 +255,10 @@ export function Provider({ children }: ProviderProps) {
           caip: assets_enabled[1],
           networkId: caipToNetworkId(assets_enabled[1]),
         };
-
-        // Helper derive address for CAIP from pubkeys
-        const getAddressForCaip = (targetCaip?: string): string => {
-          try {
-            if (!targetCaip) return '';
-            const networkId = caipToNetworkId(targetCaip);
-            if (!networkId) return '';
-            const prefix = networkId.split(':')[0];
-            const pk = appInit?.pubkeys?.find(
-              (p: any) => Array.isArray(p.networks) && (p.networks.includes(networkId) || p.networks.includes(`${prefix}:*`))
-            );
-            return pk?.address || pk?.pubkey || '';
-          } catch {
-            return '';
-          }
-        };
         
         console.log('🔧 Setting default asset contexts...');
         await appInit.setAssetContext(defaultInput);
-        await appInit.setOutboundAssetContext({
-          ...defaultOutput,
-          address: getAddressForCaip(defaultOutput.caip),
-        });
+        await appInit.setOutboundAssetContext(defaultOutput);
 
         // Try to get some data to verify the SDK is working
         try {
@@ -308,30 +270,13 @@ export function Provider({ children }: ProviderProps) {
           
           // Start background chart fetching to populate staking positions and other chart data
           try {
-            // Only call getCharts if we have pubkeys (addresses) to look up
-            if (appInit.pubkeys && appInit.pubkeys.length > 0) {
-              console.log('📊 Starting chart fetching (including staking positions)...');
-              console.log('📊 Balances before getCharts:', appInit.balances.length);
-              
-              try {
-                await appInit.getCharts();
-                console.log('✅ Chart fetching completed successfully');
-                console.log('📊 Balances after getCharts:', appInit.balances.length);
-              } catch (chartError: any) {
-                // Check if it's a network support error
-                if (chartError?.message?.includes('network not live in blockchains')) {
-                  // Extract the unsupported network from the error message
-                  const match = chartError.message.match(/"([^"]+)"/);
-                  const network = match ? match[1] : 'unknown';
-                  console.log(`ℹ️ Network ${network} not supported for charts - skipping`);
-                  // This is expected - some networks don't have chart support
-                } else {
-                  console.error('❌ Chart fetching error:', chartError);
-                }
-              }
-            } else {
-              console.log('⏭️ Skipping chart fetching - no pubkeys available yet (wallet not paired)');
-            }
+            console.log('📊 Starting chart fetching (including staking positions)...');
+            console.log('📊 Balances before getCharts:', appInit.balances.length);
+            
+            await appInit.getCharts();
+            
+            console.log('✅ Chart fetching completed successfully');
+            console.log('📊 Balances after getCharts:', appInit.balances.length);
             
             // Debug: Look for staking positions
             const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
@@ -362,72 +307,10 @@ export function Provider({ children }: ProviderProps) {
             console.log('🔑 KeepKey connection result:', keepkeyConnected);
             console.log('🔑 KeepKey SDK after pairing:', !!appInit.keepKeySdk);
             
-            // After successful pairing, save the API key generated by the device/SDK
-            if (appInit.keepkeyApiKey && appInit.keepkeyApiKey !== keepkeyApiKey) {
-              try {
-                localStorage.setItem('keepkeyApiKey', appInit.keepkeyApiKey);
-                console.log('🔐 ✅ Persisted keepkeyApiKey after successful device pairing');
-              } catch (storageError) {
-                console.warn('⚠️ Failed to persist keepkeyApiKey after pairing:', storageError);
-              }
-            }
-            
             if (appInit.keepKeySdk) {
               console.log('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
-              
-              // Filter unsupported networks from the SDK's blockchains if possible
-              if (appInit.blockchains && Array.isArray(appInit.blockchains)) {
-                const unsupportedNetworks = [
-                  'eip155:100', // Gnosis/xDAI
-                  'eip155:250', // Fantom
-                  'eip155:534352', // Scroll
-                  'eip155:324', // zkSync Era
-                  'eip155:1101', // Polygon zkEVM
-                ];
-                
-                const originalCount = appInit.blockchains.length;
-                appInit.blockchains = appInit.blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
-                console.log('🔑 Filtered blockchains after pairing:', {
-                  original: originalCount,
-                  filtered: appInit.blockchains.length,
-                  removed: originalCount - appInit.blockchains.length
-                });
-              }
-              
-              //appInit.refresh();
+              await appInit.refresh();
               console.log('🔑 ✅ refresh() completed - dashboard should now be available');
-              
-              // Now that we have pubkeys after pairing, fetch chart data including staking positions
-              try {
-                if (appInit.pubkeys && appInit.pubkeys.length > 0) {
-                  // Check if we have problematic networks
-                  const hasProblematicNetworks = appInit.blockchains?.some((chain: string) => 
-                    ['eip155:100', 'eip155:250', 'eip155:534352', 'eip155:324', 'eip155:1101'].includes(chain)
-                  );
-                  
-                  if (hasProblematicNetworks) {
-                    console.log('ℹ️ Skipping getCharts after pairing - unsupported networks detected');
-                  } else {
-                    console.log('📊 Fetching charts after wallet pairing...');
-                    try {
-                      await appInit.getCharts();
-                      console.log('✅ Chart data fetched successfully after pairing');
-                    } catch (getChartsError: any) {
-                      // Fallback error handling just in case
-                      console.log('ℹ️ Chart fetching skipped:', getChartsError.message);
-                    }
-                  }
-                  
-                  // Debug: Check for staking positions
-                  const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
-                  console.log('📊 Staking positions after pairing:', stakingBalances.length);
-                } else {
-                  console.log('⚠️ No pubkeys available after pairing - cannot fetch charts');
-                }
-              } catch (chartError) {
-                console.warn('⚠️ Chart fetching failed after pairing:', chartError);
-                // Don't throw - this is not critical for basic functionality
-              }
             } else {
               console.log('🔑 ⚠️ KeepKey SDK still not initialized after pairing');
             }
@@ -494,36 +377,6 @@ export function Provider({ children }: ProviderProps) {
 
     initPioneerSDK();
   }, []);
-
-  // Ensure outbound asset context carries a valid address derived from pubkeys
-  useEffect(() => {
-    const app = pioneerSdk;
-    if (!app) return;
-    const caip = app?.outboundAssetContext?.caip;
-    if (!caip) return;
-    const networkId = caipToNetworkId(caip);
-    if (!networkId) return;
-    const prefix = networkId.split(':')[0];
-    const pk = app?.pubkeys?.find(
-      (p: any) => Array.isArray(p?.networks) && (
-        p.networks.includes(networkId) ||
-        p.networks.includes(`${prefix}:*`) ||
-        p.networks.some((n: string) => typeof n === 'string' && n.startsWith(`${prefix}:`))
-      )
-    );
-    const derivedAddress = pk?.address || pk?.master || pk?.pubkey || '';
-    const existingAddress = (app?.outboundAssetContext as any)?.address || (app?.outboundAssetContext as any)?.master || '';
-    if (derivedAddress && !existingAddress && typeof app?.setOutboundAssetContext === 'function') {
-      app.setOutboundAssetContext({
-        caip,
-        networkId,
-        symbol: app?.outboundAssetContext?.symbol,
-        name: app?.outboundAssetContext?.name,
-        icon: app?.outboundAssetContext?.icon,
-        address: derivedAddress,
-      });
-    }
-  }, [pioneerSdk, pioneerSdk?.outboundAssetContext?.caip, pioneerSdk?.pubkeys]);
 
   if (error) {
     return (

@@ -29,11 +29,11 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaFileExport } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
-import { isFeatureEnabled } from '@/config/features';
+import { ReportDialog } from './ReportDialog';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -48,10 +48,9 @@ interface AssetProps {
   onBackClick?: () => void;
   onSendClick?: () => void;
   onReceiveClick?: () => void;
-  onSwapClick?: () => void;
 }
 
-export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }: AssetProps) => {
+export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) => {
   // State for managing the component's loading status
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<number>(Date.now());
@@ -61,9 +60,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [previousBalance, setPreviousBalance] = useState<string>('0');
   // Add flag to track if this is the initial load to prevent sound on first balance set
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [pubkeys, setPubkeys] = useState<any>([])
-  const [balances, setBalances] = useState<any>([])
-
+  
+  // Report dialog state
+  const { isOpen: isReportOpen, onOpen: onReportOpen, onClose: onReportClose } = useDisclosure();
+  
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
   const { state } = pioneer;
@@ -72,31 +72,31 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   
   const router = useRouter();
 
+  // Format USD value
+  const formatUsd = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return '0.00';
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(numValue)) return '0.00';
+    return numValue.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
   // Add component mount/unmount logging and handle loading state
   useEffect(() => {
     console.log('🎯 [Asset] Component mounted with context:', assetContext);
+    
+    // For debugging - log the Pioneer context
+    console.log('🎯 [Asset] Pioneer context:', { 
+      app,
+      hasApp: !!app,
+      hasAssetContext: !!app?.assetContext,
+      hasSetAssetContext: !!app?.setAssetContext
+    });
+    
     // Check if asset context is already available
     if (assetContext) {
-
-
-      //get all pubkeys for networkId
-      const pubkeys = app.pubkeys.filter((pubkey: any) =>
-          pubkey.networks.some((n: string) => n.includes('cosmos:cosmoshub') || n.includes('cosmos:osmosis'))
-      );
-      console.log('[Asset component] pubkeys:', pubkeys)
-
-      //get all balances for networkId
-      const balances = app.balances.find((balance:any) => balance.caip === assetContext.caip);
-      console.log('[Asset component] balances: ', balances)
-      // Sort by USD value (highest first) and show ALL balances
-      const sortedBalances = balances
-          .sort((a: any, b: any) => parseFloat(b.valueUsd || '0') - parseFloat(a.valueUsd || '0'));
-      console.log('[Asset component] sortedBalances: ', sortedBalances)
-
-      //
-
-
-
       console.log('✅ [Asset] AssetContext already available on mount');
       // Initialize previousBalance when asset context is available
       if (assetContext.balance) {
@@ -116,16 +116,26 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
       // Re-access the latest context values
       const currentApp = pioneer?.state?.app;
       const currentAssetContext = currentApp?.assetContext;
+      
       if (currentAssetContext) {
         console.log('✅ [Asset] AssetContext became available on check', checkCount);
         setLoading(false);
         return true;
       }
+      
       checkCount++;
       if (checkCount >= maxChecks) {
+        console.log('❌ [Asset] AssetContext still null after', maxChecks, 'checks');
+        console.log('❌ [Asset] Current app state:', {
+          hasApp: !!currentApp,
+          hasAssetContext: !!currentApp?.assetContext,
+          hasSetAssetContext: !!currentApp?.setAssetContext,
+          isDashboardAvailable: !!currentApp?.dashboard
+        });
         setLoading(false);
         return true;
       }
+      
       return false;
     };
     
@@ -173,9 +183,17 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
               isInitialLoad
             });
+            
+            // Only play sound if this is not the initial load and balance actually increased
+            if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
+              console.log("🎵 [Asset] Balance increased! Playing chaching sound");
+              playSound(chachingSound);
+            }
+            
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);
           }
+          
           setLastSync(Date.now());
         })
         .catch((error: any) => {
@@ -612,26 +630,24 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   <Text>Receive</Text>
                 </Flex>
               </Button>
-              {isFeatureEnabled('enableSwaps') && (
-                <Button
-                  width="100%"
-                  size="lg"
-                  bg={theme.cardBg}
-                  color="#9F7AEA"
-                  borderColor={theme.border}
-                  borderWidth="1px"
-                  _hover={{
-                    bg: 'rgba(159, 122, 234, 0.1)',
-                    borderColor: '#9F7AEA',
-                  }}
-                  onClick={onSwapClick}
-                >
-                  <Flex gap={2} align="center">
-                    <FaExchangeAlt />
-                    <Text>Swap</Text>
-                  </Flex>
-                </Button>
-              )}
+              <Button
+                width="100%"
+                size="lg"
+                bg={theme.cardBg}
+                color="#00D9FF"
+                borderColor={theme.border}
+                borderWidth="1px"
+                _hover={{
+                  bg: 'rgba(0, 217, 255, 0.1)',
+                  borderColor: '#00D9FF',
+                }}
+                onClick={onReportOpen}
+              >
+                <Flex gap={2} align="center">
+                  <FaFileExport />
+                  <Text>Report</Text>
+                </Flex>
+              </Button>
             </VStack>
           </VStack>
           
@@ -706,7 +722,23 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                         textDecorationStyle: 'dotted'
                       }}
                     >
-                      {assetContext.caip}
+                      {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Asset ID</Text>
+                    <Text 
+                      color="white" 
+                      fontSize="sm" 
+                      fontFamily="mono"
+                      title={assetContext.assetId}
+                      cursor="help"
+                      _hover={{
+                        textDecoration: 'underline',
+                        textDecorationStyle: 'dotted'
+                      }}
+                    >
+                      {middleEllipsis(assetContext.assetId, 16)}
                     </Text>
                   </HStack>
                 </VStack>
@@ -734,33 +766,47 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </HStack>
                 </VStack>
 
-                {/* Address Info */}
-                {assetContext.pubkeys?.[0] && (
+                {/* Address Info - Show all pubkeys/xpubs */}
+                {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
                   <VStack align="stretch" gap={3}>
                     <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                      Wallet Information
+                      Wallet Information ({assetContext.pubkeys.length} account{assetContext.pubkeys.length > 1 ? 's' : ''})
                     </Text>
-                    <VStack align="stretch" gap={2}>
-                      <Text color="gray.400" fontSize="sm">{assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}</Text>
-                      <Box 
-                        p={3}
-                        bg={theme.bg}
-                        borderRadius="lg"
-                        borderWidth="1px"
-                        borderColor={theme.border}
-                      >
-                        <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                          {assetContext.networkId?.startsWith('bip122:') 
-                            ? assetContext.pubkeys[0].pubkey 
-                            : assetContext.pubkeys[0].address}
-                        </Text>
-                      </Box>
-                      <HStack justify="space-between" mt={1}>
-                        <Text color="gray.400" fontSize="xs">Path</Text>
-                        <Text color="white" fontSize="xs" fontFamily="mono">
-                          {assetContext.pubkeys[0].path}
-                        </Text>
-                      </HStack>
+                    <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
+                      {assetContext.pubkeys.map((pubkey: any, index: number) => (
+                        <Box 
+                          key={index}
+                          p={3}
+                          bg={theme.bg}
+                          borderRadius="lg"
+                          borderWidth="1px"
+                          borderColor={theme.border}
+                        >
+                          <VStack align="stretch" gap={2}>
+                            <HStack justify="space-between">
+                              <Text color="gray.400" fontSize="sm">
+                                {assetContext.networkId?.startsWith('bip122:') ? `XPUB ${index + 1}` : `Address ${index + 1}`}
+                              </Text>
+                              {pubkey.note && (
+                                <Text color="gray.500" fontSize="xs">
+                                  {pubkey.note}
+                                </Text>
+                              )}
+                            </HStack>
+                            <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                              {assetContext.networkId?.startsWith('bip122:') 
+                                ? pubkey.pubkey 
+                                : pubkey.address}
+                            </Text>
+                            <HStack justify="space-between" mt={1}>
+                              <Text color="gray.400" fontSize="xs">Path</Text>
+                              <Text color="white" fontSize="xs" fontFamily="mono">
+                                {pubkey.path}
+                              </Text>
+                            </HStack>
+                          </VStack>
+                        </Box>
+                      ))}
                     </VStack>
                   </VStack>
                 )}
@@ -796,18 +842,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                             bg: 'rgba(255, 215, 0, 0.1)',
                             borderColor: theme.gold,
                           }}
-                          onClick={() => {
-                            // For UTXO coins, use XPUB explorer if available
-                            if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
-                              window.open(`${assetContext.explorerXpubLink}${assetContext.pubkeys[0].pubkey}`, '_blank');
-                            } else {
-                              // Fallback to address explorer
-                              window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank');
-                            }
-                          }}
+                          onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
                           flex="1"
                         >
-                          TX History
+                          View Address
                         </Button>
                       )}
                     </HStack>
@@ -890,6 +928,22 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     {middleEllipsis(assetContext.caip || assetContext.assetId, 16)}
                   </Text>
                 </HStack>
+                <HStack justify="space-between">
+                  <Text color="gray.400">Asset ID</Text>
+                  <Text 
+                    color="white" 
+                    fontSize="sm" 
+                    fontFamily="mono"
+                    title={assetContext.assetId}
+                    cursor="help"
+                    _hover={{
+                      textDecoration: 'underline',
+                      textDecorationStyle: 'dotted'
+                    }}
+                  >
+                    {middleEllipsis(assetContext.assetId, 16)}
+                  </Text>
+                </HStack>
               </VStack>
 
               {/* Asset Info */}
@@ -915,33 +969,47 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                 </HStack>
               </VStack>
 
-              {/* Address Info */}
-              {assetContext.pubkeys?.[0] && (
+              {/* Address Info - Show all pubkeys/xpubs */}
+              {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
                 <VStack align="stretch" gap={3}>
                   <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                    Wallet Information
+                    Wallet Information ({assetContext.pubkeys.length} account{assetContext.pubkeys.length > 1 ? 's' : ''})
                   </Text>
-                  <VStack align="stretch" gap={2}>
-                    <Text color="gray.400" fontSize="sm">{assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}</Text>
-                    <Box 
-                      p={3}
-                      bg={theme.bg}
-                      borderRadius="lg"
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                    >
-                      <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                        {assetContext.networkId?.startsWith('bip122:') 
-                          ? assetContext.pubkeys[0].pubkey 
-                          : assetContext.pubkeys[0].address}
-                      </Text>
-                    </Box>
-                    <HStack justify="space-between" mt={1}>
-                      <Text color="gray.400" fontSize="xs">Path</Text>
-                      <Text color="white" fontSize="xs" fontFamily="mono">
-                        {assetContext.pubkeys[0].path}
-                      </Text>
-                    </HStack>
+                  <VStack align="stretch" gap={3} maxH="300px" overflowY="auto">
+                    {assetContext.pubkeys.map((pubkey: any, index: number) => (
+                      <Box 
+                        key={index}
+                        p={3}
+                        bg={theme.bg}
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor={theme.border}
+                      >
+                        <VStack align="stretch" gap={2}>
+                          <HStack justify="space-between">
+                            <Text color="gray.400" fontSize="sm">
+                              {assetContext.networkId?.startsWith('bip122:') ? `XPUB ${index + 1}` : `Address ${index + 1}`}
+                            </Text>
+                            {pubkey.note && (
+                              <Text color="gray.500" fontSize="xs">
+                                {pubkey.note}
+                              </Text>
+                            )}
+                          </HStack>
+                          <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
+                            {assetContext.networkId?.startsWith('bip122:') 
+                              ? pubkey.pubkey 
+                              : pubkey.address}
+                          </Text>
+                          <HStack justify="space-between" mt={1}>
+                            <Text color="gray.400" fontSize="xs">Path</Text>
+                            <Text color="white" fontSize="xs" fontFamily="mono">
+                              {pubkey.path}
+                            </Text>
+                          </HStack>
+                        </VStack>
+                      </Box>
+                    ))}
                   </VStack>
                 </VStack>
               )}
@@ -977,18 +1045,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                           bg: 'rgba(255, 215, 0, 0.1)',
                           borderColor: theme.gold,
                         }}
-                        onClick={() => {
-                          // For UTXO coins, use XPUB explorer if available
-                          if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
-                            window.open(`${assetContext.explorerXpubLink}${assetContext.pubkeys[0].pubkey}`, '_blank');
-                          } else {
-                            // Fallback to address explorer
-                            window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank');
-                          }
-                        }}
+                        onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
                         flex="1"
                       >
-                        {assetContext.networkId?.startsWith('bip122:') ? 'View XPUB' : 'View Address'}
+                        View Address
                       </Button>
                     )}
                   </HStack>
@@ -1001,6 +1061,15 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         {/* Cosmos Staking Section */}
         <CosmosStaking assetContext={assetContext} />
       </Box>
+      
+      {/* Report Dialog */}
+      <ReportDialog
+        isOpen={isReportOpen}
+        onClose={onReportClose}
+        assetContext={assetContext}
+        pubkeys={assetContext?.pubkeys || []}
+        balances={assetContext?.balances || []}
+      />
     </Box>
   );
 };
