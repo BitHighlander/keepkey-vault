@@ -936,7 +936,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                       >
                         View Explorer
                       </Button>
-                      {assetContext.pubkeys?.[0] && (
+                      {app?.pubkeyContext && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -946,10 +946,20 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                             bg: 'rgba(255, 215, 0, 0.1)',
                             borderColor: theme.gold,
                           }}
-                          onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
+                          onClick={() => {
+                            // Use the active pubkey context
+                            const activePubkey = app.pubkeyContext;
+                            // For UTXO coins, use XPUB explorer if available
+                            if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
+                              window.open(`${assetContext.explorerXpubLink}${activePubkey.pubkey || activePubkey.xpub}`, '_blank');
+                            } else {
+                              // Fallback to address explorer
+                              window.open(`${assetContext.explorerAddressLink}${activePubkey.address}`, '_blank');
+                            }
+                          }}
                           flex="1"
                         >
-                          View Address
+                          TX History
                         </Button>
                       )}
                     </HStack>
@@ -1242,7 +1252,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                     >
                       View Explorer
                     </Button>
-                    {assetContext.pubkeys?.[0] && (
+                    {app?.pubkeyContext && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -1252,10 +1262,20 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                           bg: 'rgba(255, 215, 0, 0.1)',
                           borderColor: theme.gold,
                         }}
-                        onClick={() => window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank')}
+                        onClick={() => {
+                          // Use the active pubkey context
+                          const activePubkey = app.pubkeyContext;
+                          // For UTXO coins, use XPUB explorer if available
+                          if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
+                            window.open(`${assetContext.explorerXpubLink}${activePubkey.pubkey || activePubkey.xpub}`, '_blank');
+                          } else {
+                            // Fallback to address explorer
+                            window.open(`${assetContext.explorerAddressLink}${activePubkey.address}`, '_blank');
+                          }
+                        }}
                         flex="1"
                       >
-                        View Address
+                        TX History
                       </Button>
                     )}
                   </HStack>
