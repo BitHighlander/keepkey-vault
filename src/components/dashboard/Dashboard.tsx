@@ -19,7 +19,6 @@ import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
-import { deduplicateBalances, deduplicateNetworks } from '@/utils/deduplicatePubkeys';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -158,16 +157,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   useEffect(() => {
-    console.log('📊 [Dashboard] Component mounted');
     fetchDashboard();
-    return () => console.log('📊 [Dashboard] Component unmounting');
   }, [app, app?.dashboard]);
 
-  // Add new useEffect to reload dashboard when assetContext becomes null
+  // Reload dashboard when assetContext becomes null
   useEffect(() => {
-    console.log('📊 [Dashboard] AssetContext changed:', app?.assetContext);
     if (!app?.assetContext) {
-      console.log('📊 [Dashboard] AssetContext is null, reloading dashboard');
       fetchDashboard();
     }
   }, [app?.assetContext]);
@@ -180,13 +175,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       app
         .syncMarket()
         .then(() => {
-          console.log("📊 [Dashboard] syncMarket called from Dashboard");
-          // We now track real balance changes instead of artificial adjustments
           setLastSync(Date.now());
           fetchDashboard();
         })
         .catch((error: any) => {
-          console.error("❌ [Dashboard] Error in syncMarket:", error);
+          console.error("Error in syncMarket:", error);
         });
     }, 15000);
 
@@ -194,40 +187,18 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   }, [app]);
 
   const fetchDashboard = async () => {
-    console.log('📊 [Dashboard] Fetching dashboard data');
     setLoading(true);
     try {
       if(app && app.dashboard) {
-        let dashboard = app.dashboard;
-        console.log('📊 [Dashboard] Dashboard data received:', dashboard);
-        
-        // Deduplicate networks to prevent phantom balances
-        if (dashboard.networks) {
-          const originalNetworkCount = dashboard.networks.length;
-          dashboard = {
-            ...dashboard,
-            networks: deduplicateNetworks(dashboard.networks)
-          };
-          
-          if (originalNetworkCount !== dashboard.networks.length) {
-            console.log('🔍 [Dashboard] Deduplicated networks:', {
-              original: originalNetworkCount,
-              deduplicated: dashboard.networks.length,
-              removed: originalNetworkCount - dashboard.networks.length
-            });
-          }
-        }
-        
+        const dashboard = app.dashboard;
+        console.log('dashboard: ',dashboard);
+
         // Compare new total value with previous total value
         const newTotalValue = dashboard.totalValueUsd || 0;
         const prevTotalValue = previousTotalValue;
         
         // Check if portfolio value has increased
         if (newTotalValue > prevTotalValue && prevTotalValue > 0) {
-          console.log("💰 [Dashboard] Portfolio value increased!", { 
-            previous: prevTotalValue, 
-            current: newTotalValue 
-          });
           playSound(chachingSound);
         }
         
@@ -250,19 +221,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               .findIndex((network: Network) => network.networkId === topAsset.networkId);
               
             if (topAssetIndex >= 0) {
-              console.log('📊 [Dashboard] Setting active slice to top asset:', topAsset.gasAssetSymbol);
               setActiveSliceIndex(topAssetIndex);
             }
           }
         }
-      } else {
-        console.log('📊 [Dashboard] No dashboard data available');
       }
     } catch (error) {
-      console.error('📊 [Dashboard] Error fetching dashboard:', error);
+      console.error('Error fetching dashboard:', error);
     } finally {
       setLoading(false);
-      console.log('📊 [Dashboard] Fetch complete');
     }
   };
 
@@ -581,20 +548,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
-                          console.log('📋 [Dashboard] Navigating to asset page:', network);
-                          
-                          // We always use the full CAIP from gasAssetCaip for navigation
-                          const caip = network.gasAssetCaip;
-                          
-                          console.log('📋 [Dashboard] Using CAIP for navigation:', caip);
-                          console.log('📋 [Dashboard] Network object:', network);
-                          
-                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
-                          const encodedCaip = btoa(caip);
-                          
-                          console.log('📋 [Dashboard] Encoded parameters:', { encodedCaip });
-                          
-                          // Navigate using encoded parameters to the simplified route
+                          const encodedCaip = btoa(network.gasAssetCaip);
                           router.push(`/asset/${encodedCaip}`);
                         }}
                         role="button"
@@ -723,70 +677,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             </VStack>
           </Box>
 
-          {/* Tokens Section - Always Show */}
+          {/* Tokens Section */}
           {(() => {
-            // Helper function to determine if a CAIP represents a token vs native asset
-            const isTokenCaip = (caip: string): boolean => {
-              if (!caip) return false;
-              
-              // Explicit token type
-              if (caip.includes('erc20') || caip.includes('eip721')) return true;
-              
-              // ERC20 tokens have contract addresses (0x followed by 40 hex chars)
-              if (caip.includes('eip155:') && /0x[a-fA-F0-9]{40}/.test(caip)) return true;
-              
-              // Maya tokens: denom:maya identifies Maya tokens (MAYA.CACAO, MAYA.MAYA, etc.)
-              if (caip.includes('cosmos:mayachain-mainnet-v1/denom:maya')) return true;
-              
-              // Cosmos ecosystem tokens (not using slip44 format)
-              if (caip.includes('MAYA.') || caip.includes('THOR.') || caip.includes('OSMO.')) return true;
-              
-              // Cosmos tokens using denom or ibc format
-              if (caip.includes('/denom:') || caip.includes('/ibc:')) return true;
-              
-              // Any CAIP that doesn't use slip44 format is likely a token
-              if (!caip.includes('slip44:') && caip.includes('.')) return true;
-              
-              return false;
-            };
-
-            // Filter tokens from balances if we have balances
+            // Filter tokens from balances based on type field
             let tokenBalances: any[] = [];
             if (app?.balances) {
-              // First deduplicate all balances to prevent phantom values
-              const deduplicatedBalances = deduplicateBalances(app.balances);
-              
-              if (deduplicatedBalances.length !== app.balances.length) {
-                console.log('🔍 [Dashboard] Deduplicated balances:', {
-                  original: app.balances.length,
-                  deduplicated: deduplicatedBalances.length,
-                  removed: app.balances.length - deduplicatedBalances.length
-                });
-              }
-              
-              tokenBalances = deduplicatedBalances.filter((balance: any) => {
-                // Check explicit type first
-                if (balance.type === 'token') return true;
-                
-                // Check CAIP pattern
-                const isToken = isTokenCaip(balance.caip);
-                
-                // Only show tokens that have a balance > 0
+              tokenBalances = app.balances.filter((balance: any) => {
+                // Use the type field from the API
+                const isToken = balance.type === 'token';
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
-                
-                // Debug logging for each balance
-                if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
-                  console.log('🔍 [Dashboard] Checking balance for token classification:', {
-                    caip: balance.caip,
-                    symbol: balance.symbol,
-                    balance: balance.balance,
-                    type: balance.type,
-                    isToken: isToken,
-                    hasBalance: hasBalance,
-                    willInclude: isToken && hasBalance
-                  });
-                }
-                
                 return isToken && hasBalance;
               });
 
@@ -794,39 +693,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               tokenBalances.sort((a: any, b: any) => {
                 const valueA = parseFloat(a.valueUsd || 0);
                 const valueB = parseFloat(b.valueUsd || 0);
-                return valueB - valueA; // Descending order (highest first)
+                return valueB - valueA;
               });
-
-              // Debug logging for token detection
-              console.log('🪙 [Dashboard] Total balances:', app.balances.length);
-              console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
-              console.log('🪙 [Dashboard] Token balances found:', tokenBalances.length);
-              
-              // Debug Maya specifically
-              const mayaBalances = app.balances.filter((b: any) => 
-                b.caip && (b.caip.includes('mayachain') || b.caip.includes('MAYA'))
-              );
-              console.log('🏔️ [Dashboard] Maya balances found:', mayaBalances.length);
-              if (mayaBalances.length > 0) {
-                console.log('🏔️ [Dashboard] Maya balance details:', mayaBalances.map((m: any) => ({
-                  caip: m.caip,
-                  symbol: m.symbol,
-                  balance: m.balance,
-                  valueUsd: m.valueUsd,
-                  type: m.type,
-                  isToken: isTokenCaip(m.caip)
-                })));
-              }
-              
-              if (tokenBalances.length > 0) {
-                console.log('🪙 [Dashboard] Token details (sorted by USD value):', tokenBalances.map((t: any) => ({
-                  caip: t.caip,
-                  symbol: t.symbol,
-                  balance: t.balance,
-                  valueUsd: t.valueUsd,
-                  type: t.type
-                })));
-              }
             }
 
             return (
@@ -885,7 +753,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           Looking for tokens?
                         </Text>
                         <Text fontSize="sm" color="gray.500" textAlign="center" maxW="320px">
-                          No tokens found with balance. Tokens like Maya assets (MAYA, CACAO), ERC20, and other non-native assets will appear here sorted by USD value when detected.
+                          No tokens found with balance. Non-native assets will appear here when detected.
                         </Text>
                         <Button
                           size="sm"
@@ -898,34 +766,26 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             color: theme.goldHover
                           }}
                           onClick={async () => {
-                            console.log('🔍 [Dashboard] User clicked refresh tokens');
                             setIsRefreshing(true);
                             try {
                               if (app && typeof app.refresh === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.refresh()');
                                 await app.refresh();
                               } else if (app && typeof app.sync === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.sync()');
                                 await app.sync();
                               }
                               
                               // Also get charts/tokens (with error handling for staking position bug)
                               if (app && typeof app.getCharts === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
                                 } catch (chartError) {
-                                  console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
-                                  // Don't throw - this is a known issue with the Pioneer SDK
+                                  // Known issue with the Pioneer SDK - staking position parameter
                                 }
                               }
                               
-                              // Fetch dashboard data after refresh
                               await fetchDashboard();
-                              
-                              console.log('✅ [Dashboard] Refresh completed');
                             } catch (error) {
-                              console.error('❌ [Dashboard] Refresh failed:', error);
+                              console.error('Refresh failed:', error);
                             } finally {
                               setIsRefreshing(false);
                             }
@@ -943,39 +803,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     const { integer, largePart, smallPart } = formatBalance(token.balance);
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
                      
-                     // Get token icon and color with better fallbacks
-                     let tokenIcon = token.icon;
-                     let tokenColor = token.color;
-                     
-                     // Determine token symbol and name
+                     // Use icon and color from API, with sensible defaults
+                     const tokenIcon = token.icon || '/images/default-token.png';
+                     const tokenColor = token.color || '#FFD700';
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
                      const tokenName = token.name || tokenSymbol;
-                     
-                     // Set fallback icon and color based on token type if not provided
-                     if (!tokenIcon || !tokenColor) {
-                       if (token.caip?.includes('MAYA.') || token.caip?.includes('cosmos:mayachain-mainnet-v1/denom:maya')) {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/maya.png';
-                         tokenColor = tokenColor || '#00D4AA';
-                       } else if (token.caip?.includes('THOR.')) {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/thorchain.png';
-                         tokenColor = tokenColor || '#00CCFF';
-                       } else if (token.caip?.includes('eip155:')) {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/ethereum.png';
-                         tokenColor = tokenColor || '#627EEA';
-                       } else {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/pioneer.png';
-                         tokenColor = tokenColor || '#FFD700';
-                       }
-                     }
-                     
-                     // Debug logging for token detection
-                     console.log('🪙 [Dashboard] Token detected:', {
-                       caip: token.caip,
-                       symbol: tokenSymbol,
-                       balance: token.balance,
-                       valueUsd: tokenValueUsd,
-                       type: token.type
-                     });
 
                     return (
                       <Box 
@@ -1036,20 +868,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
-                          console.log('🪙 [Dashboard] Navigating to token page:', token);
-                          
-                          // Use the token's CAIP for navigation
-                          const caip = token.caip;
-                          
-                          console.log('🪙 [Dashboard] Using token CAIP for navigation:', caip);
-                          console.log('🪙 [Dashboard] Token object:', token);
-                          
-                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
-                          const encodedCaip = btoa(caip);
-                          
-                          console.log('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
-                          
-                          // Navigate using encoded parameters to the simplified route
+                          const encodedCaip = btoa(token.caip);
                           router.push(`/asset/${encodedCaip}`);
                         }}
                         role="button"

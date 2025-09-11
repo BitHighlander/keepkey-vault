@@ -194,10 +194,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         setLoading(false)
         
         // Play chaching sound if balance increased
-        if (prevBalance && newBalance && parseFloat(newBalance) > parseFloat(prevBalance)) {
-          playSound(chachingSound);
-          console.log('Balance increased! 💰', { previous: prevBalance, new: newBalance });
-        }
+        // if (prevBalance && newBalance && parseFloat(newBalance) > parseFloat(prevBalance)) {
+        //   playSound(chachingSound);
+        //   console.log('Balance increased! 💰', { previous: prevBalance, new: newBalance });
+        // }
         
         // Also update fee in USD when asset context changes
         updateFeeInUsd(estimatedFee);

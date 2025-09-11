@@ -21,7 +21,6 @@ import QRCode from 'qrcode';
 import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getAndVerifyAddress } from '@/utils/keepkeyAddress';
-import { deduplicatePubkeys } from '@/utils/deduplicatePubkeys';
 
 // Define animation keyframes
 const pulseRing = keyframes`
@@ -112,9 +111,11 @@ export function Receive({ onBackClick }: ReceiveProps) {
     setLoading(true);
     
     try {
-      // Deduplicate pubkeys to prevent duplicate addresses
+      // Get raw pubkeys from context
       const rawPubkeys = (assetContext.pubkeys || []) as Pubkey[];
-      const availablePubkeys = deduplicatePubkeys(rawPubkeys);
+      
+      // For now, we're not deduplicating - just using raw pubkeys
+      const availablePubkeys = rawPubkeys;
       
       if (availablePubkeys.length !== rawPubkeys.length) {
         console.log('🔍 [Receive] Deduplicated pubkeys:', {
@@ -710,9 +711,9 @@ export function Receive({ onBackClick }: ReceiveProps) {
                 }}
               >
                 {(() => {
-                  // Deduplicate and sort pubkeys to show Segwit first for Bitcoin
+                  // Get raw pubkeys and sort them to show Segwit first for Bitcoin
                   const rawPubkeys = assetContext.pubkeys || [];
-                  let sortedPubkeys = deduplicatePubkeys(rawPubkeys);
+                  let sortedPubkeys = rawPubkeys;
                   
                   if (sortedPubkeys.length !== rawPubkeys.length) {
                     console.log('🔍 [Receive] Deduplicated pubkeys in selector:', {

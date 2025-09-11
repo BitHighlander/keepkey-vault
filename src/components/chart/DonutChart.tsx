@@ -114,7 +114,7 @@ const DonutChart: React.FC<DonutChartProps> = ({
         })}
 
         {/* Center text showing total */}
-        {showTotalLabel && total > 0 && (
+        {showTotalLabel && total >= 0 && (
           <g>
             <circle 
               cx="0" 

@@ -17,16 +17,17 @@ import {
   Badge,
 } from '@chakra-ui/react';
 
+//Works
 // Add sound effect imports
-const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
-
-// Play sound utility function
-const playSound = (sound: HTMLAudioElement | null) => {
-  if (sound) {
-    sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => console.error('Error playing sound:', err));
-  }
-};
+// const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
+//
+// // Play sound utility function
+// const playSound = (sound: HTMLAudioElement | null) => {
+//   if (sound) {
+//     sound.currentTime = 0; // Reset to start
+//     sound.play().catch(err => console.error('Error playing sound:', err));
+//   }
+// };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaFileExport, FaWallet } from 'react-icons/fa';
@@ -34,7 +35,6 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
 import { ReportDialog } from './ReportDialog';
-import { deduplicatePubkeys } from '@/utils/deduplicatePubkeys';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -184,12 +184,6 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
               isInitialLoad
             });
-            
-            // Only play sound if this is not the initial load and balance actually increased
-            if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
-              console.log("🎵 [Asset] Balance increased! Playing chaching sound");
-              playSound(chachingSound);
-            }
             
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);
@@ -769,8 +763,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
 
                 {/* Address Info - Show all pubkeys/xpubs with selection */}
                 {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (() => {
-                  // Deduplicate pubkeys to prevent phantom display
-                  const uniquePubkeys = deduplicatePubkeys(assetContext.pubkeys);
+                  const uniquePubkeys = assetContext.pubkeys;
                   
                   if (uniquePubkeys.length !== assetContext.pubkeys.length) {
                     console.log('🔍 [Asset] Deduplicated pubkeys:', {
@@ -1085,8 +1078,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
 
               {/* Address Info - Show all pubkeys/xpubs with selection */}
               {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (() => {
-                // Deduplicate pubkeys to prevent phantom display
-                const uniquePubkeys = deduplicatePubkeys(assetContext.pubkeys);
+                const uniquePubkeys = assetContext.pubkeys;
                 
                 if (uniquePubkeys.length !== assetContext.pubkeys.length) {
                   console.log('🔍 [Asset] Deduplicated pubkeys (second location):', {
