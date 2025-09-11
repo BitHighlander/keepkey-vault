@@ -133,6 +133,62 @@ const LoadingScreen = () => (
   </Flex>
 );
 
+// Sort networks with specific priority for 0 balance assets
+const sortNetworks = (a: Network, b: Network) => {
+  // First sort by balance (non-zero first)
+  const aHasBalance = parseFloat(a.totalNativeBalance) > 0;
+  const bHasBalance = parseFloat(b.totalNativeBalance) > 0;
+  
+  if (aHasBalance && !bHasBalance) return -1;
+  if (!aHasBalance && bHasBalance) return 1;
+  
+  // If both have balance, sort by USD value (highest first)
+  if (aHasBalance && bHasBalance) {
+    return b.totalValueUsd - a.totalValueUsd;
+  }
+  
+  // If both have 0 balance, apply special sorting
+  if (!aHasBalance && !bHasBalance) {
+    const aIsUTXO = a.networkId.startsWith('bip122:');
+    const bIsUTXO = b.networkId.startsWith('bip122:');
+    const aIsEVM = a.networkId.startsWith('eip155:');
+    const bIsEVM = b.networkId.startsWith('eip155:');
+    const aIsBitcoin = a.networkId === 'bip122:000000000019d6689c085ae165831e93';
+    const bIsBitcoin = b.networkId === 'bip122:000000000019d6689c085ae165831e93';
+    const aIsETHMainnet = a.networkId === 'eip155:1';
+    const bIsETHMainnet = b.networkId === 'eip155:1';
+    
+    // Priority order for 0 balance:
+    // 1. Bitcoin first
+    if (aIsBitcoin) return -1;
+    if (bIsBitcoin) return 1;
+    
+    // 2. ETH mainnet second
+    if (aIsETHMainnet) return -1;
+    if (bIsETHMainnet) return 1;
+    
+    // 3. Other UTXO chains (Litecoin, Dogecoin, etc.)
+    if (aIsUTXO && !bIsUTXO) return -1;
+    if (!aIsUTXO && bIsUTXO) return 1;
+    
+    // 4. Other EVM chains sorted by chain ID
+    if (aIsEVM && bIsEVM) {
+      const aChainId = parseInt(a.networkId.split(':')[1]);
+      const bChainId = parseInt(b.networkId.split(':')[1]);
+      return aChainId - bChainId;
+    }
+    
+    // 5. EVM chains before other chains
+    if (aIsEVM && !bIsEVM) return -1;
+    if (!aIsEVM && bIsEVM) return 1;
+    
+    // 6. All other chains sorted alphabetically by symbol
+    return (a.gasAssetSymbol || '').localeCompare(b.gasAssetSymbol || '');
+  }
+  
+  return 0;
+};
+
 const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -286,13 +342,18 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   // Prepare data for donut chart
-  const chartData = dashboard?.networks
-    .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
-    .map((network: Network) => ({
-      name: network.gasAssetSymbol,
-      value: network.totalValueUsd,
-      color: network.color,
-    })) || [];
+  const networksWithBalance = dashboard?.networks
+    ?.filter((network: Network) => parseFloat(network.totalNativeBalance) > 0) || [];
+  
+  const hasAnyBalance = networksWithBalance.length > 0;
+  
+  const chartData = hasAnyBalance 
+    ? networksWithBalance.map((network: Network) => ({
+        name: network.gasAssetSymbol,
+        value: network.totalValueUsd,
+        color: network.color,
+      }))
+    : [];
 
   // Handle slice or legend hover
   const handleHover = (index: number | null) => {
@@ -430,18 +491,18 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               <Box 
                 p={8} 
                 borderRadius="2xl" 
-                boxShadow={!loading && dashboard && chartData.length > 0 
+                boxShadow={!loading && dashboard && hasAnyBalance && chartData.length > 0 
                   ? `0 4px 20px ${chartData[0].color}20, inset 0 0 20px ${chartData[0].color}10`
                   : 'lg'
                 }
                 border="1px solid"
-                borderColor={!loading && dashboard && chartData.length > 0 
+                borderColor={!loading && dashboard && hasAnyBalance && chartData.length > 0 
                   ? `${chartData[0].color}40`
                   : theme.border
                 }
                 position="relative"
                 overflow="hidden"
-                bg={!loading && dashboard && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
+                bg={!loading && dashboard && hasAnyBalance && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
                 _before={{
                   content: '""',
                   position: "absolute",
@@ -449,7 +510,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  background: !loading && dashboard && chartData.length > 0
+                  background: !loading && dashboard && hasAnyBalance && chartData.length > 0
                     ? `linear-gradient(135deg, ${chartData[0].color}40 0%, ${chartData[0].color}20 100%)`
                     : 'none',
                   opacity: 0.6,
@@ -477,7 +538,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             >
               {loading || !dashboard ? (
                 <LoadingScreen />
-              ) : dashboard && chartData.length > 0 ? (
+              ) : hasAnyBalance ? (
                 <>
                   <Box 
                     width="100%"
@@ -520,7 +581,25 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   </Box>
                 </>
               ) : (
-                <LoadingScreen />
+                <VStack gap={4} py={8}>
+                  <Box
+                    borderRadius="full"
+                    p={4}
+                    bg="gray.800"
+                    color="gray.500"
+                  >
+                    <Text fontSize="3xl">📊</Text>
+                  </Box>
+                  <Text fontSize="lg" color="gray.400" fontWeight="medium">
+                    No Portfolio Balance
+                  </Text>
+                  <Text fontSize="sm" color="gray.500" textAlign="center" maxW="320px">
+                    Your portfolio is empty. Add funds to your networks to see your portfolio breakdown.
+                  </Text>
+                  <Text fontSize="2xl" color={theme.gold} fontWeight="bold">
+                    $0.00
+                  </Text>
+                </VStack>
               )}
             </Flex>
           </Box>
@@ -550,7 +629,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 <LoadingScreen />
               ) : (
                 <>
-                  {dashboard?.networks?.map((network: Network) => {
+                  {dashboard?.networks
+                    ?.sort(sortNetworks)
+                    ?.map((network: Network) => {
                     const { integer, largePart, smallPart } = formatBalance(network.totalNativeBalance);
                     const percentage = dashboard.networkPercentages?.find(
                       (np: NetworkPercentage) => np.networkId === network.networkId
