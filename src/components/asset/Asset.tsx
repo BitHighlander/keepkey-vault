@@ -42,13 +42,14 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
 import { isFeatureEnabled } from '@/config/features';
 import { BalanceDistribution } from '../balance/BalanceDistribution';
 import { aggregateBalances, AggregatedBalance } from '@/types/balance';
+import { ReportDialog } from './ReportDialog';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -80,6 +81,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   // Add state to toggle between showing all pubkeys or only with balance
   const [showAllPubkeys, setShowAllPubkeys] = useState(false);
+  // Add state for report dialog
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -704,42 +707,44 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
 
             {/* Action Buttons */}
             <VStack gap={3}>
-              <Button
-                width="100%"
-                size="lg"
-                bg={theme.cardBg}
-                color={theme.gold}
-                borderColor={theme.border}
-                borderWidth="1px"
-                _hover={{
-                  bg: 'rgba(255, 215, 0, 0.1)',
-                  borderColor: theme.gold,
-                }}
-                onClick={onSendClick}
-              >
-                <Flex gap={2} align="center">
-                  <FaPaperPlane />
-                  <Text>Send</Text>
-                </Flex>
-              </Button>
-              <Button
-                width="100%"
-                size="lg"
-                bg={theme.cardBg}
-                color={theme.gold}
-                borderColor={theme.border}
-                borderWidth="1px"
-                _hover={{
-                  bg: 'rgba(255, 215, 0, 0.1)',
-                  borderColor: theme.gold,
-                }}
-                onClick={onReceiveClick}
-              >
-                <Flex gap={2} align="center">
-                  <FaQrcode />
-                  <Text>Receive</Text>
-                </Flex>
-              </Button>
+              <HStack gap={3} width="100%">
+                <Button
+                  flex="1"
+                  size="lg"
+                  bg={theme.cardBg}
+                  color={theme.gold}
+                  borderColor={theme.border}
+                  borderWidth="1px"
+                  _hover={{
+                    bg: 'rgba(255, 215, 0, 0.1)',
+                    borderColor: theme.gold,
+                  }}
+                  onClick={onSendClick}
+                >
+                  <Flex gap={2} align="center">
+                    <FaPaperPlane />
+                    <Text>Send</Text>
+                  </Flex>
+                </Button>
+                <Button
+                  flex="1"
+                  size="lg"
+                  bg={theme.cardBg}
+                  color={theme.gold}
+                  borderColor={theme.border}
+                  borderWidth="1px"
+                  _hover={{
+                    bg: 'rgba(255, 215, 0, 0.1)',
+                    borderColor: theme.gold,
+                  }}
+                  onClick={onReceiveClick}
+                >
+                  <Flex gap={2} align="center">
+                    <FaQrcode />
+                    <Text>Receive</Text>
+                  </Flex>
+                </Button>
+              </HStack>
               {isFeatureEnabled('enableSwaps') && (
                 <Button
                   width="100%"
@@ -760,6 +765,24 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </Flex>
                 </Button>
               )}
+              <Button
+                width="100%"
+                size="lg"
+                bg={theme.cardBg}
+                color="#00D9FF"
+                borderColor={theme.border}
+                borderWidth="1px"
+                _hover={{
+                  bg: 'rgba(0, 217, 255, 0.1)',
+                  borderColor: '#00D9FF',
+                }}
+                onClick={() => setIsReportDialogOpen(true)}
+              >
+                <Flex gap={2} align="center">
+                  <FaFileExport />
+                  <Text>Report</Text>
+                </Flex>
+              </Button>
             </VStack>
           </VStack>
           
@@ -1243,6 +1266,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         {/* Cosmos Staking Section */}
         <CosmosStaking assetContext={assetContext} />
       </Box>
+      
+      {/* Report Dialog */}
+      <ReportDialog
+        isOpen={isReportDialogOpen}
+        onClose={() => setIsReportDialogOpen(false)}
+        assetContext={assetContext}
+      />
     </Box>
   );
 };
