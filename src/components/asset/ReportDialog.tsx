@@ -98,152 +98,232 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
                               (networkType === 'EVM' && (reportOptions.accountCount || 1) > 1);
 
   return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => !e.open && onClose()} size="lg">
-      <DialogContent bg={theme.cardBg} borderColor={theme.border}>
-        <DialogHeader>
-          <DialogTitle color={theme.gold}>
+    <DialogRoot open={isOpen} onOpenChange={(e) => !e.open && onClose()}>
+      <DialogContent 
+        bg={theme.cardBg} 
+        borderColor={theme.gold} 
+        borderWidth="2px"
+        borderRadius="xl"
+        maxW="500px"
+        p={8}
+      >
+        <DialogHeader borderBottom={`1px solid ${theme.border}`} pb={6} mb={6}>
+          <DialogTitle color={theme.gold} fontSize="2xl" fontWeight="bold">
             Generate {networkType} Report
           </DialogTitle>
           <DialogCloseTrigger />
         </DialogHeader>
         
-        <DialogBody>
-          <VStack gap={6} align="stretch">
-            {/* Asset Information */}
-            <Box>
-              <Text fontSize="sm" color="gray.400" mb={2}>Asset</Text>
-              <Text fontSize="lg" color="white">
+        <DialogBody pt={0} pb={6}>
+          <VStack gap={8} align="stretch">
+            {/* Asset Information Box */}
+            <Box 
+              p={6} 
+              bg={theme.bg} 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor={theme.border}
+            >
+              <Text color="gray.400" fontSize="sm" mb={2} fontWeight="medium">
+                Asset
+              </Text>
+              <Text color="white" fontSize="lg" fontWeight="bold">
                 {assetContext?.symbol || 'Unknown'} ({assetContext?.name || 'Unknown Asset'})
               </Text>
-              <Text fontSize="xs" color="gray.500" mt={1}>
+              <Text color="gray.500" fontSize="xs" mt={1}>
                 Network: {assetContext?.networkId || 'Unknown'}
               </Text>
             </Box>
 
             {/* Report Type Description */}
-            <Box>
-              <Text fontSize="sm" color="gray.400" mb={2}>Report Type</Text>
-              <Text fontSize="sm" color="gray.300">
+            <Box 
+              p={4} 
+              bg="rgba(255, 215, 0, 0.05)" 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor="rgba(255, 215, 0, 0.2)"
+            >
+              <Text color={theme.gold} fontSize="xs" fontWeight="medium" mb={2}>
+                Report Type
+              </Text>
+              <Text color="gray.400" fontSize="xs">
                 {reportDescription}
               </Text>
             </Box>
 
             {/* Account Count Selector (for UTXO and multi-account chains) */}
             {showAccountSelector && (
-              <Box>
-                <Text fontSize="sm" color="gray.400" mb={2}>
+              <Box 
+                p={6} 
+                bg={theme.bg} 
+                borderRadius="xl" 
+                borderWidth="1px" 
+                borderColor={theme.border}
+              >
+                <Text color="gray.400" fontSize="sm" mb={4} fontWeight="medium">
                   {networkType === 'UTXO' ? 'Number of Accounts' : 'Number of Addresses'}
                 </Text>
-                <HStack>
+                <HStack justify="space-between" align="center" gap={6}>
                   <IconButton
-                    aria-label="Decrease"
-                    size="sm"
-                    variant="outline"
                     onClick={() => handleAccountCountChange(-1)}
-                    isDisabled={(reportOptions.accountCount || 1) <= 1 || loading}
+                    disabled={(reportOptions.accountCount || 1) <= 1 || loading}
+                    size="md"
+                    bg={theme.border}
+                    color="white"
+                    borderRadius="lg"
+                    _hover={{ bg: theme.borderLight }}
+                    _disabled={{ opacity: 0.3, cursor: 'not-allowed' }}
+                    width="50px"
+                    height="50px"
+                    aria-label="Decrease"
                   >
                     <FaMinus />
                   </IconButton>
-                  <Box 
-                    px={4} 
-                    py={2} 
-                    bg={theme.bg} 
-                    borderRadius="md" 
-                    borderWidth="1px"
-                    borderColor={theme.border}
-                    minW="60px"
-                    textAlign="center"
-                  >
-                    <Text color="white">{reportOptions.accountCount || 1}</Text>
+                  
+                  <Box textAlign="center" flex={1}>
+                    <Text color="white" fontSize="3xl" fontWeight="bold">
+                      {reportOptions.accountCount || 1}
+                    </Text>
+                    <Text color="gray.500" fontSize="sm" mt={1}>
+                      {networkType === 'UTXO' 
+                        ? `Accounts 0-${(reportOptions.accountCount || 1) - 1}`
+                        : `${reportOptions.accountCount || 1} addresses`
+                      }
+                    </Text>
                   </Box>
+                  
                   <IconButton
-                    aria-label="Increase"
-                    size="sm"
-                    variant="outline"
                     onClick={() => handleAccountCountChange(1)}
-                    isDisabled={(reportOptions.accountCount || 1) >= 20 || loading}
+                    disabled={(reportOptions.accountCount || 1) >= 20 || loading}
+                    size="md"
+                    bg={theme.border}
+                    color="white"
+                    borderRadius="lg"
+                    _hover={{ bg: theme.borderLight }}
+                    _disabled={{ opacity: 0.3, cursor: 'not-allowed' }}
+                    width="50px"
+                    height="50px"
+                    aria-label="Increase"
                   >
                     <FaPlus />
                   </IconButton>
                 </HStack>
-                <Text fontSize="xs" color="gray.500" mt={1}>
-                  {networkType === 'UTXO' 
-                    ? `Will generate XPUBs for accounts 0 through ${(reportOptions.accountCount || 1) - 1}`
-                    : `Will include ${reportOptions.accountCount || 1} addresses in the report`
-                  }
-                </Text>
+                
+                {networkType === 'UTXO' && (
+                  <Box mt={4} p={3} bg="rgba(255, 215, 0, 0.05)" borderRadius="lg">
+                    <Text color="gray.400" fontSize="xs">
+                      • 3 XPUB types per account (Legacy, SegWit, Native SegWit)
+                    </Text>
+                    <Text color="gray.400" fontSize="xs">
+                      • Total of {(reportOptions.accountCount || 1) * 3} XPUBs in report
+                    </Text>
+                  </Box>
+                )}
               </Box>
             )}
 
             {/* Report Contents Preview */}
-            <Box>
-              <Text fontSize="sm" color="gray.400" mb={2}>Report Contents</Text>
-              <VStack align="start" gap={1}>
+            <Box 
+              p={6} 
+              bg={theme.bg} 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor={theme.border}
+            >
+              <Text color="gray.400" fontSize="sm" mb={4} fontWeight="medium">
+                Report Contents
+              </Text>
+              <VStack align="start" gap={2}>
                 {networkType === 'UTXO' && (
                   <>
-                    <Text fontSize="sm" color="gray.300">• All XPUB types (Legacy, SegWit, Native SegWit)</Text>
-                    <Text fontSize="sm" color="gray.300">• Derivation paths for each account</Text>
-                    <Text fontSize="sm" color="gray.300">• Current receive and change indices</Text>
-                    <Text fontSize="sm" color="gray.300">• Balance and transaction history</Text>
+                    <Text color="gray.400" fontSize="xs">• All XPUB types (Legacy, SegWit, Native SegWit)</Text>
+                    <Text color="gray.400" fontSize="xs">• Derivation paths for each account</Text>
+                    <Text color="gray.400" fontSize="xs">• Current receive and change indices</Text>
+                    <Text color="gray.400" fontSize="xs">• Balance and transaction history</Text>
                   </>
                 )}
                 {networkType === 'EVM' && (
                   <>
-                    <Text fontSize="sm" color="gray.300">• Account addresses and balances</Text>
-                    <Text fontSize="sm" color="gray.300">• Token holdings and values</Text>
-                    <Text fontSize="sm" color="gray.300">• Transaction counts and nonces</Text>
-                    <Text fontSize="sm" color="gray.300">• Network and chain information</Text>
+                    <Text color="gray.400" fontSize="xs">• Account addresses and balances</Text>
+                    <Text color="gray.400" fontSize="xs">• Token holdings and values</Text>
+                    <Text color="gray.400" fontSize="xs">• Transaction counts and nonces</Text>
+                    <Text color="gray.400" fontSize="xs">• Network and chain information</Text>
                   </>
                 )}
                 {networkType === 'Cosmos' && (
                   <>
-                    <Text fontSize="sm" color="gray.300">• Account balances and addresses</Text>
-                    <Text fontSize="sm" color="gray.300">• Staking delegations and validators</Text>
-                    <Text fontSize="sm" color="gray.300">• Pending rewards and unbonding</Text>
-                    <Text fontSize="sm" color="gray.300">• Total portfolio value</Text>
+                    <Text color="gray.400" fontSize="xs">• Account balances and addresses</Text>
+                    <Text color="gray.400" fontSize="xs">• Staking delegations and validators</Text>
+                    <Text color="gray.400" fontSize="xs">• Pending rewards and unbonding</Text>
+                    <Text color="gray.400" fontSize="xs">• Total portfolio value</Text>
                   </>
                 )}
                 {!['UTXO', 'EVM', 'Cosmos'].includes(networkType) && (
                   <>
-                    <Text fontSize="sm" color="gray.300">• Account addresses</Text>
-                    <Text fontSize="sm" color="gray.300">• Current balances</Text>
-                    <Text fontSize="sm" color="gray.300">• Network information</Text>
-                    <Text fontSize="sm" color="gray.300">• Asset details</Text>
+                    <Text color="gray.400" fontSize="xs">• Account addresses</Text>
+                    <Text color="gray.400" fontSize="xs">• Current balances</Text>
+                    <Text color="gray.400" fontSize="xs">• Network information</Text>
+                    <Text color="gray.400" fontSize="xs">• Asset details</Text>
                   </>
                 )}
               </VStack>
             </Box>
 
             {/* Security Warning */}
-            <Box bg="rgba(255, 215, 0, 0.1)" p={3} borderRadius="md" borderWidth="1px" borderColor={theme.gold}>
-              <Text fontSize="sm" color={theme.gold}>
-                ⚠️ This report will contain sensitive wallet information. Store it securely and never share with untrusted parties.
+            <Box 
+              p={4} 
+              bg="rgba(255, 215, 0, 0.1)" 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor={theme.gold}
+            >
+              <Text color={theme.gold} fontSize="sm" fontWeight="medium">
+                ⚠️ Security Notice
+              </Text>
+              <Text color={theme.gold} fontSize="xs" mt={2} opacity={0.9}>
+                This report will contain sensitive wallet information. Store it securely and never share with untrusted parties.
               </Text>
             </Box>
           </VStack>
         </DialogBody>
 
-        <DialogFooter>
-          <HStack gap={3}>
-            <Button
-              variant="outline"
-              onClick={onClose}
-              isDisabled={loading}
-              borderColor={theme.border}
-              color="gray.300"
-              _hover={{ borderColor: theme.gold, color: theme.gold }}
+        <DialogFooter borderTop={`1px solid ${theme.border}`} pt={6}>
+          <HStack gap={4} width="100%">
+            <Button 
+              flex={1}
+              size="lg"
+              height="56px"
+              variant="ghost" 
+              onClick={onClose} 
+              color="gray.400"
+              _hover={{ bg: theme.border }}
+              borderRadius="lg"
             >
               Cancel
             </Button>
             <Button
+              flex={2}
+              size="lg"
+              height="56px"
+              onClick={generatePDFReport}
+              disabled={loading || !generator}
               bg={theme.gold}
               color="black"
               _hover={{ bg: theme.goldHover }}
-              onClick={generatePDFReport}
-              isDisabled={loading || !generator}
-              leftIcon={loading ? <Spinner size="sm" /> : <FaDownload />}
+              borderRadius="lg"
+              fontWeight="bold"
             >
-              {loading ? 'Generating...' : 'Generate PDF Report'}
+              {loading ? (
+                <HStack gap={3}>
+                  <Spinner size="sm" color="black" />
+                  <Text>Generating...</Text>
+                </HStack>
+              ) : (
+                <HStack gap={3}>
+                  <FaDownload />
+                  <Text>Generate PDF Report</Text>
+                </HStack>
+              )}
             </Button>
           </HStack>
         </DialogFooter>
