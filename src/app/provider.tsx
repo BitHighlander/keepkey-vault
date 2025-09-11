@@ -140,12 +140,7 @@ export function Provider({ children }: ProviderProps) {
           keepkeyEndpoint: detectedKeeperEndpoint, // 👈 Pass the detected endpoint to SDK
           username,
           queryKey,
-          paths,
-          // Add these to match working projects
-          ethplorerApiKey: 'EK-xs8Hj-qG4HbLY-LoAu7',
-          covalentApiKey: 'cqt_rQ6333MVWCVJFVX3DbCCGMVqRH4q',
-          utxoApiKey: 'B_s9XK926uwmQSGTDEcZB3vSAmt5t2',
-          walletConnectProjectId: '18224df5f72924a5f6b3569fbd56ae16',
+          paths
         });
 
         console.log('🔧 Pioneer SDK instance created with config:', {

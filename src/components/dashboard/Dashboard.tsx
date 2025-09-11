@@ -19,6 +19,7 @@ import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
+import { TokenIcon } from '@/components/ui/token-icon';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -583,11 +584,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              <Image 
-                                src={network.icon} 
-                                alt={network.networkId}
-                                boxSize="44px"
-                                objectFit="cover"
+                              <TokenIcon
+                                icon={network.icon}
+                                color={network.color}
+                                symbol={network.gasAssetSymbol}
+                                name={network.networkId}
+                                size="44px"
                               />
                             </Box>
                             <Stack gap={0.5}>
@@ -811,7 +813,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      
                      // Use icon and color from API, with sensible defaults
                      const tokenIcon = token.icon || '/images/default-token.png';
-                     const tokenColor = isLowValue ? '#4A5568' : (token.color || '#FFD700'); // Grey for low value
+                     const tokenColor = isLowValue ? '#4A5568' : (token.color || '#718096'); // Grey for low value and no color
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
                      const tokenName = token.name || tokenSymbol;
 
@@ -910,11 +912,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              <Image 
-                                src={tokenIcon} 
-                                alt={tokenName}
-                                boxSize="44px"
-                                objectFit="cover"
+                              <TokenIcon
+                                icon={tokenIcon}
+                                color={tokenColor}
+                                symbol={tokenSymbol}
+                                name={tokenName}
+                                size="44px"
                               />
                             </Box>
                             <Stack gap={0.5}>

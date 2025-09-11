@@ -35,6 +35,7 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
 import { ReportDialog } from './ReportDialog';
+import { TokenIcon } from '@/components/ui/token-icon';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -448,11 +449,12 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                       borderWidth="2px"
                       borderColor={theme.bg}
                     >
-                      <Image 
-                        src={assetContext.icon}
-                        alt={`${assetContext.name} Icon`}
-                        boxSize="100%"
-                        objectFit="contain"
+                      <TokenIcon
+                        icon={assetContext.icon}
+                        color={assetContext.color}
+                        symbol={assetContext.symbol || assetContext.ticker}
+                        name={assetContext.name}
+                        size="100%"
                       />
                     </Box>
                   </Box>
@@ -468,11 +470,12 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick }: AssetProps) 
                     borderWidth="1px"
                     borderColor={assetContext.color || theme.border}
                   >
-                    <Image 
-                      src={assetContext.icon}
-                      alt={`${assetContext.name} Icon`}
-                      boxSize="100%"
-                      objectFit="contain"
+                    <TokenIcon
+                      icon={assetContext.icon}
+                      color={assetContext.color}
+                      symbol={assetContext.symbol || assetContext.ticker}
+                      name={assetContext.name}
+                      size="100%"
                     />
                   </Box>
                 )}
