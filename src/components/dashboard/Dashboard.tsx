@@ -182,6 +182,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
   useEffect(() => {
     console.log('📊 [Dashboard] Component mounted');
+    console.log('🖼️ [Dashboard] Background image should be: url(/images/backgrounds/splash-bg.png)');
+    console.log('🎨 [Dashboard] Theme background color:', theme.bg);
+    
+    // Check if the image is actually loading (use native Image, not Chakra's Image component)
+    const img = new window.Image();
+    img.onload = () => {
+      console.log('✅ [Dashboard] Background image loaded successfully');
+    };
+    img.onerror = (e) => {
+      console.error('❌ [Dashboard] Background image failed to load:', e);
+    };
+    img.src = '/images/backgrounds/splash-bg.png';
+    
     fetchDashboard();
     return () => console.log('📊 [Dashboard] Component unmounting');
   }, [app, app?.dashboard]);
@@ -334,6 +347,21 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       backgroundSize="cover"
       backgroundPosition="center"
       backgroundRepeat="no-repeat"
+      sx={{
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: 'inherit',
+          backgroundSize: 'inherit',
+          backgroundPosition: 'inherit',
+          zIndex: -1,
+        }
+      }}
+      onLoad={() => console.log('🖼️ [Dashboard] Container with background rendered')}
     >
       {/* Header */}
       <Box 
