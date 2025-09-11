@@ -1592,10 +1592,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 </Box>
                 <Box>
                   <Text fontWeight="bold" color="white">
-                    {amount} {assetContext.symbol}
+                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
                   </Text>
                   <Text color="gray.400" fontSize="sm">
-                    {formatUsd(parseFloat(amount || '0') * (assetContext.priceUsd || 0))}
+                    {formatUsd(parseFloat(isUsdInput ? usdToNative(amount) : amount) * (assetContext.priceUsd || 0))}
                   </Text>
                 </Box>
               </Flex>
@@ -1659,10 +1659,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     <Text color="white" fontWeight="bold" fontSize="sm">
                       {isMax ? 
                         balance : 
-                        (parseFloat(amount || '0') + parseFloat(estimatedFee)).toFixed(8)} {assetContext.symbol}
+                        (parseFloat(isUsdInput ? usdToNative(amount) : amount) + parseFloat(estimatedFee)).toFixed(8)} {assetContext.symbol}
                     </Text>
                     <Text color="gray.400" fontSize="xs">
-                      {formatUsd((parseFloat(amount || '0') + parseFloat(estimatedFee)) * (assetContext.priceUsd || 0))}
+                      {formatUsd((parseFloat(isUsdInput ? usdToNative(amount) : amount) + parseFloat(estimatedFee)) * (assetContext.priceUsd || 0))}
                     </Text>
                   </Box>
                 </Flex>
