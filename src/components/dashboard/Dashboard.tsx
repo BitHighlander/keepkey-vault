@@ -681,11 +681,16 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
           {(() => {
             // Filter tokens from balances based on type field
             let tokenBalances: any[] = [];
-            if (app?.balances) {
-              tokenBalances = app.balances.filter((balance: any) => {
-                // Use the type field from the API
-                const isToken = balance.type === 'token';
+            
+            // Try multiple data sources for balances
+            const balanceSource = app?.balances || app?.pubkeys || [];
+            
+            if (balanceSource && balanceSource.length > 0) {
+              tokenBalances = balanceSource.filter((balance: any) => {
+                // Check if it's a token (not a native asset)
+                const isToken = balance.token === true;
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
+                
                 return isToken && hasBalance;
               });
 
@@ -802,10 +807,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     tokenBalances.map((token: any) => {
                     const { integer, largePart, smallPart } = formatBalance(token.balance);
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
+                    const isLowValue = tokenValueUsd < 5;
                      
                      // Use icon and color from API, with sensible defaults
                      const tokenIcon = token.icon || '/images/default-token.png';
-                     const tokenColor = token.color || '#FFD700';
+                     const tokenColor = isLowValue ? '#4A5568' : (token.color || '#FFD700'); // Grey for low value
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
                      const tokenName = token.name || tokenSymbol;
 
@@ -816,10 +822,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         p={5}
                         borderRadius="2xl"
                         borderWidth="1px"
-                        borderColor={`${tokenColor}40`}
-                        boxShadow={`0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
+                        borderColor={isLowValue ? 'gray.700' : `${tokenColor}40`}
+                        boxShadow={isLowValue ? 'sm' : `0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
                         position="relative"
-                        bg={`${tokenColor}15`}
+                        bg={isLowValue ? 'gray.800' : `${tokenColor}15`}
+                        opacity={isLowValue ? 0.7 : 1}
                         _before={{
                           content: '""',
                           position: "absolute",
@@ -911,9 +918,16 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               />
                             </Box>
                             <Stack gap={0.5}>
-                              <Text fontSize="md" fontWeight="bold" color={tokenColor}>
-                                {tokenSymbol}
-                              </Text>
+                              <HStack gap={1}>
+                                <Text fontSize="md" fontWeight="bold" color={isLowValue ? 'gray.400' : tokenColor}>
+                                  {tokenSymbol}
+                                </Text>
+                                {isLowValue && (
+                                  <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                                    (&lt; $5)
+                                  </Text>
+                                )}
+                              </HStack>
                               <Box
                                 fontSize="xs" 
                                 color="gray.400" 
@@ -939,13 +953,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 </Box>
                               </Box>
                               <HStack gap={2} align="center">
-                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
+                                <Text fontSize="sm" color={isLowValue ? 'gray.400' : 'gray.200'} fontWeight="medium">
                                   {integer}.{largePart}
-                                  <Text as="span" fontSize="xs" color="gray.300">
+                                  <Text as="span" fontSize="xs" color={isLowValue ? 'gray.500' : 'gray.300'}>
                                     {smallPart}
                                   </Text>
                                 </Text>
-                                <Text fontSize="xs" color={tokenColor} fontWeight="medium">
+                                <Text fontSize="xs" color={isLowValue ? 'gray.500' : tokenColor} fontWeight="medium">
                                   {tokenSymbol}
                                 </Text>
                               </HStack>
@@ -966,7 +980,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           >
                             <Text 
                               fontSize="md" 
-                              color={tokenColor}
+                              color={isLowValue ? 'gray.500' : tokenColor}
                               fontWeight="medium"
                             >
                               $<CountUp 
