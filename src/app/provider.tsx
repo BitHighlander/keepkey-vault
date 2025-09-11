@@ -184,7 +184,7 @@ export function Provider({ children }: ProviderProps) {
         }
         
         // Add progress tracking
-        let progressInterval = setInterval(() => {
+        const progressInterval = setInterval(() => {
           console.log('⏳ Still initializing...', {
             status: appInit.status,
             pioneer: !!appInit.pioneer,
@@ -245,7 +245,7 @@ export function Provider({ children }: ProviderProps) {
         }
 
         // Set default asset contexts like pioneer-react does
-        let assets_enabled = [
+        const assets_enabled = [
           'eip155:1/slip44:60', // ETH
           'bip122:000000000019d6689c085ae165831e93/slip44:0', // BTC
         ];
