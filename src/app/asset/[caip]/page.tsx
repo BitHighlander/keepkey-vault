@@ -378,9 +378,9 @@ export default function AssetPage() {
           icon: tokenBalance.icon || tokenBalance.image || 'https://pioneers.dev/coins/pioneer.png',
           color: tokenBalance.color || '#FFD700',
           balance: tokenBalance.balance || '0',
-          value: tokenBalance.valueUsd || 0,
+          value: tokenBalance.valueUsd || tokenBalance.value || 0,
           precision: tokenBalance.precision || 18,
-          priceUsd: parseFloat(tokenBalance.priceUsd || 0),
+          priceUsd: parseFloat(tokenBalance.priceUsd || tokenBalance.price || 0),
           isToken: true, // Add flag to indicate this is a token
           type: 'token',
           nativeBalance: nativeBalance, // Add native balance for display
@@ -461,62 +461,17 @@ export default function AssetPage() {
       router.push('/');
       return;
     }
-    
+
     console.log('🔍 [AssetPage] Found balance:', nativeAssetBalance);
-         
+
      // Use the balance data to create the asset context
      const fullCaip = caip;
-     
-     // Determine symbol, name, icon from balance data
-     let correctSymbol = nativeAssetBalance.ticker || nativeAssetBalance.symbol || 'UNKNOWN';
-     let correctName = nativeAssetBalance.name || correctSymbol;
-     let correctIcon = nativeAssetBalance.icon || nativeAssetBalance.image || 'https://pioneers.dev/coins/pioneer.png';
-     let correctBalance = nativeAssetBalance.balance || '0';
-     let correctValue = parseFloat(nativeAssetBalance.valueUsd || 0);
-     let correctPriceUsd = parseFloat(nativeAssetBalance.priceUsd || 0);
-     let correctColor = nativeAssetBalance.color || '#FFD700';
-     
-     // Special handling for specific assets
-     if (networkId === 'cosmos:mayachain-mainnet-v1' && fullCaip.includes('slip44:931')) {
-       correctSymbol = 'CACAO';
-       correctName = 'CACAO';
-       correctIcon = 'https://pioneers.dev/coins/cacao.png';
-       correctColor = '#00D4AA';
-     } else if (networkId.includes('bitcoin')) {
-       correctColor = '#F7931A';
-     } else if (networkId.includes('ethereum')) {
-       correctColor = '#627EEA';
-     }
-     
-     // Create the asset context with the balance data
-     const assetContextData = {
-       networkId: networkId, // The network part (e.g. "eip155:1")
-       chainId: networkId,
-       assetId: fullCaip, // The full CAIP (e.g. "eip155:1/slip44:60")
-       caip: fullCaip,  // The full CAIP (e.g. "eip155:1/slip44:60")
-       name: correctName,
-       networkName: networkId.split(':').pop() || '',
-       symbol: correctSymbol,
-       icon: correctIcon,
-       color: correctColor,
-       balance: correctBalance,
-       value: correctValue,
-       precision: nativeAssetBalance?.precision || 18,
-       priceUsd: correctPriceUsd,
-       explorer: app.assetsMap?.get(fullCaip.toLowerCase())?.explorer || getExplorerForNetwork(networkId).explorer,
-       explorerAddressLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerAddressLink || getExplorerForNetwork(networkId).explorerAddressLink,
-       explorerTxLink: app.assetsMap?.get(fullCaip.toLowerCase())?.explorerTxLink || getExplorerForNetwork(networkId).explorerTxLink,
-       pubkeys: (app.pubkeys || []).filter((p: any) => {
-         // Include pubkeys that match the specific network
-         return p.networks.includes(networkId);
-       })
-     }
-     
-     console.log('🔍 [AssetPage] Setting asset context with data:', assetContextData)
-     console.log('🔍 [AssetPage] Asset context pubkeys:', assetContextData.pubkeys)
-     
+
+
+     console.log('🔍 [AssetPage] Setting asset context with data:', fullCaip)
+
      try {
-       app.setAssetContext(assetContextData)
+       app.setAssetContext({caip: fullCaip})
        console.log('✅ [AssetPage] Asset context set successfully')
      } catch (error) {
        console.error('❌ [AssetPage] Error setting asset context:', error)
