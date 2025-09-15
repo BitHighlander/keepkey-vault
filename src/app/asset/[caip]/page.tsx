@@ -463,11 +463,7 @@ export default function AssetPage() {
     }
 
     console.log('🔍 [AssetPage] Found balance:', nativeAssetBalance);
-
-     // Use the full balance data for the asset context (not just caip)
-     // This preserves price data and other important asset information
      const assetContextData = {
-       ...nativeAssetBalance,
        caip: caip, // Ensure we use the decoded CAIP
      };
 
