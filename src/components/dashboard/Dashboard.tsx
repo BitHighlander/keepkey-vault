@@ -896,17 +896,17 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
                 
                 // Debug logging for each balance
-                if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
-                  console.log('🔍 [Dashboard] Checking balance for token classification:', {
-                    caip: balance.caip,
-                    symbol: balance.symbol,
-                    balance: balance.balance,
-                    type: balance.type,
-                    isToken: isToken,
-                    hasBalance: hasBalance,
-                    willInclude: isToken && hasBalance
-                  });
-                }
+                // if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
+                //   console.log('🔍 [Dashboard] Checking balance for token classification:', {
+                //     caip: balance.caip,
+                //     symbol: balance.symbol,
+                //     balance: balance.balance,
+                //     type: balance.type,
+                //     isToken: isToken,
+                //     hasBalance: hasBalance,
+                //     willInclude: isToken && hasBalance
+                //   });
+                // }
                 
                 return isToken && hasBalance;
               });
@@ -922,32 +922,6 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               console.log('🪙 [Dashboard] Total balances:', app.balances.length);
               console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
               console.log('🪙 [Dashboard] Token balances found:', tokenBalances.length);
-              
-              // Debug Maya specifically
-              const mayaBalances = app.balances.filter((b: any) => 
-                b.caip && (b.caip.includes('mayachain') || b.caip.includes('MAYA'))
-              );
-              console.log('🏔️ [Dashboard] Maya balances found:', mayaBalances.length);
-              if (mayaBalances.length > 0) {
-                console.log('🏔️ [Dashboard] Maya balance details:', mayaBalances.map((m: any) => ({
-                  caip: m.caip,
-                  symbol: m.symbol,
-                  balance: m.balance,
-                  valueUsd: m.valueUsd,
-                  type: m.type,
-                  isToken: isTokenCaip(m.caip)
-                })));
-              }
-              
-              if (tokenBalances.length > 0) {
-                console.log('🪙 [Dashboard] Token details (sorted by USD value):', tokenBalances.map((t: any) => ({
-                  caip: t.caip,
-                  symbol: t.symbol,
-                  balance: t.balance,
-                  valueUsd: t.valueUsd,
-                  type: t.type
-                })));
-              }
             }
 
             return (
