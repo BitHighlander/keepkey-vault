@@ -464,15 +464,18 @@ export default function AssetPage() {
 
     console.log('🔍 [AssetPage] Found balance:', nativeAssetBalance);
 
-     // Use the balance data to create the asset context
-     const fullCaip = caip;
+     // Use the full balance data for the asset context (not just caip)
+     // This preserves price data and other important asset information
+     const assetContextData = {
+       ...nativeAssetBalance,
+       caip: caip, // Ensure we use the decoded CAIP
+     };
 
-
-     console.log('🔍 [AssetPage] Setting asset context with data:', fullCaip)
+     console.log('🔍 [AssetPage] Setting asset context with full data:', assetContextData)
 
      try {
-       app.setAssetContext({caip: fullCaip})
-       console.log('✅ [AssetPage] Asset context set successfully')
+       app.setAssetContext(assetContextData)
+       console.log('✅ [AssetPage] Asset context set successfully with price data')
      } catch (error) {
        console.error('❌ [AssetPage] Error setting asset context:', error)
      }
