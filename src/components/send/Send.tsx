@@ -162,15 +162,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [selectedFeeLevel, setSelectedFeeLevel] = useState<'slow' | 'average' | 'fastest'>('average')
   const [customFeeOption, setCustomFeeOption] = useState<boolean>(false)
   const [customFeeAmount, setCustomFeeAmount] = useState<string>('')
-  const [feeRates, setFeeRates] = useState<any>(null)
+  const [normalizedFees, setNormalizedFees] = useState<any>(null)
   const [feeOptions, setFeeOptions] = useState<{slow: string, average: string, fastest: string}>({ slow: '0', average: '0', fastest: '0' })
   // Add state for raw transaction dialog
   const [showRawTxDialog, setShowRawTxDialog] = useState<boolean>(false)
   const [rawTxJson, setRawTxJson] = useState<string>('')
   const [editedRawTxJson, setEditedRawTxJson] = useState<string>('')
-  
+
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
+
+  // Add state for the resolved network ID (without wildcards)
+  const [resolvedNetworkId, setResolvedNetworkId] = useState<string>('')
   
   // Fee options are now handled by the FeeSelection component
   
@@ -200,6 +203,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   useEffect(() => {
     if (assetContext) {
       try {
+        // Resolve and store the network ID
+        const resolved = resolveNetworkId(assetContext);
+        if (resolved) {
+          setResolvedNetworkId(resolved);
+        }
+
         // Store previous balance for comparison
         const prevBalance = balance;
         
@@ -383,108 +392,100 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     return 400;
   };
 
+  // Helper function to resolve network ID from asset context
+  const resolveNetworkId = (context: any): string | null => {
+    if (!context) return null;
+
+    let networkId = context.networkId;
+
+    // If networkId contains wildcard, try to extract from CAIP
+    if (networkId?.includes('*')) {
+      // Try to get from CAIP identifier (e.g., eip155:1/slip44:60 -> eip155:1)
+      if (context.caip) {
+        const caipParts = context.caip.split('/');
+        if (caipParts[0] && !caipParts[0].includes('*')) {
+          networkId = caipParts[0];
+        }
+      }
+
+      // If still has wildcard, try assetId
+      if (networkId?.includes('*') && context.assetId) {
+        const assetParts = context.assetId.split('/');
+        if (assetParts[0] && !assetParts[0].includes('*')) {
+          networkId = assetParts[0];
+        }
+      }
+    }
+
+    return (!networkId || networkId.includes('*')) ? null : networkId;
+  };
+
   // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
     if (!assetContext) {
       setError('Asset context not available');
       return;
     }
-    
-    // Try to get a valid network ID from various sources
-    let networkId = assetContext.networkId;
-    
-    // If networkId contains wildcard, try to extract from CAIP
-    if (networkId?.includes('*')) {
-      // Try to get from CAIP identifier (e.g., eip155:1/slip44:60 -> eip155:1)
-      if (assetContext.caip) {
-        const caipParts = assetContext.caip.split('/');
-        if (caipParts[0] && !caipParts[0].includes('*')) {
-          networkId = caipParts[0];
-        }
-      }
-      
-      // If still has wildcard, try assetId
-      if (networkId?.includes('*') && assetContext.assetId) {
-        const assetParts = assetContext.assetId.split('/');
-        if (assetParts[0] && !assetParts[0].includes('*')) {
-          networkId = assetParts[0];
-        }
-      }
-    }
-    
-    if (!networkId || networkId.includes('*')) {
+
+    // Use helper to resolve network ID
+    const networkId = resolveNetworkId(assetContext);
+
+    if (!networkId) {
       setError('Cannot determine specific network chain ID');
       console.error('Invalid network ID:', networkId, 'Asset context:', assetContext);
       return;
     }
-    
+
+    // Store the resolved network ID for use in other components
+    setResolvedNetworkId(networkId);
+
     try {
-      if (!app?.pioneer) {
-        throw new Error('Pioneer API not available');
+      if (!app?.getFees) {
+        throw new Error('Pioneer SDK getFees not available');
       }
 
       console.log('Fetching fee rates for network:', networkId);
-      
-      // Try different API call methods to work around server-side routing issue
-      let feeRates;
-      try {
-        console.log('Fetching fee rates for network:', networkId);
-        
-        // Call the GetFeeRate API with proper CAIP network ID
-        if (app.pioneer.GetFeeRateByNetwork) {
-          feeRates = await app.pioneer.GetFeeRateByNetwork({ networkId: networkId });
-        } else {
-          feeRates = await app.pioneer.GetFeeRate({ networkId: networkId });
-        }
-      } catch (apiError) {
-        console.error('Primary API call failed:', apiError);
-        // Don't use network name fallbacks - the server now properly handles CAIP IDs
-        throw apiError;
-      }
-      
-      console.log('Fee rates from API:', feeRates);
 
-      // Store the complete fee rates data for use in the UI
-      setFeeRates(feeRates);
-      
-      // Handle both response formats: direct object or wrapped in data property
-      const feeData = feeRates?.data || feeRates;
-      
-      if (!feeData) {
-        throw new Error('No fee data returned from API');
-      }
+      // Use the new normalized getFees method from SDK
+      const normalizedFees = await app.getFees(networkId);
+      console.log('Normalized fees from SDK:', normalizedFees);
 
-      //{slow: '1', average: '1', fastest: '1'}
-      // The API returns fastest, fast, average - map to our UI's slow, average, fastest
-      if (!feeData.average || !feeData.fast || !feeData.fastest) {
-        throw new Error('Incomplete fee data from API');
-      }
-      
-      // Map API response to UI fee levels
-      // API returns: fastest (high priority), fast (medium), average (low priority)
-      // UI expects: slow (low priority), average (medium), fastest (high priority)
+      // Store the complete normalized fee data
+      setNormalizedFees(normalizedFees);
+
+      // Extract the simple fee values for the UI
       const fees = {
-        slow: feeData.average.toString(),    // Use 'average' for slow
-        average: feeData.fast.toString(),     // Use 'fast' for average
-        fastest: feeData.fastest.toString()   // Use 'fastest' for fastest
+        slow: normalizedFees.slow.value,
+        average: normalizedFees.average.value,
+        fastest: normalizedFees.fastest.value
       };
-      
-      // Log the fee unit if provided
-      if (feeData.unit) {
-        console.log('Fee unit:', feeData.unit);
-        console.log('Fee description:', feeData.description);
-      }
-      
-      console.log('Using fees from API:', fees);
-      
-      // Store the raw fee options (gas prices or fee rates)
+
+      console.log('Using fees from SDK:', fees);
+      console.log('Fee metadata:', {
+        unit: normalizedFees.slow.unit,
+        networkType: normalizedFees.networkType,
+        labels: {
+          slow: normalizedFees.slow.label,
+          average: normalizedFees.average.label,
+          fastest: normalizedFees.fastest.label
+        },
+        estimatedTimes: {
+          slow: normalizedFees.slow.estimatedTime,
+          average: normalizedFees.average.estimatedTime,
+          fastest: normalizedFees.fastest.estimatedTime
+        }
+      });
+
+      // Store the fee options
       setFeeOptions(fees);
 
-      // Handle different fee units appropriately
-      if (feeData.unit === 'gwei') {
-        // Gas price is in Gwei, need to calculate with gas limit (21000 for simple transfer)
+      // Calculate estimated fee based on network type and selected level
+      const selectedFee = normalizedFees[selectedFeeLevel];
+
+      if (normalizedFees.networkType === 'EVM') {
+        // For EVM chains, multiply gas price by standard gas limit
         const gasLimit = 21000; // Standard ETH transfer
-        const gasPriceGwei = parseFloat(fees[selectedFeeLevel]);
+        const gasPriceGwei = parseFloat(selectedFee.value);
         const feeInGwei = gasPriceGwei * gasLimit;
         const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
         const feeString = feeInEth.toFixed(9);
@@ -499,13 +500,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
         setEstimatedFee(feeString);
         updateFeeInUsd(feeString);
-      } else if (feeData.unit === 'sat/byte' || feeData.unit === 'sat/vB') {
-        // For UTXO chains, these are fee RATES in satoshis per byte
-        // Don't use these directly as the fee amount!
-        // The actual fee will be calculated when the transaction is built
-        // For now, estimate based on typical transaction size
+      } else if (normalizedFees.networkType === 'UTXO') {
+        // For UTXO chains, multiply fee rate by estimated transaction size
         const estimatedTxSize = getEstimatedTxSize();
-        const feeRateSatPerByte = parseFloat(fees[selectedFeeLevel]);
+        const feeRateSatPerByte = parseFloat(selectedFee.value);
         const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
         const feeInBTC = feeInSatoshis / 100000000; // Convert satoshis to BTC
         const feeString = feeInBTC.toFixed(8);
@@ -521,10 +519,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         setEstimatedFee(feeString);
         updateFeeInUsd(feeString);
       } else {
-        // For other chains, use the fee directly (but log a warning)
-        console.warn('Unknown fee unit:', feeData.unit, '- using fee value directly');
-        setEstimatedFee(fees[selectedFeeLevel]);
-        updateFeeInUsd(fees[selectedFeeLevel]);
+        // For other chains (COSMOS, RIPPLE), use the fee value directly
+        console.log(`Using fee directly for ${normalizedFees.networkType}:`, selectedFee.value, selectedFee.unit);
+        setEstimatedFee(selectedFee.value);
+        updateFeeInUsd(selectedFee.value);
       }
       
     } catch (error: any) {
@@ -564,24 +562,24 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     setSelectedFeeLevel(feeLevel);
     setCustomFeeOption(false);
 
-    // Recalculate estimated fee based on the selected level and unit
-    if (feeRates?.data?.unit && feeOptions[feeLevel]) {
-      const selectedFeeRate = feeOptions[feeLevel];
+    // Recalculate estimated fee based on the selected level
+    if (normalizedFees && feeOptions[feeLevel]) {
+      const selectedFee = normalizedFees[feeLevel];
 
-      if (feeRates.data.unit === 'sat/byte' || feeRates.data.unit === 'sat/vB') {
+      if (normalizedFees.networkType === 'UTXO') {
         // For UTXO chains, calculate estimated fee based on transaction size
         const estimatedTxSize = getEstimatedTxSize();
-        const feeRateSatPerByte = parseFloat(selectedFeeRate);
+        const feeRateSatPerByte = parseFloat(selectedFee.value);
         const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
         const feeInBTC = feeInSatoshis / 100000000; // Convert satoshis to BTC
         const feeString = feeInBTC.toFixed(8);
 
         setEstimatedFee(feeString);
         updateFeeInUsd(feeString);
-      } else if (feeRates.data.unit === 'gwei') {
+      } else if (normalizedFees.networkType === 'EVM') {
         // For EVM chains, calculate with gas limit
         const gasLimit = 21000; // Standard ETH transfer
-        const gasPriceGwei = parseFloat(selectedFeeRate);
+        const gasPriceGwei = parseFloat(selectedFee.value);
         const feeInGwei = gasPriceGwei * gasLimit;
         const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
         const feeString = feeInEth.toFixed(9);
@@ -589,9 +587,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         setEstimatedFee(feeString);
         updateFeeInUsd(feeString);
       } else {
-        // For other chains, use the fee directly
-        setEstimatedFee(selectedFeeRate);
-        updateFeeInUsd(selectedFeeRate);
+        // For other chains (COSMOS, RIPPLE), use the fee value directly
+        console.log('Using fee directly for', feeLevel, ':', selectedFee.value, selectedFee.unit);
+        setEstimatedFee(selectedFee.value);
+        updateFeeInUsd(selectedFee.value);
       }
     }
   };
@@ -603,9 +602,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     if (/^[0-9]*\.?[0-9]*$/.test(value) || value === '') {
       setCustomFeeAmount(value);
 
-      if (value && feeRates?.data?.unit) {
-        // Calculate the actual fee based on the unit
-        if (feeRates.data.unit === 'sat/byte' || feeRates.data.unit === 'sat/vB') {
+      if (value && normalizedFees) {
+        // Calculate the actual fee based on the network type
+        if (normalizedFees.networkType === 'UTXO') {
           // Custom value is fee rate in sat/byte
           const estimatedTxSize = getEstimatedTxSize();
           const feeRateSatPerByte = parseFloat(value);
@@ -615,7 +614,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
           setEstimatedFee(feeString);
           updateFeeInUsd(feeString);
-        } else if (feeRates.data.unit === 'gwei') {
+        } else if (normalizedFees.networkType === 'EVM') {
           // Custom value is gas price in gwei
           const gasLimit = 21000;
           const gasPriceGwei = parseFloat(value);
@@ -626,7 +625,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           setEstimatedFee(feeString);
           updateFeeInUsd(feeString);
         } else {
-          // Direct fee value
+          // For other chains (COSMOS, RIPPLE), use the fee directly
           setEstimatedFee(value);
           updateFeeInUsd(value);
         }
@@ -2555,8 +2554,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 borderColor={`${assetColor}33`}
               >
                 <FeeSelection
-                  networkId={assetContext?.networkId || ''}
+                  networkId={resolvedNetworkId || assetContext?.networkId || ''}
                   assetId={assetContext?.assetId}
+                  feeOptions={feeOptions}
+                  feeRates={normalizedFees ? { data: { normalized: normalizedFees } } : null}
                   selectedFeeLevel={selectedFeeLevel}
                   onFeeSelectionChange={handleFeeSelectionChange}
                   customFeeOption={customFeeOption}

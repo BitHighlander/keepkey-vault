@@ -7,16 +7,16 @@ import {
   Flex,
   Input,
   Spinner,
-  Alert,
 } from '@chakra-ui/react';
-import { AlertTriangle } from 'lucide-react';
-import { useFeeRates, type FeeRatesData } from '@/hooks/useFeeRates';
+import type { FeeRatesData } from '@/hooks/useFeeRates';
 
 export type FeeLevel = 'slow' | 'average' | 'fastest';
 
 export interface FeeSelectionProps {
   networkId: string;
   assetId?: string;
+  feeOptions: FeeRatesData;  // Pass fees directly from parent
+  feeRates?: any;  // Optional normalized fee data
   selectedFeeLevel: FeeLevel;
   onFeeSelectionChange: (level: FeeLevel) => void;
   customFeeOption?: boolean;
@@ -36,25 +36,13 @@ const defaultTheme = {
   border: '#3A4A5C',
 };
 
-const UTXO_NETWORKS = [
-  'bip122:000000000019d6689c085ae165831e93', // Bitcoin
-  'bip122:12a765e31ffd4059bada1e25190f6e98', // Litecoin
-  'bip122:000000000933ea01ad0ee984209779ba', // Dogecoin
-  'bip122:000000000000000000651ef99cb9fcbe', // Bitcoin Cash
-];
-
-const EVM_NETWORKS = [
-  'eip155:1',    // Ethereum
-  'eip155:56',   // BSC
-  'eip155:137',  // Polygon
-  'eip155:43114', // Avalanche
-  'eip155:8453', // Base
-  'eip155:10',   // Optimism
-];
+// Network type detection is now handled by the SDK
 
 export const FeeSelection: React.FC<FeeSelectionProps> = ({
   networkId,
   assetId,
+  feeOptions,
+  feeRates,
   selectedFeeLevel,
   onFeeSelectionChange,
   customFeeOption = false,
@@ -63,63 +51,67 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
   onCustomFeeChange,
   theme = defaultTheme,
 }) => {
-  const { feeOptions, feeRates, loading, error, refetch } = useFeeRates(networkId, assetId);
 
-  const getNetworkType = (networkId: string): 'UTXO' | 'EVM' | 'TENDERMINT' | 'OTHER' => {
-    if (UTXO_NETWORKS.some(id => networkId.startsWith(id)) || networkId.startsWith('bip122:')) {
-      return 'UTXO';
-    }
-    if (EVM_NETWORKS.some(id => networkId.startsWith(id)) || networkId.startsWith('eip155:')) {
-      return 'EVM';
-    }
-    if (networkId.startsWith('cosmos:')) {
-      return 'TENDERMINT';
-    }
-    return 'OTHER';
-  };
-
+  // Get fee unit from the normalized data
   const getFeeUnit = (): string => {
-    // Always use API-provided unit if available - this is the source of truth
+    // Use the unit from normalized fee data
+    if (feeRates?.data?.normalized?.slow?.unit) {
+      return feeRates.data.normalized.slow.unit;
+    }
+    // Fallback to raw data unit if available
     if (feeRates?.data?.unit) {
       return feeRates.data.unit;
     }
-    
-    // Otherwise, determine based on network type
-    const networkType = getNetworkType(networkId);
-    switch (networkType) {
-      case 'UTXO':
-        return 'sat/vB';
-      case 'EVM':
-        return 'gwei';
-      case 'TENDERMINT':
-        return 'μatom';
-      default:
-        return 'sat/vB';
-    }
+    return '';
   };
 
   const getDisplayFeeValue = (feeValue: string): string => {
-    // If API provides unit metadata, trust the values completely
-    if (feeRates?.data?.unit) {
-      const value = parseFloat(feeValue);
-      return value.toFixed(1);
-    }
-    
-    // Otherwise, just format the value nicely
     const value = parseFloat(feeValue);
-    return value.toFixed(8).replace(/\.?0+$/, ''); // Remove trailing zeros
+
+    // If it's 0, just return 0
+    if (value === 0) return '0';
+
+    const unit = getFeeUnit();
+
+    // Format based on unit type
+    if (unit === 'sat/byte' || unit === 'sat/vB' || unit === 'sat/vByte') {
+      // For sats, show as integer if whole number
+      return value % 1 === 0 ? value.toString() : value.toFixed(1).replace(/\.0$/, '');
+    }
+
+    if (unit === 'gwei' || unit === 'Gwei') {
+      // For gwei, show with 1 decimal
+      return value.toFixed(1).replace(/\.0$/, '');
+    }
+
+    // For other units, show with appropriate decimals
+    if (value < 0.01) {
+      return value.toFixed(6).replace(/\.?0+$/, '');
+    }
+    return value.toFixed(2).replace(/\.?0+$/, '');
   };
 
   const getFeeLabel = (level: FeeLevel): string => {
+    // Use labels from normalized fee data if available
+    if (feeRates?.data?.normalized?.[level]?.label) {
+      return feeRates.data.normalized[level].label;
+    }
+    // Fallback to simple labels
     switch (level) {
-      case 'slow': return 'Low';
-      case 'average': return 'Medium';
-      case 'fastest': return 'High';
+      case 'slow': return 'Economy';
+      case 'average': return 'Standard';
+      case 'fastest': return 'Priority';
       default: return level;
     }
   };
 
-  if (loading) {
+  const getFeeEstimatedTime = (level: FeeLevel): string | undefined => {
+    // Get estimated time from normalized fee data
+    return feeRates?.data?.normalized?.[level]?.estimatedTime;
+  };
+
+  // Show nothing if no fees are provided
+  if (!feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')) {
     return (
       <Box textAlign="center" py={4}>
         <Spinner size="sm" color={theme.gold} />
@@ -127,20 +119,6 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
           Loading fee rates...
         </Text>
       </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert status="warning" size="sm">
-        <AlertTriangle size={16} />
-        <Box flex="1" ml={2}>
-          <Text fontSize="sm">Failed to load fee rates</Text>
-          <Button size="xs" variant="ghost" onClick={refetch} mt={1}>
-            Retry
-          </Button>
-        </Box>
-      </Alert>
     );
   }
 
@@ -175,13 +153,18 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
             transition="all 0.2s ease"
             onClick={() => onFeeSelectionChange(level)}
           >
-            <Stack gap={1} align="center">
+            <Stack gap={0.5} align="center">
               <Text fontSize="sm" fontWeight="bold">
                 {getFeeLabel(level)}
               </Text>
               <Text fontSize="xs" opacity={0.8}>
                 {getDisplayFeeValue(feeOptions[level])} {getFeeUnit()}
               </Text>
+              {getFeeEstimatedTime(level) && (
+                <Text fontSize="2xs" opacity={0.6}>
+                  {getFeeEstimatedTime(level)}
+                </Text>
+              )}
             </Stack>
           </Button>
         ))}

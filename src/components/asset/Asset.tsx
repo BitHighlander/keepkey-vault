@@ -272,10 +272,10 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
             });
             
             // Only play sound if this is not the initial load and balance actually increased
-            if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
-              console.log("🎵 [Asset] Balance increased! Playing chaching sound");
-              playSound(chachingSound);
-            }
+            // if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
+            //   console.log("🎵 [Asset] Balance increased! Playing chaching sound");
+            //   playSound(chachingSound);
+            // }
             
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);

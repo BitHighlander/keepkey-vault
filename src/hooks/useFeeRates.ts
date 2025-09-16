@@ -44,13 +44,20 @@ const EVM_NETWORKS = [
 
 export const useFeeRates = (networkId: string, assetId?: string): UseFeeRatesResult => {
   const { app } = usePioneerContext();
-  
-  const [feeOptions, setFeeOptions] = useState<FeeRatesData>({
-    slow: '0.0001',
-    average: '0.0002', 
-    fastest: '0.0005'
+
+  console.log('[useFeeRates] Hook called with:', {
+    networkId,
+    assetId,
+    hasApp: !!app,
+    hasFees: !!app?.getFees
   });
-  
+
+  const [feeOptions, setFeeOptions] = useState<FeeRatesData>({
+    slow: '0',
+    average: '0',
+    fastest: '0'
+  });
+
   const [feeRates, setFeeRates] = useState<FeeRatesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,128 +70,127 @@ export const useFeeRates = (networkId: string, assetId?: string): UseFeeRatesRes
   };
 
   const getNetworkDefaults = (networkId: string, networkType: string): FeeRatesData => {
-    switch (networkId) {
-      case 'bip122:000000000019d6689c085ae165831e93': // Bitcoin
-        return {
-          slow: '0.00000500',    // 2 sat/byte
-          average: '0.00001250', // 5 sat/byte  
-          fastest: '0.00002500'  // 10 sat/byte
-        };
-      
-      case 'bip122:000000000000000000651ef99cb9fcbe': // Bitcoin Cash
-        return {
-          slow: '0.00000625',    // 2.5 sat/byte
-          average: '0.00001000', // 4 sat/byte
-          fastest: '0.00001500'  // 6 sat/byte
-        };
-      
-      default:
-        switch (networkType) {
-          case 'EVM':
-            return {
-              slow: '0.000000020',   // 20 gwei
-              average: '0.000000025', // 25 gwei
-              fastest: '0.000000030' // 30 gwei
-            };
-          case 'UTXO':
-            return {
-              slow: '0.00000500',
-              average: '0.00001000',
-              fastest: '0.00002000'
-            };
-          case 'TENDERMINT':
-            return {
-              slow: '0.000001',
-              average: '0.000002', 
-              fastest: '0.000003'
-            };
-          default:
-            return {
-              slow: '0.0001',
-              average: '0.0002',
-              fastest: '0.0005'
-            };
-        }
-    }
+    // NO DEFAULTS - must get from API
+    return {
+      slow: '0',
+      average: '0',
+      fastest: '0'
+    };
   };
 
   const fetchFeeRates = useCallback(async () => {
-    if (!app?.pioneer || !networkId) return;
-    
+    console.log('[useFeeRates] fetchFeeRates called', {
+      hasApp: !!app,
+      hasFees: !!app?.getFees,
+      networkId,
+      currentFeeOptions: feeOptions
+    });
+
+    if (!app || !app.getFees || !networkId) {
+      console.log('[useFeeRates] Missing requirements - skipping fetch:', {
+        app: !!app,
+        getFees: !!app?.getFees,
+        networkId,
+        reason: !app ? 'No app context' : !app?.getFees ? 'No getFees method' : 'No networkId'
+      });
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const networkType = getNetworkType(networkId);
-      let defaultFees = getNetworkDefaults(networkId, networkType);
+      console.log(`[useFeeRates] Fetching fee rates using app.getFees for network: ${networkId}`);
 
-      console.log(`Fetching fee rates for network: ${networkId}`);
-      
-      // Try to get fee rates from the API
-      try {
-        if (app?.pioneer) {
-          const apiResult = await (app.pioneer.GetFeeRateByNetwork 
-            ? app.pioneer.GetFeeRateByNetwork({ networkId }) 
-            : app.pioneer.GetFeeRate({ networkId }));
-          
-          console.log('Fee rates from API:', apiResult);
-          
-          // Store the complete fee rates data for use in the UI
-          setFeeRates(apiResult);
-          
-          if (apiResult?.data && 
-              apiResult.data.slow && 
-              apiResult.data.average && 
-              apiResult.data.fastest) {
-            
-            // Use API data
-            defaultFees = {
-              slow: apiResult.data.slow.toString(),
-              average: apiResult.data.average.toString(), 
-              fastest: apiResult.data.fastest.toString()
-            };
-            
-            console.log('Updated fees from API:', defaultFees);
-          } else if (apiResult?.data && 
-                     apiResult.data.average && 
-                     apiResult.data.fast && 
-                     apiResult.data.fastest) {
-            
-            // Handle different API format (fastest, fast, average)
-            defaultFees = {
-              slow: apiResult.data.average.toString(),
-              average: apiResult.data.fast.toString(),
-              fastest: apiResult.data.fastest.toString()
-            };
-            
-            console.log('Updated fees from alternative API format:', defaultFees);
-          } else {
-            console.warn('API returned incomplete fee data, using defaults');
-          }
-          
-          // Log fee unit if provided
-          if (apiResult?.data?.unit) {
-            console.log('Fee unit:', apiResult.data.unit);
-            console.log('Fee description:', apiResult.data.description);
-          }
+      // Use the new normalized getFees method from SDK
+      // This handles all the complexity and returns clean, normalized data
+      const normalizedFees = await app.getFees(networkId);
+
+      console.log('[useFeeRates] Got normalized fee rates:', normalizedFees);
+
+      // Extract the simple fee values for the UI
+      const fees = {
+        slow: normalizedFees.slow.value,
+        average: normalizedFees.average.value,
+        fastest: normalizedFees.fastest.value
+      };
+
+      console.log('[useFeeRates] Extracted fee values for UI:', fees);
+      setFeeOptions(fees);
+
+      // Store the complete normalized data for additional UI features
+      // This includes labels, descriptions, estimated times, units, etc.
+      setFeeRates({
+        data: {
+          // Keep the raw response if components need it
+          ...normalizedFees.raw,
+          // Provide the unit and description at the top level for backward compatibility
+          unit: normalizedFees.slow.unit,
+          description: normalizedFees.average.description,
+          // Also include the full normalized data so components can access rich metadata
+          normalized: normalizedFees,
+          // Map normalized format to expected format for backward compatibility
+          slow: parseFloat(normalizedFees.slow.value),
+          average: parseFloat(normalizedFees.average.value),
+          fastest: parseFloat(normalizedFees.fastest.value)
         }
-      } catch (apiError) {
-        console.warn('Failed to fetch fee rates from API, using network-specific defaults', apiError);
-      }
+      });
 
-      setFeeOptions(defaultFees);
+      // Log rich metadata for debugging
+      console.log('[useFeeRates] Fee metadata:', {
+        unit: normalizedFees.slow.unit,
+        networkType: normalizedFees.networkType,
+        labels: {
+          slow: normalizedFees.slow.label,
+          average: normalizedFees.average.label,
+          fastest: normalizedFees.fastest.label
+        },
+        estimatedTimes: {
+          slow: normalizedFees.slow.estimatedTime,
+          average: normalizedFees.average.estimatedTime,
+          fastest: normalizedFees.fastest.estimatedTime
+        },
+        priorities: {
+          slow: normalizedFees.slow.priority,
+          average: normalizedFees.average.priority,
+          fastest: normalizedFees.fastest.priority
+        }
+      });
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch fee rates';
       setError(errorMessage);
-      console.error('Error fetching fee rates:', err);
+      console.error('[useFeeRates] Error fetching fee rates:', err);
+
+      // Fallback to sensible defaults if the SDK fails
+      // The SDK already has its own fallback logic, so this is a last resort
+      const networkType = getNetworkType(networkId);
+      const defaultFees = networkType === 'UTXO'
+        ? { slow: '1', average: '2', fastest: '3' }
+        : { slow: '1', average: '1.5', fastest: '2' };
+
+      console.log('[useFeeRates] Using last-resort fallback fees:', defaultFees);
+      setFeeOptions(defaultFees);
     } finally {
       setLoading(false);
     }
   }, [app, networkId]);
 
   useEffect(() => {
-    fetchFeeRates();
-  }, [fetchFeeRates]);
+    console.log('[useFeeRates] useEffect triggered - checking conditions', {
+      networkId,
+      hasApp: !!app,
+      hasFees: !!app?.getFees,
+      willFetch: !!(app && app.getFees && networkId)
+    });
+
+    if (app && app.getFees && networkId) {
+      console.log('[useFeeRates] Conditions met, calling fetchFeeRates');
+      fetchFeeRates();
+    } else {
+      console.log('[useFeeRates] Conditions not met, skipping fetch');
+    }
+  }, [fetchFeeRates, app, networkId]);
 
   return {
     feeOptions,
