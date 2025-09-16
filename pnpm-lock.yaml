@@ -15,8 +15,8 @@ dependencies:
     specifier: ^2.0.6
     version: 2.0.6(react@19.1.1)
   '@coinmasters/pioneer-sdk':
-    specifier: ^4.13.27
-    version: 4.13.27(@types/node@20.19.14)
+    specifier: ^4.13.28
+    version: 4.13.28(@types/node@20.19.14)
   '@coinmasters/tokens':
     specifier: ^3.10.1
     version: 3.10.1
@@ -316,8 +316,8 @@ packages:
       react-dom: 19.1.1(react@19.1.1)
     dev: false
 
-  /@coinmasters/pioneer-sdk@4.13.27(@types/node@20.19.14):
-    resolution: {integrity: sha512-/mh5UOi5f5R6rBh+kHozCfdLunXRrLniLEzaO+OhB0RDiMDDGm0bAaG3e5eWtTqymaFEk1RuzapC0cL3nnjeKQ==}
+  /@coinmasters/pioneer-sdk@4.13.28(@types/node@20.19.14):
+    resolution: {integrity: sha512-/BYGsZQzISDMDinxzZVg+gSVahatOzauHzATUbPrJaEVO+pl49wo+q6Rkce1CFu27bfm5/pzeWscyCJoM+SsJw==}
     dependencies:
       '@keepkey/keepkey-sdk': 0.2.62
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.19.14)

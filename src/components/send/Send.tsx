@@ -857,10 +857,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               feeInBTC: feeValue
             });
           } else if (unsignedTxResult.fee) {
-            // Direct fee field
-            feeValue = typeof unsignedTxResult.fee === 'string' 
-              ? unsignedTxResult.fee 
+            // Direct fee field (from UTXO transactions - fee is in satoshis)
+            const feeStr = typeof unsignedTxResult.fee === 'string'
+              ? unsignedTxResult.fee
               : unsignedTxResult.fee.toString();
+
+            // Check if this is a UTXO transaction (Bitcoin, etc) by checking for inputs/outputs
+            if (unsignedTxResult.inputs && unsignedTxResult.outputs) {
+              // Fee is in satoshis, convert to BTC
+              const feeInSatoshis = parseInt(feeStr);
+              feeValue = (feeInSatoshis / 100000000).toFixed(8);
+              console.log('UTXO fee from direct field:', feeInSatoshis, 'sats =', feeValue, 'BTC');
+            } else {
+              // For other chains, use the fee as-is
+              feeValue = feeStr;
+            }
           } else if (unsignedTxResult.feeValue) {
             feeValue = unsignedTxResult.feeValue.toString();
           } else if (unsignedTxResult.tx && unsignedTxResult.tx.value && unsignedTxResult.tx.value.fee) {
