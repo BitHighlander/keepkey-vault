@@ -368,6 +368,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     return 'OTHER';
   };
 
+  // Get estimated transaction size for UTXO chains
+  // This is a rough estimate - actual size depends on inputs/outputs
+  const getEstimatedTxSize = (): number => {
+    // Basic formula for UTXO transaction size:
+    // - Each input: ~148 bytes (P2PKH) or ~68 bytes (P2WPKH/SegWit)
+    // - Each output: ~34 bytes
+    // - Base overhead: ~10 bytes
+
+    // Conservative estimate for 3-4 inputs (better to overestimate):
+    // Assuming mixed SegWit and legacy inputs for safety
+    // 10 (overhead) + 100*3.5 (avg 3.5 inputs) + 34*2 (2 outputs) = ~428 bytes
+    // Using 400 as a reasonable conservative estimate
+    return 400;
+  };
+
   // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
     if (!assetContext) {
@@ -462,10 +477,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       
       console.log('Using fees from API:', fees);
       
-      // Store the raw fee options (gas prices)
+      // Store the raw fee options (gas prices or fee rates)
       setFeeOptions(fees);
-      
-      // For EVM chains with Gwei fees, calculate actual transaction fee
+
+      // Handle different fee units appropriately
       if (feeData.unit === 'gwei') {
         // Gas price is in Gwei, need to calculate with gas limit (21000 for simple transfer)
         const gasLimit = 21000; // Standard ETH transfer
@@ -473,7 +488,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         const feeInGwei = gasPriceGwei * gasLimit;
         const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
         const feeString = feeInEth.toFixed(9);
-        
+
         console.log('Calculated EVM fee:', {
           gasPriceGwei,
           gasLimit,
@@ -481,11 +496,33 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           feeInEth,
           feeString
         });
-        
+
+        setEstimatedFee(feeString);
+        updateFeeInUsd(feeString);
+      } else if (feeData.unit === 'sat/byte' || feeData.unit === 'sat/vB') {
+        // For UTXO chains, these are fee RATES in satoshis per byte
+        // Don't use these directly as the fee amount!
+        // The actual fee will be calculated when the transaction is built
+        // For now, estimate based on typical transaction size
+        const estimatedTxSize = getEstimatedTxSize();
+        const feeRateSatPerByte = parseFloat(fees[selectedFeeLevel]);
+        const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
+        const feeInBTC = feeInSatoshis / 100000000; // Convert satoshis to BTC
+        const feeString = feeInBTC.toFixed(8);
+
+        console.log('Estimated UTXO fee:', {
+          feeRateSatPerByte,
+          estimatedTxSize,
+          feeInSatoshis,
+          feeInBTC,
+          feeString
+        });
+
         setEstimatedFee(feeString);
         updateFeeInUsd(feeString);
       } else {
-        // For non-EVM chains, use the fee directly
+        // For other chains, use the fee directly (but log a warning)
+        console.warn('Unknown fee unit:', feeData.unit, '- using fee value directly');
         setEstimatedFee(fees[selectedFeeLevel]);
         updateFeeInUsd(fees[selectedFeeLevel]);
       }
@@ -512,10 +549,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const errorMessage = `Failed to get network fees for ${networkId}: ${errorDetail}`;
       setError(errorMessage);
       setShowErrorDialog(true);
-      
+
       // Don't proceed with fake fees - show the error to the user
+      // Setting to 0 prevents transaction from proceeding
       setFeeOptions({ slow: '0', average: '0', fastest: '0' });
       setEstimatedFee('0');
+      setEstimatedFeeUsd('0.00');
     }
   };
   
@@ -524,10 +563,37 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const handleFeeSelectionChange = (feeLevel: FeeLevel) => {
     setSelectedFeeLevel(feeLevel);
     setCustomFeeOption(false);
-    
-    // The FeeSelection component handles the fee data internally
-    // We just update the selection state here
-    // Fee calculation logic should be moved to a shared utility or hook
+
+    // Recalculate estimated fee based on the selected level and unit
+    if (feeRates?.data?.unit && feeOptions[feeLevel]) {
+      const selectedFeeRate = feeOptions[feeLevel];
+
+      if (feeRates.data.unit === 'sat/byte' || feeRates.data.unit === 'sat/vB') {
+        // For UTXO chains, calculate estimated fee based on transaction size
+        const estimatedTxSize = getEstimatedTxSize();
+        const feeRateSatPerByte = parseFloat(selectedFeeRate);
+        const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
+        const feeInBTC = feeInSatoshis / 100000000; // Convert satoshis to BTC
+        const feeString = feeInBTC.toFixed(8);
+
+        setEstimatedFee(feeString);
+        updateFeeInUsd(feeString);
+      } else if (feeRates.data.unit === 'gwei') {
+        // For EVM chains, calculate with gas limit
+        const gasLimit = 21000; // Standard ETH transfer
+        const gasPriceGwei = parseFloat(selectedFeeRate);
+        const feeInGwei = gasPriceGwei * gasLimit;
+        const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
+        const feeString = feeInEth.toFixed(9);
+
+        setEstimatedFee(feeString);
+        updateFeeInUsd(feeString);
+      } else {
+        // For other chains, use the fee directly
+        setEstimatedFee(selectedFeeRate);
+        updateFeeInUsd(selectedFeeRate);
+      }
+    }
   };
   
   // Handle custom fee input
@@ -536,10 +602,34 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Allow only numbers and a single decimal point
     if (/^[0-9]*\.?[0-9]*$/.test(value) || value === '') {
       setCustomFeeAmount(value);
-      
-      if (value) {
-        setEstimatedFee(value);
-        updateFeeInUsd(value);
+
+      if (value && feeRates?.data?.unit) {
+        // Calculate the actual fee based on the unit
+        if (feeRates.data.unit === 'sat/byte' || feeRates.data.unit === 'sat/vB') {
+          // Custom value is fee rate in sat/byte
+          const estimatedTxSize = getEstimatedTxSize();
+          const feeRateSatPerByte = parseFloat(value);
+          const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
+          const feeInBTC = feeInSatoshis / 100000000;
+          const feeString = feeInBTC.toFixed(8);
+
+          setEstimatedFee(feeString);
+          updateFeeInUsd(feeString);
+        } else if (feeRates.data.unit === 'gwei') {
+          // Custom value is gas price in gwei
+          const gasLimit = 21000;
+          const gasPriceGwei = parseFloat(value);
+          const feeInGwei = gasPriceGwei * gasLimit;
+          const feeInEth = feeInGwei / 1e9;
+          const feeString = feeInEth.toFixed(9);
+
+          setEstimatedFee(feeString);
+          updateFeeInUsd(feeString);
+        } else {
+          // Direct fee value
+          setEstimatedFee(value);
+          updateFeeInUsd(value);
+        }
       }
     }
   };
@@ -588,15 +678,32 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return
     }
 
+    // Check if we have valid fee data before proceeding
+    if (!feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')) {
+      console.error('No valid fee data available')
+      setError('Unable to proceed: Fee data is not available. Please try again or check your network connection.')
+      setShowErrorDialog(true)
+      return
+    }
+
+    // Also check if the selected fee is 0 (which shouldn't be allowed)
+    const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel]
+    if (!selectedFee || parseFloat(selectedFee) === 0) {
+      console.error('Invalid fee amount:', selectedFee)
+      setError('Unable to proceed: Invalid fee amount. Please select a valid fee option or enter a custom fee.')
+      setShowErrorDialog(true)
+      return
+    }
+
     // Show loading spinner while building transaction
     setIsBuildingTx(true)
     setLoading(true)
-    
+
     try {
       // Build the transaction first
       setTransactionStep('review')
       const builtTx = await buildTransaction()
-      
+
       // Then show confirmation dialog with the built transaction
       if (builtTx) {
         openConfirmation()
@@ -649,13 +756,19 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         priceUsd: assetContext?.priceUsd
       });
       
+      // Verify we have valid fee data before building the transaction
+      const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel];
+      if (!selectedFee || parseFloat(selectedFee) === 0) {
+        throw new Error('Cannot build transaction without valid fee data. Please wait for fee rates to load.');
+      }
+
       // Map fee levels to SDK fee level values
       const feeLevelMap = {
         slow: 1,
         average: 5,
         fastest: 9
       };
-      
+
       const sendPayload: SendPayload = {
         caip,
         to: recipient,
@@ -840,9 +953,29 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         
         // The fee from the API should already be in the correct units
         console.log('Fee from transaction:', feeValue);
+
+        // Sanity check: if fee is null, undefined, or suspiciously high, stop
+        if (!feeValue || feeValue === null) {
+          throw new Error('Could not extract fee from transaction. Transaction cannot proceed without fee information.');
+        }
+
+        // Check for suspiciously high fees (like 1 BTC)
+        const feeAsNumber = parseFloat(feeValue);
+        if (isNaN(feeAsNumber)) {
+          throw new Error('Invalid fee value extracted from transaction.');
+        }
+
+        // For Bitcoin/UTXO chains, if fee is greater than 0.01 BTC (1,000,000 satoshis), it's likely wrong
+        const caipId = assetContext?.caip || assetContext?.assetId;
+        const isUtxoNetwork = UTXO_NETWORKS.some(id => caipId?.includes(id));
+        if (isUtxoNetwork && feeAsNumber > 0.01) {
+          console.error('Suspiciously high fee detected:', feeValue, 'BTC');
+          throw new Error(`Fee appears incorrect: ${feeValue} BTC is unusually high. Please check fee rates and try again.`);
+        }
+
         setEstimatedFee(feeValue);
         updateFeeInUsd(feeValue);
-        
+
       } catch (feeError: any) {
         console.error('Error extracting fee from transaction:', feeError);
         const errorMessage = `Failed to calculate transaction fee: ${feeError.message}`;
@@ -2477,14 +2610,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               bg: assetColorHover,
             }}
             onClick={handleSend}
-            disabled={!amount || !recipient}
+            disabled={!amount || !recipient || !feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')}
             height="56px"
             fontSize="lg"
             boxShadow={`0px 4px 12px ${assetColor}4D`}
           >
             <Flex gap={3} align="center" justify="center">
               <FaPaperPlane />
-              <Text>Send {assetContext.symbol}</Text>
+              <Text>
+                {!feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')
+                  ? 'Waiting for fee data...'
+                  : `Send ${assetContext.symbol}`}
+              </Text>
             </Flex>
           </Button>
         </Stack>
