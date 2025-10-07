@@ -76,12 +76,13 @@ const UTXO_NETWORKS = [
 ]
 
 const EVM_NETWORKS = [
-  'eip155:1',    // Ethereum
-  'eip155:56',   // BSC
-  'eip155:137',  // Polygon
+  'eip155:1',     // Ethereum
+  'eip155:56',    // BSC
+  'eip155:137',   // Polygon
   'eip155:43114', // Avalanche
-  'eip155:8453', // Base
-  'eip155:10',   // Optimism
+  'eip155:8453',  // Base
+  'eip155:10',    // Optimism
+  'eip155:42161', // Arbitrum
 ]
 
 // TypeScript interfaces for transaction data
@@ -483,14 +484,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const selectedFee = normalizedFees[selectedFeeLevel];
 
       if (normalizedFees.networkType === 'EVM') {
-        // For EVM chains, multiply gas price by standard gas limit
-        const gasLimit = 21000; // Standard ETH transfer
+        // For EVM chains, multiply gas price by gas limit
+        // Native ETH transfers: 21000 gas
+        // ERC20 token transfers: ~65000 gas (can vary by token)
+        const isToken = assetContext?.isToken || assetContext?.type === 'token';
+        const gasLimit = isToken ? 65000 : 21000;
         const gasPriceGwei = parseFloat(selectedFee.value);
         const feeInGwei = gasPriceGwei * gasLimit;
         const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
         const feeString = feeInEth.toFixed(9);
 
         console.log('Calculated EVM fee:', {
+          isToken,
           gasPriceGwei,
           gasLimit,
           feeInGwei,
@@ -578,7 +583,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         updateFeeInUsd(feeString);
       } else if (normalizedFees.networkType === 'EVM') {
         // For EVM chains, calculate with gas limit
-        const gasLimit = 21000; // Standard ETH transfer
+        // Native ETH transfers: 21000 gas
+        // ERC20 token transfers: ~65000 gas (can vary by token)
+        const isToken = assetContext?.isToken || assetContext?.type === 'token';
+        const gasLimit = isToken ? 65000 : 21000;
         const gasPriceGwei = parseFloat(selectedFee.value);
         const feeInGwei = gasPriceGwei * gasLimit;
         const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
@@ -616,7 +624,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           updateFeeInUsd(feeString);
         } else if (normalizedFees.networkType === 'EVM') {
           // Custom value is gas price in gwei
-          const gasLimit = 21000;
+          // Native ETH transfers: 21000 gas
+          // ERC20 token transfers: ~65000 gas (can vary by token)
+          const isToken = assetContext?.isToken || assetContext?.type === 'token';
+          const gasLimit = isToken ? 65000 : 21000;
           const gasPriceGwei = parseFloat(value);
           const feeInGwei = gasPriceGwei * gasLimit;
           const feeInEth = feeInGwei / 1e9;
@@ -761,18 +772,19 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Cannot build transaction without valid fee data. Please wait for fee rates to load.');
       }
 
-      // Map fee levels to SDK fee level values
+      // Map fee levels to SDK fee level values (valid range: 1-5)
+      // 1 = slow/economy, 3 = average/standard, 5 = fast/priority
       const feeLevelMap = {
         slow: 1,
-        average: 5,
-        fastest: 9
+        average: 3,
+        fastest: 5
       };
 
       const sendPayload: SendPayload = {
         caip,
         to: recipient,
         amount: nativeAmount,
-        feeLevel: customFeeOption ? 5 : feeLevelMap[selectedFeeLevel], // Use selected or custom fee level
+        feeLevel: customFeeOption ? 3 : feeLevelMap[selectedFeeLevel], // Use selected or custom fee level (valid range: 1-5)
         isMax,
       }
       
@@ -787,7 +799,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         sendPayload.memo = memo;
       }
       
-      console.log('Build TX Payload:', sendPayload)
+      console.log('Build TX Payload:', sendPayload);
+      console.log('Fee details:', {
+        selectedFeeLevel,
+        feeLevel: sendPayload.feeLevel,
+        customFeeOption,
+        customFee: sendPayload.customFee,
+        feeOptions,
+        normalizedFees
+      });
       
       // Call the SDK's buildTx method
       let unsignedTxResult;

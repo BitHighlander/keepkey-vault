@@ -1077,6 +1077,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           const swapPayload: any = {
             caipIn: app?.assetContext?.caip,
             caipOut: app?.outboundAssetContext?.caip,
+            feeLevel: 3, // Use average/standard fee level (valid range: 1-5)
           };
           
           // Set isMax flag if MAX button was used

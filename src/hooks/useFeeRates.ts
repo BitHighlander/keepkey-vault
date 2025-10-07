@@ -34,12 +34,13 @@ const UTXO_NETWORKS = [
 ];
 
 const EVM_NETWORKS = [
-  'eip155:1',    // Ethereum
-  'eip155:56',   // BSC
-  'eip155:137',  // Polygon
+  'eip155:1',     // Ethereum
+  'eip155:56',    // BSC
+  'eip155:137',   // Polygon
   'eip155:43114', // Avalanche
-  'eip155:8453', // Base
-  'eip155:10',   // Optimism
+  'eip155:8453',  // Base
+  'eip155:10',    // Optimism
+  'eip155:42161', // Arbitrum
 ];
 
 export const useFeeRates = (networkId: string, assetId?: string): UseFeeRatesResult => {
