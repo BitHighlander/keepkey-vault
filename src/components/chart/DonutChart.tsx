@@ -128,10 +128,10 @@ const DonutChart: React.FC<DonutChartProps> = ({
               strokeOpacity="0.3"
             />
             <foreignObject
-              x={-innerRadius * 0.7}
-              y={-innerRadius * 0.4}
-              width={innerRadius * 1.4}
-              height={innerRadius * 0.8}
+              x={-innerRadius * 0.75}
+              y={-innerRadius * 0.5}
+              width={innerRadius * 1.5}
+              height={innerRadius * 1.0}
             >
               <div
                 style={{
@@ -146,12 +146,13 @@ const DonutChart: React.FC<DonutChartProps> = ({
                   fontWeight: 'bold',
                   textAlign: 'center',
                   filter: 'drop-shadow(0px 0px 1px rgba(0,0,0,0.8))',
+                  gap: '0.25em',
                 }}
               >
                 <div>Portfolio</div>
-                <div style={{ marginTop: '0.5em' }}>
-                  $<CountUp 
-                    end={total} 
+                <div>
+                  $<CountUp
+                    end={total}
                     decimals={2}
                     duration={1.5}
                     separator=","

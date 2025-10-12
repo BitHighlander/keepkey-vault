@@ -400,6 +400,41 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     return formatUsd(value);
   };
 
+  // Handle portfolio refresh
+  const handlePortfolioRefresh = async () => {
+    console.log('🔄 [Dashboard] User clicked to refresh portfolio');
+    setIsRefreshing(true);
+    try {
+      if (app && typeof app.refresh === 'function') {
+        console.log('🔄 [Dashboard] Calling app.refresh()');
+        await app.refresh();
+      } else if (app && typeof app.sync === 'function') {
+        console.log('🔄 [Dashboard] Calling app.sync()');
+        await app.sync();
+      }
+
+      // Also get charts/tokens (with error handling for staking position bug)
+      if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
+        console.log('🔄 [Dashboard] Calling app.getCharts()');
+        try {
+          await app.getCharts();
+        } catch (chartError) {
+          console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
+          // Don't throw - this is a known issue with the Pioneer SDK
+        }
+      }
+
+      // Fetch dashboard data after refresh
+      await fetchDashboard();
+
+      console.log('✅ [Dashboard] Portfolio refresh completed');
+    } catch (error) {
+      console.error('❌ [Dashboard] Portfolio refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <Box 
       height="100vh" 
@@ -488,21 +523,42 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               maxW="500px"
               w="100%"
             >
-              <Box 
-                p={8} 
-                borderRadius="2xl" 
-                boxShadow={!loading && dashboard && hasAnyBalance && chartData.length > 0 
+              <Box
+                p={8}
+                borderRadius="2xl"
+                boxShadow={!loading && dashboard && hasAnyBalance && chartData.length > 0
                   ? `0 4px 20px ${chartData[0].color}20, inset 0 0 20px ${chartData[0].color}10`
                   : 'lg'
                 }
                 border="1px solid"
-                borderColor={!loading && dashboard && hasAnyBalance && chartData.length > 0 
+                borderColor={!loading && dashboard && hasAnyBalance && chartData.length > 0
                   ? `${chartData[0].color}40`
                   : theme.border
                 }
                 position="relative"
                 overflow="hidden"
                 bg={!loading && dashboard && hasAnyBalance && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
+                cursor="pointer"
+                onClick={handlePortfolioRefresh}
+                _hover={{
+                  transform: 'scale(1.02)',
+                  boxShadow: !loading && dashboard && hasAnyBalance && chartData.length > 0
+                    ? `0 6px 24px ${chartData[0].color}30, inset 0 0 25px ${chartData[0].color}15`
+                    : 'xl',
+                }}
+                _active={{
+                  transform: 'scale(0.98)',
+                }}
+                transition="all 0.2s ease-in-out"
+                role="button"
+                aria-label="Click to refresh portfolio balances"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handlePortfolioRefresh();
+                  }
+                }}
                 _before={{
                   content: '""',
                   position: "absolute",
@@ -527,15 +583,48 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   zIndex: 1,
                 }}
               >
-            <Flex 
-              justify="center" 
-              align="center" 
-              position="relative" 
+            <Flex
+              justify="center"
+              align="center"
+              position="relative"
               zIndex={2}
               direction="column"
               gap={6}
               width="100%"
             >
+              {/* Refreshing overlay */}
+              {isRefreshing && (
+                <Box
+                  position="absolute"
+                  top={0}
+                  left={0}
+                  right={0}
+                  bottom={0}
+                  bg="rgba(0, 0, 0, 0.7)"
+                  backdropFilter="blur(4px)"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  zIndex={10}
+                  borderRadius="2xl"
+                >
+                  <VStack gap={3}>
+                    <Box
+                      animation={`${pulseAnimation} 1.5s ease-in-out infinite`}
+                    >
+                      <KeepKeyUiGlyph
+                        width="60px"
+                        height="60px"
+                        color={theme.gold}
+                      />
+                    </Box>
+                    <Text fontSize="md" color={theme.gold} fontWeight="medium">
+                      Refreshing balances...
+                    </Text>
+                  </VStack>
+                </Box>
+              )}
+
               {loading || !dashboard ? (
                 <LoadingScreen />
               ) : hasAnyBalance ? (
