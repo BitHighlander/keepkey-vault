@@ -135,7 +135,8 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
             key={level}
             flex={1}
             size="md"
-            height="60px"
+            height="auto"
+            py={3}
             variant={selectedFeeLevel === level ? 'solid' : 'outline'}
             bg={selectedFeeLevel === level ? theme.gold : 'transparent'}
             color={selectedFeeLevel === level ? 'black' : theme.gold}
@@ -153,15 +154,15 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
             transition="all 0.2s ease"
             onClick={() => onFeeSelectionChange(level)}
           >
-            <Stack gap={0.5} align="center">
-              <Text fontSize="sm" fontWeight="bold">
+            <Stack gap={1.5} align="center" spacing={1}>
+              <Text fontSize="sm" fontWeight="bold" lineHeight="1.2">
                 {getFeeLabel(level)}
               </Text>
-              <Text fontSize="xs" opacity={0.8}>
+              <Text fontSize="xs" opacity={0.8} lineHeight="1.2">
                 {getDisplayFeeValue(feeOptions[level])} {getFeeUnit()}
               </Text>
               {getFeeEstimatedTime(level) && (
-                <Text fontSize="2xs" opacity={0.6}>
+                <Text fontSize="2xs" opacity={0.6} lineHeight="1.2">
                   {getFeeEstimatedTime(level)}
                 </Text>
               )}

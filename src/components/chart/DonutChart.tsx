@@ -62,17 +62,17 @@ const DonutChart: React.FC<DonutChartProps> = ({
     .outerRadius(outerRadius)
     .cornerRadius(lightStrokeEffect); // Apply rounded corners
 
-  // Create an arc generator for the hover effect (slightly larger)
+  // Hover effect - slightly larger arc
   const hoverArcGenerator = arc<PieArcDatum<DonutChartItem>>()
-    .innerRadius(innerRadius * 0.98)
-    .outerRadius(outerRadius * 1.03)
+    .innerRadius(innerRadius)
+    .outerRadius(outerRadius * 1.05) // 5% larger on hover
     .cornerRadius(lightStrokeEffect);
-    
-  // Create an invisible hit area that's slightly larger for better interaction
+
+  // Hit area - larger invisible area for better hover detection
   const hitAreaGenerator = arc<PieArcDatum<DonutChartItem>>()
-    .innerRadius(innerRadius * 0.6)
+    .innerRadius(innerRadius)
     .outerRadius(outerRadius * 1.1)
-    .cornerRadius(0);
+    .cornerRadius(lightStrokeEffect);
 
   const arcs = pieLayout(data);
 

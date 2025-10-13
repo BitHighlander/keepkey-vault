@@ -894,6 +894,27 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             }
           } else if (unsignedTxResult.feeValue) {
             feeValue = unsignedTxResult.feeValue.toString();
+          } else if (unsignedTxResult.signDoc && unsignedTxResult.signDoc.fee) {
+            // THORChain/MayaChain-style transactions with signDoc structure
+            const signDocFee = unsignedTxResult.signDoc.fee;
+            if (signDocFee.amount && signDocFee.amount.length > 0) {
+              // Fee is in the amount array - convert from base units to display units
+              const feeAmount = signDocFee.amount[0].amount;
+              const feeDenom = signDocFee.amount[0].denom;
+
+              // Convert base units to display units based on denom
+              if (feeDenom === 'rune') {
+                // THORChain: 8 decimals
+                feeValue = (parseInt(feeAmount) / 1e8).toFixed(8);
+              } else if (feeDenom === 'cacao') {
+                // MayaChain: 10 decimals
+                feeValue = (parseInt(feeAmount) / 1e10).toFixed(10);
+              } else {
+                // Default: use as-is
+                feeValue = feeAmount;
+              }
+              console.log('Extracted fee from signDoc tx:', feeValue, feeDenom);
+            }
           } else if (unsignedTxResult.tx && unsignedTxResult.tx.value && unsignedTxResult.tx.value.fee) {
             // Cosmos-style transactions (including XRP wrapped in Cosmos format)
             const cosmosStyleFee = unsignedTxResult.tx.value.fee;
