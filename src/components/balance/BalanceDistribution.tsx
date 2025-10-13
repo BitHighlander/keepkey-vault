@@ -43,7 +43,8 @@ const BalanceCard: React.FC<{
   onToggle: () => void;
   onAddressClick?: (address: string) => void;
 }> = ({ balance, aggregatedBalance, isExpanded, isSelected, onToggle, onAddressClick }) => {
-  const { hasCopied, onCopy } = useClipboard(balance.address);
+  const { hasCopied: hasCopiedAddress, onCopy: onCopyAddress } = useClipboard(balance.address);
+  const { hasCopied: hasCopiedPubkey, onCopy: onCopyPubkey } = useClipboard(balance.pubkey || '');
 
   const formatUsd = (value: number) => {
     return value.toLocaleString('en-US', {
@@ -103,15 +104,15 @@ const BalanceCard: React.FC<{
                   </Text>
                   <IconButton
                     aria-label="Copy address"
-                    icon={hasCopied ? <FaCheck /> : <FaCopy />}
+                    icon={hasCopiedAddress ? <FaCheck /> : <FaCopy />}
                     size="xs"
                     variant="ghost"
-                    color={hasCopied ? 'green.400' : 'gray.400'}
+                    color={hasCopiedAddress ? 'green.400' : 'gray.400'}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onCopy();
+                      onCopyAddress();
                     }}
-                    _hover={{ color: hasCopied ? 'green.300' : 'white' }}
+                    _hover={{ color: hasCopiedAddress ? 'green.300' : 'white' }}
                   />
                 </HStack>
               </VStack>
@@ -185,10 +186,24 @@ const BalanceCard: React.FC<{
             </HStack>
             {balance.pubkey && (
               <HStack justify="space-between">
-                <Text fontSize="xs" color="gray.400">Public Key</Text>
-                <Text fontSize="xs" fontFamily="mono" color="gray.200">
-                  {formatAddress(balance.pubkey, 20)}
-                </Text>
+                <Text fontSize="xs" color="gray.400">Public Key (XPUB)</Text>
+                <HStack spacing={1}>
+                  <Text fontSize="xs" fontFamily="mono" color="gray.200">
+                    {formatAddress(balance.pubkey, 20)}
+                  </Text>
+                  <IconButton
+                    aria-label="Copy public key"
+                    icon={hasCopiedPubkey ? <FaCheck /> : <FaCopy />}
+                    size="xs"
+                    variant="ghost"
+                    color={hasCopiedPubkey ? 'green.400' : 'gray.400'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCopyPubkey();
+                    }}
+                    _hover={{ color: hasCopiedPubkey ? 'green.300' : 'white' }}
+                  />
+                </HStack>
               </HStack>
             )}
             <HStack justify="space-between">

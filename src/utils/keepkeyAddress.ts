@@ -1,7 +1,7 @@
 // We'll define the mappings directly since the import might not be available
 const NetworkIdToChain: Record<string, string> = {
   'bip122:000000000019d6689c085ae165831e93': 'bitcoin',
-  'bip122:000000000000000000651ef99cb9fcbe': 'testnet',
+  'bip122:000000000000000000651ef99cb9fcbe': 'bitcoincash',  // ✅ BCH genesis hash
   'bip122:12a765e31ffd4059bada1e25190f6e98': 'litecoin',  // ✅ FIXED - LTC genesis hash
   'bip122:00000000001a91e3dace36e2be3bf030': 'dogecoin',
   'bip122:000007d91d1254d60e2dd1ae58038307': 'dash',      // ✅ FIXED - DASH genesis hash
@@ -18,6 +18,7 @@ const NetworkIdToChain: Record<string, string> = {
 
 const COIN_MAP_KEEPKEY: Record<string, string> = {
   'bitcoin': 'Bitcoin',
+  'bitcoincash': 'BitcoinCash',
   'testnet': 'Testnet',
   'litecoin': 'Litecoin',
   'dogecoin': 'Dogecoin',
@@ -36,7 +37,7 @@ const COIN_MAP_KEEPKEY: Record<string, string> = {
 // Map network IDs to their types for KeepKey SDK
 export const networkIdToType: Record<string, string> = {
   'bip122:000000000019d6689c085ae165831e93': 'UTXO', // Bitcoin mainnet
-  'bip122:000000000000000000651ef99cb9fcbe': 'UTXO', // Bitcoin testnet
+  'bip122:000000000000000000651ef99cb9fcbe': 'UTXO', // Bitcoin Cash ✅ BCH
   'bip122:12a765e31ffd4059bada1e25190f6e98': 'UTXO', // Litecoin ✅ FIXED
   'bip122:00000000001a91e3dace36e2be3bf030': 'UTXO', // Dogecoin
   'bip122:000007d91d1254d60e2dd1ae58038307': 'UTXO', // Dash ✅ FIXED

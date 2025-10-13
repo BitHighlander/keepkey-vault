@@ -84,7 +84,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   // Add state to track selected address in Balance Distribution
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
-  // Add state to toggle between showing all pubkeys or only with balance
+  // Toggle to show all pubkeys including 0-balance accounts (default: false)
   const [showAllPubkeys, setShowAllPubkeys] = useState(false);
   // Add state for report dialog
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
@@ -862,30 +862,30 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               {/* Details content */}
               <VStack align="stretch" p={4} gap={4}>
                 {/* Balance Distribution for multi-address assets - MOVED TO TOP */}
-                {aggregatedBalance && (
+                {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
                   <Box>
                     <VStack align="stretch" gap={3}>
-                      {/* Toggle for showing all pubkeys */}
-                      {aggregatedBalance.balances.length > 0 && (
-                        <HStack justify="space-between" align="center" mb={2}>
-                          <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                            Pubkey Balances
-                          </Text>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            color={theme.gold}
-                            borderColor={theme.border}
-                            onClick={() => setShowAllPubkeys(!showAllPubkeys)}
-                            _hover={{
-                              bg: 'rgba(255, 215, 0, 0.1)',
-                              borderColor: theme.gold,
-                            }}
-                          >
-                            {showAllPubkeys ? 'Show With Balance' : 'Show All Pubkeys'}
-                          </Button>
-                        </HStack>
-                      )}
+                      {/* Header with toggle button */}
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                          All Accounts ({showAllPubkeys
+                            ? aggregatedBalance.balances.length
+                            : aggregatedBalance.balances.filter((b: any) => parseFloat(b.balance || '0') > 0).length
+                          })
+                        </Text>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          color={theme.gold}
+                          onClick={() => setShowAllPubkeys(!showAllPubkeys)}
+                          rightIcon={<Icon as={showAllPubkeys ? FaChevronUp : FaChevronDown} />}
+                          _hover={{
+                            bg: 'rgba(255, 215, 0, 0.1)',
+                          }}
+                        >
+                          {showAllPubkeys ? 'Hide' : 'Show All'}
+                        </Button>
+                      </Flex>
                       <BalanceDistribution
                         aggregatedBalance={aggregatedBalance}
                         selectedAddress={selectedAddress}

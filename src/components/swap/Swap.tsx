@@ -126,7 +126,7 @@ const NATIVE_ASSETS = [
     isNative: true
   },
   {
-    caip: 'bip122:00000000040e4f9e4f9e4f9e4f9e4f9e/slip44:145',
+    caip: 'bip122:000000000000000000651ef99cb9fcbe/slip44:145',
     name: 'Bitcoin Cash',
     symbol: 'BCH',
     icon: 'https://pioneers.dev/coins/bitcoincash.png',
