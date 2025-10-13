@@ -14,8 +14,10 @@ import {
   useDisclosure,
   Icon,
   Badge,
+  Spinner,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
+import { motion } from 'framer-motion';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 
 // Animated KeepKey logo pulse effect
@@ -60,6 +62,9 @@ const theme = {
   border: '#222222',
 };
 
+// Create motion wrapper for Chakra components
+const MotionBox = motion(Box);
+
 interface AssetProps {
   onBackClick?: () => void;
   onSendClick?: () => void;
@@ -83,6 +88,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [showAllPubkeys, setShowAllPubkeys] = useState(false);
   // Add state for report dialog
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  // Add state for tracking back navigation loading
+  const [isNavigatingBack, setIsNavigatingBack] = useState(false);
   
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -292,15 +299,21 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   }, [app, previousBalance, isInitialLoad]);
 
   const handleBack = () => {
-    if (onBackClick) {
-      // Use the provided onBackClick handler if available
-      console.log('🔙 [Asset] Using custom back handler');
-      onBackClick();
-    } else {
-      // Default behavior - navigate to dashboard
-      console.log('🔙 [Asset] Back button clicked, navigating to dashboard');
-      router.push('/');
-    }
+    // Set loading state
+    setIsNavigatingBack(true);
+
+    // Small delay for visual feedback
+    setTimeout(() => {
+      if (onBackClick) {
+        // Use the provided onBackClick handler if available
+        console.log('🔙 [Asset] Using custom back handler');
+        onBackClick();
+      } else {
+        // Default behavior - navigate to dashboard
+        console.log('🔙 [Asset] Back button clicked, navigating to dashboard');
+        router.push('/');
+      }
+    }, 200);
   };
 
   const handleClose = () => {
@@ -445,8 +458,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
     >
-      <Box 
-        borderBottom="1px" 
+      <Box
+        borderBottom="1px"
         borderColor={theme.border}
         p={4}
         bg={theme.cardBg}
@@ -455,15 +468,38 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         zIndex={10}
       >
         <HStack justify="space-between" align="center">
-          <Button
-            size="sm"
-            variant="ghost"
-            color={theme.gold}
-            onClick={handleBack}
-            _hover={{ color: theme.goldHover }}
+          <MotionBox
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
           >
-            <Text>Back</Text>
-          </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              color={theme.gold}
+              onClick={handleBack}
+              isDisabled={isNavigatingBack}
+              _hover={{
+                color: theme.goldHover,
+                bg: 'rgba(255, 215, 0, 0.1)',
+                shadow: '0 0 20px rgba(255, 215, 0, 0.3)'
+              }}
+              _active={{
+                bg: 'rgba(255, 215, 0, 0.2)',
+                shadow: '0 0 30px rgba(255, 215, 0, 0.5)'
+              }}
+              transition="all 0.2s"
+            >
+              {isNavigatingBack ? (
+                <HStack gap={2}>
+                  <Spinner size="xs" color={theme.gold} />
+                  <Text>Going Back...</Text>
+                </HStack>
+              ) : (
+                <Text>Back</Text>
+              )}
+            </Button>
+          </MotionBox>
           <Button
             size="sm"
             variant="ghost"

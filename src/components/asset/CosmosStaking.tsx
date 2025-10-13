@@ -199,6 +199,11 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
   // Don't render for non-cosmos networks
   if (!isCosmosNetwork) return null;
 
+  // Don't render staking UI for THORChain
+  const isThorchain = assetContext?.caip === 'cosmos:thorchain-mainnet-v1/slip44:931' ||
+                      assetContext?.networkId === 'cosmos:thorchain-mainnet-v1';
+  if (isThorchain) return null;
+
   return (
     <Box 
       bg={theme.cardBg}

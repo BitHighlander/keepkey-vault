@@ -181,7 +181,9 @@ export default function AssetPage() {
   const [isAppReady, setIsAppReady] = useState(false)
   const [appCheckAttempts, setAppCheckAttempts] = useState(0)
   const [decodedCaip, setDecodedCaip] = useState<string | null>(null)
-  
+  const [isAssetLoading, setIsAssetLoading] = useState(false)
+  const [currentAssetCaip, setCurrentAssetCaip] = useState<string | null>(null)
+
   // Track the current view instead of dialog state
   const [currentView, setCurrentView] = useState<ViewType>('asset')
   
@@ -285,8 +287,20 @@ export default function AssetPage() {
       console.log('🔄 [AssetPage] Not ready yet:', { isAppReady, decodedCaip });
       return;
     }
-    
+
     const caip = decodedCaip
+
+    // Check if we're navigating to a different asset
+    if (currentAssetCaip && currentAssetCaip !== caip) {
+      console.log('🔄 [AssetPage] Navigating to different asset, showing loading state');
+      setIsAssetLoading(true);
+
+      // Clear the current asset context to force a refresh
+      if (app?.setAssetContext) {
+        app.setAssetContext(null);
+      }
+    }
+
     console.log('🔄 [AssetPage] App is ready, setting asset context from URL parameter:', caip)
     
     // Quick check if this is a token (simplified for speed)
@@ -398,9 +412,12 @@ export default function AssetPage() {
         try {
           app.setAssetContext(tokenAssetContextData);
           console.log('✅ [AssetPage] Token asset context set successfully');
+          setCurrentAssetCaip(caip);
+          setIsAssetLoading(false);
           return; // Exit early, we're done
         } catch (error) {
           console.error('❌ [AssetPage] Error setting token asset context:', error);
+          setIsAssetLoading(false);
         }
       } else {
         console.error('⚠️ [AssetPage] Token not found in balances:', caip);
@@ -472,10 +489,13 @@ export default function AssetPage() {
      try {
        app.setAssetContext(assetContextData)
        console.log('✅ [AssetPage] Asset context set successfully with price data')
+       setCurrentAssetCaip(caip);
+       setIsAssetLoading(false);
      } catch (error) {
        console.error('❌ [AssetPage] Error setting asset context:', error)
+       setIsAssetLoading(false);
      }
-  }, [isAppReady, decodedCaip, app, router])
+  }, [isAppReady, decodedCaip, app, router, currentAssetCaip])
 
   // Handle navigation functions
   const handleBack = () => {
@@ -489,27 +509,27 @@ export default function AssetPage() {
     }
   }
 
-  // Render skeleton while waiting for app to be ready
-  if (!isAppReady) {
+  // Render skeleton while waiting for app to be ready or asset to load
+  if (!isAppReady || isAssetLoading) {
     return (
       <Box height="100vh" bg={theme.bg} p={4}>
-        <Box 
-          borderBottom="1px" 
+        <Box
+          borderBottom="1px"
           borderColor={theme.border}
           p={4}
           bg={theme.cardBg}
         >
           <Skeleton height="32px" width="80px" />
         </Box>
-        
-        <Flex 
-          justify="center" 
-          align="center" 
-          height="calc(100% - 60px)" 
+
+        <Flex
+          justify="center"
+          align="center"
+          height="calc(100% - 60px)"
           direction="column"
           gap={6}
         >
-          <Spinner 
+          <Spinner
             color={theme.gold}
             size="xl"
           />
@@ -520,7 +540,7 @@ export default function AssetPage() {
             <Skeleton height="40px" />
           </VStack>
           <Text color="gray.400" mt={4}>
-            Loading asset data...
+            {isAssetLoading ? 'Loading asset...' : 'Loading asset data...'}
           </Text>
         </Flex>
       </Box>
@@ -550,8 +570,9 @@ export default function AssetPage() {
           {...scrollbarStyles}
         >
           {currentView === 'asset' && (
-            <Asset 
-              onBackClick={handleBack} 
+            <Asset
+              key={decodedCaip || 'asset'}
+              onBackClick={handleBack}
               onSendClick={() => setCurrentView('send')}
               onReceiveClick={() => setCurrentView('receive')}
               onSwapClick={() => {
