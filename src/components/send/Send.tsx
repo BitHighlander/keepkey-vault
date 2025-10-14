@@ -832,7 +832,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         
         // Log the entire unsigned transaction for debugging
         console.log('Full unsigned transaction result:', JSON.stringify(unsignedTxResult, null, 2));
-        
+
+        // Debug fee extraction to understand object structure
+        console.log('Debug fee extraction:', {
+          hasTopLevelFee: !!unsignedTxResult.fee,
+          topLevelFeeType: typeof unsignedTxResult.fee,
+          topLevelFeeValue: unsignedTxResult.fee,
+          hasSignDoc: !!unsignedTxResult.signDoc,
+          hasSignDocFee: !!(unsignedTxResult.signDoc?.fee),
+          signDocFeeValue: unsignedTxResult.signDoc?.fee
+        });
+
         if (unsignedTxResult && typeof unsignedTxResult === 'object') {
           // Check if this is a UTXO transaction (Bitcoin, Litecoin, etc.)
           const caipId = assetContext?.caip || assetContext?.assetId;
