@@ -1015,9 +1015,20 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // The fee from the API should already be in the correct units
         console.log('Fee from transaction:', feeValue);
 
+        // For MayaChain and ThorChain, allow empty fees (backend will apply default)
+        const caipId = assetContext?.caip || assetContext?.assetId;
+        const isCosmosSdkChain = caipId?.includes('mayachain') || caipId?.includes('thorchain');
+
         // Sanity check: if fee is null, undefined, or suspiciously high, stop
-        if (!feeValue || feeValue === null) {
+        // EXCEPT for Cosmos SDK chains where backend controller applies default fees
+        if (!isCosmosSdkChain && (!feeValue || feeValue === null)) {
           throw new Error('Could not extract fee from transaction. Transaction cannot proceed without fee information.');
+        }
+
+        // If Cosmos SDK chain has no fee, set a placeholder for display
+        if (isCosmosSdkChain && (!feeValue || feeValue === null)) {
+          feeValue = '0'; // Backend will apply actual fee
+          console.log('MayaChain/ThorChain: Using backend default fee');
         }
 
         // Check for suspiciously high fees (like 1 BTC)
@@ -1027,7 +1038,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         }
 
         // For Bitcoin/UTXO chains, if fee is greater than 0.01 BTC (1,000,000 satoshis), it's likely wrong
-        const caipId = assetContext?.caip || assetContext?.assetId;
         const isUtxoNetwork = UTXO_NETWORKS.some(id => caipId?.includes(id));
         if (isUtxoNetwork && feeAsNumber > 0.01) {
           console.error('Suspiciously high fee detected:', feeValue, 'BTC');
