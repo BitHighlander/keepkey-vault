@@ -18,10 +18,21 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
-import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy } from 'react-icons/fa'
+import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus } from 'react-icons/fa'
 import Confetti from 'react-confetti'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import { keyframes } from '@emotion/react'
+import { usePathManager } from '@/hooks/usePathManager'
+import { PathFormInputs } from '@/components/path/PathFormInputs'
+import {
+  DialogRoot,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
+  DialogCloseTrigger,
+} from '@/components/ui/dialog'
 
 // Add sound effect imports
 const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
@@ -119,6 +130,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const openConfirmation = () => setShowConfirmation(true)
   const closeConfirmation = () => setShowConfirmation(false)
+
+  // Add Path dialog state
+  const [showAddPathDialog, setShowAddPathDialog] = useState(false)
+  const openAddPathDialog = () => setShowAddPathDialog(true)
+  const closeAddPathDialog = () => setShowAddPathDialog(false)
   
   const pioneer = usePioneerContext()
   const { state } = pioneer
@@ -209,6 +225,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Add state for error handling
   const [error, setError] = useState<string | null>(null)
   const [showErrorDialog, setShowErrorDialog] = useState<boolean>(false)
+
+  // Path manager hook for adding custom paths
+  const pathManager = usePathManager({ assetContext, app })
 
   // Calculate total balance - sum all pubkey balances for UTXO chains
   useEffect(() => {
@@ -789,6 +808,26 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // Balance will be automatically updated by the useEffect that watches selectedPubkey
         console.log('💰 [Send] Balance will update automatically via useEffect');
       }
+    }
+  };
+
+  // Handle adding a new path
+  const handleAddPath = async () => {
+    try {
+      await pathManager.addPath();
+
+      // Refresh asset context to get the new pubkey
+      if (app?.setAssetContext && assetContext) {
+        console.log('🔄 [Send] Refreshing asset context after adding path...');
+        await app.setAssetContext(assetContext);
+        console.log('✅ [Send] Asset context refreshed with new path');
+      }
+
+      // Close dialog on success
+      closeAddPathDialog();
+    } catch (err: any) {
+      // Error is already handled in the hook
+      console.error('❌ [Send] Error adding path:', err);
     }
   };
 
@@ -2524,10 +2563,26 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </VStack>
           </Box>
 
-          {/* Pubkey Selector - Only show if multiple pubkeys available */}
-          {assetContext.pubkeys && assetContext.pubkeys.length > 1 && (
+          {/* Pubkey Selector - Always show with Add Path button */}
+          {assetContext.pubkeys && assetContext.pubkeys.length >= 1 && (
             <Box width="100%" maxW="sm" mx="auto">
-              <Text color="gray.400" fontSize="sm" mb={2}>Select Address Type</Text>
+              <Flex justify="space-between" align="center" mb={2}>
+                <Text color="gray.400" fontSize="sm">Select Address Type</Text>
+                <Button
+                  size="sm"
+                  height="28px"
+                  px={3}
+                  bg="transparent"
+                  color={assetColor}
+                  borderWidth="1px"
+                  borderColor={assetColor}
+                  _hover={{ bg: assetColorLight }}
+                  onClick={openAddPathDialog}
+                  leftIcon={<FaPlus />}
+                >
+                  Add Path
+                </Button>
+              </Flex>
               <select
                 value={selectedPubkey?.pathMaster || ''}
                 onChange={handlePubkeyChange}
@@ -2877,6 +2932,84 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           </Button>
         </Stack>
       </Box>
+
+      {/* Add Path Dialog */}
+      <DialogRoot open={showAddPathDialog} onOpenChange={(e) => !e.open && closeAddPathDialog()}>
+        <DialogContent
+          bg={theme.cardBg}
+          borderColor={assetColor}
+          borderWidth="2px"
+          borderRadius="xl"
+          maxW="600px"
+          p={8}
+        >
+          <DialogHeader borderBottom={`1px solid ${theme.border}`} pb={6} mb={6}>
+            <DialogTitle color={assetColor} fontSize="2xl" fontWeight="bold">
+              Add New Path for {assetContext?.symbol}
+            </DialogTitle>
+            <DialogCloseTrigger />
+          </DialogHeader>
+
+          <DialogBody pt={0} pb={6}>
+            <PathFormInputs
+              note={pathManager.note}
+              accountIndex={pathManager.accountIndex}
+              addressIndex={pathManager.addressIndex}
+              derivationPath={pathManager.derivationPath}
+              assetContext={assetContext}
+              error={pathManager.error}
+              accentColor={assetColor}
+              onNoteChange={pathManager.setNote}
+              onAccountIndexChange={pathManager.setAccountIndex}
+              onAddressIndexChange={pathManager.setAddressIndex}
+              compact={true}
+            />
+          </DialogBody>
+
+          <DialogFooter borderTop={`1px solid ${theme.border}`} pt={6}>
+            <Flex gap={4} width="100%">
+              <Button
+                flex={1}
+                size="lg"
+                height="56px"
+                variant="ghost"
+                onClick={closeAddPathDialog}
+                color="gray.400"
+                _hover={{ bg: theme.border }}
+                borderRadius="lg"
+                disabled={pathManager.loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                flex={2}
+                size="lg"
+                height="56px"
+                onClick={handleAddPath}
+                disabled={pathManager.loading || !pathManager.note.trim()}
+                bg={assetColor}
+                color="black"
+                _hover={{ bg: assetColorHover }}
+                _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
+                borderRadius="lg"
+                fontWeight="bold"
+              >
+                {pathManager.loading ? (
+                  <Flex gap={3} align="center">
+                    <Spinner size="sm" color="black" />
+                    <Text>Adding Path...</Text>
+                  </Flex>
+                ) : (
+                  <Flex gap={3} align="center">
+                    <FaPlus />
+                    <Text>Add Path</Text>
+                  </Flex>
+                )}
+              </Button>
+            </Flex>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
     </Box>
   );
 };

@@ -21,6 +21,8 @@ import QRCode from 'qrcode';
 import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getAndVerifyAddress } from '@/utils/keepkeyAddress';
+import { SignMessageDialog } from './SignMessageDialog';
+import { bip32ToAddressNList } from '@/utils/keepkeyAddress';
 
 // Define animation keyframes
 const pulseRing = keyframes`
@@ -354,6 +356,78 @@ export function Receive({ onBackClick }: ReceiveProps) {
   const handleBack = () => {
     if (onBackClick) {
       onBackClick();
+    }
+  };
+
+  // Handle sign message
+  const handleSignMessage = async (message: string): Promise<{ address: string; signature: string }> => {
+    if (!selectedPubkey || !app || !assetContext) {
+      throw new Error('Missing required data for signing');
+    }
+
+    console.log('🔐 [Receive] Signing message:', message);
+
+    // Get the KeepKey wallet from the wallets array
+    const keepKeyWallet = app.wallets?.find((w: any) => w.wallet?.getVendor?.() === 'KeepKey')?.wallet;
+
+    if (!keepKeyWallet) {
+      throw new Error('KeepKey wallet not found in app.wallets');
+    }
+
+    console.log('✅ [Receive] Found KeepKey wallet');
+
+    // Check if wallet supports Bitcoin message signing
+    if (typeof keepKeyWallet.btcSignMessage !== 'function') {
+      throw new Error('Wallet does not support Bitcoin message signing');
+    }
+
+    // Build address_n list from the pathMaster
+    const addressNList = bip32ToAddressNList(selectedPubkey.pathMaster);
+
+    // Determine coin name
+    const coinMap: Record<string, string> = {
+      'bip122:000000000019d6689c085ae165831e93': 'Bitcoin',
+      'bip122:000000000000000000651ef99cb9fcbe': 'BitcoinCash',
+      'bip122:12a765e31ffd4059bada1e25190f6e98': 'Litecoin',
+      'bip122:00000000001a91e3dace36e2be3bf030': 'Dogecoin',
+      'bip122:000007d91d1254d60e2dd1ae58038307': 'Dash',
+    };
+
+    const coin = coinMap[assetContext.networkId] || 'Bitcoin';
+
+    console.log('📝 [Receive] Sign params:', {
+      addressNList,
+      coin,
+      scriptType: selectedPubkey.scriptType,
+      message
+    });
+
+    try {
+      // Call btcSignMessage on the hdwallet instance
+      const signMessageParams = {
+        addressNList: addressNList,
+        coin: coin,
+        scriptType: selectedPubkey.scriptType,
+        message: message
+      };
+
+      console.log('🔑 [Receive] Calling btcSignMessage with params:', signMessageParams);
+
+      const result = await keepKeyWallet.btcSignMessage(signMessageParams);
+
+      console.log('✅ [Receive] Message signed:', result);
+
+      if (!result || !result.address || !result.signature) {
+        throw new Error('Invalid response from device');
+      }
+
+      return {
+        address: result.address,
+        signature: result.signature
+      };
+    } catch (error: any) {
+      console.error('❌ [Receive] Sign message error:', error);
+      throw new Error(error?.message || 'Failed to sign message');
     }
   };
 
@@ -1053,7 +1127,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                             {selectedPubkey.pathMaster || 'Unknown'}
                           </Text>
                         </Box>
-                        
+
                         {/* Network Info */}
                         <Box>
                           <Text color="gray.400" fontSize="sm" mb={1}>Network ID</Text>
@@ -1061,7 +1135,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                             {assetContext.networkId}
                           </Text>
                         </Box>
-                        
+
                         {/* Asset Info */}
                         <Box>
                           <Text color="gray.400" fontSize="sm" mb={1}>Asset ID</Text>
@@ -1069,7 +1143,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                             {assetContext.assetId}
                           </Text>
                         </Box>
-                        
+
                         {/* Note */}
                         {selectedPubkey.note && (
                           <Box>
@@ -1077,6 +1151,17 @@ export function Receive({ onBackClick }: ReceiveProps) {
                             <Text color="white" fontSize="sm">
                               {selectedPubkey.note}
                             </Text>
+                          </Box>
+                        )}
+
+                        {/* Sign Message Button - Only show for UTXO chains */}
+                        {assetContext.networkId?.startsWith('bip122:') && addressVerified && (
+                          <Box mt={2}>
+                            <Text color="gray.400" fontSize="sm" mb={2}>Message Signing</Text>
+                            <SignMessageDialog
+                              onSignMessage={handleSignMessage}
+                              isLoading={viewingOnDevice}
+                            />
                           </Box>
                         )}
                       </>
