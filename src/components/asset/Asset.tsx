@@ -872,11 +872,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                 <Text color={theme.gold} fontSize="lg" fontWeight="bold">
                   Asset Details
                 </Text>
-                <Icon 
-                  as={FaChevronUp} 
-                  color={theme.gold}
-                  boxSize={4}
-                />
+                <Box color={theme.gold}>
+                  <FaChevronUp size={16} />
+                </Box>
               </Flex>
               
               {/* Details content */}
@@ -1236,11 +1234,9 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
             <Text color={theme.gold} fontSize="lg" fontWeight="bold">
               Asset Details
             </Text>
-            <Icon 
-              as={isDetailsExpanded ? FaChevronUp : FaChevronDown} 
-              color={theme.gold}
-              boxSize={4}
-            />
+            <Box color={theme.gold}>
+              {isDetailsExpanded ? <FaChevronUp size={16} /> : <FaChevronDown size={16} />}
+            </Box>
           </Flex>
           
           {/* Collapsible content */}

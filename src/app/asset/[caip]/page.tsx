@@ -294,11 +294,6 @@ export default function AssetPage() {
     if (currentAssetCaip && currentAssetCaip !== caip) {
       console.log('🔄 [AssetPage] Navigating to different asset, showing loading state');
       setIsAssetLoading(true);
-
-      // Clear the current asset context to force a refresh
-      if (app?.setAssetContext) {
-        app.setAssetContext(null);
-      }
     }
 
     console.log('🔄 [AssetPage] App is ready, setting asset context from URL parameter:', caip)
