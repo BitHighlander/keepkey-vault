@@ -203,7 +203,17 @@ export function Receive({ onBackClick }: ReceiveProps) {
         setAddressVerified(false);
         setSelectedAddress('');
         setQrCodeDataUrl(null);
-        
+
+        // Set pubkey context in Pioneer SDK for transactions
+        if (app?.setPubkeyContext) {
+          try {
+            await app.setPubkeyContext(result);
+            console.log('✅ [Receive] Pubkey context set in Pioneer SDK:', result);
+          } catch (error) {
+            console.error('❌ [Receive] Error setting pubkey context:', error);
+          }
+        }
+
         // Get the indices for this xpub from Pioneer
         if (pioneer.api) {
           setLoadingIndices(true);
@@ -245,35 +255,45 @@ export function Receive({ onBackClick }: ReceiveProps) {
   // Handle view on device - this is a security verification step
   const handleViewOnDevice = async () => {
     if (!selectedPubkey || !app?.keepKeySdk) return;
-    
+
     try {
       setViewingOnDevice(true);
       console.log('👁️ [Receive] Viewing on device for verification...');
+
+      // CRITICAL: Use pubkeyContext from Pioneer SDK instead of React state
+      // This ensures we're using the most recently set context
+      const currentPubkeyContext = app?.pubkeyContext || app?.keepKeySdk?.pubkeyContext || selectedPubkey;
+
+      console.log('🔑 [Receive] Current pubkey context:', currentPubkeyContext);
       console.log('📊 [Receive] Using indices - Change:', addressIndices?.changeIndex, 'Receive:', addressIndices?.receiveIndex);
       console.log('🔐 [Receive] Network ID:', assetContext.networkId);
-      console.log('📝 [Receive] Script Type:', assetContext.scriptType);
-      
+      console.log('📝 [Receive] Script Type:', currentPubkeyContext.scriptType || assetContext.scriptType);
+      console.log('🛣️ [Receive] Path from context:', currentPubkeyContext.pathMaster);
+
       // Use the KeepKey SDK directly to get and display the address
       const deviceAddress = await getAndVerifyAddress({
         keepKeySdk: app.keepKeySdk,
         networkId: assetContext.networkId,
-        pathMaster: selectedPubkey.pathMaster,
-        scriptType: selectedPubkey.scriptType || assetContext.scriptType,
+        pathMaster: currentPubkeyContext.pathMaster,
+        scriptType: currentPubkeyContext.scriptType || assetContext.scriptType,
         receiveIndex: addressIndices?.receiveIndex || 0,
         showDisplay: true // CRITICAL: This shows the address on the device screen
       });
       
       console.log('✅ [Receive] Address from device:', deviceAddress);
-      
+
       // Optionally verify against the expected address if we have one
-      const expectedAddress = selectedPubkey.address || selectedPubkey.master;
+      const expectedAddress = currentPubkeyContext.address || currentPubkeyContext.master;
       if (expectedAddress && deviceAddress !== expectedAddress) {
         console.warn('⚠️ [Receive] Address mismatch!', {
           device: deviceAddress,
-          expected: expectedAddress
+          expected: expectedAddress,
+          context: currentPubkeyContext
         });
         // You might want to show an error to the user here
         // For now, we'll use the device address as the source of truth
+      } else if (expectedAddress) {
+        console.log('✅ [Receive] Address verification successful! Matches expected address.');
       }
       
       // NOW it's safe to show the address after device verification

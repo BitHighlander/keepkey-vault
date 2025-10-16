@@ -959,109 +959,127 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </HStack>
                 </VStack>
 
-                {/* Address Info - Updates based on selected address */}
-                {assetContext.pubkeys?.[0] && (
+                {/* Address Info - Show ALL pubkeys with paths */}
+                {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
                   <VStack align="stretch" gap={3}>
                     <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                      Wallet Information
+                      Wallet Information ({assetContext.pubkeys.length} {assetContext.pubkeys.length === 1 ? 'Pubkey' : 'Pubkeys'})
                     </Text>
-                    <VStack align="stretch" gap={2}>
-                      {(() => {
-                        // Find the selected address info or use first pubkey
-                        let displayPubkey = assetContext.pubkeys[0];
+                    <VStack align="stretch" gap={3}>
+                      {assetContext.pubkeys.map((pubkey: any, index: number) => {
+                        // Determine the correct XPUB label based on path or script type
                         let xpubLabel = 'XPUB';
-                        
-                        if (selectedAddress && aggregatedBalance) {
-                          // Try to find matching balance for selected address
-                          const matchingBalance = aggregatedBalance.balances.find(b => b.address === selectedAddress);
-                          if (matchingBalance) {
-                            // Find corresponding pubkey that has this address
-                            const matchingPubkey = assetContext.pubkeys.find((pk: any) => {
-                              // The pubkey object should have an address field that matches
-                              return pk.address === matchingBalance.address;
-                            });
-                            
-                            if (matchingPubkey) {
-                              displayPubkey = matchingPubkey;
-                              console.log('Found matching pubkey for address:', selectedAddress, matchingPubkey);
-                            } else {
-                              // If no exact match, try to find by pubkey string or create from balance
-                              const fallbackPubkey = assetContext.pubkeys.find((pk: any) => 
-                                pk.pubkey === matchingBalance.pubkey
-                              );
-                              if (fallbackPubkey) {
-                                displayPubkey = fallbackPubkey;
-                              } else {
-                                // Use first pubkey as fallback but note it might not be correct
-                                console.log('No matching pubkey found for address:', selectedAddress);
-                              }
-                            }
-                            
-                            // Determine the correct XPUB label based on address type
-                            if (matchingBalance.addressType === 'segwit') {
-                              xpubLabel = 'ZPUB'; // P2SH-wrapped SegWit
-                            } else if (matchingBalance.addressType === 'native-segwit') {
-                              xpubLabel = 'ZPUB'; // Native SegWit
-                            } else if (matchingBalance.addressType === 'taproot') {
-                              xpubLabel = 'XPUB'; // Taproot uses xpub
-                            } else {
-                              xpubLabel = 'XPUB'; // Legacy
-                            }
-                          }
-                        } else if (!selectedAddress && aggregatedBalance && aggregatedBalance.balances.length > 0) {
-                          // Auto-select first address if none selected
-                          const firstBalance = aggregatedBalance.balances[0];
-                          if (firstBalance.addressType === 'segwit' || firstBalance.addressType === 'native-segwit') {
-                            xpubLabel = 'ZPUB';
+                        const isUtxo = assetContext.networkId?.startsWith('bip122:');
+
+                        if (isUtxo) {
+                          // Check path for address type indicators
+                          if (pubkey.path?.includes("84'") || pubkey.scriptType === 'p2wpkh') {
+                            xpubLabel = 'ZPUB'; // Native SegWit
+                          } else if (pubkey.path?.includes("49'") || pubkey.scriptType === 'p2sh-p2wpkh') {
+                            xpubLabel = 'YPUB'; // P2SH-wrapped SegWit
+                          } else if (pubkey.path?.includes("86'")) {
+                            xpubLabel = 'XPUB'; // Taproot
                           }
                         }
-                        
-                        return (
-                          <>
-                            {selectedAddress && (
-                              <Badge 
-                                colorScheme="yellow" 
-                                variant="subtle"
-                                fontSize="xs"
-                                mb={2}
-                              >
-                                {aggregatedBalance?.balances.find(b => b.address === selectedAddress)?.label || 'Selected Address'}
-                              </Badge>
-                            )}
-                            <Text color="gray.400" fontSize="sm">
-                              {assetContext.networkId?.startsWith('bip122:') ? xpubLabel : 'Address'}
-                            </Text>
-                            <Box 
-                              p={3}
-                              bg={theme.bg}
-                              borderRadius="lg"
-                              borderWidth="1px"
-                              borderColor={selectedAddress ? theme.gold : theme.border}
-                              transition="all 0.2s"
-                            >
-                              <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                                {assetContext.networkId?.startsWith('bip122:') 
-                                  ? displayPubkey.pubkey 
-                                  : displayPubkey.address}
-                              </Text>
-                            </Box>
-                            <HStack justify="space-between" mt={1}>
-                              <Text color="gray.400" fontSize="xs">Path</Text>
-                              <Text color="white" fontSize="xs" fontFamily="mono">
-                                {displayPubkey.path || 'N/A'}
-                              </Text>
-                            </HStack>
-                            {displayPubkey.address && (
-                              <HStack justify="space-between" mt={1}>
-                                <Text color="gray.400" fontSize="xs">Address</Text>
-                                <Text color="white" fontSize="xs" fontFamily="mono">
-                                  {middleEllipsis(displayPubkey.address, 16)}
-                                </Text>
-                              </HStack>
-                            )}
-                          </>
+
+                        // Check if this is the selected address
+                        const isSelected = selectedAddress && (
+                          pubkey.address === selectedAddress ||
+                          pubkey.pubkey === selectedAddress
                         );
-                      })()}
+
+                        return (
+                          <Box
+                            key={`pubkey-${index}-${pubkey.pubkey || pubkey.address}`}
+                            p={3}
+                            bg={theme.bg}
+                            borderRadius="lg"
+                            borderWidth="2px"
+                            borderColor={isSelected ? theme.gold : theme.border}
+                            transition="all 0.2s"
+                            cursor="pointer"
+                            onClick={async () => {
+                              const addressToSelect = pubkey.address || pubkey.pubkey;
+                              setSelectedAddress(addressToSelect);
+                              console.log('🔑 [Asset] Selected pubkey:', addressToSelect, pubkey);
+
+                              // Set pubkey context in Pioneer SDK for transactions
+                              if (app?.setPubkeyContext) {
+                                try {
+                                  await app.setPubkeyContext(pubkey);
+                                  console.log('✅ [Asset] Pubkey context set in Pioneer SDK:', pubkey);
+                                } catch (error) {
+                                  console.error('❌ [Asset] Error setting pubkey context:', error);
+                                }
+                              }
+                            }}
+                            _hover={{
+                              borderColor: theme.gold,
+                              bg: 'rgba(255, 215, 0, 0.05)',
+                            }}
+                          >
+                            <VStack align="stretch" gap={2}>
+                              {/* Header with index */}
+                              <Flex justify="space-between" align="center">
+                                <Badge
+                                  colorScheme={isSelected ? "yellow" : "gray"}
+                                  variant="subtle"
+                                  fontSize="xs"
+                                >
+                                  {isUtxo ? xpubLabel : 'Address'} #{index + 1}
+                                </Badge>
+                                {isSelected && (
+                                  <Badge colorScheme="yellow" fontSize="xs">
+                                    Selected
+                                  </Badge>
+                                )}
+                              </Flex>
+
+                              {/* Pubkey or Address */}
+                              <Box>
+                                <Text color="gray.400" fontSize="xs" mb={1}>
+                                  {isUtxo ? 'Public Key' : 'Address'}
+                                </Text>
+                                <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
+                                  {isUtxo ? pubkey.pubkey : pubkey.address}
+                                </Text>
+                              </Box>
+
+                              {/* Path - Always show if available */}
+                              {(pubkey.path || pubkey.pathMaster) && (
+                                <HStack justify="space-between">
+                                  <Text color="gray.400" fontSize="xs">Path</Text>
+                                  <Text color={theme.gold} fontSize="xs" fontFamily="mono">
+                                    {pubkey.path || pubkey.pathMaster}
+                                  </Text>
+                                </HStack>
+                              )}
+
+                              {/* Address for UTXO (if different from pubkey) */}
+                              {isUtxo && pubkey.address && (
+                                <Box>
+                                  <Text color="gray.400" fontSize="xs" mb={1}>
+                                    Address
+                                  </Text>
+                                  <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
+                                    {pubkey.address}
+                                  </Text>
+                                </Box>
+                              )}
+
+                              {/* Script Type for UTXO */}
+                              {isUtxo && pubkey.scriptType && (
+                                <HStack justify="space-between">
+                                  <Text color="gray.400" fontSize="xs">Script Type</Text>
+                                  <Text color="white" fontSize="xs" fontFamily="mono">
+                                    {pubkey.scriptType}
+                                  </Text>
+                                </HStack>
+                              )}
+                            </VStack>
+                          </Box>
+                        );
+                      })}
                     </VStack>
                   </VStack>
                 )}
@@ -1216,33 +1234,127 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                 </HStack>
               </VStack>
 
-              {/* Address Info */}
-              {assetContext.pubkeys?.[0] && (
+              {/* Address Info - Show ALL pubkeys with paths */}
+              {assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
                 <VStack align="stretch" gap={3}>
                   <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                    Wallet Information
+                    Wallet Information ({assetContext.pubkeys.length} {assetContext.pubkeys.length === 1 ? 'Pubkey' : 'Pubkeys'})
                   </Text>
-                  <VStack align="stretch" gap={2}>
-                    <Text color="gray.400" fontSize="sm">{assetContext.networkId?.startsWith('bip122:') ? 'XPUB' : 'Address'}</Text>
-                    <Box 
-                      p={3}
-                      bg={theme.bg}
-                      borderRadius="lg"
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                    >
-                      <Text color="white" fontSize="sm" fontFamily="mono" wordBreak="break-all">
-                        {assetContext.networkId?.startsWith('bip122:') 
-                          ? assetContext.pubkeys[0].pubkey 
-                          : assetContext.pubkeys[0].address}
-                      </Text>
-                    </Box>
-                    <HStack justify="space-between" mt={1}>
-                      <Text color="gray.400" fontSize="xs">Path</Text>
-                      <Text color="white" fontSize="xs" fontFamily="mono">
-                        {assetContext.pubkeys[0].path}
-                      </Text>
-                    </HStack>
+                  <VStack align="stretch" gap={3}>
+                    {assetContext.pubkeys.map((pubkey: any, index: number) => {
+                      // Determine the correct XPUB label based on path or script type
+                      let xpubLabel = 'XPUB';
+                      const isUtxo = assetContext.networkId?.startsWith('bip122:');
+
+                      if (isUtxo) {
+                        // Check path for address type indicators
+                        if (pubkey.path?.includes("84'") || pubkey.scriptType === 'p2wpkh') {
+                          xpubLabel = 'ZPUB'; // Native SegWit
+                        } else if (pubkey.path?.includes("49'") || pubkey.scriptType === 'p2sh-p2wpkh') {
+                          xpubLabel = 'YPUB'; // P2SH-wrapped SegWit
+                        } else if (pubkey.path?.includes("86'")) {
+                          xpubLabel = 'XPUB'; // Taproot
+                        }
+                      }
+
+                      // Check if this is the selected address
+                      const isSelected = selectedAddress && (
+                        pubkey.address === selectedAddress ||
+                        pubkey.pubkey === selectedAddress
+                      );
+
+                      return (
+                        <Box
+                          key={`pubkey-mobile-${index}-${pubkey.pubkey || pubkey.address}`}
+                          p={3}
+                          bg={theme.bg}
+                          borderRadius="lg"
+                          borderWidth="2px"
+                          borderColor={isSelected ? theme.gold : theme.border}
+                          transition="all 0.2s"
+                          cursor="pointer"
+                          onClick={async () => {
+                            const addressToSelect = pubkey.address || pubkey.pubkey;
+                            setSelectedAddress(addressToSelect);
+                            console.log('🔑 [Asset] Selected pubkey (mobile):', addressToSelect, pubkey);
+
+                            // Set pubkey context in Pioneer SDK for transactions
+                            if (app?.setPubkeyContext) {
+                              try {
+                                await app.setPubkeyContext(pubkey);
+                                console.log('✅ [Asset] Pubkey context set in Pioneer SDK (mobile):', pubkey);
+                              } catch (error) {
+                                console.error('❌ [Asset] Error setting pubkey context (mobile):', error);
+                              }
+                            }
+                          }}
+                          _hover={{
+                            borderColor: theme.gold,
+                            bg: 'rgba(255, 215, 0, 0.05)',
+                          }}
+                        >
+                          <VStack align="stretch" gap={2}>
+                            {/* Header with index */}
+                            <Flex justify="space-between" align="center">
+                              <Badge
+                                colorScheme={isSelected ? "yellow" : "gray"}
+                                variant="subtle"
+                                fontSize="xs"
+                              >
+                                {isUtxo ? xpubLabel : 'Address'} #{index + 1}
+                              </Badge>
+                              {isSelected && (
+                                <Badge colorScheme="yellow" fontSize="xs">
+                                  Selected
+                                </Badge>
+                              )}
+                            </Flex>
+
+                            {/* Pubkey or Address */}
+                            <Box>
+                              <Text color="gray.400" fontSize="xs" mb={1}>
+                                {isUtxo ? 'Public Key' : 'Address'}
+                              </Text>
+                              <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
+                                {isUtxo ? pubkey.pubkey : pubkey.address}
+                              </Text>
+                            </Box>
+
+                            {/* Path - Always show if available */}
+                            {(pubkey.path || pubkey.pathMaster) && (
+                              <HStack justify="space-between">
+                                <Text color="gray.400" fontSize="xs">Path</Text>
+                                <Text color={theme.gold} fontSize="xs" fontFamily="mono">
+                                  {pubkey.path || pubkey.pathMaster}
+                                </Text>
+                              </HStack>
+                            )}
+
+                            {/* Address for UTXO (if different from pubkey) */}
+                            {isUtxo && pubkey.address && (
+                              <Box>
+                                <Text color="gray.400" fontSize="xs" mb={1}>
+                                  Address
+                                </Text>
+                                <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
+                                  {pubkey.address}
+                                </Text>
+                              </Box>
+                            )}
+
+                            {/* Script Type for UTXO */}
+                            {isUtxo && pubkey.scriptType && (
+                              <HStack justify="space-between">
+                                <Text color="gray.400" fontSize="xs">Script Type</Text>
+                                <Text color="white" fontSize="xs" fontFamily="mono">
+                                  {pubkey.scriptType}
+                                </Text>
+                              </HStack>
+                            )}
+                          </VStack>
+                        </Box>
+                      );
+                    })}
                   </VStack>
                 </VStack>
               )}

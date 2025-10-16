@@ -55,6 +55,15 @@ interface SendProps {
   onBackClick?: () => void
 }
 
+interface Pubkey {
+  address?: string;
+  master?: string;
+  note: string;
+  pathMaster: string;
+  networks: string[];
+  scriptType?: string;
+}
+
 // Tendermint networks with memo support
 const TENDERMINT_SUPPORT = [
   'cosmos:mayachain-mainnet-v1/slip44:931',
@@ -143,6 +152,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [loading, setLoading] = useState<boolean>(true)
   const [balance, setBalance] = useState<string>('0')
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
+  const [selectedPubkey, setSelectedPubkey] = useState<Pubkey | null>(null)
   
   // Add state to track if we're entering amount in USD
   const [isUsdInput, setIsUsdInput] = useState<boolean>(false)
@@ -244,10 +254,43 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           newBalance = totalBalance.toFixed(8);
           console.log('Total UTXO balance calculated:', newBalance);
         } else {
-          // For non-UTXO chains or if no pubkeys, use the single balance
-          newBalance = assetContext.balance || '0';
+          // For non-UTXO chains, use the selected pubkey's balance if available
+          if (selectedPubkey) {
+            const pubkeyBalance = app?.balances?.find((b: any) =>
+              b.pubkey === selectedPubkey.address ||
+              b.address === selectedPubkey.address ||
+              b.master === selectedPubkey.master
+            );
+
+            if (pubkeyBalance && pubkeyBalance.balance) {
+              newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
+              console.log('Using selected pubkey balance for non-UTXO chain:', newBalance, selectedPubkey);
+            } else {
+              console.warn('No balance found for selected pubkey, defaulting to 0');
+              newBalance = '0';
+            }
+          } else {
+            // If no pubkey selected yet, use the first pubkey's balance or assetContext balance
+            if (assetContext.pubkeys && assetContext.pubkeys.length > 0) {
+              const firstPubkey = assetContext.pubkeys[0];
+              const pubkeyBalance = app?.balances?.find((b: any) =>
+                b.pubkey === firstPubkey.address ||
+                b.address === firstPubkey.address ||
+                b.master === firstPubkey.master
+              );
+
+              if (pubkeyBalance && pubkeyBalance.balance) {
+                newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
+                console.log('Using first pubkey balance for non-UTXO chain:', newBalance);
+              } else {
+                newBalance = assetContext.balance || '0';
+              }
+            } else {
+              newBalance = assetContext.balance || '0';
+            }
+          }
         }
-        
+
         setBalance(newBalance)
         setTotalBalanceUsd(parseFloat(newBalance) * (assetContext.priceUsd || 0))
         setAssetLoaded(true)
@@ -277,7 +320,36 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }, 3000)
       return () => clearTimeout(timer)
     }
-  }, [assetContext, assetLoaded, estimatedFee])
+  }, [assetContext, assetLoaded, estimatedFee, selectedPubkey, app?.balances])
+
+  // Initialize selected pubkey when component mounts or assetContext changes
+  useEffect(() => {
+    if (assetContext?.pubkeys && assetContext.pubkeys.length > 0 && !selectedPubkey) {
+      // Sort pubkeys - prioritize Native Segwit for Bitcoin
+      const sortedPubkeys = [...assetContext.pubkeys].sort((a: Pubkey, b: Pubkey) => {
+        // Bitcoin - Native Segwit (bc1...) should come first
+        if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
+        if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
+
+        // Otherwise maintain order
+        return 0;
+      });
+
+      const firstPubkey = sortedPubkeys[0] as Pubkey;
+      setSelectedPubkey(firstPubkey);
+
+      // Set the initial pubkey context
+      if (app?.setPubkeyContext) {
+        app.setPubkeyContext(firstPubkey)
+          .then(() => {
+            console.log('✅ [Send] Initial pubkey context set:', firstPubkey);
+          })
+          .catch((error: Error) => {
+            console.error('❌ [Send] Error setting initial pubkey context:', error);
+          });
+      }
+    }
+  }, [assetContext?.pubkeys, selectedPubkey, app])
 
   // Format USD value
   const formatUsd = (value: number) => {
@@ -680,6 +752,45 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
     setIsMax(true);
   }
+
+  // Handle pubkey selection change
+  const handlePubkeyChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const pubkeyPath = event.target.value;
+
+    console.log('🔄 [Send] Changing pubkey context to path:', pubkeyPath);
+
+    // Find the pubkey that matches the selected path
+    if (assetContext?.pubkeys) {
+      const result = assetContext.pubkeys.find((pubkey: Pubkey) =>
+        pubkey.pathMaster === pubkeyPath
+      );
+
+      if (result) {
+        setSelectedPubkey(result as Pubkey);
+
+        // Set pubkey context in Pioneer SDK for transactions
+        if (app?.setPubkeyContext) {
+          try {
+            await app.setPubkeyContext(result);
+            console.log('✅ [Send] Pubkey context set in Pioneer SDK:', result);
+
+            // Now update the asset context to refresh balances for this specific pubkey
+            // This will trigger a re-fetch of balances for just this pubkey
+            if (app?.setAssetContext && assetContext) {
+              console.log('🔄 [Send] Refreshing asset context for selected pubkey...');
+              await app.setAssetContext(assetContext);
+              console.log('✅ [Send] Asset context refreshed with new pubkey selection');
+            }
+          } catch (error) {
+            console.error('❌ [Send] Error setting pubkey context:', error);
+          }
+        }
+
+        // Balance will be automatically updated by the useEffect that watches selectedPubkey
+        console.log('💰 [Send] Balance will update automatically via useEffect');
+      }
+    }
+  };
 
   // Handle send transaction
   const handleSend = async () => {
@@ -2412,7 +2523,74 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Stack>
             </VStack>
           </Box>
-          
+
+          {/* Pubkey Selector - Only show if multiple pubkeys available */}
+          {assetContext.pubkeys && assetContext.pubkeys.length > 1 && (
+            <Box width="100%" maxW="sm" mx="auto">
+              <Text color="gray.400" fontSize="sm" mb={2}>Select Address Type</Text>
+              <select
+                value={selectedPubkey?.pathMaster || ''}
+                onChange={handlePubkeyChange}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  backgroundColor: theme.cardBg,
+                  borderColor: theme.border,
+                  borderWidth: '1px',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '14px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = assetColor;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = theme.border;
+                }}
+              >
+                {(() => {
+                  // Sort pubkeys - prioritize Native Segwit for Bitcoin
+                  const sortedPubkeys = [...assetContext.pubkeys].sort((a: Pubkey, b: Pubkey) => {
+                    // Bitcoin - Native Segwit (bc1...) should come first
+                    if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
+                    if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
+
+                    // Otherwise maintain order
+                    return 0;
+                  });
+
+                  return sortedPubkeys.map((pubkey: Pubkey) => {
+                    let label = pubkey.note || pubkey.pathMaster;
+
+                    // For Bitcoin addresses, add "(Recommended)" tag to Native Segwit
+                    if (pubkey.note?.includes('Native Segwit')) {
+                      label = `${pubkey.note} (Recommended) - ${pubkey.pathMaster}`;
+                    } else if (pubkey.note) {
+                      label = `${pubkey.note} - ${pubkey.pathMaster}`;
+                    }
+
+                    return (
+                      <option
+                        key={pubkey.pathMaster}
+                        value={pubkey.pathMaster}
+                        style={{
+                          backgroundColor: theme.cardBg,
+                          color: 'white',
+                          padding: '8px'
+                        }}
+                      >
+                        {label}
+                      </option>
+                    );
+                  });
+                })()}
+              </select>
+            </Box>
+          )}
+
           {/* Amount - Enhanced Dual Input Mode */}
           <Box 
             width="100%" 

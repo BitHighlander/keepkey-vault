@@ -67,19 +67,28 @@ export function bip32ToAddressNList(path: string): number[] {
 }
 
 // Build address_n list with updated indices
+// For UTXO chains: modifies last two positions (change/receive indices)
+// For account-based chains: uses path as-is (indices already in path)
 export function buildAddressNListWithIndices(
-  pathMaster: string, 
+  pathMaster: string,
   receiveIndex: number = 0,
-  isChange: boolean = false
+  isChange: boolean = false,
+  isAccountBased: boolean = false
 ): number[] {
   if (!pathMaster) return [];
-  
+
   const parts = pathMaster.split('/').filter(p => p !== 'm');
   return parts.map((part, index) => {
     const isHardened = part.includes("'");
     const num = parseInt(part.replace("'", ""));
-    
-    // Last two positions are typically change and address index
+
+    // For account-based chains (Cosmos, EVM, etc.), use path as-is
+    // The address index is already encoded in the path
+    if (isAccountBased) {
+      return isHardened ? 0x80000000 + num : num;
+    }
+
+    // For UTXO chains only: Last two positions are change and address index
     if (index === parts.length - 2) {
       // Change index position (0 for receive, 1 for change)
       return isChange ? 1 : 0;
@@ -87,7 +96,7 @@ export function buildAddressNListWithIndices(
       // Address index position - use the receiveIndex
       return receiveIndex;
     }
-    
+
     return isHardened ? 0x80000000 + num : num;
   });
 }
@@ -147,17 +156,30 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
     console.warn(`Unknown coin for chain: ${chainName}, using default`);
   }
 
+  // Determine if this is an account-based chain (vs UTXO)
+  // Account-based: Cosmos chains, EVM chains, XRP
+  // UTXO: Bitcoin, Litecoin, Dogecoin, etc.
+  const isAccountBased = networkType !== 'UTXO';
+
+  console.log('🔍 [KeepKey] Chain type:', {
+    networkType,
+    isAccountBased,
+    pathMaster,
+    receiveIndex,
+    willModifyPath: !isAccountBased
+  });
+
   // Build address info for KeepKey SDK
   const addressInfo: any = {
-    address_n: buildAddressNListWithIndices(pathMaster, receiveIndex, false),
+    address_n: buildAddressNListWithIndices(pathMaster, receiveIndex, false, isAccountBased),
     show_display: showDisplay
   };
-  
+
   // Add script_type if available (mainly for Bitcoin/UTXO chains)
   if (scriptType) {
     addressInfo.script_type = scriptType;
   }
-  
+
   // Add coin for UTXO chains
   if (networkType === 'UTXO' && coin) {
     addressInfo.coin = coin;

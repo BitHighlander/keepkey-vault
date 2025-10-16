@@ -164,6 +164,62 @@ export function Provider({ children }: ProviderProps) {
           showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
         });
 
+        //
+        paths.push({
+          note:" MAYA path 1",
+          type:"address",
+          addressNList: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 1],
+          addressNListMaster: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 1],
+          curve: 'secp256k1',
+          script_type:"mayachain",
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+          networks: ['cosmos:mayachain-mainnet-v1'],
+        });
+
+        paths.push({
+          note:" MAYA path 2",
+          type:"address",
+          addressNList: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 2],
+          addressNListMaster: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 2],
+          curve: 'secp256k1',
+          script_type:"mayachain",
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+          networks: ['cosmos:mayachain-mainnet-v1'],
+        });
+
+        paths.push({
+          note:" MAYA path 3",
+          type:"address",
+          addressNList: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 3],
+          addressNListMaster: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 3],
+          curve: 'secp256k1',
+          script_type:"mayachain",
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+          networks: ['cosmos:mayachain-mainnet-v1'],
+        });
+
+        paths.push({
+          note:" MAYA path 4",
+          type:"address",
+          addressNList: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 4],
+          addressNListMaster: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 4],
+          curve: 'secp256k1',
+          script_type:"mayachain",
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+          networks: ['cosmos:mayachain-mainnet-v1'],
+        });
+
+        paths.push({
+          note:" MAYA path 5",
+          type:"address",
+          addressNList: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 5],
+          addressNListMaster: [0x80000000 + 44, 0x80000000 + 931, 0x80000000 + 0, 0, 5],
+          curve: 'secp256k1',
+          script_type:"mayachain",
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+          networks: ['cosmos:mayachain-mainnet-v1'],
+        });
+
         // // Filter out any unsupported networks that cause getCharts errors
         const unsupportedNetworks = [
           // 'eip155:100', // Gnosis/xDAI
