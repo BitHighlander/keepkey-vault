@@ -44,7 +44,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
@@ -52,6 +52,7 @@ import { isFeatureEnabled } from '@/config/features';
 import { BalanceDistribution } from '../balance/BalanceDistribution';
 import { aggregateBalances, AggregatedBalance } from '@/types/balance';
 import { ReportDialog } from './ReportDialog';
+import { AddPathDialog } from './AddPathDialog';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -88,9 +89,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [showAllPubkeys, setShowAllPubkeys] = useState(false);
   // Add state for report dialog
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  // Add state for add path dialog
+  const [isAddPathDialogOpen, setIsAddPathDialogOpen] = useState(false);
   // Add state for tracking back navigation loading
   const [isNavigatingBack, setIsNavigatingBack] = useState(false);
-  
+  // Add state for tracking copied addresses/pubkeys
+  const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
+
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
   const { state } = pioneer;
@@ -334,6 +339,21 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   // Toggle details expanded/collapsed state
   const toggleDetails = () => {
     setIsDetailsExpanded(!isDetailsExpanded);
+  };
+
+  // Copy to clipboard helper function
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setCopiedItems(prev => ({ ...prev, [key]: true }));
+        setTimeout(() => {
+          setCopiedItems(prev => ({ ...prev, [key]: false }));
+        }, 2000);
+        console.log(`📋 [Asset] Copied to clipboard: ${key}`);
+      })
+      .catch(err => {
+        console.error('❌ [Asset] Error copying to clipboard:', err);
+      });
   };
 
   if (loading) {
@@ -1036,13 +1056,29 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                               </Flex>
 
                               {/* Pubkey or Address */}
-                              <Box>
-                                <Text color="gray.400" fontSize="xs" mb={1}>
-                                  {isUtxo ? 'Public Key' : 'Address'}
-                                </Text>
-                                <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
-                                  {isUtxo ? pubkey.pubkey : pubkey.address}
-                                </Text>
+                              <Box position="relative">
+                                <Flex justify="space-between" align="flex-start" gap={2}>
+                                  <Box flex="1">
+                                    <Text color="gray.400" fontSize="xs" mb={1}>
+                                      {isUtxo ? 'Public Key' : 'Address'}
+                                    </Text>
+                                    <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all" pr={8}>
+                                      {isUtxo ? pubkey.pubkey : pubkey.address}
+                                    </Text>
+                                  </Box>
+                                  <IconButton
+                                    aria-label="Copy to clipboard"
+                                    icon={copiedItems[`pubkey-${index}-main`] ? <FaCheck /> : <FaCopy />}
+                                    size="xs"
+                                    variant="ghost"
+                                    colorScheme={copiedItems[`pubkey-${index}-main`] ? "green" : "gray"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(isUtxo ? pubkey.pubkey : pubkey.address, `pubkey-${index}-main`);
+                                    }}
+                                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                                  />
+                                </Flex>
                               </Box>
 
                               {/* Path - Always show if available */}
@@ -1057,13 +1093,29 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
 
                               {/* Address for UTXO (if different from pubkey) */}
                               {isUtxo && pubkey.address && (
-                                <Box>
-                                  <Text color="gray.400" fontSize="xs" mb={1}>
-                                    Address
-                                  </Text>
-                                  <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
-                                    {pubkey.address}
-                                  </Text>
+                                <Box position="relative">
+                                  <Flex justify="space-between" align="flex-start" gap={2}>
+                                    <Box flex="1">
+                                      <Text color="gray.400" fontSize="xs" mb={1}>
+                                        Address
+                                      </Text>
+                                      <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all" pr={8}>
+                                        {pubkey.address}
+                                      </Text>
+                                    </Box>
+                                    <IconButton
+                                      aria-label="Copy address to clipboard"
+                                      icon={copiedItems[`pubkey-${index}-address`] ? <FaCheck /> : <FaCopy />}
+                                      size="xs"
+                                      variant="ghost"
+                                      colorScheme={copiedItems[`pubkey-${index}-address`] ? "green" : "gray"}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        copyToClipboard(pubkey.address, `pubkey-${index}-address`);
+                                      }}
+                                      _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                                    />
+                                  </Flex>
                                 </Box>
                               )}
 
@@ -1132,6 +1184,26 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     </HStack>
                   </VStack>
                 )}
+
+                {/* Add Path Button */}
+                <Button
+                  width="100%"
+                  size="md"
+                  bg={theme.cardBg}
+                  color="#9F7AEA"
+                  borderColor={theme.border}
+                  borderWidth="1px"
+                  _hover={{
+                    bg: 'rgba(159, 122, 234, 0.1)',
+                    borderColor: '#9F7AEA',
+                  }}
+                  onClick={() => setIsAddPathDialogOpen(true)}
+                >
+                  <Flex gap={2} align="center">
+                    <FaPlus />
+                    <Text>Add Path</Text>
+                  </Flex>
+                </Button>
               </VStack>
             </Box>
           )}
@@ -1311,13 +1383,29 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                             </Flex>
 
                             {/* Pubkey or Address */}
-                            <Box>
-                              <Text color="gray.400" fontSize="xs" mb={1}>
-                                {isUtxo ? 'Public Key' : 'Address'}
-                              </Text>
-                              <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
-                                {isUtxo ? pubkey.pubkey : pubkey.address}
-                              </Text>
+                            <Box position="relative">
+                              <Flex justify="space-between" align="flex-start" gap={2}>
+                                <Box flex="1">
+                                  <Text color="gray.400" fontSize="xs" mb={1}>
+                                    {isUtxo ? 'Public Key' : 'Address'}
+                                  </Text>
+                                  <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all" pr={8}>
+                                    {isUtxo ? pubkey.pubkey : pubkey.address}
+                                  </Text>
+                                </Box>
+                                <IconButton
+                                  aria-label="Copy to clipboard"
+                                  icon={copiedItems[`pubkey-mobile-${index}-main`] ? <FaCheck /> : <FaCopy />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme={copiedItems[`pubkey-mobile-${index}-main`] ? "green" : "gray"}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(isUtxo ? pubkey.pubkey : pubkey.address, `pubkey-mobile-${index}-main`);
+                                  }}
+                                  _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                                />
+                              </Flex>
                             </Box>
 
                             {/* Path - Always show if available */}
@@ -1332,13 +1420,29 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
 
                             {/* Address for UTXO (if different from pubkey) */}
                             {isUtxo && pubkey.address && (
-                              <Box>
-                                <Text color="gray.400" fontSize="xs" mb={1}>
-                                  Address
-                                </Text>
-                                <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all">
-                                  {pubkey.address}
-                                </Text>
+                              <Box position="relative">
+                                <Flex justify="space-between" align="flex-start" gap={2}>
+                                  <Box flex="1">
+                                    <Text color="gray.400" fontSize="xs" mb={1}>
+                                      Address
+                                    </Text>
+                                    <Text color="white" fontSize="xs" fontFamily="mono" wordBreak="break-all" pr={8}>
+                                      {pubkey.address}
+                                    </Text>
+                                  </Box>
+                                  <IconButton
+                                    aria-label="Copy address to clipboard"
+                                    icon={copiedItems[`pubkey-mobile-${index}-address`] ? <FaCheck /> : <FaCopy />}
+                                    size="xs"
+                                    variant="ghost"
+                                    colorScheme={copiedItems[`pubkey-mobile-${index}-address`] ? "green" : "gray"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(pubkey.address, `pubkey-mobile-${index}-address`);
+                                    }}
+                                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                                  />
+                                </Flex>
                               </Box>
                             )}
 
@@ -1407,6 +1511,26 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </HStack>
                 </VStack>
               )}
+
+              {/* Add Path Button - Mobile/Collapsed Version */}
+              <Button
+                width="100%"
+                size="md"
+                bg={theme.cardBg}
+                color="#9F7AEA"
+                borderColor={theme.border}
+                borderWidth="1px"
+                _hover={{
+                  bg: 'rgba(159, 122, 234, 0.1)',
+                  borderColor: '#9F7AEA',
+                }}
+                onClick={() => setIsAddPathDialogOpen(true)}
+              >
+                <Flex gap={2} align="center">
+                  <FaPlus />
+                  <Text>Add Path</Text>
+                </Flex>
+              </Button>
             </VStack>
           )}
         </Box>
@@ -1419,6 +1543,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
       <ReportDialog
         isOpen={isReportDialogOpen}
         onClose={() => setIsReportDialogOpen(false)}
+        assetContext={assetContext}
+      />
+
+      {/* Add Path Dialog */}
+      <AddPathDialog
+        isOpen={isAddPathDialogOpen}
+        onClose={() => setIsAddPathDialogOpen(false)}
         assetContext={assetContext}
       />
     </Box>

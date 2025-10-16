@@ -14,6 +14,7 @@ import { keyframes } from '@emotion/react'
 import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
+import { getCustomPaths } from '@/lib/storage/customPaths'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -83,6 +84,20 @@ export function Provider({ children }: ProviderProps) {
 
         console.log('🔧 Blockchains:', blockchains);
         console.log('🔧 Paths length:', paths.length);
+
+        // Load custom paths from localStorage and add them before hardcoded paths
+        const customPaths = getCustomPaths();
+        if (customPaths.length > 0) {
+          console.log(`📂 [CustomPaths] Loading ${customPaths.length} custom paths from localStorage`);
+          customPaths.forEach((customPath, index) => {
+            // Remove metadata fields that aren't needed for Pioneer SDK
+            const { createdAt, id, ...pathConfig } = customPath;
+            paths.push(pathConfig);
+            console.log(`📂 [CustomPaths] Added custom path ${index + 1}:`, pathConfig.note);
+          });
+        } else {
+          console.log('📂 [CustomPaths] No custom paths found in localStorage');
+        }
 
         paths.push({
           note: 'Bitcoin account 1 legacy',

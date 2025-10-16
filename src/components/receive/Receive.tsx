@@ -620,7 +620,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   fontWeight="bold"
                   height="52px"
                   fontSize="16px"
-                  isDisabled={!selectedPubkey || loadingIndices || !addressIndices}
+                  isDisabled={!selectedPubkey}
                   boxShadow="0 4px 20px rgba(255, 215, 0, 0.25)"
                   transition="all 0.2s ease"
                 >
@@ -629,9 +629,9 @@ export function Receive({ onBackClick }: ReceiveProps) {
               </MotionBox>
               
               {/* Disabled state message */}
-              {(!selectedPubkey || loadingIndices || !addressIndices) && (
+              {!selectedPubkey && (
                 <Text color="gray.500" fontSize="12px" textAlign="center" mt={-2}>
-                  {loadingIndices ? "Loading address information..." : "Select an address type above to continue"}
+                  Select an address type above to continue
                 </Text>
               )}
             </VStack>
@@ -831,42 +831,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
               </select>
             </Box>
 
-            {/* Display indices when available */}
-            {(loadingIndices || addressIndices) && (
-              <Box 
-                mt={3} 
-                p={3} 
-                bg="rgba(255, 215, 0, 0.05)" 
-                borderRadius="md" 
-                borderWidth="1px" 
-                borderColor={theme.border}
-                width="100%"
-                maxW="sm"
-              >
-                {loadingIndices ? (
-                  <Flex justify="center" align="center" height="40px">
-                    <Text color="gray.400" fontSize="sm">Loading indices...</Text>
-                  </Flex>
-                ) : addressIndices ? (
-                  <Flex justify="space-around" align="center">
-                    <VStack spacing={0}>
-                      <Text color="gray.400" fontSize="xs">Change Index</Text>
-                      <Text color={theme.gold} fontSize="lg" fontWeight="bold">
-                        {addressIndices.changeIndex}
-                      </Text>
-                    </VStack>
-                    <Box width="1px" height="40px" bg={theme.border} />
-                    <VStack spacing={0}>
-                      <Text color="gray.400" fontSize="xs">Receive Index</Text>
-                      <Text color={theme.gold} fontSize="lg" fontWeight="bold">
-                        {addressIndices.receiveIndex}
-                      </Text>
-                    </VStack>
-                  </Flex>
-                ) : null}
-              </Box>
-            )}
-
             {/* QR Code Section - ONLY SHOW AFTER VERIFICATION */}
             {addressVerified ? (
               <MotionBox
@@ -1003,7 +967,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   size="lg"
                   width="100%"
                   fontWeight="bold"
-                  isDisabled={!selectedPubkey || loadingIndices || !addressIndices}
+                  isDisabled={!selectedPubkey}
                 >
                   <Flex align="center" gap={2}>
                     <FaEye />
@@ -1033,7 +997,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
                   size="md"
                   width="100%"
-                  isDisabled={!selectedPubkey || loadingIndices || !addressIndices}
+                  isDisabled={!selectedPubkey}
                 >
                   Verify Again
                 </Button>
