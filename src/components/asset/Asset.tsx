@@ -185,24 +185,22 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   // Add component mount/unmount logging and handle loading state
   useEffect(() => {
     console.log('🎯 [Asset] Component mounted with context:', assetContext);
-    
+
     // For debugging - log the Pioneer context
-    console.log('🎯 [Asset] Pioneer context:', { 
+    console.log('🎯 [Asset] Pioneer context:', {
       app,
       hasApp: !!app,
       hasAssetContext: !!app?.assetContext,
       hasSetAssetContext: !!app?.setAssetContext
     });
-    
-    // Check if asset context is already available
+
+    // Reset component state when assetContext changes (navigating to new asset)
     if (assetContext) {
-      console.log('✅ [Asset] AssetContext already available on mount');
-      // Initialize previousBalance when asset context is available
-      if (assetContext.balance) {
-        setPreviousBalance(assetContext.balance);
-        // Mark as no longer initial load after first balance is set
-        setIsInitialLoad(false);
-      }
+      console.log('✅ [Asset] AssetContext available, resetting component state');
+      // Reset all component state for the new asset
+      setPreviousBalance(assetContext.balance || '0');
+      setIsInitialLoad(true); // Mark as initial load for new asset
+      setSelectedAddress(null); // Clear selected address
       setLoading(false);
       return;
     }

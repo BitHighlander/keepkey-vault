@@ -190,31 +190,41 @@ export default function AssetPage() {
   // Decode the parameter immediately - it might be both URL-encoded AND Base64 encoded
   useEffect(() => {
     if (!params.caip) return;
-    
+
     let encodedCaip = decodeURIComponent(params.caip as string)
     let caip: string
-    
+
     try {
       // Attempt to decode from Base64
       caip = atob(encodedCaip)
-      console.log('🔍 [AssetPage] Successfully decoded caip from Base64:', 
+      console.log('🔍 [AssetPage] Successfully decoded caip from Base64:',
         { encodedCaip, caip })
     } catch (error) {
       // If Base64 decoding fails, use the original value
       caip = encodedCaip
-      console.log('🔍 [AssetPage] Using original caip (Base64 decoding failed):', 
+      console.log('🔍 [AssetPage] Using original caip (Base64 decoding failed):',
         { caip })
     }
-    
+
     console.log('🔍 [AssetPage] Final decoded parameter:', { caip })
     setDecodedCaip(caip)
   }, [params.caip])
-  
+
   // Use the Pioneer context approach similar to the dashboard
   const pioneer = usePioneerContext()
   const { state } = pioneer
   const { app } = state
   const router = useRouter()
+
+  // Clear asset context when component unmounts (navigating away)
+  useEffect(() => {
+    return () => {
+      console.log('👋 [AssetPage] Component unmounting, clearing asset context')
+      if (app?.clearAssetContext) {
+        app.clearAssetContext()
+      }
+    }
+  }, [app])
   
   // Check if app is already ready on mount
   useEffect(() => {
@@ -500,7 +510,14 @@ export default function AssetPage() {
     } else {
       // If already in asset view, go back to dashboard
       console.log('🔙 [AssetPage] Navigating back to dashboard')
-      router.push('/') 
+
+      // Clear asset context before navigating back
+      if (app?.clearAssetContext) {
+        console.log('🧹 [AssetPage] Clearing asset context')
+        app.clearAssetContext()
+      }
+
+      router.push('/')
     }
   }
 
