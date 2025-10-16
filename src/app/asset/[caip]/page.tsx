@@ -191,6 +191,10 @@ export default function AssetPage() {
   useEffect(() => {
     if (!params.caip) return;
 
+    // IMPORTANT: Set loading state immediately when CAIP changes
+    console.log('🔄 [AssetPage] CAIP parameter changed, showing loading state')
+    setIsAssetLoading(true)
+
     let encodedCaip = decodeURIComponent(params.caip as string)
     let caip: string
 
@@ -302,8 +306,13 @@ export default function AssetPage() {
 
     // Check if we're navigating to a different asset
     if (currentAssetCaip && currentAssetCaip !== caip) {
-      console.log('🔄 [AssetPage] Navigating to different asset, showing loading state');
+      console.log('🔄 [AssetPage] Navigating to different asset, clearing old context and showing loading state');
       setIsAssetLoading(true);
+
+      // Clear the old asset context immediately
+      if (app?.clearAssetContext) {
+        app.clearAssetContext();
+      }
     }
 
     console.log('🔄 [AssetPage] App is ready, setting asset context from URL parameter:', caip)
@@ -418,7 +427,11 @@ export default function AssetPage() {
           app.setAssetContext(tokenAssetContextData);
           console.log('✅ [AssetPage] Token asset context set successfully');
           setCurrentAssetCaip(caip);
-          setIsAssetLoading(false);
+
+          // Small delay to ensure the UI updates with loading spinner first
+          setTimeout(() => {
+            setIsAssetLoading(false);
+          }, 100);
           return; // Exit early, we're done
         } catch (error) {
           console.error('❌ [AssetPage] Error setting token asset context:', error);
@@ -495,7 +508,11 @@ export default function AssetPage() {
        app.setAssetContext(assetContextData)
        console.log('✅ [AssetPage] Asset context set successfully with price data')
        setCurrentAssetCaip(caip);
-       setIsAssetLoading(false);
+
+       // Small delay to ensure the UI updates with loading spinner first
+       setTimeout(() => {
+         setIsAssetLoading(false);
+       }, 100);
      } catch (error) {
        console.error('❌ [AssetPage] Error setting asset context:', error)
        setIsAssetLoading(false);
