@@ -170,6 +170,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [balance, setBalance] = useState<string>('0')
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
   const [selectedPubkey, setSelectedPubkey] = useState<Pubkey | null>(null)
+  const [nativeGasBalance, setNativeGasBalance] = useState<string>('0') // CACAO/gas balance for selected pubkey
   
   // Add state to track if we're entering amount in USD
   const [isUsdInput, setIsUsdInput] = useState<boolean>(false)
@@ -263,16 +264,29 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         if (isUtxoNetwork && assetContext.pubkeys && assetContext.pubkeys.length > 0) {
           // For UTXO chains, sum all pubkey balances
           console.log('Calculating UTXO balance from pubkeys:', assetContext.pubkeys);
-          
+
+          const assetCaip = assetContext.caip || assetContext.networkId;
           let totalBalance = 0;
+
           for (const pubkey of assetContext.pubkeys) {
             // Find corresponding balance for this pubkey
-            const pubkeyBalance = app?.balances?.find((b: any) => 
-              b.pubkey === pubkey.pubkey || 
-              b.address === pubkey.address ||
-              b.master === pubkey.master
-            );
-            
+            // CRITICAL: Must match BOTH the address AND the asset CAIP
+            const pubkeyBalance = app?.balances?.find((b: any) => {
+              // First check if this balance is for the correct asset
+              const isCorrectAsset = b.caip === assetCaip ||
+                                   b.networkId === assetCaip ||
+                                   b.symbol === assetContext.symbol;
+
+              if (!isCorrectAsset) {
+                return false;
+              }
+
+              // Then match by pubkey/address/master
+              return b.pubkey === pubkey.pubkey ||
+                     b.address === pubkey.address ||
+                     b.master === pubkey.master;
+            });
+
             if (pubkeyBalance && pubkeyBalance.balance) {
               const balanceValue = parseFloat(pubkeyBalance.balance);
               if (!isNaN(balanceValue)) {
@@ -281,39 +295,66 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               }
             }
           }
-          
+
           newBalance = totalBalance.toFixed(8);
           console.log('Total UTXO balance calculated:', newBalance);
         } else {
           // For non-UTXO chains
-          // CRITICAL: For tokens, we must use assetContext.balance directly
-          // because searching by pubkey address will find the native asset balance
-          // instead of the token balance (e.g., CACAO instead of MAYA token)
-          if (assetContext.isToken) {
-            newBalance = assetContext.balance || '0';
-            console.log('🪙 [Send] Using assetContext balance for token:', {
-              symbol: assetContext.symbol,
-              balance: newBalance,
-              caip: assetContext.caip
-            });
-          } else if (selectedPubkey) {
+          // When a specific pubkey is selected, ALWAYS look up its balance
+          // This is critical for native assets like MAYA that may be classified as tokens
+          if (selectedPubkey) {
             // For native assets, use the selected pubkey's balance
             console.log('🔍 [Send] Looking for balance for selected pubkey:', {
               address: selectedPubkey.address,
               master: selectedPubkey.master,
               pubkey: selectedPubkey.pubkey,
               note: selectedPubkey.note,
+              caip: selectedPubkey.caip,
               availableBalances: app?.balances?.length || 0
             });
 
+            // Log all available balances for debugging
+            if (app?.balances && app.balances.length > 0) {
+              console.log('🔍 [Send] Available balances:', app.balances.map((b: any) => ({
+                address: b.address,
+                pubkey: b.pubkey,
+                master: b.master,
+                caip: b.caip,
+                balance: b.balance
+              })));
+            }
+
             // Try multiple matching strategies to find the balance
-            const pubkeyBalance = app?.balances?.find((b: any) =>
-              b.pubkey === selectedPubkey.pubkey ||
-              b.pubkey === selectedPubkey.address ||
-              b.address === selectedPubkey.address ||
-              b.master === selectedPubkey.master ||
-              b.address === selectedPubkey.master
-            );
+            // CRITICAL: Must match BOTH the address AND the asset CAIP
+            const assetCaip = assetContext.caip || assetContext.networkId;
+            const pubkeyBalance = app?.balances?.find((b: any) => {
+              // First check if this balance is for the correct asset
+              const isCorrectAsset = b.caip === assetCaip ||
+                                   b.networkId === assetCaip ||
+                                   b.symbol === assetContext.symbol;
+
+              if (!isCorrectAsset) {
+                return false;
+              }
+
+              // Now check if this balance is for the selected pubkey
+              // Match by exact pubkey
+              if (b.pubkey === selectedPubkey.pubkey) {
+                console.log('✅ [Send] Matched by pubkey:', b.pubkey, 'for asset:', assetCaip);
+                return true;
+              }
+              // Match by address
+              if (b.pubkey === selectedPubkey.address || b.address === selectedPubkey.address) {
+                console.log('✅ [Send] Matched by address:', selectedPubkey.address, 'for asset:', assetCaip);
+                return true;
+              }
+              // Match by master
+              if (b.master === selectedPubkey.master || b.address === selectedPubkey.master) {
+                console.log('✅ [Send] Matched by master:', selectedPubkey.master, 'for asset:', assetCaip);
+                return true;
+              }
+              return false;
+            });
 
             if (pubkeyBalance && pubkeyBalance.balance) {
               newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
@@ -325,7 +366,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             } else {
               console.warn('⚠️ [Send] No balance found for selected pubkey, defaulting to 0', {
                 selectedPubkey,
-                balances: app?.balances
+                balancesCount: app?.balances?.length || 0
               });
               newBalance = '0';
             }
@@ -333,13 +374,25 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             // If no pubkey selected yet, use the first pubkey's balance or assetContext balance
             if (assetContext.pubkeys && assetContext.pubkeys.length > 0) {
               const firstPubkey = assetContext.pubkeys[0];
-              const pubkeyBalance = app?.balances?.find((b: any) =>
-                b.pubkey === firstPubkey.pubkey ||
-                b.pubkey === firstPubkey.address ||
-                b.address === firstPubkey.address ||
-                b.master === firstPubkey.master ||
-                b.address === firstPubkey.master
-              );
+              const assetCaip = assetContext.caip || assetContext.networkId;
+
+              const pubkeyBalance = app?.balances?.find((b: any) => {
+                // First check if this balance is for the correct asset
+                const isCorrectAsset = b.caip === assetCaip ||
+                                     b.networkId === assetCaip ||
+                                     b.symbol === assetContext.symbol;
+
+                if (!isCorrectAsset) {
+                  return false;
+                }
+
+                // Then match by pubkey/address
+                return b.pubkey === firstPubkey.pubkey ||
+                       b.pubkey === firstPubkey.address ||
+                       b.address === firstPubkey.address ||
+                       b.master === firstPubkey.master ||
+                       b.address === firstPubkey.master;
+              });
 
               if (pubkeyBalance && pubkeyBalance.balance) {
                 newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
@@ -414,6 +467,61 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
     }
   }, [assetContext?.pubkeys, selectedPubkey, app])
+
+  // Update native gas balance (CACAO) when selectedPubkey changes
+  useEffect(() => {
+    if (!assetContext?.isToken || !selectedPubkey || !app?.balances) {
+      return;
+    }
+
+    console.log('🔍 [Send] Looking for native gas balance for selected pubkey:', {
+      address: selectedPubkey.address,
+      master: selectedPubkey.master,
+      nativeSymbol: assetContext.nativeSymbol,
+      networkId: assetContext.networkId
+    });
+
+    // Find the native asset CAIP for this network
+    // For Maya tokens, native asset is CACAO
+    let nativeAssetCaip = assetContext.networkId;
+
+    // Find the native gas balance for the selected pubkey
+    const gasBalance = app.balances.find((b: any) => {
+      // Must match the native asset (e.g., CACAO for Maya)
+      const isNativeAsset = b.caip === nativeAssetCaip ||
+                           b.networkId === nativeAssetCaip ||
+                           b.symbol === assetContext.nativeSymbol;
+
+      if (!isNativeAsset) {
+        return false;
+      }
+
+      // Match by pubkey/address
+      const isMatchingPubkey = b.pubkey === selectedPubkey.pubkey ||
+                              b.pubkey === selectedPubkey.address ||
+                              b.address === selectedPubkey.address ||
+                              b.master === selectedPubkey.master ||
+                              b.address === selectedPubkey.master;
+
+      if (isMatchingPubkey) {
+        console.log('✅ [Send] Found native gas balance:', {
+          balance: b.balance,
+          symbol: b.symbol,
+          address: b.address || b.pubkey
+        });
+      }
+
+      return isMatchingPubkey;
+    });
+
+    if (gasBalance && gasBalance.balance) {
+      setNativeGasBalance(gasBalance.balance);
+      console.log('✅ [Send] Native gas balance updated:', gasBalance.balance, assetContext.nativeSymbol);
+    } else {
+      console.warn('⚠️ [Send] No native gas balance found for selected pubkey');
+      setNativeGasBalance('0');
+    }
+  }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId, assetContext?.nativeSymbol])
 
   // Format USD value
   const formatUsd = (value: number) => {
@@ -2938,7 +3046,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               borderRadius={theme.borderRadius}
               p={theme.formPadding}
               borderWidth="2px"
-              borderColor={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.500" : theme.border}
+              borderColor={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.500" : theme.border}
             >
               <Stack gap={2}>
                 <Text color="white" fontWeight="medium" fontSize="sm">Gas Balance Required</Text>
@@ -2946,20 +3054,20 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <Text color="gray.400" fontSize="sm">Available Gas</Text>
                   <Stack gap={0} align="flex-end">
                     <Text
-                      color={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.400" : "white"}
+                      color={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.400" : "white"}
                       fontWeight="bold"
                       fontSize="md"
                     >
-                      {assetContext.nativeBalance ? parseFloat(assetContext.nativeBalance).toFixed(6) : '0'} {assetContext.nativeSymbol || 'GAS'}
+                      {nativeGasBalance ? parseFloat(nativeGasBalance).toFixed(6) : '0'} {assetContext.nativeSymbol || 'GAS'}
                     </Text>
-                    {assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 && (
+                    {nativeGasBalance && parseFloat(nativeGasBalance) === 0 && (
                       <Text color="red.400" fontSize="xs" fontWeight="medium">
                         ⚠️ No gas available - transfer will fail
                       </Text>
                     )}
                   </Stack>
                 </Flex>
-                {assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 && (
+                {nativeGasBalance && parseFloat(nativeGasBalance) === 0 && (
                   <Box
                     bg="red.900"
                     p={2}
