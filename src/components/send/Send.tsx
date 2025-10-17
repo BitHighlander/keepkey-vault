@@ -18,7 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
-import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus } from 'react-icons/fa'
+import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa'
 import Confetti from 'react-confetti'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import { keyframes } from '@emotion/react'
@@ -226,6 +226,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Add state for error handling
   const [error, setError] = useState<string | null>(null)
   const [showErrorDialog, setShowErrorDialog] = useState<boolean>(false)
+
+  // Add state for showing advanced options (custom path)
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false)
 
   // Path manager hook for adding custom paths
   const pathManager = usePathManager({ assetContext, app })
@@ -847,41 +850,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               addressNList: result.addressNList || result.addressNListMaster
             });
 
-            // Manually update balance immediately after context refresh
-            // This ensures we don't wait for the useEffect to trigger
-            const networkId = assetContext.networkId || assetContext.caip || '';
-            const isUtxoNetwork = UTXO_NETWORKS.some(id => networkId.includes(id)) || networkId.startsWith('bip122:');
-
-            if (!isUtxoNetwork) {
-              console.log('🔍 [Send] Immediately updating balance for non-UTXO chain');
-
-              const pubkeyBalance = app?.balances?.find((b: any) =>
-                b.pubkey === result.pubkey ||
-                b.pubkey === result.address ||
-                b.address === result.address ||
-                b.master === result.master ||
-                b.address === result.master
-              );
-
-              if (pubkeyBalance && pubkeyBalance.balance) {
-                const newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
-                console.log('✅ [Send] Immediate balance update:', {
-                  balance: newBalance,
-                  matchedBy: pubkeyBalance.address || pubkeyBalance.pubkey || pubkeyBalance.master
-                });
-                setBalance(newBalance);
-                setTotalBalanceUsd(parseFloat(newBalance) * (assetContext.priceUsd || 0));
-              } else {
-                console.warn('⚠️ [Send] No balance found immediately after pubkey change');
-                // Balance will be updated by useEffect when balances are fetched
-              }
-            }
+            // Force balance recalculation by updating the useEffect dependency
+            // The useEffect will handle finding and setting the correct balance
+            console.log('💰 [Send] Balance will be updated by useEffect');
           } catch (error) {
             console.error('❌ [Send] Error setting pubkey context:', error);
           }
         }
 
-        console.log('💰 [Send] Balance update process complete');
+        console.log('✅ [Send] Pubkey change complete');
       } else {
         console.warn('⚠️ [Send] Could not find pubkey matching path:', pubkeyPath);
       }
@@ -2686,7 +2663,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </VStack>
           </Box>
 
-          {/* Pubkey Selector - Always show with Add Path button */}
+          {/* Pubkey Selector - Always show with Advanced dropdown */}
           {assetContext.pubkeys && assetContext.pubkeys.length >= 1 && (
             <Box width="100%" maxW="sm" mx="auto">
               <Flex justify="space-between" align="center" mb={2}>
@@ -2696,16 +2673,44 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   height="28px"
                   px={3}
                   bg="transparent"
-                  color={assetColor}
+                  color="gray.400"
                   borderWidth="1px"
-                  borderColor={assetColor}
-                  _hover={{ bg: assetColorLight }}
-                  onClick={openAddPathDialog}
-                  leftIcon={<FaPlus />}
+                  borderColor={theme.border}
+                  _hover={{ bg: theme.border, color: "white" }}
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  rightIcon={showAdvanced ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
                 >
-                  Add Path
+                  Advanced
                 </Button>
               </Flex>
+
+              {/* Advanced Options - Collapsible */}
+              {showAdvanced && (
+                <Box
+                  mb={3}
+                  p={3}
+                  bg={theme.border}
+                  borderRadius="8px"
+                  borderWidth="1px"
+                  borderColor={theme.border}
+                >
+                  <Button
+                    width="100%"
+                    size="sm"
+                    height="36px"
+                    bg="transparent"
+                    color={assetColor}
+                    borderWidth="1px"
+                    borderColor={assetColor}
+                    _hover={{ bg: assetColorLight }}
+                    onClick={openAddPathDialog}
+                    leftIcon={<FaPlus />}
+                  >
+                    Add Custom Path
+                  </Button>
+                </Box>
+              )}
+
               <select
                 value={selectedPubkey?.pathMaster || ''}
                 onChange={handlePubkeyChange}
