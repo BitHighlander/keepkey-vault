@@ -285,8 +285,19 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           newBalance = totalBalance.toFixed(8);
           console.log('Total UTXO balance calculated:', newBalance);
         } else {
-          // For non-UTXO chains, use the selected pubkey's balance if available
-          if (selectedPubkey) {
+          // For non-UTXO chains
+          // CRITICAL: For tokens, we must use assetContext.balance directly
+          // because searching by pubkey address will find the native asset balance
+          // instead of the token balance (e.g., CACAO instead of MAYA token)
+          if (assetContext.isToken) {
+            newBalance = assetContext.balance || '0';
+            console.log('🪙 [Send] Using assetContext balance for token:', {
+              symbol: assetContext.symbol,
+              balance: newBalance,
+              caip: assetContext.caip
+            });
+          } else if (selectedPubkey) {
+            // For native assets, use the selected pubkey's balance
             console.log('🔍 [Send] Looking for balance for selected pubkey:', {
               address: selectedPubkey.address,
               master: selectedPubkey.master,
@@ -2918,7 +2929,53 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Text>
             </Stack>
           </Box>
-          
+
+          {/* Gas Balance Display for Tokens */}
+          {assetContext.isToken && (
+            <Box
+              width="100%"
+              bg={theme.cardBg}
+              borderRadius={theme.borderRadius}
+              p={theme.formPadding}
+              borderWidth="2px"
+              borderColor={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.500" : theme.border}
+            >
+              <Stack gap={2}>
+                <Text color="white" fontWeight="medium" fontSize="sm">Gas Balance Required</Text>
+                <Flex justify="space-between" align="center">
+                  <Text color="gray.400" fontSize="sm">Available Gas</Text>
+                  <Stack gap={0} align="flex-end">
+                    <Text
+                      color={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.400" : "white"}
+                      fontWeight="bold"
+                      fontSize="md"
+                    >
+                      {assetContext.nativeBalance ? parseFloat(assetContext.nativeBalance).toFixed(6) : '0'} {assetContext.nativeSymbol || 'GAS'}
+                    </Text>
+                    {assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 && (
+                      <Text color="red.400" fontSize="xs" fontWeight="medium">
+                        ⚠️ No gas available - transfer will fail
+                      </Text>
+                    )}
+                  </Stack>
+                </Flex>
+                {assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 && (
+                  <Box
+                    bg="red.900"
+                    p={2}
+                    borderRadius="md"
+                    borderWidth="1px"
+                    borderColor="red.500"
+                  >
+                    <Text color="red.200" fontSize="xs">
+                      You need {assetContext.nativeSymbol || 'GAS'} to send {assetContext.symbol} tokens. Please add gas to your wallet first.
+                    </Text>
+                  </Box>
+                )}
+              </Stack>
+            </Box>
+          )}
+
           {/* Recipient */}
           <Box 
             width="100%" 

@@ -316,20 +316,38 @@ export default function AssetPage() {
     }
 
     console.log('🔄 [AssetPage] App is ready, setting asset context from URL parameter:', caip)
-    
+
     // Quick check if this is a token (simplified for speed)
-    const isToken = caip.includes('/denom:') || caip.includes('/ibc:') || caip.includes('erc20') || caip.includes('eip721') || /0x[a-fA-F0-9]{40}/.test(caip);
-    console.log('🪙 [AssetPage] CAIP analysis:', { caip, isToken });
+    // CRITICAL: Exclude CACAO (Maya's native gas asset) from token classification
+    // CACAO uses slip44:931 and is the native asset, NOT a token
+    const isCacaoNative = caip.includes('mayachain') && caip.includes('slip44:931');
+    const isToken = !isCacaoNative && (caip.includes('/denom:') || caip.includes('/ibc:') || caip.includes('erc20') || caip.includes('eip721') || /0x[a-fA-F0-9]{40}/.test(caip));
+    console.log('🪙 [AssetPage] CAIP analysis:', { caip, isCacaoNative, isToken });
 
     if (isToken) {
       // Handle token case
       console.log('🪙 [AssetPage] Detected token, searching in balances...');
       
       // Find the token in balances
+      console.log('🔍 [AssetPage] Searching for token with CAIP:', caip);
+      console.log('🔍 [AssetPage] All available balances:', app.balances?.map((b: any) => ({
+        caip: b.caip,
+        symbol: b.symbol || b.ticker,
+        balance: b.balance,
+        name: b.name
+      })));
+
       const tokenBalance = app.balances?.find((balance: any) => balance.caip === caip);
-      
+
       if (tokenBalance) {
-        console.log('🪙 [AssetPage] Found token balance:', tokenBalance);
+        console.log('🪙 [AssetPage] Found token balance:', {
+          caip: tokenBalance.caip,
+          symbol: tokenBalance.symbol || tokenBalance.ticker,
+          balance: tokenBalance.balance,
+          name: tokenBalance.name,
+          priceUsd: tokenBalance.priceUsd || tokenBalance.price,
+          valueUsd: tokenBalance.valueUsd || tokenBalance.value
+        });
         
         // Determine the network this token belongs to
         let tokenNetworkId = '';
@@ -498,25 +516,32 @@ export default function AssetPage() {
     }
 
     console.log('🔍 [AssetPage] Found balance:', nativeAssetBalance);
-     const assetContextData = {
-       caip: caip, // Ensure we use the decoded CAIP
-     };
 
-     console.log('🔍 [AssetPage] Setting asset context with full data:', assetContextData)
+    // CRITICAL FIX: For CACAO, we need to override the symbol because the balance data
+    // from Pioneer SDK incorrectly has symbol: 'MAYA' when it should be 'CACAO'
+    const isCacao = caip.includes('mayachain') && caip.includes('slip44:931');
 
-     try {
-       app.setAssetContext(assetContextData)
-       console.log('✅ [AssetPage] Asset context set successfully with price data')
-       setCurrentAssetCaip(caip);
+    const assetContextData = {
+      caip: caip, // Ensure we use the decoded CAIP
+      // Override symbol for CACAO to fix incorrect 'MAYA' symbol in balance data
+      ...(isCacao && { symbol: 'CACAO' })
+    };
 
-       // Small delay to ensure the UI updates with loading spinner first
-       setTimeout(() => {
-         setIsAssetLoading(false);
-       }, 100);
-     } catch (error) {
-       console.error('❌ [AssetPage] Error setting asset context:', error)
-       setIsAssetLoading(false);
-     }
+    console.log('🔍 [AssetPage] Setting asset context with full data:', assetContextData)
+
+    try {
+      app.setAssetContext(assetContextData)
+      console.log('✅ [AssetPage] Asset context set successfully with price data')
+      setCurrentAssetCaip(caip);
+
+      // Small delay to ensure the UI updates with loading spinner first
+      setTimeout(() => {
+        setIsAssetLoading(false);
+      }, 100);
+    } catch (error) {
+      console.error('❌ [AssetPage] Error setting asset context:', error)
+      setIsAssetLoading(false);
+    }
   }, [isAppReady, decodedCaip, app, router, currentAssetCaip])
 
   // Handle navigation functions

@@ -949,25 +949,32 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             // Helper function to determine if a CAIP represents a token vs native asset
             const isTokenCaip = (caip: string): boolean => {
               if (!caip) return false;
-              
+
+              // CRITICAL: Exclude CACAO (Maya's native gas asset) from token classification
+              // CACAO uses slip44:931 and is the native asset, NOT a token
+              if (caip.includes('mayachain') && caip.includes('slip44:931')) {
+                return false; // CACAO is native, not a token
+              }
+
               // Explicit token type
               if (caip.includes('erc20') || caip.includes('eip721')) return true;
-              
+
               // ERC20 tokens have contract addresses (0x followed by 40 hex chars)
               if (caip.includes('eip155:') && /0x[a-fA-F0-9]{40}/.test(caip)) return true;
-              
-              // Maya tokens: denom:maya identifies Maya tokens (MAYA.CACAO, MAYA.MAYA, etc.)
+
+              // Maya tokens: denom:maya identifies Maya tokens, but NOT the native CACAO asset
+              // This covers synthetic assets like MAYA.BTC, MAYA.ETH, etc.
               if (caip.includes('cosmos:mayachain-mainnet-v1/denom:maya')) return true;
-              
+
               // Cosmos ecosystem tokens (not using slip44 format)
               if (caip.includes('MAYA.') || caip.includes('THOR.') || caip.includes('OSMO.')) return true;
-              
+
               // Cosmos tokens using denom or ibc format
               if (caip.includes('/denom:') || caip.includes('/ibc:')) return true;
-              
+
               // Any CAIP that doesn't use slip44 format is likely a token
               if (!caip.includes('slip44:') && caip.includes('.')) return true;
-              
+
               return false;
             };
 
