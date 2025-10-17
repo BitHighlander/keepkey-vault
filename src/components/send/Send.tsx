@@ -69,6 +69,7 @@ interface SendProps {
 interface Pubkey {
   address?: string;
   master?: string;
+  pubkey?: string;
   note: string;
   pathMaster: string;
   networks: string[];
@@ -231,6 +232,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Calculate total balance - sum all pubkey balances for UTXO chains
   useEffect(() => {
+    console.log('🔄 [Send useEffect] Balance calculation triggered', {
+      hasAssetContext: !!assetContext,
+      hasSelectedPubkey: !!selectedPubkey,
+      selectedPubkeyAddress: selectedPubkey?.address,
+      balancesCount: app?.balances?.length || 0,
+      currentBalance: balance
+    });
+
     if (assetContext) {
       try {
         // Resolve and store the network ID
@@ -275,17 +284,35 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         } else {
           // For non-UTXO chains, use the selected pubkey's balance if available
           if (selectedPubkey) {
+            console.log('🔍 [Send] Looking for balance for selected pubkey:', {
+              address: selectedPubkey.address,
+              master: selectedPubkey.master,
+              pubkey: selectedPubkey.pubkey,
+              note: selectedPubkey.note,
+              availableBalances: app?.balances?.length || 0
+            });
+
+            // Try multiple matching strategies to find the balance
             const pubkeyBalance = app?.balances?.find((b: any) =>
+              b.pubkey === selectedPubkey.pubkey ||
               b.pubkey === selectedPubkey.address ||
               b.address === selectedPubkey.address ||
-              b.master === selectedPubkey.master
+              b.master === selectedPubkey.master ||
+              b.address === selectedPubkey.master
             );
 
             if (pubkeyBalance && pubkeyBalance.balance) {
               newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
-              console.log('Using selected pubkey balance for non-UTXO chain:', newBalance, selectedPubkey);
+              console.log('✅ [Send] Found balance for selected pubkey:', {
+                balance: newBalance,
+                matchedBy: pubkeyBalance.address || pubkeyBalance.pubkey || pubkeyBalance.master,
+                pubkeyNote: selectedPubkey.note
+              });
             } else {
-              console.warn('No balance found for selected pubkey, defaulting to 0');
+              console.warn('⚠️ [Send] No balance found for selected pubkey, defaulting to 0', {
+                selectedPubkey,
+                balances: app?.balances
+              });
               newBalance = '0';
             }
           } else {
@@ -293,19 +320,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             if (assetContext.pubkeys && assetContext.pubkeys.length > 0) {
               const firstPubkey = assetContext.pubkeys[0];
               const pubkeyBalance = app?.balances?.find((b: any) =>
+                b.pubkey === firstPubkey.pubkey ||
                 b.pubkey === firstPubkey.address ||
                 b.address === firstPubkey.address ||
-                b.master === firstPubkey.master
+                b.master === firstPubkey.master ||
+                b.address === firstPubkey.master
               );
 
               if (pubkeyBalance && pubkeyBalance.balance) {
                 newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
-                console.log('Using first pubkey balance for non-UTXO chain:', newBalance);
+                console.log('✅ [Send] Using first pubkey balance for non-UTXO chain:', newBalance);
               } else {
                 newBalance = assetContext.balance || '0';
+                console.log('ℹ️ [Send] Using assetContext balance:', newBalance);
               }
             } else {
               newBalance = assetContext.balance || '0';
+              console.log('ℹ️ [Send] Using assetContext balance (no pubkeys):', newBalance);
             }
           }
         }
@@ -785,28 +816,74 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       );
 
       if (result) {
+        console.log('📍 [Send] Selected pubkey details:', {
+          address: result.address,
+          master: result.master,
+          pubkey: result.pubkey,
+          note: result.note,
+          pathMaster: result.pathMaster
+        });
+
+        // Set selected pubkey FIRST - this will trigger the useEffect
         setSelectedPubkey(result as Pubkey);
 
         // Set pubkey context in Pioneer SDK for transactions
         if (app?.setPubkeyContext) {
           try {
-            await app.setPubkeyContext(result);
-            console.log('✅ [Send] Pubkey context set in Pioneer SDK:', result);
-
-            // Now update the asset context to refresh balances for this specific pubkey
-            // This will trigger a re-fetch of balances for just this pubkey
+            // CRITICAL: Set asset context BEFORE pubkey context
+            // setAssetContext has auto-set logic that can overwrite pubkeyContext
+            // So we must set asset first, then override with our desired pubkey
             if (app?.setAssetContext && assetContext) {
-              console.log('🔄 [Send] Refreshing asset context for selected pubkey...');
+              console.log('🔄 [Send] Setting asset context first...');
               await app.setAssetContext(assetContext);
-              console.log('✅ [Send] Asset context refreshed with new pubkey selection');
+              console.log('✅ [Send] Asset context set');
+            }
+
+            // Now set the specific pubkey context we want (this overrides any auto-set)
+            await app.setPubkeyContext(result);
+            console.log('✅ [Send] Pubkey context set to desired address:', {
+              address: result.address,
+              note: result.note,
+              addressNList: result.addressNList || result.addressNListMaster
+            });
+
+            // Manually update balance immediately after context refresh
+            // This ensures we don't wait for the useEffect to trigger
+            const networkId = assetContext.networkId || assetContext.caip || '';
+            const isUtxoNetwork = UTXO_NETWORKS.some(id => networkId.includes(id)) || networkId.startsWith('bip122:');
+
+            if (!isUtxoNetwork) {
+              console.log('🔍 [Send] Immediately updating balance for non-UTXO chain');
+
+              const pubkeyBalance = app?.balances?.find((b: any) =>
+                b.pubkey === result.pubkey ||
+                b.pubkey === result.address ||
+                b.address === result.address ||
+                b.master === result.master ||
+                b.address === result.master
+              );
+
+              if (pubkeyBalance && pubkeyBalance.balance) {
+                const newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
+                console.log('✅ [Send] Immediate balance update:', {
+                  balance: newBalance,
+                  matchedBy: pubkeyBalance.address || pubkeyBalance.pubkey || pubkeyBalance.master
+                });
+                setBalance(newBalance);
+                setTotalBalanceUsd(parseFloat(newBalance) * (assetContext.priceUsd || 0));
+              } else {
+                console.warn('⚠️ [Send] No balance found immediately after pubkey change');
+                // Balance will be updated by useEffect when balances are fetched
+              }
             }
           } catch (error) {
             console.error('❌ [Send] Error setting pubkey context:', error);
           }
         }
 
-        // Balance will be automatically updated by the useEffect that watches selectedPubkey
-        console.log('💰 [Send] Balance will update automatically via useEffect');
+        console.log('💰 [Send] Balance update process complete');
+      } else {
+        console.warn('⚠️ [Send] Could not find pubkey matching path:', pubkeyPath);
       }
     }
   };
@@ -2551,13 +2628,59 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Text fontSize="xl" fontWeight="bold" color="white">
                   {assetContext.name}
                 </Text>
-                <Stack>
+                <Stack gap={1}>
                   <Text color="gray.400" fontSize="sm" textAlign="center">
                     Balance: {balance} {assetContext.symbol}
                   </Text>
                   <Text color={assetColor} fontSize="md" textAlign="center" fontWeight="medium">
                     {formatUsd(totalBalanceUsd)}
                   </Text>
+                  {/* Display selected address */}
+                  {selectedPubkey?.address && (
+                    <Flex
+                      align="center"
+                      justify="center"
+                      gap={2}
+                      mt={1}
+                      px={3}
+                      py={1}
+                      bg={`${assetColor}11`}
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={`${assetColor}33`}
+                      maxW="100%"
+                    >
+                      <Text
+                        color="gray.400"
+                        fontSize="xs"
+                        fontFamily="mono"
+                        wordBreak="break-all"
+                        textAlign="center"
+                      >
+                        {selectedPubkey.address}
+                      </Text>
+                      <IconButton
+                        aria-label="Copy address"
+                        size="xs"
+                        variant="ghost"
+                        color={assetColor}
+                        flexShrink={0}
+                        onClick={() => {
+                          if (selectedPubkey.address) {
+                            navigator.clipboard.writeText(selectedPubkey.address)
+                              .then(() => {
+                                console.log('📋 Address copied to clipboard');
+                              })
+                              .catch(err => {
+                                console.error('Error copying address:', err);
+                              });
+                          }
+                        }}
+                      >
+                        <FaCopy size={10} />
+                      </IconButton>
+                    </Flex>
+                  )}
                 </Stack>
               </Stack>
             </VStack>

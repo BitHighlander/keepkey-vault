@@ -45,9 +45,10 @@ export const usePathManager = ({ assetContext, app }: UsePathManagerProps) => {
   const networkId = assetContext?.networkId || '';
   const isBitcoin = networkId.includes('bip122:');
   const isEthereum = networkId.includes('eip155:');
-  const isCosmos = networkId.includes('cosmos:');
+  // Check Maya and Thor BEFORE generic Cosmos to avoid false positives
   const isMaya = networkId.includes('mayachain');
   const isThor = networkId.includes('thorchain');
+  const isCosmos = networkId.includes('cosmos:') && !isMaya && !isThor;
 
   // Get default script type based on network
   const getDefaultScriptType = useCallback(() => {
