@@ -824,7 +824,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                 </Button>
               </HStack>
               {/* Refresh Charts Button - Discover Tokens */}
-              <Button
+              {/* Commented out - doesn't seem to do anything */}
+              {/* <Button
                 width="100%"
                 size="lg"
                 bg={theme.cardBg}
@@ -843,7 +844,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   <FaSync />
                   <Text>Discover Tokens</Text>
                 </Flex>
-              </Button>
+              </Button> */}
               {isFeatureEnabled('enableSwaps') && (
                 <Button
                   width="100%"
