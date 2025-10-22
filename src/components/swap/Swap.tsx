@@ -1137,157 +1137,125 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               {verificationStep === 'vault' ? (
                 <>
                   {/* VAULT VERIFICATION STEP */}
-                  <Box 
-                    bg="purple.900/30" 
-                    borderWidth="1px" 
-                    borderColor="purple.700/50" 
-                    borderRadius="lg" 
+                  <Box
+                    bg="purple.900/30"
+                    borderWidth="1px"
+                    borderColor="purple.700/50"
+                    borderRadius="lg"
                     p={4}
                   >
-                    <VStack align="start" gap={3}>
-                      <HStack gap={3} align="start">
-                        <FaShieldAlt color="#b794f4" size="20" style={{ marginTop: '2px' }} />
-                        <VStack align="start" gap={2} flex={1}>
-                          <Text fontWeight="semibold" color="purple.300">
-                            THORChain Router Verification
-                          </Text>
-                          <Text fontSize="sm" color="gray.300">
-                            Your funds will be sent to the THORChain router/vault address below.
-                            This is the official THORChain vault that will process your swap.
-                          </Text>
-                        </VStack>
-                      </HStack>
-                      
-                      {/* Vault Address Display */}
-                      {vaultAddress && (
-                        <Box bg="gray.800" p={4} borderRadius="lg" width="full">
-                          <VStack align="start" gap={3}>
-                            <HStack justify="space-between" width="full">
-                              <Text fontSize="sm" color="gray.400">THORChain Vault:</Text>
-                              {vaultVerified && (
-                                <HStack gap={1}>
-                                  <Text fontSize="xs" color="green.400">Verified</Text>
-                                  <Box color="green.400">✓</Box>
-                                </HStack>
-                              )}
-                            </HStack>
-                            <Code 
-                              fontSize="sm" 
-                              bg="gray.900" 
-                              color="cyan.400" 
-                              p={3} 
-                              borderRadius="md" 
-                              width="full"
-                              wordBreak="break-all"
-                            >
-                              {vaultAddress}
-                            </Code>
-                            <Button
-                              as="a"
-                              href={(() => {
-                                // Determine the explorer URL based on the chain
-                                const fromSymbol = app?.assetContext?.symbol;
-                                if (fromSymbol === 'ETH' || fromSymbol === 'USDC' || fromSymbol === 'USDT') {
-                                  return `https://etherscan.io/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'BTC') {
-                                  return `https://mempool.space/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'BCH') {
-                                  return `https://blockchair.com/bitcoin-cash/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'LTC') {
-                                  return `https://blockchair.com/litecoin/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'DOGE') {
-                                  return `https://blockchair.com/dogecoin/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'AVAX') {
-                                  return `https://snowtrace.io/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'BNB') {
-                                  return `https://bscscan.com/address/${vaultAddress}`;
-                                } else if (fromSymbol === 'RUNE') {
-                                  return `https://runescan.io/address/${vaultAddress}`;
-                                } else {
-                                  // Default to THORChain's own explorer
-                                  return `https://thorchain.net/address/${vaultAddress}`;
-                                }
-                              })()}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              size="sm"
-                              variant="outline"
-                              colorScheme="blue"
-                              width="full"
-                              leftIcon={<FaExternalLinkAlt />}
-                              _hover={{
-                                bg: 'blue.900',
-                                borderColor: 'blue.400'
-                              }}
-                            >
-                              Verify on Explorer
-                            </Button>
-                            <Text fontSize="xs" color="gray.500" textAlign="center" width="full">
-                              Click to verify this is an official THORChain vault address
-                            </Text>
-                          </VStack>
-                        </Box>
-                      )}
-                      
-                      {/* Memo Display and Validation */}
-                      {quote?.memo && (
-                        <Box bg="gray.800" p={4} borderRadius="lg" width="full">
-                          <VStack align="start" gap={3}>
-                            <HStack justify="space-between" width="full">
-                              <Text fontSize="sm" color="gray.400">Swap Memo:</Text>
-                              {memoValid !== null && (
-                                <HStack gap={1}>
-                                  {memoValid ? (
-                                    <>
-                                      <Text fontSize="xs" color="green.400">Valid Memo</Text>
-                                      <Box color="green.400">✓</Box>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Text fontSize="xs" color="red.400">Invalid Memo</Text>
-                                      <Box color="red.400">✗</Box>
-                                    </>
-                                  )}
-                                </HStack>
-                              )}
-                            </HStack>
-                            <Code 
-                              fontSize="sm" 
-                              bg="gray.900" 
-                              color={memoValid === false ? 'red.400' : 'cyan.400'}
-                              p={3} 
-                              borderRadius="md" 
-                              width="full"
-                              wordBreak="break-all"
-                            >
-                              {quote.memo}
-                            </Code>
-                            <Text fontSize="xs" color="gray.500">
-                              This memo contains your swap instructions and destination address
-                            </Text>
-                          </VStack>
-                        </Box>
-                      )}
-                      
-                      {/* Warning for invalid memo */}
-                      {memoValid === false && (
-                        <Box 
-                          bg="red.900/50" 
-                          borderWidth="1px" 
-                          borderColor="red.500" 
-                          borderRadius="lg" 
-                          p={3}
-                        >
-                          <HStack gap={2}>
-                            <FaExclamationTriangle color="#fc8181" size="16" />
-                            <Text fontSize="sm" color="red.300">
-                              Invalid memo detected! This transaction will be cancelled for your safety.
-                            </Text>
-                          </HStack>
-                        </Box>
-                      )}
-                    </VStack>
+                    <Text fontSize="sm" color="gray.300" mb={3}>
+                      Your funds will be sent to the THORChain router/vault address below.
+                      This is the official THORChain vault that will process your swap.
+                    </Text>
                   </Box>
+
+                  {/* Vault Address Display */}
+                  {vaultAddress && (
+                    <Box bg="gray.800" p={4} borderRadius="lg" width="full">
+                      <VStack align="start" gap={3}>
+                        <HStack justify="space-between" width="full">
+                          <Text fontSize="sm" color="gray.400">THORChain Vault:</Text>
+                          {vaultVerified && (
+                            <HStack gap={1}>
+                              <Text fontSize="xs" color="green.400">Verified</Text>
+                              <Box color="green.400">✓</Box>
+                            </HStack>
+                          )}
+                        </HStack>
+                        <Code
+                          fontSize="sm"
+                          bg="gray.900"
+                          color="cyan.400"
+                          p={3}
+                          borderRadius="md"
+                          width="full"
+                          wordBreak="break-all"
+                        >
+                          {vaultAddress}
+                        </Code>
+                        <Button
+                          as="a"
+                          href="https://thornode.ninerealms.com/thorchain/inbound_addresses"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          size="sm"
+                          variant="outline"
+                          borderColor="#23DCC8"
+                          color="#23DCC8"
+                          width="full"
+                          leftIcon={<FaExternalLinkAlt />}
+                          _hover={{
+                            bg: 'rgba(35, 220, 200, 0.1)',
+                            borderColor: '#1FC4B3'
+                          }}
+                        >
+                          Verify Vault Address (THORNode)
+                        </Button>
+                        <Text fontSize="xs" color="gray.400" textAlign="center" width="full">
+                          Verify this vault address is official from THORChain
+                        </Text>
+                      </VStack>
+                    </Box>
+                  )}
+
+                  {/* Memo Display and Validation */}
+                  {quote?.memo && (
+                    <Box bg="gray.800" p={4} borderRadius="lg" width="full">
+                      <VStack align="start" gap={3}>
+                        <HStack justify="space-between" width="full">
+                          <Text fontSize="sm" color="gray.400">Swap Memo:</Text>
+                          {memoValid !== null && (
+                            <HStack gap={1}>
+                              {memoValid ? (
+                                <>
+                                  <Text fontSize="xs" color="green.400">Valid Memo</Text>
+                                  <Box color="green.400">✓</Box>
+                                </>
+                              ) : (
+                                <>
+                                  <Text fontSize="xs" color="red.400">Invalid Memo</Text>
+                                  <Box color="red.400">✗</Box>
+                                </>
+                              )}
+                            </HStack>
+                          )}
+                        </HStack>
+                        <Code
+                          fontSize="sm"
+                          bg="gray.900"
+                          color={memoValid === false ? 'red.400' : 'cyan.400'}
+                          p={3}
+                          borderRadius="md"
+                          width="full"
+                          wordBreak="break-all"
+                        >
+                          {quote.memo}
+                        </Code>
+                        <Text fontSize="xs" color="gray.500">
+                          This memo contains your swap instructions and destination address
+                        </Text>
+                      </VStack>
+                    </Box>
+                  )}
+
+                  {/* Warning for invalid memo */}
+                  {memoValid === false && (
+                    <Box
+                      bg="red.900/50"
+                      borderWidth="1px"
+                      borderColor="red.500"
+                      borderRadius="lg"
+                      p={3}
+                    >
+                      <HStack gap={2}>
+                        <FaExclamationTriangle color="#fc8181" size="16" />
+                        <Text fontSize="sm" color="red.300">
+                          Invalid memo detected! This transaction will be cancelled for your safety.
+                        </Text>
+                      </HStack>
+                    </Box>
+                  )}
                   
                   {/* Action Buttons */}
                   <HStack gap={3} width="full">
@@ -1544,8 +1512,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 </>
               ) : null}
 
-              {/* Action Buttons */}
-              {!isVerifyingOnDevice && deviceVerificationError && (
+              {/* Action Buttons - Only show for destination step errors */}
+              {!isVerifyingOnDevice && deviceVerificationError && verificationStep === 'destination' && (
                 <HStack gap={3} pt={2}>
                   <Button
                     flex={1}
