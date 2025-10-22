@@ -3,6 +3,8 @@ export interface ReportOptions {
   accountCount?: number;
   includeTransactions?: boolean;
   includeAddresses?: boolean;
+  lodLevel?: number; // Level of Detail: 1-5
+  gapLimit?: number; // For LOD address discovery
   dateRange?: {
     from?: Date;
     to?: Date;
@@ -43,6 +45,40 @@ export interface XPUBData {
   totalReceived: string;
   totalSent: string;
   txCount: number;
+  // LOD 5 specific fields
+  addresses?: AddressData[];
+}
+
+export interface AddressData {
+  address: string;
+  path: string;
+  index: number;
+  type: 'receive' | 'change';
+  balance: string;
+  txCount: number;
+  transactions?: TransactionData[];
+}
+
+export interface TransactionData {
+  txid: string;
+  blockHeight: number;
+  timestamp: string;
+  value: number;
+  confirmations: number;
+  inputs: TransactionIO[];
+  outputs: TransactionIO[];
+  fee: number;
+  category: 'send' | 'receive' | 'self';
+  llmSummary?: string;
+  counterparties?: string[];
+}
+
+export interface TransactionIO {
+  address: string;
+  value: number;
+  isOwn: boolean;
+  isChange: boolean;
+  path?: string;
 }
 
 // EVM specific types

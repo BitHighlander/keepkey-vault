@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useEffect, useState } from 'react'
-import { SDK } from '@coinmasters/pioneer-sdk'
+import { SDK } from '@pioneer-platform/pioneer-sdk'
 import { availableChainsByWallet, getChainEnumValue, WalletOption } from '@coinmasters/types'
 // @ts-ignore
 import { caipToNetworkId, ChainToNetworkId } from '@pioneer-platform/pioneer-caip'

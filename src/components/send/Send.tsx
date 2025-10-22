@@ -415,7 +415,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         
         // Play chaching sound if balance increased
         if (prevBalance && newBalance && parseFloat(newBalance) > parseFloat(prevBalance)) {
-          playSound(chachingSound);
+          // playSound(chachingSound); // Disabled - sound is annoying
           console.log('Balance increased! 💰', { previous: prevBalance, new: newBalance });
         }
         
@@ -531,26 +531,31 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     })
   }
 
+  // Helper function to check if price data is available
+  const isPriceAvailable = (): boolean => {
+    return !!(assetContext?.priceUsd && parseFloat(assetContext.priceUsd) > 0);
+  }
+
   // Convert USD to native token amount
   const usdToNative = (usdAmount: string): string => {
     if (!usdAmount || !assetContext.priceUsd || parseFloat(assetContext.priceUsd) === 0) return '0';
     const parsedUsd = parseFloat(usdAmount);
     const parsedPrice = parseFloat(assetContext.priceUsd);
-    
+
     // Check for NaN or invalid values
     if (isNaN(parsedUsd) || isNaN(parsedPrice) || parsedPrice === 0) {
       console.warn('Invalid USD to native conversion:', { usdAmount, priceUsd: assetContext.priceUsd });
       return '0';
     }
-    
+
     const nativeAmount = parsedUsd / parsedPrice;
-    
+
     // Check if result is NaN
     if (isNaN(nativeAmount)) {
       console.warn('NaN result in USD to native conversion:', { parsedUsd, parsedPrice });
       return '0';
     }
-    
+
     // Return formatted with appropriate decimal places
     return nativeAmount.toFixed(8);
   }
@@ -890,6 +895,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Toggle between USD and native input
   const toggleInputMode = () => {
+    // Prevent switching to USD mode when price is not available
+    if (!isUsdInput && !isPriceAvailable()) {
+      console.warn('Cannot switch to USD input mode: Price data is not available');
+      return;
+    }
+
     if (amount) {
       // Convert the current amount when switching modes
       if (isUsdInput) {

@@ -41,112 +41,30 @@ import { AssetPicker } from './AssetPicker';
 import { SwapSuccess } from './SwapSuccess';
 
 // Import THORChain services
-import { 
-  getThorchainQuote, 
-  getExchangeRate, 
-  toBaseUnit, 
+import {
+  getThorchainQuote,
+  getExchangeRate,
+  toBaseUnit,
   fromBaseUnit,
-  getThorchainInboundAddress
+  getThorchainInboundAddress,
+  getAssetDecimals
 } from '@/services/thorchain';
 
-// THORChain asset mapping for API URLs
-const THORCHAIN_ASSETS: Record<string, string> = {
-  'BTC': 'BTC.BTC',
-  'ETH': 'ETH.ETH',
-  'BCH': 'BCH.BCH',
-  'LTC': 'LTC.LTC',
-  'DOGE': 'DOGE.DOGE',
-  'RUNE': 'THOR.RUNE',
-  'ATOM': 'GAIA.ATOM',
-  'AVAX': 'AVAX.AVAX',
-  'BNB': 'BNB.BNB',
-  'CACAO': 'MAYA.CACAO',
-};
+// Import THORChain pools configuration
+import { THORCHAIN_POOLS, getNativePools } from '@/config/thorchain-pools';
 
 interface SwapProps {
   onBackClick?: () => void;
 }
 
-// Define native assets only (no tokens)
-const NATIVE_ASSETS = [
-  { 
-    caip: 'eip155:1/slip44:60', 
-    name: 'Ethereum', 
-    symbol: 'ETH', 
-    icon: 'https://pioneers.dev/coins/ethereum.png',
-    isNative: true 
-  },
-  { 
-    caip: 'bip122:000000000019d6689c085ae165831e93/slip44:0', 
-    name: 'Bitcoin', 
-    symbol: 'BTC', 
-    icon: 'https://pioneers.dev/coins/bitcoin.png',
-    isNative: true 
-  },
-  { 
-    caip: 'cosmos:thorchain-mainnet-v1/slip44:931', 
-    name: 'THORChain', 
-    symbol: 'RUNE', 
-    icon: 'https://pioneers.dev/coins/thorchain.png',
-    isNative: true 
-  },
-  { 
-    caip: 'cosmos:cosmoshub-4/slip44:118', 
-    name: 'Cosmos', 
-    symbol: 'ATOM', 
-    icon: 'https://pioneers.dev/coins/cosmos.png',
-    isNative: true 
-  },
-  { 
-    caip: 'cosmos:mayachain-mainnet-v1/slip44:931', 
-    name: 'Maya Protocol', 
-    symbol: 'CACAO', 
-    icon: 'https://pioneers.dev/coins/mayaprotocol.png',
-    isNative: true 
-  },
-  {
-    caip: 'cosmos:osmosis-1/slip44:118',
-    name: 'Osmosis',
-    symbol: 'OSMO',
-    icon: 'https://pioneers.dev/coins/osmosis.png',
-    isNative: true
-  },
-  {
-    caip: 'bip122:00000000000000000000000000000000/slip44:2', 
-    name: 'Litecoin',
-    symbol: 'LTC',
-    icon: 'https://pioneers.dev/coins/litecoin.png',
-    isNative: true
-  },
-  {
-    caip: 'bip122:000000000000000000000000000000001/slip44:3',
-    name: 'Dogecoin', 
-    symbol: 'DOGE',
-    icon: 'https://pioneers.dev/coins/dogecoin.png',
-    isNative: true
-  },
-  {
-    caip: 'bip122:000000000000000000651ef99cb9fcbe/slip44:145',
-    name: 'Bitcoin Cash',
-    symbol: 'BCH',
-    icon: 'https://pioneers.dev/coins/bitcoincash.png',
-    isNative: true
-  },
-  {
-    caip: 'eip155:56/slip44:60',
-    name: 'BNB Chain',
-    symbol: 'BNB',
-    icon: 'https://pioneers.dev/coins/binance.png',
-    isNative: true
-  },
-  {
-    caip: 'eip155:43114/slip44:60',
-    name: 'Avalanche',
-    symbol: 'AVAX',
-    icon: 'https://pioneers.dev/coins/avalanche.png',
-    isNative: true
-  }
-];
+/**
+ * All supported assets from THORChain pools
+ * This includes both native assets and tokens with active liquidity pools
+ *
+ * NOTE: Using THORCHAIN_POOLS for complete pool coverage (35 pools as of generation)
+ * You can use getNativePools() to get only native assets (9 chains)
+ */
+const SUPPORTED_SWAP_ASSETS = THORCHAIN_POOLS;
 
 export const Swap = ({ onBackClick }: SwapProps) => {
   // Get app context from Pioneer
@@ -273,22 +191,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
     console.log('🔍 [SWAP] Processing balances:', app.balances.length, 'total balances');
     console.log('🔍 [SWAP] Raw balances:', app.balances);
-    console.log('🔍 [SWAP] NATIVE_ASSETS available:', NATIVE_ASSETS.map(a => a.symbol));
+    console.log('🔍 [SWAP] Supported swap assets:', SUPPORTED_SWAP_ASSETS.map(a => a.symbol));
 
     // Create a map to aggregate balances by symbol (exact copy from dashboard logic)
     const balanceMap = new Map();
-    
+
     app.balances.forEach((balance: any, index: number) => {
       const ticker = balance.ticker || balance.symbol;
       if (!ticker) {
         console.log(`⚠️ [SWAP] Balance #${index} missing ticker/symbol:`, balance);
         return;
       }
-      
-      // Find matching native asset
-      const nativeAsset = NATIVE_ASSETS.find(asset => asset.symbol === ticker);
-      if (!nativeAsset) {
-        console.log(`⚠️ [SWAP] No native asset found for ticker: ${ticker} (caip: ${balance.caip})`);
+
+      // Find matching supported asset from THORChain pools
+      const supportedAsset = SUPPORTED_SWAP_ASSETS.find(asset => asset.symbol === ticker);
+      if (!supportedAsset) {
+        console.log(`⚠️ [SWAP] No supported pool found for ticker: ${ticker} (caip: ${balance.caip})`);
         return;
       }
       
@@ -308,8 +226,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         balanceMap.set(ticker, {
           caip: balance.caip,
           symbol: ticker,
-          name: nativeAsset.name,
-          icon: nativeAsset.icon,
+          name: supportedAsset.name,
+          icon: supportedAsset.icon,
           balance: balanceAmount,
           balanceUsd: valueUsd,
           priceUsd: parseFloat(balance.priceUsd || '0')
@@ -350,22 +268,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // fromAssets are already filtered and sorted in availableAssets
   const fromAssets = availableAssets;
 
-  // All native assets available for "to" selection (no balance requirement)
+  // All supported assets available for "to" selection (no balance requirement)
   const toAssets = useMemo(() => {
-    // Get all available assets except the currently selected "from" asset
-    // This ensures we can swap to any asset we have, even with 0 balance
-    const allNativeAssets = NATIVE_ASSETS.map(native => {
-      const balance = availableAssets.find(a => a.symbol === native.symbol);
+    // Get all supported THORChain pool assets except the currently selected "from" asset
+    // This ensures we can swap to any asset with an active pool, even with 0 balance
+    const allSupportedAssets = SUPPORTED_SWAP_ASSETS.map(poolAsset => {
+      const balance = availableAssets.find(a => a.symbol === poolAsset.symbol);
       return {
-        ...native,
+        ...poolAsset,
         balance: balance?.balance || 0,
         balanceUsd: balance?.balanceUsd || 0,
         priceUsd: balance?.priceUsd || 0
       };
     });
-    
+
     // Exclude the currently selected "from" asset
-    return allNativeAssets.filter(asset => 
+    return allSupportedAssets.filter(asset =>
       asset.symbol !== app?.assetContext?.symbol
     );
   }, [availableAssets, app?.assetContext?.symbol]);
@@ -378,24 +296,24 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       
       // Smart selection for output asset based on input
       let defaultTo = null;
-      
+
       // If input is Bitcoin, default to Ethereum
       if (defaultFrom?.symbol === 'BTC') {
-        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'ETH');
-      } 
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH');
+      }
       // If input is anything else, default to Bitcoin
       else {
-        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'BTC');
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC');
       }
-      
+
       // If we couldn't find the preferred output, use the second highest value asset
       if (!defaultTo && availableAssets.length > 1) {
         defaultTo = availableAssets[1];
       }
-      
-      // If still no output asset, find any other native asset
+
+      // If still no output asset, find any other supported asset
       if (!defaultTo) {
-        defaultTo = NATIVE_ASSETS.find(asset => 
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(asset =>
           asset.symbol !== defaultFrom?.symbol
         );
       }
@@ -426,14 +344,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   useEffect(() => {
     if (app?.assetContext?.symbol && !app?.outboundAssetContext?.symbol && app?.setOutboundAssetContext) {
       let defaultTo = null;
-      
+
       // If input is Bitcoin, default to Ethereum
       if (app.assetContext.symbol === 'BTC') {
-        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'ETH');
-      } 
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH');
+      }
       // If input is anything else, default to Bitcoin
       else {
-        defaultTo = NATIVE_ASSETS.find(a => a.symbol === 'BTC');
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC');
       }
       
       if (defaultTo) {
@@ -497,10 +415,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         app?.setOutboundAssetContext &&
         availableAssets.length > 0) {
       console.warn('⚠️ [Swap] Same asset detected for both from and to, fixing...');
-      
+
       // Find an alternative asset for "to"
       const alternativeAsset = availableAssets.find(a => a.symbol !== app.assetContext.symbol) ||
-                               NATIVE_ASSETS.find(a => a.symbol !== app.assetContext.symbol);
+                               SUPPORTED_SWAP_ASSETS.find(a => a.symbol !== app.assetContext.symbol);
       
       if (alternativeAsset) {
         app.setOutboundAssetContext({
@@ -634,12 +552,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     console.log('🟡 MAX BUTTON CLICKED - BEFORE STATE CHANGE');
     const maxBalance = getUserBalance(app?.assetContext?.caip);
     if (maxBalance && parseFloat(maxBalance) > 0) {
+      // Get proper decimal precision for this asset
+      const decimals = getAssetDecimals(app?.assetContext?.symbol || 'BTC');
+
       // Leave a small amount for gas fees if it's a native token
-      const isNativeToken = app?.assetContext?.symbol && 
+      const isNativeToken = app?.assetContext?.symbol &&
         ['ETH', 'BNB', 'AVAX', 'MATIC'].includes(app.assetContext.symbol);
-      const adjustedMax = isNativeToken ? 
-        (parseFloat(maxBalance) * 0.98).toFixed(8) : // Keep 2% for gas
-        maxBalance;
+      const adjustedMax = isNativeToken ?
+        (parseFloat(maxBalance) * 0.98).toFixed(decimals) : // Keep 2% for gas
+        parseFloat(maxBalance).toFixed(decimals);
       
       setInputAmount(adjustedMax);
       console.log('💰 MAX button clicked - setting isMax flag to true');
@@ -1686,9 +1607,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             
             {/* Center - Title */}
             <HStack gap={2}>
-              <Image src="https://pioneers.dev/coins/thorchain.png" alt="THORChain" boxSize="24px" />
+              <Image src="https://pioneers.dev/coins/thorchain.png" alt="THORChain" boxSize="28px" />
               <Text fontSize="lg" fontWeight="bold" color="white">
-                Native Asset Swap
+                THORChain Swapper
               </Text>
             </HStack>
             
@@ -1707,13 +1628,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         py={20}
       >
         <Box maxW="480px" width="full">
-          <Card.Root 
-            bg="rgba(17, 17, 17, 0.95)" 
+          <Card.Root
+            bg="rgba(17, 17, 17, 0.95)"
             backdropFilter="blur(20px)"
-            borderColor="gray.800"
-            borderWidth="1px"
+            borderColor="#23DCC8"
+            borderWidth="2px"
             borderRadius="2xl"
-            boxShadow="0 4px 24px 0 rgba(0, 0, 0, 0.5)"
+            boxShadow="0 4px 24px 0 rgba(35, 220, 200, 0.15)"
           >
             <Card.Body p={4}>
               {isLoadingAssets ? (
@@ -1873,19 +1794,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
                     {/* Exchange Rate Display */}
                     {exchangeRate && inputAmount && parseFloat(inputAmount) > 0 && (
-                      <Box 
-                        bg="gray.800" 
-                        borderRadius="lg" 
+                      <Box
+                        bg="rgba(35, 220, 200, 0.1)"
+                        borderRadius="lg"
                         p={3}
                         borderWidth="1px"
-                        borderColor="gray.700"
+                        borderColor="rgba(35, 220, 200, 0.3)"
                       >
                         <HStack justify="center" gap={2}>
-                          <Text fontSize="sm" color="gray.400">
+                          <Text fontSize="sm" color="gray.300">
                             1 {app?.assetContext?.symbol}
                           </Text>
-                          <Text fontSize="sm" color="gray.500">=</Text>
-                          <Text fontSize="sm" color="green.400" fontWeight="medium">
+                          <Text fontSize="sm" color="#23DCC8">=</Text>
+                          <Text fontSize="sm" color="#23DCC8" fontWeight="medium">
                             <CountUp
                               end={exchangeRate}
                               decimals={6}
@@ -1909,32 +1830,39 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     {/* Swap Button */}
                     <Button
                       size="lg"
-                      bg="blue.500"
-                      color="white"
-                      _hover={{ bg: 'blue.400' }}
-                      _active={{ bg: 'blue.600' }}
+                      bg="#23DCC8"
+                      color="black"
+                      _hover={{ bg: '#1FC4B3' }}
+                      _active={{ bg: '#1AAB9B' }}
                       onClick={() => setConfirmMode(true)}
                       width="full"
                       height="48px"
                       borderRadius="xl"
-                      fontWeight="semibold"
+                      fontWeight="bold"
                       mt={2}
                       isDisabled={
-                        !inputAmount || 
-                        parseFloat(inputAmount) <= 0 || 
+                        !inputAmount ||
+                        parseFloat(inputAmount) <= 0 ||
                         app?.assetContext?.symbol === app?.outboundAssetContext?.symbol
                       }
                       _disabled={{
-                        bg: 'gray.600',
-                        color: 'gray.400',
+                        bg: 'gray.700',
+                        color: 'gray.500',
                         cursor: 'not-allowed'
                       }}
                     >
-                      {app?.assetContext?.symbol === app?.outboundAssetContext?.symbol ? 
-                        'Select different assets' : 
+                      {app?.assetContext?.symbol === app?.outboundAssetContext?.symbol ?
+                        'Select different assets' :
                         (!inputAmount || parseFloat(inputAmount) <= 0 ? 'Enter an amount' : 'Swap')
                       }
                     </Button>
+
+                    {/* THORChain Branding Footer */}
+                    <HStack justify="center" gap={1} mt={2} opacity={0.6}>
+                      <Text fontSize="xs" color="gray.500">Powered by</Text>
+                      <Image src="https://pioneers.dev/coins/thorchain.png" boxSize="12px" />
+                      <Text fontSize="xs" color="#23DCC8" fontWeight="medium">THORChain</Text>
+                    </HStack>
 
                     {/* Info message */}
                     {fromAssets.length === 0 && (
@@ -1977,9 +1905,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           assets={fromAssets}
           title="Select Asset to Swap From"
           currentAsset={app?.assetContext}
+          isFromSelection={true}
         />
-        
-        {/* Asset Picker for To (all native assets) */}
+
+        {/* Asset Picker for To (all assets available) */}
         <AssetPicker
           isOpen={showAssetPicker === 'to'}
           onClose={() => setShowAssetPicker(null)}
@@ -1987,6 +1916,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           assets={toAssets}
           title="Select Asset to Receive"
           currentAsset={app?.outboundAssetContext}
+          isFromSelection={false}
         />
       </Flex>
     </Box>

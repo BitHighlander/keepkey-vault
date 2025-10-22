@@ -69,6 +69,25 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
     }
   };
 
+  const handleLODLevelChange = (delta: number) => {
+    const currentLevel = reportOptions.lodLevel || 1;
+    const newLevel = currentLevel + delta;
+    if (newLevel >= 1 && newLevel <= 5) {
+      setReportOptions({ ...reportOptions, lodLevel: newLevel });
+    }
+  };
+
+  const getLODDescription = (level: number): string => {
+    switch (level) {
+      case 1: return 'Basic XPUB summary with balances';
+      case 2: return 'XPUB summary with address indices';
+      case 3: return 'Full address list with balances';
+      case 4: return 'Addresses with transaction counts';
+      case 5: return 'Complete transaction history with change detection';
+      default: return 'XPUB Report';
+    }
+  };
+
   const generatePDFReport = async () => {
     if (!generator) {
       console.error('No report generator available');
@@ -153,11 +172,11 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
 
             {/* Account Count Selector (for UTXO and multi-account chains) */}
             {showAccountSelector && (
-              <Box 
-                p={6} 
-                bg={theme.bg} 
-                borderRadius="xl" 
-                borderWidth="1px" 
+              <Box
+                p={6}
+                bg={theme.bg}
+                borderRadius="xl"
+                borderWidth="1px"
                 borderColor={theme.border}
               >
                 <Text color="gray.400" fontSize="sm" mb={4} fontWeight="medium">
@@ -179,19 +198,19 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
                   >
                     <FaMinus />
                   </IconButton>
-                  
+
                   <Box textAlign="center" flex={1}>
                     <Text color="white" fontSize="3xl" fontWeight="bold">
                       {reportOptions.accountCount || 1}
                     </Text>
                     <Text color="gray.500" fontSize="sm" mt={1}>
-                      {networkType === 'UTXO' 
+                      {networkType === 'UTXO'
                         ? `Accounts 0-${(reportOptions.accountCount || 1) - 1}`
                         : `${reportOptions.accountCount || 1} addresses`
                       }
                     </Text>
                   </Box>
-                  
+
                   <IconButton
                     onClick={() => handleAccountCountChange(1)}
                     disabled={(reportOptions.accountCount || 1) >= 20 || loading}
@@ -208,7 +227,7 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
                     <FaPlus />
                   </IconButton>
                 </HStack>
-                
+
                 {networkType === 'UTXO' && (
                   <Box mt={4} p={3} bg="rgba(255, 215, 0, 0.05)" borderRadius="lg">
                     <Text color="gray.400" fontSize="xs">
@@ -219,6 +238,76 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
                     </Text>
                   </Box>
                 )}
+              </Box>
+            )}
+
+            {/* LOD Level Selector (for UTXO chains) */}
+            {networkType === 'UTXO' && (
+              <Box
+                p={6}
+                bg={theme.bg}
+                borderRadius="xl"
+                borderWidth="1px"
+                borderColor={theme.border}
+              >
+                <Text color="gray.400" fontSize="sm" mb={4} fontWeight="medium">
+                  Level of Detail (LOD)
+                </Text>
+                <HStack justify="space-between" align="center" gap={6}>
+                  <IconButton
+                    onClick={() => handleLODLevelChange(-1)}
+                    disabled={(reportOptions.lodLevel || 1) <= 1 || loading}
+                    size="md"
+                    bg={theme.border}
+                    color="white"
+                    borderRadius="lg"
+                    _hover={{ bg: theme.borderLight }}
+                    _disabled={{ opacity: 0.3, cursor: 'not-allowed' }}
+                    width="50px"
+                    height="50px"
+                    aria-label="Decrease LOD"
+                  >
+                    <FaMinus />
+                  </IconButton>
+
+                  <Box textAlign="center" flex={1}>
+                    <Text color="white" fontSize="3xl" fontWeight="bold">
+                      LOD {reportOptions.lodLevel || 1}
+                    </Text>
+                    <Text color="gray.500" fontSize="xs" mt={1}>
+                      {getLODDescription(reportOptions.lodLevel || 1)}
+                    </Text>
+                  </Box>
+
+                  <IconButton
+                    onClick={() => handleLODLevelChange(1)}
+                    disabled={(reportOptions.lodLevel || 1) >= 5 || loading}
+                    size="md"
+                    bg={theme.border}
+                    color="white"
+                    borderRadius="lg"
+                    _hover={{ bg: theme.borderLight }}
+                    _disabled={{ opacity: 0.3, cursor: 'not-allowed' }}
+                    width="50px"
+                    height="50px"
+                    aria-label="Increase LOD"
+                  >
+                    <FaPlus />
+                  </IconButton>
+                </HStack>
+
+                <Box mt={4} p={3} bg="rgba(255, 215, 0, 0.05)" borderRadius="lg">
+                  <Text color="gray.400" fontSize="xs">
+                    {(reportOptions.lodLevel || 1) === 5
+                      ? '• Full transaction history with change detection'
+                      : '• Basic report with summary information'}
+                  </Text>
+                  <Text color="gray.400" fontSize="xs">
+                    {(reportOptions.lodLevel || 1) === 5
+                      ? '• Includes derivation paths for all addresses'
+                      : '• Higher LOD levels provide more detail'}
+                  </Text>
+                </Box>
               </Box>
             )}
 
@@ -240,6 +329,15 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
                     <Text color="gray.400" fontSize="xs">• Derivation paths for each account</Text>
                     <Text color="gray.400" fontSize="xs">• Current receive and change indices</Text>
                     <Text color="gray.400" fontSize="xs">• Balance and transaction history</Text>
+                    {(reportOptions.lodLevel || 1) === 5 && (
+                      <>
+                        <Text color={theme.gold} fontSize="xs" mt={2}>LOD 5 Additions:</Text>
+                        <Text color="gray.400" fontSize="xs">• Complete address derivation with gap limit</Text>
+                        <Text color="gray.400" fontSize="xs">• Full transaction history for all addresses</Text>
+                        <Text color="gray.400" fontSize="xs">• Change detection with derivation paths</Text>
+                        <Text color="gray.400" fontSize="xs">• Transaction categorization (send/receive/self)</Text>
+                      </>
+                    )}
                   </>
                 )}
                 {networkType === 'EVM' && (

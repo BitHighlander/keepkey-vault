@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
     transpilePackages: [
-        '@coinmasters/pioneer-sdk',
+        '@pioneer-platform/pioneer-sdk',
         '@coinmasters/types',
         '@coinmasters/tokens'
     ],

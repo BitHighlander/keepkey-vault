@@ -79,17 +79,17 @@ export const SwapInput = ({
   const displayValue = localIsUsdMode ? usdAmount || '' : value;
   const secondaryValue = localIsUsdMode ? value : usdAmount;
   return (
-    <Box 
-      bg="gray.800" 
-      borderRadius="xl" 
+    <Box
+      bg="rgba(30, 30, 30, 0.6)"
+      borderRadius="xl"
       p={3}
       borderWidth="1px"
-      borderColor="gray.700"
-      _hover={{ borderColor: disabled ? 'gray.700' : 'gray.600' }}
+      borderColor="rgba(255, 255, 255, 0.1)"
+      _hover={{ borderColor: disabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(35, 220, 200, 0.3)' }}
     >
       {(label || (!disabled && priceUsd)) && (
         <HStack justify="space-between" mb={2}>
-          <Text fontSize="xs" color="gray.500">{label || ''}</Text>
+          <Text fontSize="xs" color="gray.400" fontWeight="medium">{label || ''}</Text>
           <HStack gap={1}>
             {!disabled && priceUsd && (
               <IconButton
@@ -99,7 +99,7 @@ export const SwapInput = ({
                 aria-label="Toggle USD/Native"
                 icon={<FaExchangeAlt size={10} />}
                 color="gray.400"
-                _hover={{ bg: 'gray.700', color: 'blue.400' }}
+                _hover={{ bg: 'rgba(35, 220, 200, 0.2)', color: '#23DCC8' }}
                 height="20px"
                 width="20px"
                 minW="20px"
@@ -120,7 +120,7 @@ export const SwapInput = ({
             )}
             {disabled && displayValue && parseFloat(displayValue) > 0 ? (
               <Box px={localIsUsdMode ? 0 : 2} pr={!disabled ? 10 : 2}>
-                <Text fontSize="2xl" fontWeight="medium" color="green.400">
+                <Text fontSize="2xl" fontWeight="medium" color="#23DCC8">
                   <CountUp
                     end={parseFloat(displayValue)}
                     decimals={parseFloat(displayValue) < 1 ? 8 : (parseFloat(displayValue) < 100 ? 4 : 2)}
@@ -265,11 +265,11 @@ export const SwapInput = ({
             )}
           </HStack>
           {secondaryValue && (
-            <Text fontSize="sm" color="gray.500" px={2}>
+            <Text fontSize="sm" color="gray.400" px={2}>
               {localIsUsdMode ? (
                 <>
                   {disabled && parseFloat(secondaryValue) > 0 ? (
-                    <Text as="span" color="green.400">
+                    <Text as="span" color="#23DCC8">
                       <CountUp
                         end={parseFloat(secondaryValue)}
                         decimals={parseFloat(secondaryValue) < 1 ? 8 : (parseFloat(secondaryValue) < 100 ? 4 : 2)}
@@ -283,7 +283,7 @@ export const SwapInput = ({
               ) : (
                 <>
                   ${disabled && parseFloat(secondaryValue) > 0 ? (
-                    <Text as="span" color="green.400">
+                    <Text as="span" color="#23DCC8">
                       <CountUp
                         end={parseFloat(secondaryValue)}
                         decimals={2}
@@ -298,14 +298,14 @@ export const SwapInput = ({
             </Text>
           )}
         </VStack>
-        
+
         {!localIsUsdMode && symbol && (
-          <Text fontSize="lg" color="gray.400" pr={2}>
+          <Text fontSize="lg" color="gray.300" pr={2} fontWeight="medium">
             {symbol}
           </Text>
         )}
         {localIsUsdMode && (
-          <Text fontSize="lg" color="gray.400" pr={2}>
+          <Text fontSize="lg" color="gray.300" pr={2} fontWeight="medium">
             USD
           </Text>
         )}

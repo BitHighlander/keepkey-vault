@@ -66,12 +66,12 @@ export const AssetSelector = ({
   return (
     <Box>
       <HStack justify="space-between" mb={1}>
-        <Text fontSize="xs" color="gray.500">{label}</Text>
+        <Text fontSize="xs" color="gray.400" fontWeight="medium">{label}</Text>
         {balance && (
           <HStack gap={2}>
             <HStack gap={1}>
               <Text fontSize="xs" color="gray.400">
-                Balance: <Text as="span" color="green.400" fontWeight="medium">
+                Balance: <Text as="span" color="#23DCC8" fontWeight="medium">
                   <CountUp
                     end={parseFloat(balance)}
                     decimals={parseFloat(balance) < 1 ? 6 : (parseFloat(balance) < 100 ? 4 : 2)}
@@ -82,8 +82,8 @@ export const AssetSelector = ({
                 </Text> {asset.symbol}
               </Text>
               {balanceUsd && (
-                <Text fontSize="xs" color="gray.500">
-                  ($<Text as="span" color="green.400">
+                <Text fontSize="xs" color="gray.400">
+                  ($<Text as="span" color="#23DCC8">
                     <CountUp
                       end={parseFloat(balanceUsd)}
                       decimals={2}
@@ -104,14 +104,16 @@ export const AssetSelector = ({
                   console.log('🟢 MAX BUTTON CLICKED IN ASSETSELECTOR');
                   onMaxClick();
                 }}
-                bg="blue.500"
-                color="white"
-                _hover={{ bg: 'blue.600' }}
+                bg="#23DCC8"
+                color="black"
+                _hover={{ bg: '#1FC4B3' }}
+                _active={{ bg: '#1AAB9B' }}
                 height="18px"
                 px={1.5}
                 fontSize="xs"
                 borderRadius="md"
                 minW="unset"
+                fontWeight="bold"
               >
                 MAX
               </Button>
@@ -122,13 +124,15 @@ export const AssetSelector = ({
       <Button
         onClick={onClick}
         variant="ghost"
-        bg="gray.800"
+        bg="rgba(30, 30, 30, 0.6)"
         borderRadius="xl"
         p={2}
         height="auto"
         width="full"
         justify="flex-start"
-        _hover={{ bg: 'gray.700' }}
+        borderWidth="1px"
+        borderColor="rgba(255, 255, 255, 0.1)"
+        _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: 'rgba(35, 220, 200, 0.3)' }}
       >
         <HStack justify="space-between" width="full">
           <HStack gap={2}>

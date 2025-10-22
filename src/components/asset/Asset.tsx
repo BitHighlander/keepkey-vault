@@ -44,7 +44,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
@@ -95,6 +95,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [isNavigatingBack, setIsNavigatingBack] = useState(false);
   // Add state for tracking copied addresses/pubkeys
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
+  // Add state for refreshing charts
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -352,6 +354,28 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
       .catch(err => {
         console.error('❌ [Asset] Error copying to clipboard:', err);
       });
+  };
+
+  // Refresh charts to discover tokens for the current network
+  const handleRefreshCharts = async () => {
+    if (!assetContext?.networkId) {
+      console.error('❌ [Asset] No networkId available');
+      return;
+    }
+
+    console.log('🔄 [Asset] Refreshing charts for network:', assetContext.networkId);
+    setIsRefreshing(true);
+    try {
+      if (app && typeof app.getCharts === 'function') {
+        console.log('🔄 [Asset] Calling app.getCharts() with networkId:', assetContext.networkId);
+        await app.getCharts([assetContext.networkId]);
+        console.log('✅ [Asset] Charts refresh completed for', assetContext.networkId);
+      }
+    } catch (error) {
+      console.error('❌ [Asset] Charts refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   if (loading) {
@@ -799,6 +823,27 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   </Flex>
                 </Button>
               </HStack>
+              {/* Refresh Charts Button - Discover Tokens */}
+              <Button
+                width="100%"
+                size="lg"
+                bg={theme.cardBg}
+                color="#00D9FF"
+                borderColor={theme.border}
+                borderWidth="1px"
+                _hover={{
+                  bg: 'rgba(0, 217, 255, 0.1)',
+                  borderColor: '#00D9FF',
+                }}
+                onClick={handleRefreshCharts}
+                isLoading={isRefreshing}
+                loadingText="Discovering tokens..."
+              >
+                <Flex gap={2} align="center">
+                  <FaSync />
+                  <Text>Discover Tokens</Text>
+                </Flex>
+              </Button>
               {isFeatureEnabled('enableSwaps') && (
                 <Button
                   width="100%"
@@ -1528,9 +1573,110 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
             </VStack>
           )}
         </Box>
-        
+
         {/* Cosmos Staking Section */}
         <CosmosStaking assetContext={assetContext} />
+
+        {/* EVM Tokens Section */}
+        {(() => {
+          // Filter tokens for the current network from app.balances
+          const networkTokens = app?.balances?.filter((balance: any) =>
+            balance.networkId === assetContext.networkId &&
+            balance.token === true &&
+            parseFloat(balance.balance || '0') > 0
+          ) || [];
+
+          // Sort by USD value
+          networkTokens.sort((a: any, b: any) => {
+            const valueA = parseFloat(a.valueUsd || 0);
+            const valueB = parseFloat(b.valueUsd || 0);
+            return valueB - valueA;
+          });
+
+          if (networkTokens.length === 0) return null;
+
+          return (
+            <Box
+              bg={theme.cardBg}
+              borderRadius="2xl"
+              overflow="hidden"
+              borderColor={theme.border}
+              borderWidth="1px"
+              mt={6}
+            >
+              <Box p={4} borderBottom="1px" borderColor={theme.border}>
+                <Text color={theme.gold} fontSize="lg" fontWeight="bold">
+                  Tokens on {assetContext.symbol} Network ({networkTokens.length})
+                </Text>
+              </Box>
+
+              <VStack align="stretch" p={4} gap={3}>
+                {networkTokens.map((token: any, index: number) => {
+                  const tokenValueUsd = parseFloat(token.valueUsd || 0);
+                  const tokenBalance = parseFloat(token.balance || 0);
+
+                  return (
+                    <Box
+                      key={`${token.caip}-${index}`}
+                      p={4}
+                      bg={theme.bg}
+                      borderRadius="lg"
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                      _hover={{
+                        borderColor: theme.gold,
+                        bg: 'rgba(255, 215, 0, 0.05)',
+                      }}
+                      transition="all 0.2s"
+                      cursor="pointer"
+                      onClick={() => {
+                        console.log('🪙 [Asset] Token clicked:', token);
+                        router.push(`/asset/${btoa(token.caip)}`);
+                      }}
+                    >
+                      <Flex justify="space-between" align="center">
+                        <HStack gap={3}>
+                          <Box
+                            borderRadius="full"
+                            overflow="hidden"
+                            boxSize="40px"
+                            bg={theme.cardBg}
+                            borderWidth="1px"
+                            borderColor={theme.border}
+                          >
+                            <Image
+                              src={token.icon}
+                              alt={token.name || token.symbol}
+                              boxSize="40px"
+                              objectFit="contain"
+                            />
+                          </Box>
+                          <VStack align="flex-start" gap={0}>
+                            <Text fontSize="md" fontWeight="bold" color="white">
+                              {token.symbol || 'Unknown'}
+                            </Text>
+                            <Text fontSize="xs" color="gray.400">
+                              {token.name || 'Unknown Token'}
+                            </Text>
+                          </VStack>
+                        </HStack>
+
+                        <VStack align="flex-end" gap={0}>
+                          <Text fontSize="md" color={theme.gold} fontWeight="medium">
+                            ${formatUsd(tokenValueUsd)}
+                          </Text>
+                          <Text fontSize="xs" color="gray.400">
+                            {tokenBalance.toFixed(6)} {token.symbol}
+                          </Text>
+                        </VStack>
+                      </Flex>
+                    </Box>
+                  );
+                })}
+              </VStack>
+            </Box>
+          );
+        })()}
       </Box>
       
       {/* Report Dialog */}

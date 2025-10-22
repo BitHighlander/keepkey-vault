@@ -65,7 +65,7 @@ export const SwapConfirm = ({
         {/* To */}
         <HStack gap={2}>
           <Image src={toAsset?.icon} alt={toAsset?.name} boxSize="28px" />
-          <Text fontSize="2xl" fontWeight="bold" color="green.400">
+          <Text fontSize="2xl" fontWeight="bold" color="#23DCC8">
             {outputAmount}
           </Text>
           <Text fontSize="xl" color="gray.400">
@@ -86,7 +86,7 @@ export const SwapConfirm = ({
           </HStack>
           
           {/* Security Notice */}
-          <HStack gap={2} color="blue.400">
+          <HStack gap={2} color="#23DCC8">
             <FaShieldAlt size="14" />
             <Text fontSize="xs" fontWeight="medium">
               Address will be verified on device before swap
@@ -99,10 +99,10 @@ export const SwapConfirm = ({
       <VStack gap={3} pt={4}>
         <Button
           size="lg"
-          bg="blue.500"
-          color="white"
-          _hover={{ bg: 'blue.600' }}
-          _active={{ bg: 'blue.700' }}
+          bg="#23DCC8"
+          color="black"
+          _hover={{ bg: '#1FC4B3' }}
+          _active={{ bg: '#1AAB9B' }}
           onClick={() => {
             console.log('🔴 CONFIRM BUTTON CLICKED!');
             onConfirm();
@@ -111,7 +111,7 @@ export const SwapConfirm = ({
           height="56px"
           borderRadius="xl"
           fontSize="lg"
-          fontWeight="semibold"
+          fontWeight="bold"
           isLoading={isLoading}
           loadingText="Check your KeepKey device..."
           isDisabled={isLoading}

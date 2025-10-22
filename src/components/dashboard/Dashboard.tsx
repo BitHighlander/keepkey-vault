@@ -299,11 +299,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         
         // Check if portfolio value has increased
         if (newTotalValue > prevTotalValue && prevTotalValue > 0) {
-          console.log("💰 [Dashboard] Portfolio value increased!", { 
-            previous: prevTotalValue, 
-            current: newTotalValue 
+          console.log("💰 [Dashboard] Portfolio value increased!", {
+            previous: prevTotalValue,
+            current: newTotalValue
           });
-          playSound(chachingSound);
+          // playSound(chachingSound); // Disabled - sound is annoying
         }
         
         // Update previous total value for next comparison
@@ -861,8 +861,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 {network.gasAssetSymbol}
                               </Text>
                               <Box
-                                fontSize="xs" 
-                                color="gray.400" 
+                                fontSize="xs"
+                                color="gray.400"
                                 mb={1}
                                 title={network.gasAssetCaip || network.networkId}
                                 cursor="help"

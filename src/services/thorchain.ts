@@ -264,26 +264,46 @@ export async function getExchangeRate(fromAsset: string, toAsset: string): Promi
   }
 }
 
+// Asset decimals mapping
+const ASSET_DECIMALS: Record<string, number> = {
+  // Native assets
+  'BTC': 8,
+  'ETH': 18,
+  'BCH': 8,
+  'LTC': 8,
+  'DOGE': 8,
+  'RUNE': 8,
+  'ATOM': 6,
+  'AVAX': 18,
+  'BNB': 8,
+  'CACAO': 10,
+  'OSMO': 6,
+  // ERC20 tokens
+  'USDT': 6,
+  'USDC': 6,
+  'DAI': 18,
+  'WBTC': 8,
+  'LINK': 18,
+  'UNI': 18,
+  'AAVE': 18,
+  'SUSHI': 18,
+  'SNX': 18,
+  'SOL': 9,
+  'BUSD': 18,
+  'WETH': 18,
+};
+
+/**
+ * Get the decimal precision for an asset symbol
+ */
+export function getAssetDecimals(symbol: string): number {
+  return ASSET_DECIMALS[symbol] || 8;
+}
+
 // Convert amount to base units based on asset
 export function toBaseUnit(amount: string, symbol: string): number {
   const value = parseFloat(amount);
-  
-  // Define decimals for each asset
-  const decimals: Record<string, number> = {
-    'BTC': 8,
-    'ETH': 18,
-    'BCH': 8,
-    'LTC': 8,
-    'DOGE': 8,
-    'RUNE': 8,
-    'ATOM': 6,
-    'AVAX': 18,
-    'BNB': 8,
-    'CACAO': 10,
-    'OSMO': 6,
-  };
-  
-  const decimal = decimals[symbol] || 8;
+  const decimal = getAssetDecimals(symbol);
   const result = Math.floor(value * Math.pow(10, decimal));
   
   console.log('🔢 [THORChain] Converting to base units:', {
@@ -302,23 +322,9 @@ export function toBaseUnit(amount: string, symbol: string): number {
 // IMPORTANT: THORChain uses 8 decimals for ALL assets internally
 export function fromBaseUnit(amount: string, symbol: string, isThorchainResponse: boolean = false): string {
   const value = parseFloat(amount);
-  
-  const decimals: Record<string, number> = {
-    'BTC': 8,
-    'ETH': 18,
-    'BCH': 8,
-    'LTC': 8,
-    'DOGE': 8,
-    'RUNE': 8,
-    'ATOM': 6,
-    'AVAX': 18,
-    'BNB': 8,
-    'CACAO': 10,
-    'OSMO': 6,
-  };
-  
+
   // THORChain always uses 8 decimals internally, regardless of the asset
-  const decimal = isThorchainResponse ? 8 : (decimals[symbol] || 8);
+  const decimal = isThorchainResponse ? 8 : getAssetDecimals(symbol);
   const result = value / Math.pow(10, decimal);
   
   console.log('💱 [THORChain] Converting from base units:', {

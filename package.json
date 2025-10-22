@@ -15,11 +15,10 @@
   "dependencies": {
     "@chakra-ui/react": "^3.25.0",
     "@chakra-ui/react-types": "^2.0.6",
-    "@coinmasters/pioneer-sdk": "^4.13.55",
+    "@pioneer-platform/pioneer-sdk": "^4.20.13",
     "@coinmasters/tokens": "^3.10.1",
     "@coinmasters/types": "^4.10.2",
     "@emotion/react": "^11.14.0",
-    "@pioneer-platform/mayachain-client": "^0.0.37",
     "@pioneer-platform/pioneer-caip": "^9.2.38",
     "@pioneer-platform/pioneer-coins": "^9.3.2",
     "@pioneer-platform/thorchain-client": "^0.0.33",
@@ -55,7 +54,7 @@
   "pnpm": {
     "overrides": {
       "punycode": "2.1.1",
-      "@pioneer-platform/pioneer-client": "9.2.8"
+      "@pioneer-platform/pioneer-client": "9.10.3"
     }
   }
 }
