@@ -63,6 +63,7 @@ interface Network {
   totalValueUsd: number;
   gasAssetCaip: string;
   gasAssetSymbol: string;
+  gasAssetName?: string | null;
   icon: string;
   color: string;
   totalNativeBalance: string;
@@ -231,9 +232,29 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const middleEllipsis = (text: string, visibleChars = 16) => {
     if (!text) return '';
     if (text.length <= visibleChars) return text;
-    
+
     const charsToShow = Math.floor(visibleChars / 2);
     return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
+  };
+
+  // Helper function to get asset name from assetsMap
+  const getAssetName = (caip: string): string | null => {
+    if (!app?.assetsMap || !caip) return null;
+
+    try {
+      const assetInfo = app.assetsMap.get(caip);
+      const name = assetInfo?.name || null;
+
+      // Debug logging
+      if (assetInfo) {
+        console.log('🏷️ [Dashboard] Asset lookup:', { caip, name, assetInfo });
+      }
+
+      return name;
+    } catch (error) {
+      console.error('❌ [Dashboard] Error getting asset name:', error);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -860,6 +881,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               <Text fontSize="md" fontWeight="bold" color={network.color}>
                                 {network.gasAssetSymbol}
                               </Text>
+                              {(() => {
+                                const assetName = network.gasAssetName || getAssetName(network.gasAssetCaip);
+                                return assetName ? (
+                                  <Text fontSize="sm" color="gray.100" fontWeight="semibold">
+                                    {assetName}
+                                  </Text>
+                                ) : null;
+                              })()}
                               <Box
                                 fontSize="xs"
                                 color="gray.400"
