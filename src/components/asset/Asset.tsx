@@ -44,7 +44,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
@@ -72,6 +72,67 @@ interface AssetProps {
   onReceiveClick?: () => void;
   onSwapClick?: () => void;
 }
+
+// Icon component with fallback for broken/empty images
+const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, alt: string, boxSize: string, color: string }) => {
+  const [error, setError] = useState(false);
+
+  const cleanUrl = React.useMemo(() => {
+    // Check for null, undefined, or empty string
+    if (!src || src.trim() === '') {
+      console.log('🖼️ [IconWithFallback] Empty or null src:', src);
+      return null;
+    }
+
+    // Handle comma-separated URLs (take first valid one)
+    if (src.includes(',')) {
+      const urls = src.split(',')
+        .map(u => u.trim())
+        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
+
+      const firstUrl = urls[0] || null;
+      console.log('🖼️ [IconWithFallback] Multi URL detected:', { src, urls, firstUrl });
+      return firstUrl;
+    }
+
+    // Return null if URL doesn't start with http (invalid)
+    if (!src.startsWith('http://') && !src.startsWith('https://')) {
+      console.log('🖼️ [IconWithFallback] Invalid URL (no protocol):', src);
+      return null;
+    }
+
+    console.log('🖼️ [IconWithFallback] Valid URL:', src);
+    return src;
+  }, [src]);
+
+  if (!cleanUrl || error) {
+    return (
+      <Box
+        boxSize={boxSize}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        fontSize="lg"
+        color={color}
+      >
+        <FaCoins />
+      </Box>
+    );
+  }
+
+  return (
+    <Image
+      src={cleanUrl}
+      alt={alt}
+      boxSize={boxSize}
+      objectFit="contain"
+      onError={(e) => {
+        console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
+        setError(true);
+      }}
+    />
+  );
+};
 
 export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }: AssetProps) => {
   // State for managing the component's loading status
@@ -618,12 +679,12 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     </Box>
                     
                     {/* Token Icon as smaller overlay */}
-                    <Box 
+                    <Box
                       position="absolute"
                       bottom="-2"
                       right="-2"
-                      borderRadius="full" 
-                      overflow="hidden" 
+                      borderRadius="full"
+                      overflow="hidden"
                       boxSize="32px"
                       bg={theme.cardBg}
                       boxShadow="md"
@@ -631,19 +692,19 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                       borderWidth="2px"
                       borderColor={theme.bg}
                     >
-                      <Image 
+                      <IconWithFallback
                         src={assetContext.icon}
                         alt={`${assetContext.name} Icon`}
                         boxSize="100%"
-                        objectFit="contain"
+                        color={theme.gold}
                       />
                     </Box>
                   </Box>
                 ) : (
                   /* Native Asset Icon */
-                  <Box 
-                    borderRadius="full" 
-                    overflow="hidden" 
+                  <Box
+                    borderRadius="full"
+                    overflow="hidden"
                     boxSize="80px"
                     bg={theme.cardBg}
                     boxShadow="lg"
@@ -651,11 +712,11 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     borderWidth="1px"
                     borderColor={assetContext.color || theme.border}
                   >
-                    <Image 
+                    <IconWithFallback
                       src={assetContext.icon}
                       alt={`${assetContext.name} Icon`}
                       boxSize="100%"
-                      objectFit="contain"
+                      color={assetContext.color || theme.gold}
                     />
                   </Box>
                 )}
@@ -1645,11 +1706,11 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                             borderWidth="1px"
                             borderColor={theme.border}
                           >
-                            <Image
+                            <IconWithFallback
                               src={token.icon}
                               alt={token.name || token.symbol}
                               boxSize="40px"
-                              objectFit="contain"
+                              color={theme.gold}
                             />
                           </Box>
                           <VStack align="flex-start" gap={0}>

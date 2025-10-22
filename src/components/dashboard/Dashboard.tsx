@@ -20,9 +20,72 @@ import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
+import { FaCoins } from 'react-icons/fa';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
+
+// Icon component with fallback
+const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, alt: string, boxSize: string, color: string }) => {
+  const [error, setError] = useState(false);
+
+  // Clean URL - handle comma-separated URLs
+  const cleanUrl = React.useMemo(() => {
+    // Check for null, undefined, or empty string
+    if (!src || src.trim() === '') {
+      console.log('🖼️ [IconWithFallback] Empty or null src:', src);
+      return null;
+    }
+
+    // Handle comma-separated URLs (take first valid one)
+    if (src.includes(',')) {
+      const urls = src.split(',')
+        .map(u => u.trim())
+        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
+
+      const firstUrl = urls[0] || null;
+      console.log('🖼️ [IconWithFallback] Multi URL detected:', { src, urls, firstUrl });
+      return firstUrl;
+    }
+
+    // Return null if URL doesn't start with http (invalid)
+    if (!src.startsWith('http://') && !src.startsWith('https://')) {
+      console.log('🖼️ [IconWithFallback] Invalid URL (no protocol):', src);
+      return null;
+    }
+
+    console.log('🖼️ [IconWithFallback] Valid URL:', src);
+    return src;
+  }, [src]);
+
+  if (!cleanUrl || error) {
+    return (
+      <Box
+        boxSize={boxSize}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        fontSize="lg"
+        color={color}
+      >
+        <FaCoins />
+      </Box>
+    );
+  }
+
+  return (
+    <Image
+      src={cleanUrl}
+      alt={alt}
+      boxSize={boxSize}
+      objectFit="cover"
+      onError={(e) => {
+        console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
+        setError(true);
+      }}
+    />
+  );
+};
 
 // Play sound utility function
 const playSound = (sound: HTMLAudioElement | null) => {
@@ -854,28 +917,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              {network.icon ? (
-                                <Image 
-                                  src={network.icon} 
-                                  alt={network.networkId}
-                                  boxSize="44px"
-                                  objectFit="cover"
-                                />
-                              ) : (
-                                <Box
-                                  boxSize="44px"
-                                  borderRadius="50%"
-                                  bg={`${network.color}20`}
-                                  display="flex"
-                                  alignItems="center"
-                                  justifyContent="center"
-                                  fontSize="lg"
-                                  fontWeight="bold"
-                                  color={network.color}
-                                >
-                                  {network.gasAssetSymbol?.slice(0, 2)}
-                                </Box>
-                              )}
+                              <IconWithFallback
+                                src={network.icon}
+                                alt={network.networkId}
+                                boxSize="44px"
+                                color={network.color}
+                              />
                             </Box>
                             <Stack gap={0.5}>
                               <Text fontSize="md" fontWeight="bold" color={network.color}>
@@ -1168,11 +1215,17 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      // Get token icon and color with better fallbacks
                      let tokenIcon = token.icon;
                      let tokenColor = token.color;
-                     
+
+                     // Handle comma-separated icon URLs (take first valid one)
+                     if (tokenIcon && tokenIcon.includes(',')) {
+                       const urls = tokenIcon.split(',').filter((url: string) => url.trim().startsWith('http'));
+                       tokenIcon = urls[0] || null;
+                     }
+
                      // Determine token symbol and name
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
                      const tokenName = token.name || tokenSymbol;
-                     
+
                      // Set fallback icon and color based on token type if not provided
                      if (!tokenIcon || !tokenColor) {
                        if (token.caip?.includes('MAYA.') || token.caip?.includes('cosmos:mayachain-mainnet-v1/denom:maya')) {
@@ -1306,11 +1359,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              <Image 
-                                src={tokenIcon} 
+                              <IconWithFallback
+                                src={tokenIcon}
                                 alt={tokenName}
                                 boxSize="44px"
-                                objectFit="cover"
+                                color={tokenColor}
                               />
                             </Box>
                             <Stack gap={0.5}>
