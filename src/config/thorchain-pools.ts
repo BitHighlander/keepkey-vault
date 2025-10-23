@@ -2,7 +2,7 @@
  * THORChain Supported Pools Configuration
  *
  * Auto-generated from THORChain Midgard API
- * Generated: 2025-10-21T23:42:38.188Z
+ * Generated: 2025-10-23T05:25:56.844Z
  *
  * This file contains all active THORChain pools mapped to CAIP format.
  * DO NOT EDIT MANUALLY - regenerate using: node scripts/fetch-thorchain-pools.js
@@ -31,7 +31,7 @@ export interface ThorchainPool {
 
 /**
  * All supported THORChain pools
- * Total: 35 pools
+ * Total: 30 pools
  */
 export const THORCHAIN_POOLS: ThorchainPool[] = [
   {
@@ -271,28 +271,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "contract": "0X5F98805A4E8BE255A32880FDEC7F6728C6568BA0"
   },
   {
-    "asset": "ETH.TGT-0X108A850856DB3F85D0269A2693D896B394C80325",
-    "chain": "ETH",
-    "symbol": "TGT",
-    "name": "TGT (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
-    "caip": "eip155:1/erc20:0x108a850856db3f85d0269a2693d896b394c80325",
-    "networkId": "eip155:1",
-    "isNative": false,
-    "contract": "0X108A850856DB3F85D0269A2693D896B394C80325"
-  },
-  {
-    "asset": "ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044",
-    "chain": "ETH",
-    "symbol": "THOR",
-    "name": "THOR (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
-    "caip": "eip155:1/erc20:0xa5f2211b9b8170f694421f2046281775e8468044",
-    "networkId": "eip155:1",
-    "isNative": false,
-    "contract": "0XA5F2211B9B8170F694421F2046281775E8468044"
-  },
-  {
     "asset": "ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48",
     "chain": "ETH",
     "symbol": "USDC",
@@ -326,17 +304,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "contract": "0XDAC17F958D2EE523A2206206994597C13D831EC7"
   },
   {
-    "asset": "ETH.VTHOR-0X815C23ECA83261B6EC689B60CC4A58B54BC24D8D",
-    "chain": "ETH",
-    "symbol": "VTHOR",
-    "name": "VTHOR (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
-    "caip": "eip155:1/erc20:0x815c23eca83261b6ec689b60cc4a58b54bc24d8d",
-    "networkId": "eip155:1",
-    "isNative": false,
-    "contract": "0X815C23ECA83261B6EC689B60CC4A58B54BC24D8D"
-  },
-  {
     "asset": "ETH.WBTC-0X2260FAC5E5542A773AA44FBCFEDF7C193BC2C599",
     "chain": "ETH",
     "symbol": "WBTC",
@@ -346,28 +313,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "networkId": "eip155:1",
     "isNative": false,
     "contract": "0X2260FAC5E5542A773AA44FBCFEDF7C193BC2C599"
-  },
-  {
-    "asset": "ETH.XRUNE-0X69FA0FEE221AD11012BAB0FDB45D444D3D2CE71C",
-    "chain": "ETH",
-    "symbol": "XRUNE",
-    "name": "XRUNE (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
-    "caip": "eip155:1/erc20:0x69fa0fee221ad11012bab0fdb45d444d3d2ce71c",
-    "networkId": "eip155:1",
-    "isNative": false,
-    "contract": "0X69FA0FEE221AD11012BAB0FDB45D444D3D2CE71C"
-  },
-  {
-    "asset": "ETH.YFI-0X0BC529C00C6401AEF6D220BE8C6EA1667F6AD93E",
-    "chain": "ETH",
-    "symbol": "YFI",
-    "name": "YFI (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
-    "caip": "eip155:1/erc20:0x0bc529c00c6401aef6d220be8c6ea1667f6ad93e",
-    "networkId": "eip155:1",
-    "isNative": false,
-    "contract": "0X0BC529C00C6401AEF6D220BE8C6EA1667F6AD93E"
   },
   {
     "asset": "GAIA.ATOM",
