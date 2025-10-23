@@ -165,6 +165,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
   // Add state for refreshing charts
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Track which networks have been scanned to avoid duplicate token discovery
+  const [scannedNetworks, setScannedNetworks] = useState<Set<string>>(new Set());
 
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
