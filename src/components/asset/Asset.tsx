@@ -1675,8 +1675,19 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         {/* Cosmos Staking Section */}
         <CosmosStaking assetContext={assetContext} />
 
-        {/* EVM Tokens Section */}
+        {/* Tokens Section - Only show for gas assets on non-UTXO networks */}
         {(() => {
+          // Only show for gas assets (not tokens themselves)
+          if (assetContext.isToken) return null;
+
+          // Only show for non-UTXO networks (EVM and Cosmos chains)
+          const isUtxoNetwork = assetContext.networkId?.startsWith('bip122:');
+          if (isUtxoNetwork) return null;
+
+          // Determine network type
+          const isEvmNetwork = assetContext.networkId?.startsWith('eip155:');
+          const isCosmosNetwork = assetContext.networkId?.startsWith('cosmos:');
+
           // Filter tokens for the current network from app.balances
           const networkTokens = app?.balances?.filter((balance: any) =>
             balance.networkId === assetContext.networkId &&
@@ -1691,8 +1702,6 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
             return valueB - valueA;
           });
 
-          if (networkTokens.length === 0) return null;
-
           return (
             <Box
               bg={theme.cardBg}
@@ -1703,74 +1712,156 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
               mt={6}
             >
               <Box p={4} borderBottom="1px" borderColor={theme.border}>
-                <Text color={theme.gold} fontSize="lg" fontWeight="bold">
-                  Tokens on {assetContext.symbol} Network ({networkTokens.length})
-                </Text>
+                <Flex justify="space-between" align="center">
+                  <Text color={theme.gold} fontSize="lg" fontWeight="bold">
+                    {isEvmNetwork ? 'ERC-20 Tokens' : isCosmosNetwork ? 'IBC Tokens' : 'Tokens'} ({networkTokens.length})
+                  </Text>
+                  {networkTokens.length === 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      color={theme.gold}
+                      borderColor={theme.border}
+                      _hover={{
+                        bg: 'rgba(255, 215, 0, 0.1)',
+                        borderColor: theme.gold,
+                      }}
+                      onClick={handleRefreshCharts}
+                      isLoading={isRefreshing}
+                      leftIcon={<FaSync />}
+                    >
+                      Discover
+                    </Button>
+                  )}
+                </Flex>
               </Box>
 
               <VStack align="stretch" p={4} gap={3}>
-                {networkTokens.map((token: any, index: number) => {
-                  const tokenValueUsd = parseFloat(token.valueUsd || 0);
-                  const tokenBalance = parseFloat(token.balance || 0);
+                {networkTokens.length > 0 ? (
+                  networkTokens.map((token: any, index: number) => {
+                    const tokenValueUsd = parseFloat(token.valueUsd || 0);
+                    const tokenBalance = parseFloat(token.balance || 0);
 
-                  return (
-                    <Box
-                      key={`${token.caip}-${index}`}
-                      p={4}
-                      bg={theme.bg}
-                      borderRadius="lg"
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                      _hover={{
-                        borderColor: theme.gold,
-                        bg: 'rgba(255, 215, 0, 0.05)',
-                      }}
-                      transition="all 0.2s"
-                      cursor="pointer"
-                      onClick={() => {
-                        console.log('🪙 [Asset] Token clicked:', token);
-                        router.push(`/asset/${btoa(token.caip)}`);
-                      }}
-                    >
-                      <Flex justify="space-between" align="center">
-                        <HStack gap={3}>
-                          <Box
-                            borderRadius="full"
-                            overflow="hidden"
-                            boxSize="40px"
-                            bg={theme.cardBg}
-                            borderWidth="1px"
-                            borderColor={theme.border}
-                          >
-                            <IconWithFallback
-                              src={token.icon}
-                              alt={token.name || token.symbol}
+                    return (
+                      <Box
+                        key={`${token.caip}-${index}`}
+                        p={4}
+                        bg={theme.bg}
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor={theme.border}
+                        _hover={{
+                          borderColor: theme.gold,
+                          bg: 'rgba(255, 215, 0, 0.05)',
+                        }}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                        onClick={() => {
+                          console.log('🪙 [Asset] Token clicked:', token);
+                          router.push(`/asset/${btoa(token.caip)}`);
+                        }}
+                      >
+                        <Flex justify="space-between" align="center">
+                          <HStack gap={3}>
+                            <Box
+                              borderRadius="full"
+                              overflow="hidden"
                               boxSize="40px"
-                              color={theme.gold}
-                            />
-                          </Box>
-                          <VStack align="flex-start" gap={0}>
-                            <Text fontSize="md" fontWeight="bold" color="white">
-                              {token.symbol || 'Unknown'}
+                              bg={theme.cardBg}
+                              borderWidth="1px"
+                              borderColor={theme.border}
+                            >
+                              <IconWithFallback
+                                src={token.icon}
+                                alt={token.name || token.symbol}
+                                boxSize="40px"
+                                color={theme.gold}
+                              />
+                            </Box>
+                            <VStack align="flex-start" gap={0}>
+                              <Text fontSize="md" fontWeight="bold" color="white">
+                                {token.symbol || 'Unknown'}
+                              </Text>
+                              <Text fontSize="xs" color="gray.400">
+                                {token.name || 'Unknown Token'}
+                              </Text>
+                            </VStack>
+                          </HStack>
+
+                          <VStack align="flex-end" gap={0}>
+                            <Text fontSize="md" color={theme.gold} fontWeight="medium">
+                              ${formatUsd(tokenValueUsd)}
                             </Text>
                             <Text fontSize="xs" color="gray.400">
-                              {token.name || 'Unknown Token'}
+                              {tokenBalance.toFixed(6)} {token.symbol}
                             </Text>
                           </VStack>
-                        </HStack>
-
-                        <VStack align="flex-end" gap={0}>
-                          <Text fontSize="md" color={theme.gold} fontWeight="medium">
-                            ${formatUsd(tokenValueUsd)}
-                          </Text>
-                          <Text fontSize="xs" color="gray.400">
-                            {tokenBalance.toFixed(6)} {token.symbol}
-                          </Text>
-                        </VStack>
-                      </Flex>
+                        </Flex>
+                      </Box>
+                    );
+                  })
+                ) : (
+                  <VStack align="center" gap={4} py={8}>
+                    <Box
+                      w="60px"
+                      h="60px"
+                      borderRadius="full"
+                      bg="rgba(255, 215, 0, 0.1)"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                    >
+                      <FaCoins color={theme.gold} size="24px" />
                     </Box>
-                  );
-                })}
+                    <VStack gap={2}>
+                      <Text fontSize="md" fontWeight="medium" color="white">
+                        No Tokens Found
+                      </Text>
+                      <Text fontSize="sm" color="gray.400" textAlign="center" maxW="sm">
+                        {isEvmNetwork
+                          ? "You don't have any ERC-20 tokens on this network yet. Click 'Discover' to scan for tokens or add custom tokens."
+                          : isCosmosNetwork
+                          ? "You don't have any IBC tokens on this network yet. Click 'Discover' to scan for tokens."
+                          : "You don't have any tokens on this network yet."}
+                      </Text>
+                    </VStack>
+                    <HStack gap={3}>
+                      <Button
+                        size="md"
+                        bg={theme.cardBg}
+                        color={theme.gold}
+                        borderColor={theme.border}
+                        borderWidth="1px"
+                        _hover={{
+                          bg: 'rgba(255, 215, 0, 0.1)',
+                          borderColor: theme.gold,
+                        }}
+                        onClick={handleRefreshCharts}
+                        isLoading={isRefreshing}
+                        leftIcon={<FaSync />}
+                      >
+                        Discover Tokens
+                      </Button>
+                      {isEvmNetwork && (
+                        <Button
+                          size="md"
+                          bg={theme.cardBg}
+                          color="#23DCC8"
+                          borderColor={theme.border}
+                          borderWidth="1px"
+                          _hover={{
+                            bg: 'rgba(35, 220, 200, 0.1)',
+                            borderColor: '#23DCC8',
+                          }}
+                          onClick={() => setIsCustomTokenDialogOpen(true)}
+                          leftIcon={<FaPlus />}
+                        >
+                          Add Custom Token
+                        </Button>
+                      )}
+                    </HStack>
+                  </VStack>
+                )}
               </VStack>
             </Box>
           );
