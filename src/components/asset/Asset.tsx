@@ -44,7 +44,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
@@ -53,6 +53,8 @@ import { BalanceDistribution } from '../balance/BalanceDistribution';
 import { aggregateBalances, AggregatedBalance } from '@/types/balance';
 import { ReportDialog } from './ReportDialog';
 import { AddPathDialog } from './AddPathDialog';
+import { CustomTokenDialog } from './CustomTokenDialog';
+import { useCustomTokens } from '@/hooks/useCustomTokens';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -152,8 +154,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   // Add state for add path dialog
   const [isAddPathDialogOpen, setIsAddPathDialogOpen] = useState(false);
+  // Add state for custom token dialog
+  const [isCustomTokenDialogOpen, setIsCustomTokenDialogOpen] = useState(false);
   // Add state for tracking back navigation loading
   const [isNavigatingBack, setIsNavigatingBack] = useState(false);
+
+  // Custom tokens hook
+  const { customTokens, addCustomToken, removeCustomToken, refreshCustomTokens } = useCustomTokens();
   // Add state for tracking copied addresses/pubkeys
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
   // Add state for refreshing charts
@@ -942,6 +949,35 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                 <Flex gap={2} align="center">
                   <FaFileExport />
                   <Text>Report</Text>
+                </Flex>
+              </Button>
+              <Button
+                width="100%"
+                size="lg"
+                bg={theme.cardBg}
+                color="#23DCC8"
+                borderColor={theme.border}
+                borderWidth="1px"
+                _hover={{
+                  bg: 'rgba(35, 220, 200, 0.1)',
+                  borderColor: '#23DCC8',
+                }}
+                onClick={() => setIsCustomTokenDialogOpen(true)}
+              >
+                <Flex gap={2} align="center">
+                  <FaList />
+                  <Text>Custom Tokens</Text>
+                  {customTokens.length > 0 && (
+                    <Badge
+                      bg="#23DCC8"
+                      color="black"
+                      borderRadius="full"
+                      px={2}
+                      fontSize="xs"
+                    >
+                      {customTokens.length}
+                    </Badge>
+                  )}
                 </Flex>
               </Button>
             </VStack>
@@ -1753,6 +1789,29 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         isOpen={isAddPathDialogOpen}
         onClose={() => setIsAddPathDialogOpen(false)}
         assetContext={assetContext}
+      />
+
+      {/* Custom Token Dialog */}
+      <CustomTokenDialog
+        isOpen={isCustomTokenDialogOpen}
+        onClose={() => setIsCustomTokenDialogOpen(false)}
+        onAddToken={async (token) => {
+          const result = await addCustomToken(token);
+          if (result.success) {
+            // Refresh charts to show the new token
+            await refreshCustomTokens();
+          }
+          return result;
+        }}
+        onRemoveToken={async (networkId, tokenAddress) => {
+          const success = await removeCustomToken(networkId, tokenAddress);
+          if (success) {
+            // Refresh charts after removing token
+            await refreshCustomTokens();
+          }
+        }}
+        customTokens={customTokens}
+        defaultNetwork={assetContext?.networkId}
       />
     </Box>
   );
