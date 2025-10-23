@@ -1081,7 +1081,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const isLoadingAssets = !app?.balances || (app.balances.length === 0 && !app?.assetContext);
 
   return (
-    <Box bg="bg.primary" minH="100vh" position="relative">
+    <Box
+      bg="black"
+      minH="100vh"
+      position="relative"
+      backgroundImage="url(/images/backgrounds/splash-bg.png)"
+      backgroundSize="cover"
+      backgroundPosition="center"
+      backgroundRepeat="no-repeat"
+    >
       {/* Device Verification Modal - Using simple overlay approach */}
       {showDeviceVerificationDialog && (
         <>
@@ -1544,46 +1552,29 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       )}
       
       {/* Top Header */}
-      <Box 
-        position="absolute" 
-        top={0} 
-        left={0} 
-        right={0} 
-        p={4} 
+      <Box
+        position="absolute"
+        top={0}
+        left={0}
+        right={0}
+        p={4}
         zIndex={10}
-        bg="rgba(0, 0, 0, 0.5)"
-        backdropFilter="blur(10px)"
-        borderBottom="1px solid"
-        borderColor="gray.800"
       >
         <Container maxW="container.xl">
-          <HStack justify="space-between">
-            {/* Left side - Back button */}
-            <Button
-              leftIcon={<FaArrowLeft size={18} />}
-              variant="solid"
-              onClick={onBackClick}
-              color="white"
-              bg="gray.800"
-              _hover={{ bg: 'gray.700', transform: 'translateX(-2px)' }}
-              _active={{ bg: 'gray.600' }}
-              size="sm"
-              px={3}
-            >
-              Back
-            </Button>
-            
-            {/* Center - Title */}
-            <HStack gap={2}>
-              <Image src="https://pioneers.dev/coins/thorchain.png" alt="THORChain" boxSize="28px" />
-              <Text fontSize="lg" fontWeight="bold" color="white">
-                THORChain Swapper
-              </Text>
-            </HStack>
-            
-            {/* Right side - placeholder for balance alignment */}
-            <Box width="40px" />
-          </HStack>
+          {/* Back button */}
+          <Button
+            leftIcon={<FaArrowLeft size={18} />}
+            variant="solid"
+            onClick={onBackClick}
+            color="white"
+            bg="gray.800"
+            _hover={{ bg: 'gray.700', transform: 'translateX(-2px)' }}
+            _active={{ bg: 'gray.600' }}
+            size="sm"
+            px={3}
+          >
+            Back
+          </Button>
         </Container>
       </Box>
 
@@ -1605,6 +1596,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             boxShadow="0 4px 24px 0 rgba(35, 220, 200, 0.15)"
           >
             <Card.Body p={4}>
+              {/* Card Title */}
+              <HStack justify="center" gap={2} mb={4} pb={3} borderBottom="1px solid" borderColor="gray.700">
+                <Image src="https://pioneers.dev/coins/thorchain.png" alt="THORChain" boxSize="28px" />
+                <Text fontSize="xl" fontWeight="bold" color="white">
+                  THORChain Swapper
+                </Text>
+              </HStack>
+
               {isLoadingAssets ? (
                 <VStack py={20} gap={4}>
                   <Box position="relative">
