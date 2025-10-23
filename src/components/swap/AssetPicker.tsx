@@ -29,6 +29,7 @@ interface Asset {
   symbol: string;
   icon: string;
   balance?: string | number;
+  balanceUsd?: string | number;
   networkId?: string;
 }
 
@@ -53,6 +54,7 @@ export const AssetPicker = ({
 }: AssetPickerProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllAssets, setShowAllAssets] = useState(false);
+  const [hoveredAsset, setHoveredAsset] = useState<string | null>(null);
 
   const handleSelect = (asset: Asset) => {
     onSelect(asset);
@@ -99,20 +101,29 @@ export const AssetPicker = ({
   return (
     <DialogRoot open={isOpen} onOpenChange={({ open }) => !open && onClose()}>
       <DialogContent
-        maxWidth="600px"
+        maxWidth="800px"
         bg="rgba(17, 17, 17, 0.98)"
         borderColor="#23DCC8"
         borderWidth="2px"
+        position="fixed"
+        top="50%"
+        left="50%"
+        transform="translate(-50%, -50%)"
+        margin="0"
       >
-        <DialogHeader borderBottom="1px solid rgba(255, 255, 255, 0.1)" pb={3}>
-          <DialogTitle color="white" fontSize="lg">{title}</DialogTitle>
+        <DialogHeader borderBottom="1px solid rgba(255, 255, 255, 0.1)" pb={4} pt={2} px={6}>
+          <DialogTitle color="white" fontSize="lg" fontWeight="600">{title}</DialogTitle>
           <DialogCloseTrigger />
         </DialogHeader>
-        <DialogBody pb={4} pt={4}>
+        <DialogBody pb={6} pt={4} px={6}>
           <VStack align="stretch" gap={4}>
             {/* Search Input */}
             <InputGroup
-              startElement={<FaSearch color="gray" size={14} />}
+              startElement={
+                <Box pl={3}>
+                  <FaSearch color="gray" size={14} />
+                </Box>
+              }
             >
               <Input
                 placeholder="Search assets..."
@@ -124,14 +135,15 @@ export const AssetPicker = ({
                 _focus={{ borderColor: '#23DCC8', boxShadow: '0 0 0 1px #23DCC8' }}
                 color="white"
                 size="md"
+                pl={10}
               />
             </InputGroup>
 
             {/* Asset Grid */}
             <Grid
-              templateColumns="repeat(auto-fill, minmax(90px, 1fr))"
-              gap={2}
-              maxH="400px"
+              templateColumns="repeat(auto-fill, minmax(160px, 1fr))"
+              gap={3}
+              maxH="500px"
               overflowY="auto"
               pr={2}
               css={{
@@ -159,42 +171,65 @@ export const AssetPicker = ({
                   <Box
                     key={asset.caip}
                     onClick={() => handleSelect(asset)}
+                    onMouseEnter={() => setHoveredAsset(asset.caip)}
+                    onMouseLeave={() => setHoveredAsset(null)}
                     cursor="pointer"
                     position="relative"
                     transition="all 0.2s"
+                    bg={isSelected ? 'rgba(35, 220, 200, 0.15)' : 'rgba(30, 30, 30, 0.6)'}
+                    borderRadius="xl"
+                    borderWidth="2px"
+                    borderColor={isSelected ? '#23DCC8' : 'rgba(255, 255, 255, 0.1)'}
+                    p={4}
+                    _hover={{
+                      bg: isSelected ? 'rgba(35, 220, 200, 0.2)' : 'rgba(35, 220, 200, 0.1)',
+                      borderColor: '#23DCC8',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 4px 12px rgba(35, 220, 200, 0.2)',
+                    }}
                   >
-                    {/* Square Tile */}
-                    <Box
-                      aspectRatio={1}
-                      bg={isSelected ? 'rgba(35, 220, 200, 0.15)' : 'rgba(30, 30, 30, 0.6)'}
-                      borderRadius="lg"
-                      borderWidth="2px"
-                      borderColor={isSelected ? '#23DCC8' : 'rgba(255, 255, 255, 0.1)'}
-                      display="flex"
-                      flexDirection="column"
-                      alignItems="center"
-                      justifyContent="center"
-                      gap={1.5}
-                      p={2}
-                      _hover={{
-                        bg: isSelected ? 'rgba(35, 220, 200, 0.2)' : 'rgba(35, 220, 200, 0.1)',
-                        borderColor: '#23DCC8',
-                        transform: 'translateY(-2px)',
-                        boxShadow: '0 4px 12px rgba(35, 220, 200, 0.2)',
-                      }}
-                    >
+                    {/* Selected Indicator */}
+                    {isSelected && (
+                      <Box
+                        position="absolute"
+                        top={2}
+                        left={2}
+                        bg="#23DCC8"
+                        borderRadius="full"
+                        boxSize="10px"
+                      />
+                    )}
+
+                    {/* Balance Badge (if has balance) */}
+                    {hasBalance && (
+                      <Box
+                        position="absolute"
+                        top={2}
+                        right={2}
+                        bg="rgba(35, 220, 200, 0.2)"
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                      >
+                        <Text fontSize="10px" color="#23DCC8" fontWeight="bold">
+                          {formatBalance(asset.balance!)}
+                        </Text>
+                      </Box>
+                    )}
+
+                    <VStack gap={2} align="center">
                       {/* Asset Icon */}
                       <Image
                         src={asset.icon}
                         alt={asset.name}
-                        boxSize="36px"
+                        boxSize="48px"
                         borderRadius="full"
                         fallbackSrc="https://pioneers.dev/coins/coin.png"
                       />
 
                       {/* Asset Symbol */}
                       <Text
-                        fontSize="xs"
+                        fontSize="sm"
                         fontWeight="bold"
                         color={isSelected ? '#23DCC8' : 'white'}
                         textAlign="center"
@@ -204,47 +239,32 @@ export const AssetPicker = ({
                         {asset.symbol}
                       </Text>
 
-                      {/* Balance Badge (if has balance) */}
-                      {hasBalance && (
-                        <Box
-                          position="absolute"
-                          top={1}
-                          right={1}
-                          bg="rgba(35, 220, 200, 0.2)"
-                          borderRadius="full"
-                          px={1.5}
-                          py={0.5}
-                        >
-                          <Text fontSize="9px" color="#23DCC8" fontWeight="bold">
-                            {formatBalance(asset.balance!)}
-                          </Text>
-                        </Box>
-                      )}
+                      {/* Asset Name */}
+                      <Text
+                        fontSize="xs"
+                        color="gray.400"
+                        textAlign="center"
+                        noOfLines={2}
+                        width="full"
+                        lineHeight="1.3"
+                      >
+                        {asset.name}
+                      </Text>
 
-                      {/* Selected Indicator */}
-                      {isSelected && (
-                        <Box
-                          position="absolute"
-                          top={1}
-                          left={1}
-                          bg="#23DCC8"
-                          borderRadius="full"
-                          boxSize="8px"
-                        />
-                      )}
-                    </Box>
-
-                    {/* Asset Name (below tile) */}
-                    <Text
-                      fontSize="9px"
-                      color="gray.500"
-                      textAlign="center"
-                      mt={1}
-                      noOfLines={1}
-                      width="full"
-                    >
-                      {asset.name}
-                    </Text>
+                      {/* CAIP Identifier */}
+                      <Text
+                        fontSize="9px"
+                        color="gray.600"
+                        textAlign="center"
+                        width="full"
+                        fontFamily="monospace"
+                        mt={1}
+                      >
+                        {hoveredAsset === asset.caip
+                          ? asset.caip
+                          : middleEllipsis(asset.caip, 12)}
+                      </Text>
+                    </VStack>
                   </Box>
                 );
               })}

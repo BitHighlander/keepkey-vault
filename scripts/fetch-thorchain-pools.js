@@ -84,6 +84,18 @@ const TOKEN_SYMBOL_OVERRIDES = {
 };
 
 /**
+ * Blocklist for competitor tokens that should be excluded from the app
+ * These tokens are filtered out even if available on THORChain
+ */
+const BLOCKED_ASSETS = [
+  'ETH.TGT-0X108A850856DB3F85D0269A2693D896B394C80325',   // THORSwap governance token (competitor)
+  'ETH.THOR-0XA5F2211B9B8170F694421F2046281775E8468044',  // THORSwap token (competitor)
+  'ETH.VTHOR-0X815C23ECA83261B6EC689B60CC4A58B54BC24D8D', // VeChain THOR (competitor)
+  'ETH.XRUNE-0X69FA0FEE221AD11012BAB0FDB45D444D3D2CE71C', // THORChain-related competitor token
+  'ETH.YFI-0X0BC529C00C6401AEF6D220BE8C6EA1667F6AD93E',   // Yearn Finance (competitor)
+];
+
+/**
  * Fetch data from URL using https
  */
 function fetchJson(url) {
@@ -199,8 +211,15 @@ async function fetchAndTransformPools() {
     // Transform to CAIP format
     const transformed = [];
     const skipped = [];
+    const blocked = [];
 
     for (const pool of activePools) {
+      // Skip blocked assets (competitors)
+      if (BLOCKED_ASSETS.includes(pool.asset)) {
+        blocked.push(pool.asset);
+        continue;
+      }
+
       const parsed = parsePoolAsset(pool.asset);
       if (!parsed) {
         skipped.push(pool.asset);
@@ -245,6 +264,9 @@ async function fetchAndTransformPools() {
     });
 
     console.log(`\n✅ Successfully transformed ${transformed.length} pools`);
+    if (blocked.length > 0) {
+      console.log(`🚫 Blocked ${blocked.length} competitor tokens: ${blocked.join(', ')}`);
+    }
     console.log(`⚠️  Skipped ${skipped.length} pools: ${skipped.join(', ')}\n`);
 
     // Group by chain for display

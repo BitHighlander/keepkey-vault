@@ -222,17 +222,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         existing.balanceUsd += valueUsd;
         console.log(`➕ [SWAP] Aggregating ${ticker}: total balance=${existing.balance}, total USD=${existing.balanceUsd}`);
       } else {
-        // Create new entry
+        // Create new entry - get icon from assetData (always available) or fallback to balance icon
+        const assetInfo = app?.assets?.[balance.caip];
+        const icon = assetInfo?.icon || balance.icon || supportedAsset.icon;
+
         balanceMap.set(ticker, {
           caip: balance.caip,
           symbol: ticker,
-          name: supportedAsset.name,
-          icon: supportedAsset.icon,
+          name: assetInfo?.name || supportedAsset.name,
+          icon: icon,
           balance: balanceAmount,
           balanceUsd: valueUsd,
           priceUsd: parseFloat(balance.priceUsd || '0')
         });
-        console.log(`✅ [SWAP] Added ${ticker} to balance map`);
+        console.log(`✅ [SWAP] Added ${ticker} to balance map with icon:`, icon);
       }
     });
 
@@ -261,9 +264,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         console.log('⚠️ [SWAP] BTC was filtered out! Check valueUsd calculation');
       }
     }
-    
+
     return assets;
-  }, [app?.balances]);
+  }, [app?.balances, app?.assets]);
 
   // fromAssets are already filtered and sorted in availableAssets
   const fromAssets = availableAssets;
@@ -274,8 +277,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     // This ensures we can swap to any asset with an active pool, even with 0 balance
     const allSupportedAssets = SUPPORTED_SWAP_ASSETS.map(poolAsset => {
       const balance = availableAssets.find(a => a.symbol === poolAsset.symbol);
+
+      // Get icon from assetData (always available) - use CAIP from poolAsset
+      const assetInfo = app?.assets?.[poolAsset.caip];
+      const icon = assetInfo?.icon || balance?.icon || poolAsset.icon;
+
       return {
         ...poolAsset,
+        name: assetInfo?.name || poolAsset.name,
+        icon: icon,
         balance: balance?.balance || 0,
         balanceUsd: balance?.balanceUsd || 0,
         priceUsd: balance?.priceUsd || 0
@@ -286,7 +296,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     return allSupportedAssets.filter(asset =>
       asset.symbol !== app?.assetContext?.symbol
     );
-  }, [availableAssets, app?.assetContext?.symbol]);
+  }, [availableAssets, app?.assetContext?.symbol, app?.assets]);
 
   // Initialize default assets if not set
   useEffect(() => {

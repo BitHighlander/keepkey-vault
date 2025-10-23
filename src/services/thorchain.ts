@@ -1,20 +1,20 @@
 // THORChain quote service for native asset swaps
+import { THORCHAIN_POOLS } from '../config/thorchain-pools';
+
 const THORNODE_URL = 'https://thornode.ninerealms.com';
 const MIDGARD_URL = 'https://midgard.ninerealms.com';
 
-// Asset mapping for THORChain
-const THORCHAIN_ASSETS: Record<string, string> = {
-  'BTC': 'BTC.BTC',
-  'ETH': 'ETH.ETH',
-  'BCH': 'BCH.BCH',
-  'LTC': 'LTC.LTC',
-  'DOGE': 'DOGE.DOGE',
-  'RUNE': 'THOR.RUNE',
-  'ATOM': 'GAIA.ATOM',
-  'AVAX': 'AVAX.AVAX',
-  'BNB': 'BNB.BNB',
-  'CACAO': 'MAYA.CACAO',
-};
+// Dynamically generate asset mapping from THORChain pools config
+// This ensures we always have the latest pool assets without manual updates
+// Prefer native assets over tokens when there are duplicate symbols
+const THORCHAIN_ASSETS: Record<string, string> = THORCHAIN_POOLS.reduce((acc, pool) => {
+  // If symbol already exists, only override if current pool is native
+  if (acc[pool.symbol] && !pool.isNative) {
+    return acc; // Keep existing (likely native) mapping
+  }
+  acc[pool.symbol] = pool.asset;
+  return acc;
+}, {} as Record<string, string>);
 
 // Maya Protocol assets (for Maya swaps)
 const MAYA_ASSETS: Record<string, string> = {
