@@ -1720,13 +1720,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <HStack justify="center" py={1}>
                       <IconButton
                         size="sm"
-                        variant="ghost"
                         onClick={swapAssets}
                         aria-label="Swap assets"
-                        icon={<FaExchangeAlt />}
-                        _hover={{ bg: 'gray.700' }}
+                        bg="rgba(30, 30, 30, 0.8)"
+                        borderWidth="2px"
+                        borderColor="#23DCC8"
                         borderRadius="full"
-                      />
+                        color="#23DCC8"
+                        _hover={{
+                          bg: 'rgba(35, 220, 200, 0.15)',
+                          borderColor: '#23DCC8',
+                          transform: 'rotate(180deg)'
+                        }}
+                        transition="all 0.3s"
+                      >
+                        <FaExchangeAlt size={16} />
+                      </IconButton>
                     </HStack>
 
                     {/* To Section */}
