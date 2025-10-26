@@ -33,6 +33,7 @@ import {
   DialogFooter,
   DialogCloseTrigger,
 } from '@/components/ui/dialog'
+import { AssetHeaderCard } from './AssetHeaderCard'
 
 // Add sound effect imports
 const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
@@ -2704,206 +2705,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         }}
       >
         <Stack gap={6} align="center">
-          {/* Asset Avatar and Info */}
-          <Box 
-            bg={theme.cardBg} 
-            p={5} 
-            borderRadius={theme.borderRadius}
-            boxShadow="lg"
-            border="1px solid"
-            borderColor={theme.border}
-            width="100%"
-          >
-            <VStack align="center" gap={4}>
-              <Box 
-                borderRadius="full" 
-                overflow="hidden" 
-                boxSize="70px"
-                bg={theme.cardBg}
-                boxShadow="lg"
-                p={2}
-                borderWidth="1px"
-                borderColor={assetContext.color || theme.border}
-              >
-                <Image 
-                  src={assetContext.icon}
-                  alt={`${assetContext.name} Icon`}
-                  boxSize="100%"
-                  objectFit="contain"
-                />
-              </Box>
-              <Stack align="center" gap={1}>
-                <Text fontSize="xl" fontWeight="bold" color="white">
-                  {assetContext.name}
-                </Text>
-                <Stack gap={1}>
-                  <Text color="gray.400" fontSize="sm" textAlign="center">
-                    Balance: {balance} {assetContext.symbol}
-                  </Text>
-                  <Text color={assetColor} fontSize="md" textAlign="center" fontWeight="medium">
-                    {formatUsd(totalBalanceUsd)}
-                  </Text>
-                  {/* Display selected address */}
-                  {selectedPubkey?.address && (
-                    <Flex
-                      align="center"
-                      justify="center"
-                      gap={2}
-                      mt={1}
-                      px={3}
-                      py={1}
-                      bg={`${assetColor}11`}
-                      borderRadius="md"
-                      borderWidth="1px"
-                      borderColor={`${assetColor}33`}
-                      maxW="100%"
-                    >
-                      <Text
-                        color="gray.400"
-                        fontSize="xs"
-                        fontFamily="mono"
-                        wordBreak="break-all"
-                        textAlign="center"
-                      >
-                        {selectedPubkey.address}
-                      </Text>
-                      <IconButton
-                        aria-label="Copy address"
-                        size="xs"
-                        variant="ghost"
-                        color={assetColor}
-                        flexShrink={0}
-                        onClick={() => {
-                          if (selectedPubkey.address) {
-                            navigator.clipboard.writeText(selectedPubkey.address)
-                              .then(() => {
-                                console.log('📋 Address copied to clipboard');
-                              })
-                              .catch(err => {
-                                console.error('Error copying address:', err);
-                              });
-                          }
-                        }}
-                      >
-                        <FaCopy size={10} />
-                      </IconButton>
-                    </Flex>
-                  )}
-                </Stack>
-              </Stack>
-            </VStack>
-          </Box>
-
-          {/* Pubkey Selector - Always show with Advanced dropdown */}
-          {assetContext.pubkeys && assetContext.pubkeys.length >= 1 && (
-            <Box width="100%" maxW="sm" mx="auto">
-              <Flex justify="space-between" align="center" mb={2}>
-                <Text color="gray.400" fontSize="sm">Select Address Type</Text>
-                <Button
-                  size="sm"
-                  height="28px"
-                  px={3}
-                  bg="transparent"
-                  color="gray.400"
-                  borderWidth="1px"
-                  borderColor={theme.border}
-                  _hover={{ bg: theme.border, color: "white" }}
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  rightIcon={showAdvanced ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
-                >
-                  Advanced
-                </Button>
-              </Flex>
-
-              {/* Advanced Options - Collapsible */}
-              {showAdvanced && (
-                <Box
-                  mb={3}
-                  p={3}
-                  bg={theme.border}
-                  borderRadius="8px"
-                  borderWidth="1px"
-                  borderColor={theme.border}
-                >
-                  <Button
-                    width="100%"
-                    size="sm"
-                    height="36px"
-                    bg="transparent"
-                    color={assetColor}
-                    borderWidth="1px"
-                    borderColor={assetColor}
-                    _hover={{ bg: assetColorLight }}
-                    onClick={openAddPathDialog}
-                    leftIcon={<FaPlus />}
-                  >
-                    Add Custom Path
-                  </Button>
-                </Box>
-              )}
-
-              <select
-                value={selectedPubkey?.pathMaster || ''}
-                onChange={handlePubkeyChange}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  backgroundColor: theme.cardBg,
-                  borderColor: theme.border,
-                  borderWidth: '1px',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = assetColor;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = theme.border;
-                }}
-              >
-                {(() => {
-                  // Sort pubkeys - prioritize Native Segwit for Bitcoin
-                  const sortedPubkeys = [...assetContext.pubkeys].sort((a: Pubkey, b: Pubkey) => {
-                    // Bitcoin - Native Segwit (bc1...) should come first
-                    if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
-                    if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
-
-                    // Otherwise maintain order
-                    return 0;
-                  });
-
-                  return sortedPubkeys.map((pubkey: Pubkey) => {
-                    let label = pubkey.note || pubkey.pathMaster;
-
-                    // For Bitcoin addresses, add "(Recommended)" tag to Native Segwit
-                    if (pubkey.note?.includes('Native Segwit')) {
-                      label = `${pubkey.note} (Recommended) - ${pubkey.pathMaster}`;
-                    } else if (pubkey.note) {
-                      label = `${pubkey.note} - ${pubkey.pathMaster}`;
-                    }
-
-                    return (
-                      <option
-                        key={pubkey.pathMaster}
-                        value={pubkey.pathMaster}
-                        style={{
-                          backgroundColor: theme.cardBg,
-                          color: 'white',
-                          padding: '8px'
-                        }}
-                      >
-                        {label}
-                      </option>
-                    );
-                  });
-                })()}
-              </select>
-            </Box>
-          )}
+          {/* Asset Header Card - Combined Asset Info + Address Selector */}
+          <AssetHeaderCard
+            assetContext={assetContext}
+            balance={balance}
+            totalBalanceUsd={totalBalanceUsd}
+            selectedPubkey={selectedPubkey}
+            showAdvanced={showAdvanced}
+            onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
+            onPubkeyChange={handlePubkeyChange}
+            onAddPathClick={openAddPathDialog}
+            assetColor={assetColor}
+            assetColorLight={assetColorLight}
+            formatUsd={formatUsd}
+            theme={theme}
+          />
 
           {/* Amount - Enhanced Dual Input Mode */}
           <Box 
