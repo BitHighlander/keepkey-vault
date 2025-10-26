@@ -1208,10 +1208,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     </Box>
                   ) : (
                     // Show actual tokens when found
-                    tokenBalances.map((token: any) => {
+                    tokenBalances.map((token: any, index: number) => {
                     const { integer, largePart, smallPart } = formatBalance(token.balance);
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
-                     
+
                      // Get token icon and color with better fallbacks
                      let tokenIcon = token.icon;
                      let tokenColor = token.color;
@@ -1242,7 +1242,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                          tokenColor = tokenColor || '#FFD700';
                        }
                      }
-                     
+
                      // Debug logging for token detection
                      console.log('🪙 [Dashboard] Token detected:', {
                        caip: token.caip,
@@ -1253,8 +1253,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      });
 
                     return (
-                      <Box 
-                        key={token.caip + '_' + token.pubkey}
+                      <Box
+                        key={`${token.caip}_${token.pubkey}_${index}`}
                         w="100%"
                         p={5}
                         borderRadius="2xl"
@@ -1425,8 +1425,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               color={tokenColor}
                               fontWeight="medium"
                             >
-                              $<CountUp 
-                                key={`token-${token.caip}-${lastSync}`}
+                              $<CountUp
+                                key={`token-${token.caip}-${token.pubkey}-${index}-${lastSync}`}
                                 end={tokenValueUsd} 
                                 decimals={2}
                                 duration={1.5}
