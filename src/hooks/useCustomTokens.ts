@@ -36,15 +36,30 @@ export const useCustomTokens = () => {
 
       console.log('🔍 Fetching custom tokens for:', userAddress);
 
-      // Call the Pioneer SDK method
-      // GetCustomTokens is a GET request with userAddress as path parameter
-      const response = await app.pioneer.GetCustomTokens(userAddress);
+      // GetCustomTokens requires { networkId, address } for each network
+      // Fetch custom tokens for all supported EVM networks
+      const evmNetworks = ['eip155:1', 'eip155:10', 'eip155:56', 'eip155:137', 'eip155:8453'];
+      const allTokens: CustomToken[] = [];
 
-      console.log('📦 GetCustomTokens response:', response);
+      for (const networkId of evmNetworks) {
+        try {
+          const response = await app.pioneer.GetCustomTokens({
+            networkId,
+            address: userAddress
+          });
 
-      // Check both response.tokens and response.data.tokens for compatibility
-      const tokens = response?.data?.tokens || response?.tokens || [];
-      setCustomTokens(tokens);
+          console.log(`📦 GetCustomTokens response for ${networkId}:`, response);
+
+          // Check both response.tokens and response.data.tokens for compatibility
+          const tokens = response?.data?.tokens || response?.tokens || [];
+          allTokens.push(...tokens);
+        } catch (networkErr: any) {
+          // Log but don't fail - some networks might not have custom tokens
+          console.log(`ℹ️ No custom tokens for ${networkId}:`, networkErr.message);
+        }
+      }
+
+      setCustomTokens(allTokens);
     } catch (err: any) {
       console.error('Error fetching custom tokens:', err);
       setError(err.message || 'Failed to fetch custom tokens');

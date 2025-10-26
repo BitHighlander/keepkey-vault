@@ -28,7 +28,7 @@ import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, 
 import { keyframes } from '@emotion/react';
 import CountUp from 'react-countup';
 import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, validateThorchainSwapMemo } from '@pioneer-platform/pioneer-coins'
-import { NetworkIdToChain } from '@coinmasters/types'
+import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip'
 // @ts-ignore
 import { caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 
@@ -182,7 +182,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   };
 
-  // Get available assets with balances - COPY FROM DASHBOARD
+  // Get available assets with balances - DON'T aggregate, keep each CAIP separate
   const availableAssets = useMemo(() => {
     if (!app?.balances || app.balances.length === 0) {
       console.log('🔍 [SWAP] No balances available');
@@ -193,77 +193,58 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     console.log('🔍 [SWAP] Raw balances:', app.balances);
     console.log('🔍 [SWAP] Supported swap assets:', SUPPORTED_SWAP_ASSETS.map(a => a.symbol));
 
-    // Create a map to aggregate balances by symbol (exact copy from dashboard logic)
-    const balanceMap = new Map();
+    // Keep each balance separate by CAIP - DON'T aggregate by symbol
+    const assets = app.balances
+      .map((balance: any, index: number) => {
+        const ticker = balance.ticker || balance.symbol;
+        if (!ticker) {
+          console.log(`⚠️ [SWAP] Balance #${index} missing ticker/symbol:`, balance);
+          return null;
+        }
 
-    app.balances.forEach((balance: any, index: number) => {
-      const ticker = balance.ticker || balance.symbol;
-      if (!ticker) {
-        console.log(`⚠️ [SWAP] Balance #${index} missing ticker/symbol:`, balance);
-        return;
-      }
+        // Find matching supported asset from THORChain pools
+        const supportedAsset = SUPPORTED_SWAP_ASSETS.find(asset => asset.symbol === ticker);
+        if (!supportedAsset) {
+          console.log(`⚠️ [SWAP] No supported pool found for ticker: ${ticker} (caip: ${balance.caip})`);
+          return null;
+        }
 
-      // Find matching supported asset from THORChain pools
-      const supportedAsset = SUPPORTED_SWAP_ASSETS.find(asset => asset.symbol === ticker);
-      if (!supportedAsset) {
-        console.log(`⚠️ [SWAP] No supported pool found for ticker: ${ticker} (caip: ${balance.caip})`);
-        return;
-      }
-      
-      const balanceAmount = parseFloat(balance.balance || '0');
-      const valueUsd = parseFloat(balance.valueUsd || '0');
-      
-      console.log(`💰 [SWAP] Processing ${ticker}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}`);
-      
-      if (balanceMap.has(ticker)) {
-        // Aggregate existing balance
-        const existing = balanceMap.get(ticker);
-        existing.balance += balanceAmount;
-        existing.balanceUsd += valueUsd;
-        console.log(`➕ [SWAP] Aggregating ${ticker}: total balance=${existing.balance}, total USD=${existing.balanceUsd}`);
-      } else {
-        // Create new entry - get icon from assetData (always available) or fallback to balance icon
+        const balanceAmount = parseFloat(balance.balance || '0');
+        const valueUsd = parseFloat(balance.valueUsd || '0');
+
+        console.log(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}`);
+
+        // Get icon from assetData (always available) or fallback to balance icon
         const assetInfo = app?.assets?.[balance.caip];
         const icon = assetInfo?.icon || balance.icon || supportedAsset.icon;
 
-        balanceMap.set(ticker, {
+        // Get network name from assetInfo or construct from CAIP
+        const networkName = assetInfo?.networkName || balance.networkName || '';
+        const displayName = networkName ? `${assetInfo?.name || supportedAsset.name} (${networkName})` : (assetInfo?.name || supportedAsset.name);
+
+        return {
           caip: balance.caip,
           symbol: ticker,
-          name: assetInfo?.name || supportedAsset.name,
+          name: displayName,
           icon: icon,
           balance: balanceAmount,
           balanceUsd: valueUsd,
-          priceUsd: parseFloat(balance.priceUsd || '0')
-        });
-        console.log(`✅ [SWAP] Added ${ticker} to balance map with icon:`, icon);
-      }
-    });
-
-    console.log('📊 [SWAP] Balance map before filtering:', Array.from(balanceMap.values()));
-
-    // Convert to array and sort by USD value (exact copy from dashboard)
-    const assets = Array.from(balanceMap.values())
+          priceUsd: parseFloat(balance.priceUsd || '0'),
+          networkId: balance.networkId
+        };
+      })
       .filter((asset: any) => {
+        if (!asset) return false;
         const passesFilter = asset.balanceUsd > 0.01;
         if (!passesFilter) {
-          console.log(`❌ [SWAP] Filtered out ${asset.symbol}: USD value ${asset.balanceUsd} below $0.01 threshold`);
+          console.log(`❌ [SWAP] Filtered out ${asset.symbol} on ${asset.caip}: USD value ${asset.balanceUsd} below $0.01 threshold`);
         }
         return passesFilter;
       })
       .sort((a: any, b: any) => b.balanceUsd - a.balanceUsd);
 
-    console.log('✅ [SWAP] Final sorted assets:', assets);
+    console.log('✅ [SWAP] Final sorted assets (by CAIP, not aggregated):', assets);
     console.log('✅ [SWAP] Asset count:', assets.length);
-    
-    // If we have BTC but it's being filtered out, log why
-    const btcBalance = app.balances.find((b: any) => b.symbol === 'BTC' || b.ticker === 'BTC');
-    if (btcBalance) {
-      console.log('🔍 [SWAP] BTC balance found in raw data:', btcBalance);
-      const btcInAssets = assets.find((a: any) => a.symbol === 'BTC');
-      if (!btcInAssets) {
-        console.log('⚠️ [SWAP] BTC was filtered out! Check valueUsd calculation');
-      }
-    }
 
     return assets;
   }, [app?.balances, app?.assets]);

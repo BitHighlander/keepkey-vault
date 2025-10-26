@@ -1422,12 +1422,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
       
       console.log('Signing TX:', txState.unsignedTx)
-      
-      // Call the SDK's signTx method
-      const signedTxResult = await app.signTx({ 
-        caip, 
-        unsignedTx: txState.unsignedTx 
-      })
+
+      // Call the SDK's signTx method with TWO separate parameters (not an object)
+      // See: pioneer-sdk/src/index.ts signTx(caip: string, unsignedTx: any)
+      const signedTxResult = await app.signTx(
+        caip,
+        txState.unsignedTx
+      )
       
       console.log('Signed TX Result:', signedTxResult)
       setSignedTx(signedTxResult)

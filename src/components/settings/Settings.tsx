@@ -7,8 +7,9 @@ import {
   Image,
   Box,
 } from '@chakra-ui/react';
-import { FaGithub, FaBook, FaHome, FaTrash, FaBroadcastTower, FaRedo } from 'react-icons/fa';
+import { FaGithub, FaBook, FaHome, FaTrash, FaBroadcastTower, FaRedo, FaMobileAlt } from 'react-icons/fa';
 import { usePioneerContext } from '@/components/providers/pioneer';
+import { MobilePairingDialog } from '@/components/pairing/MobilePairingDialog';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -28,6 +29,7 @@ const Settings = ({ onClose }: SettingsProps) => {
   const { state } = pioneer;
   const { app } = state;
   const [loading, setLoading] = useState(false);
+  const [showMobilePairing, setShowMobilePairing] = useState(false);
 
   const [maskingSettings, setMaskingSettings] = useState({
     enableMetaMaskMasking: false,
@@ -142,6 +144,32 @@ const Settings = ({ onClose }: SettingsProps) => {
             />
           </Box>
 
+          {/* Mobile Pairing */}
+          <Box bg={theme.cardBg} p={4} borderRadius="xl" borderWidth="1px" borderColor={theme.border}>
+            <VStack gap={3}>
+              <Text fontSize="md" fontWeight="bold" color={theme.gold}>
+                Mobile Devices
+              </Text>
+              <Button
+                width="100%"
+                size="sm"
+                variant="outline"
+                color={theme.gold}
+                borderColor={theme.border}
+                _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                onClick={() => setShowMobilePairing(true)}
+              >
+                <HStack gap={2}>
+                  <FaMobileAlt />
+                  <Text>Pair Mobile Device</Text>
+                </HStack>
+              </Button>
+              <Text fontSize="xs" color="gray.500" textAlign="center">
+                View your portfolio on your phone
+              </Text>
+            </VStack>
+          </Box>
+
           {/* Documentation Links */}
           <Box bg={theme.cardBg} p={4} borderRadius="xl" borderWidth="1px" borderColor={theme.border}>
             <VStack gap={3}>
@@ -239,6 +267,12 @@ const Settings = ({ onClose }: SettingsProps) => {
           </Box>
         </VStack>
       </Box>
+
+      {/* Mobile Pairing Dialog */}
+      <MobilePairingDialog
+        open={showMobilePairing}
+        onClose={() => setShowMobilePairing(false)}
+      />
     </Box>
   );
 };

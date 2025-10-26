@@ -98,6 +98,17 @@ export const AssetPicker = ({
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   };
 
+  // Format USD balance for display
+  const formatUsdBalance = (balanceUsd: string | number) => {
+    const num = typeof balanceUsd === 'string' ? parseFloat(balanceUsd) : balanceUsd;
+    if (num === 0) return '$0';
+    if (num < 0.01) return '< $0.01';
+    if (num < 1) return `$${num.toFixed(2)}`;
+    if (num < 1000) return `$${num.toFixed(0)}`;
+    if (num < 1000000) return `$${(num / 1000).toFixed(1)}k`;
+    return `$${(num / 1000000).toFixed(2)}M`;
+  };
+
   return (
     <DialogRoot open={isOpen} onOpenChange={({ open }) => !open && onClose()}>
       <DialogContent
@@ -200,8 +211,8 @@ export const AssetPicker = ({
                       />
                     )}
 
-                    {/* Balance Badge (if has balance) */}
-                    {hasBalance && (
+                    {/* Balance Badge (if has balance) - Show USD value */}
+                    {hasBalance && asset.balanceUsd && (
                       <Box
                         position="absolute"
                         top={2}
@@ -212,7 +223,7 @@ export const AssetPicker = ({
                         py={0.5}
                       >
                         <Text fontSize="10px" color="#23DCC8" fontWeight="bold">
-                          {formatBalance(asset.balance!)}
+                          {formatUsdBalance(asset.balanceUsd)}
                         </Text>
                       </Box>
                     )}

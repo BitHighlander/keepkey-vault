@@ -165,11 +165,13 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
     setLoading(true);
     try {
       console.log('✍️ Signing transaction:', unsignedTx);
-      
-      const signedTxResult = await app.signTx({
-        caip: assetContext.caip,
-        unsignedTx: unsignedTx
-      });
+
+      // Call the SDK's signTx method with TWO separate parameters (not an object)
+      // See: pioneer-sdk/src/index.ts signTx(caip: string, unsignedTx: any)
+      const signedTxResult = await app.signTx(
+        assetContext.caip,
+        unsignedTx
+      );
       
       console.log('✅ Transaction signed:', signedTxResult);
       return signedTxResult;
