@@ -116,6 +116,8 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
         justifyContent="center"
         fontSize="lg"
         color={color}
+        bg="rgba(255, 255, 255, 0.05)"
+        borderRadius="md"
       >
         <FaCoins />
       </Box>
@@ -123,16 +125,28 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
   }
 
   return (
-    <Image
-      src={cleanUrl}
-      alt={alt}
+    <Box
       boxSize={boxSize}
-      objectFit="contain"
-      onError={(e) => {
-        console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
-        setError(true);
-      }}
-    />
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      bg="rgba(255, 255, 255, 0.1)"
+      borderRadius="md"
+      p="3px"
+      position="relative"
+      boxShadow="0 0 0 1px rgba(255, 255, 255, 0.15)"
+    >
+      <Image
+        src={cleanUrl}
+        alt={alt}
+        boxSize="100%"
+        objectFit="contain"
+        onError={(e) => {
+          console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
+          setError(true);
+        }}
+      />
+    </Box>
   );
 };
 
@@ -690,22 +704,22 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                     {/* Token Icon as smaller overlay */}
                     <Box
                       position="absolute"
-                      bottom="-2"
-                      right="-2"
-                      borderRadius="full"
-                      overflow="hidden"
-                      boxSize="32px"
-                      bg={theme.cardBg}
-                      boxShadow="md"
-                      p={1}
-                      borderWidth="2px"
-                      borderColor={theme.bg}
+                      bottom="-4"
+                      right="-4"
+                      boxSize="48px"
+                      bg="rgba(255, 255, 255, 0.1)"
+                      borderRadius="md"
+                      boxShadow="0 0 0 3px #000000, 0 0 0 4px rgba(255, 255, 255, 0.2)"
+                      p="4px"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
                     >
-                      <IconWithFallback
+                      <Image
                         src={assetContext.icon}
                         alt={`${assetContext.name} Icon`}
                         boxSize="100%"
-                        color={theme.gold}
+                        objectFit="contain"
                       />
                     </Box>
                   </Box>
@@ -1765,21 +1779,12 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                       >
                         <Flex justify="space-between" align="center">
                           <HStack gap={3}>
-                            <Box
-                              borderRadius="full"
-                              overflow="hidden"
+                            <IconWithFallback
+                              src={token.icon}
+                              alt={token.name || token.symbol}
                               boxSize="40px"
-                              bg={theme.cardBg}
-                              borderWidth="1px"
-                              borderColor={theme.border}
-                            >
-                              <IconWithFallback
-                                src={token.icon}
-                                alt={token.name || token.symbol}
-                                boxSize="40px"
-                                color={theme.gold}
-                              />
-                            </Box>
+                              color={theme.gold}
+                            />
                             <VStack align="flex-start" gap={0}>
                               <Text fontSize="md" fontWeight="bold" color="white">
                                 {token.symbol || 'Unknown'}

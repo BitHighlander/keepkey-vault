@@ -136,7 +136,18 @@ export const AssetSelector = ({
       >
         <HStack justify="space-between" width="full">
           <HStack gap={2}>
-            <Image src={asset.icon} alt={asset.name} boxSize="20px" />
+            <Box
+              boxSize="24px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              bg="rgba(255, 255, 255, 0.1)"
+              borderRadius="md"
+              p="2px"
+              boxShadow="0 0 0 1px rgba(255, 255, 255, 0.15)"
+            >
+              <Image src={asset.icon} alt={asset.name} boxSize="100%" objectFit="contain" />
+            </Box>
             <Text fontWeight="medium" color="white" fontSize="sm">{asset.symbol}</Text>
           </HStack>
           <FaChevronDown color="gray" size={12} />
