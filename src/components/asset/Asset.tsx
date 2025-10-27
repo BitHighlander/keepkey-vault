@@ -340,44 +340,48 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   }, [app, assetContext, pioneer]);
 
   // Set up interval to sync market data every 15 seconds
+  // SKIP interval when custom token dialog is open to prevent state refresh from closing the dialog
   useEffect(() => {
-    if (!app) return;
-    
+    if (!app || isCustomTokenDialogOpen) {
+      console.log("⏸️ [Asset] Skipping syncMarket interval - dialog open or app not ready");
+      return;
+    }
+
     // Initialize previousBalance when component mounts
     if (app.assetContext?.balance) {
       setPreviousBalance(app.assetContext.balance);
       // Mark as no longer initial load after first balance is set
       setIsInitialLoad(false);
     }
-    
+
     const intervalId = setInterval(() => {
       app
         .syncMarket()
         .then(() => {
           console.log("📊 [Asset] syncMarket called from Asset component");
-          
+
           // Check if balance has increased
           if (app.assetContext?.balance) {
             const currentBalance = app.assetContext.balance;
             const prevBalance = previousBalance;
-            
-            console.log("💰 [Asset] Balance comparison:", { 
-              previous: prevBalance, 
+
+            console.log("💰 [Asset] Balance comparison:", {
+              previous: prevBalance,
               current: currentBalance,
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
               isInitialLoad
             });
-            
+
             // Only play sound if this is not the initial load and balance actually increased
             // if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
             //   console.log("🎵 [Asset] Balance increased! Playing chaching sound");
             //   playSound(chachingSound);
             // }
-            
+
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);
           }
-          
+
           setLastSync(Date.now());
         })
         .catch((error: any) => {
@@ -386,7 +390,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [app, previousBalance, isInitialLoad]);
+  }, [app, previousBalance, isInitialLoad, isCustomTokenDialogOpen]);
 
   const handleBack = () => {
     // Set loading state
@@ -1773,8 +1777,21 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                         transition="all 0.2s"
                         cursor="pointer"
                         onClick={() => {
-                          console.log('🪙 [Asset] Token clicked:', token);
-                          router.push(`/asset/${btoa(token.caip)}`);
+                          console.log('🪙 [Asset] Navigating to token page:', token);
+
+                          // Use the token's CAIP for navigation
+                          const caip = token.caip;
+
+                          console.log('🪙 [Asset] Using token CAIP for navigation:', caip);
+                          console.log('🪙 [Asset] Token object:', token);
+
+                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
+                          const encodedCaip = btoa(caip);
+
+                          console.log('🪙 [Asset] Encoded token parameters:', { encodedCaip });
+
+                          // Navigate using encoded parameters to the simplified route
+                          router.push(`/asset/${encodedCaip}`);
                         }}
                       >
                         <Flex justify="space-between" align="center">
@@ -1915,6 +1932,18 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
         }}
         customTokens={customTokens}
         defaultNetwork={assetContext?.networkId}
+        onTokenAdded={(caip: string) => {
+          // ✨ AUTO-NAVIGATE: When token metadata is validated, immediately navigate to the token's asset page
+          console.log('🚀 [Asset] Received token added callback, navigating to:', caip);
+
+          // Close the dialog
+          setIsCustomTokenDialogOpen(false);
+
+          // Navigate to the new token's asset page
+          const encodedCaip = btoa(caip);
+          console.log('🔄 [Asset] Navigating to asset page:', encodedCaip);
+          router.push(`/asset/${encodedCaip}`);
+        }}
       />
     </Box>
   );

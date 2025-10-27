@@ -194,7 +194,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [isUsdInput, setIsUsdInput] = useState<boolean>(false)
 
   // State for change address script type (for UTXO chains)
-  const [changeScriptType, setChangeScriptType] = useState<string | undefined>(undefined)
+  // Default to 'p2wpkh' (native segwit) for Bitcoin UTXO chains
+  const [changeScriptType, setChangeScriptType] = useState<string | undefined>(
+    assetContext?.networkId?.startsWith('bip122:') ? 'p2wpkh' : undefined
+  )
   
   // Transaction state
   const [txHash, setTxHash] = useState<string>('')
@@ -543,6 +546,24 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setNativeGasBalance('0');
     }
   }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId, assetContext?.nativeSymbol])
+
+  // Update change script type when selected pubkey changes (for UTXO chains)
+  useEffect(() => {
+    if (!selectedPubkey || !assetContext?.networkId?.startsWith('bip122:')) {
+      return;
+    }
+
+    // Use the selected pubkey's script type as the default for change addresses
+    // This ensures change addresses match the input address type
+    if (selectedPubkey.scriptType) {
+      console.log('🔄 [Send] Setting change script type to match selected pubkey:', selectedPubkey.scriptType);
+      setChangeScriptType(selectedPubkey.scriptType);
+    } else {
+      // Fallback to p2wpkh if no script type is set
+      console.log('🔄 [Send] No script type on pubkey, defaulting to p2wpkh for change');
+      setChangeScriptType('p2wpkh');
+    }
+  }, [selectedPubkey, assetContext?.networkId])
 
   // Enrich UTXO pubkeys with address usage info (receive/change indices)
   useEffect(() => {

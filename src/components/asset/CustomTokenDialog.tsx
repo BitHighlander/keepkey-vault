@@ -35,6 +35,7 @@ interface CustomTokenDialogProps {
   onRemoveToken: (networkId: string, tokenAddress: string) => void;
   customTokens: CustomToken[];
   defaultNetwork?: string; // Default network to filter by
+  onTokenAdded?: (caip: string) => void; // Callback when a token is successfully added with validated metadata
 }
 
 const ITEMS_PER_PAGE = 50;
@@ -57,6 +58,7 @@ export const CustomTokenDialog = ({
   onRemoveToken,
   customTokens,
   defaultNetwork,
+  onTokenAdded,
 }: CustomTokenDialogProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -398,6 +400,12 @@ export const CustomTokenDialog = ({
           hasBalance: result.hasBalance,
           balance: result.balance,
         });
+
+        // ✨ AUTO-NAVIGATE: When we successfully discover token metadata, immediately navigate to the asset page
+        console.log('🚀 [CustomTokenDialog] Token metadata validated, auto-navigating to asset page:', customToken.caip);
+        if (onTokenAdded) {
+          onTokenAdded(customToken.caip);
+        }
       }
 
       // Clear the search query
