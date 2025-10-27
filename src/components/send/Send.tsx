@@ -1040,17 +1040,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   }
 
-  // Build transaction
-  const buildTransaction = async () => {
+  // Build transaction with optional override script type
+  const buildTransactionWithScriptType = async (overrideScriptType?: string) => {
     setLoading(true)
     try {
       // Use the Pioneer SDK to build the transaction
       const caip = assetContext?.caip || assetContext?.assetId
-      
+
       if (!caip) {
         throw new Error('Missing asset CAIP')
       }
-      
+
       // Log the asset context to debug network ID issues
       console.log('Building transaction with asset context:', {
         caip,
@@ -1058,28 +1058,28 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         assetId: assetContext?.assetId,
         symbol: assetContext?.symbol
       })
-      
+
       // Convert amount to native token if in USD mode
       const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-      
+
       // Validate the amount is not NaN or empty
       if (!nativeAmount || nativeAmount === '0' || isNaN(parseFloat(nativeAmount))) {
-        console.error('Invalid amount for transaction:', { 
-          amount, 
-          nativeAmount, 
+        console.error('Invalid amount for transaction:', {
+          amount,
+          nativeAmount,
           isUsdInput,
-          priceUsd: assetContext?.priceUsd 
+          priceUsd: assetContext?.priceUsd
         });
         throw new Error('Invalid amount: Please enter a valid amount');
       }
-      
+
       console.log('Transaction amount validation:', {
         originalAmount: amount,
         nativeAmount,
         isUsdInput,
         priceUsd: assetContext?.priceUsd
       });
-      
+
       // Verify we have valid fee data before building the transaction
       const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel];
       if (!selectedFee || parseFloat(selectedFee) === 0) {
@@ -1101,22 +1101,24 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         feeLevel: customFeeOption ? 3 : feeLevelMap[selectedFeeLevel], // Use selected or custom fee level (valid range: 1-5)
         isMax,
       }
-      
+
       // Add custom fee if specified
       if (customFeeOption && customFeeAmount) {
         // @ts-ignore - Adding custom fee property
         sendPayload.customFee = customFeeAmount;
       }
-      
+
       // Add memo for supported chains if provided
       if (memo && supportsMemo) {
         sendPayload.memo = memo;
       }
 
       // Add change script type for UTXO chains if specified
-      if (changeScriptType) {
-        sendPayload.changeScriptType = changeScriptType;
-        console.log('🔄 [Send] Using custom change script type:', changeScriptType);
+      // Use override if provided (for immediate updates), otherwise use state
+      const scriptTypeToUse = overrideScriptType || changeScriptType;
+      if (scriptTypeToUse) {
+        sendPayload.changeScriptType = scriptTypeToUse;
+        console.log('🔄 [Send] Using custom change script type:', scriptTypeToUse);
       }
 
       console.log('Build TX Payload:', sendPayload);
@@ -1396,7 +1398,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setLoading(false)
     }
   }
-  
+
+  // Build transaction (calls buildTransactionWithScriptType with no override)
+  const buildTransaction = async () => {
+    return buildTransactionWithScriptType();
+  }
+
   // Sign transaction
   const signTransaction = async (txState: TransactionState) => {
     setLoading(true)
@@ -1573,8 +1580,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('📝 [Send] Set change script type to:', newScriptType)
 
       // Rebuild the transaction with the new script type
+      // We need to pass the newScriptType directly since state updates are async
       console.log('🔨 [Send] Rebuilding transaction with new change address type...')
-      const rebuiltTx = await buildTransaction()
+      const rebuiltTx = await buildTransactionWithScriptType(newScriptType)
 
       if (rebuiltTx) {
         console.log('✅ [Send] Transaction rebuilt successfully with new change address type')
