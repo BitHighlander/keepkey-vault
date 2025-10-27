@@ -968,35 +968,38 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   <Text>Report</Text>
                 </Flex>
               </Button>
-              <Button
-                width="100%"
-                size="lg"
-                bg={theme.cardBg}
-                color="#23DCC8"
-                borderColor={theme.border}
-                borderWidth="1px"
-                _hover={{
-                  bg: 'rgba(35, 220, 200, 0.1)',
-                  borderColor: '#23DCC8',
-                }}
-                onClick={() => setIsCustomTokenDialogOpen(true)}
-              >
-                <Flex gap={2} align="center">
-                  <FaList />
-                  <Text>Custom Tokens</Text>
-                  {customTokens.length > 0 && (
-                    <Badge
-                      bg="#23DCC8"
-                      color="black"
-                      borderRadius="full"
-                      px={2}
-                      fontSize="xs"
-                    >
-                      {customTokens.length}
-                    </Badge>
-                  )}
-                </Flex>
-              </Button>
+              {/* Only show Custom Tokens button for EVM networks (eip155) */}
+              {assetContext.caip?.includes('eip155') && (
+                <Button
+                  width="100%"
+                  size="lg"
+                  bg={theme.cardBg}
+                  color="#23DCC8"
+                  borderColor={theme.border}
+                  borderWidth="1px"
+                  _hover={{
+                    bg: 'rgba(35, 220, 200, 0.1)',
+                    borderColor: '#23DCC8',
+                  }}
+                  onClick={() => setIsCustomTokenDialogOpen(true)}
+                >
+                  <Flex gap={2} align="center">
+                    <FaList />
+                    <Text>Custom Tokens</Text>
+                    {customTokens.length > 0 && (
+                      <Badge
+                        bg="#23DCC8"
+                        color="black"
+                        borderRadius="full"
+                        px={2}
+                        fontSize="xs"
+                      >
+                        {customTokens.length}
+                      </Badge>
+                    )}
+                  </Flex>
+                </Button>
+              )}
             </VStack>
           </VStack>
           
@@ -1733,23 +1736,19 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
                   <Text color={theme.gold} fontSize="lg" fontWeight="bold">
                     {isEvmNetwork ? 'ERC-20 Tokens' : isCosmosNetwork ? 'IBC Tokens' : 'Tokens'} ({networkTokens.length})
                   </Text>
-                  {networkTokens.length === 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      color={theme.gold}
-                      borderColor={theme.border}
-                      _hover={{
-                        bg: 'rgba(255, 215, 0, 0.1)',
-                        borderColor: theme.gold,
-                      }}
-                      onClick={handleRefreshCharts}
-                      isLoading={isRefreshing}
-                      leftIcon={<FaSync />}
-                    >
-                      Discover
-                    </Button>
-                  )}
+                  <IconButton
+                    aria-label="Refresh tokens"
+                    icon={<FaSync />}
+                    size="sm"
+                    variant="ghost"
+                    color={theme.gold}
+                    isLoading={isRefreshing}
+                    onClick={handleRefreshCharts}
+                    _hover={{
+                      bg: 'rgba(255, 215, 0, 0.1)',
+                      color: theme.goldHover,
+                    }}
+                  />
                 </Flex>
               </Box>
 

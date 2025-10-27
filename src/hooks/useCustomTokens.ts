@@ -26,40 +26,33 @@ export const useCustomTokens = () => {
     state?.pubkeys?.find((p: any) => p.networks?.includes('eip155:*'))?.master ||
     '';
 
-  // Fetch custom tokens from server via Pioneer SDK
+  // Fetch custom tokens from Pioneer server
   const fetchCustomTokens = useCallback(async () => {
-    if (!userAddress || !app?.pioneer) return;
+    if (!userAddress || !app?.spec) return;
 
     try {
       setIsLoading(true);
       setError(null);
 
-      console.log('🔍 Fetching custom tokens for:', userAddress);
+      console.log('🔍 Fetching custom tokens from server for:', userAddress);
 
-      // GetCustomTokens requires { networkId, address } for each network
-      // Fetch custom tokens for all supported EVM networks
-      const evmNetworks = ['eip155:1', 'eip155:10', 'eip155:56', 'eip155:137', 'eip155:8453'];
-      const allTokens: CustomToken[] = [];
+      // Extract base URL from spec
+      const baseUrl = app.spec.replace('/spec/swagger.json', '');
 
-      for (const networkId of evmNetworks) {
-        try {
-          const response = await app.pioneer.GetCustomTokens({
-            networkId,
-            address: userAddress
-          });
+      // Call the server API endpoint directly
+      const response = await fetch(`${baseUrl}/custom-tokens/get`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userAddress })
+      });
 
-          console.log(`📦 GetCustomTokens response for ${networkId}:`, response);
+      const result = await response.json();
+      console.log('📦 Server response:', result);
 
-          // Check both response.tokens and response.data.tokens for compatibility
-          const tokens = response?.data?.tokens || response?.tokens || [];
-          allTokens.push(...tokens);
-        } catch (networkErr: any) {
-          // Log but don't fail - some networks might not have custom tokens
-          console.log(`ℹ️ No custom tokens for ${networkId}:`, networkErr.message);
-        }
-      }
+      const tokens = result?.data?.tokens || [];
+      setCustomTokens(tokens);
 
-      setCustomTokens(allTokens);
+      console.log(`✅ Loaded ${tokens.length} custom tokens from server`);
     } catch (err: any) {
       console.error('Error fetching custom tokens:', err);
       setError(err.message || 'Failed to fetch custom tokens');
@@ -77,10 +70,9 @@ export const useCustomTokens = () => {
   }> => {
     console.log('📝 addCustomToken called with:', token);
     console.log('User address:', userAddress);
-    console.log('Pioneer client available:', !!app?.pioneer);
 
-    if (!userAddress || !app?.pioneer) {
-      const errorMsg = 'No user address or Pioneer client available';
+    if (!userAddress || !app?.spec) {
+      const errorMsg = 'No user address or app spec available';
       console.error('❌', errorMsg);
       setError(errorMsg);
       return { success: false, hasBalance: false };
@@ -90,22 +82,38 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🌐 Calling app.pioneer.AddCustomToken');
+      console.log('🌐 Adding custom token to server via API');
 
-      // Call the Pioneer SDK method
-      const response = await app.pioneer.AddCustomToken({
-        userAddress,
-        token,
+      // Extract base URL from spec
+      const baseUrl = app.spec.replace('/spec/swagger.json', '');
+
+      // Call the server API endpoint directly
+      const response = await fetch(`${baseUrl}/custom-tokens/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress,
+          token: {
+            networkId: token.networkId,
+            address: token.address,
+            caip: token.caip,
+            name: token.name,
+            symbol: token.symbol,
+            decimals: token.decimals,
+            icon: token.icon,
+            coingeckoId: token.coingeckoId,
+          }
+        })
       });
 
-      console.log('✅ Response data:', response);
+      const result = await response.json();
+      console.log('✅ AddCustomToken response:', result);
 
-      // Fix: Check response.data.tokens instead of response.tokens
-      const tokens = response?.data?.tokens || response?.tokens;
+      if (result && result.success) {
+        // Refresh the token list from the server
+        await fetchCustomTokens();
 
-      if (response && (response.success || response?.data?.success) && tokens) {
-        setCustomTokens(tokens);
-        console.log('✅ Token added successfully! Total tokens:', tokens.length);
+        console.log('✅ Token added successfully!');
 
         // Now check if the token has a balance
         console.log('🔍 Checking token balance for:', token.caip);
@@ -143,7 +151,7 @@ export const useCustomTokens = () => {
         }
       }
 
-      console.warn('⚠️ API call succeeded but no tokens returned');
+      console.warn('⚠️ API call succeeded but unexpected response format');
       return { success: false, hasBalance: false };
     } catch (err: any) {
       console.error('❌ Error adding custom token:', err);
@@ -152,7 +160,7 @@ export const useCustomTokens = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [userAddress, app]);
+  }, [userAddress, app, fetchCustomTokens]);
 
   // Remove a custom token
   const removeCustomToken = useCallback(async (networkId: string, tokenAddress: string) => {
@@ -167,15 +175,19 @@ export const useCustomTokens = () => {
 
       console.log('🗑️ Removing custom token:', networkId, tokenAddress);
 
-      // Call the Pioneer SDK method
+      // Call the server API to remove the token
       const response = await app.pioneer.RemoveCustomToken({
         userAddress,
         networkId,
         tokenAddress,
       });
 
-      if (response && response.success && response.tokens !== undefined) {
-        setCustomTokens(response.tokens);
+      console.log('✅ RemoveCustomToken response:', response);
+
+      if (response && (response.success || response?.data?.success)) {
+        // Refresh the token list from the server
+        await fetchCustomTokens();
+        console.log('✅ Token removed successfully!');
         return true;
       }
 
@@ -187,7 +199,7 @@ export const useCustomTokens = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [userAddress, app]);
+  }, [userAddress, app, fetchCustomTokens]);
 
   // Fetch custom tokens on mount and when user address changes
   useEffect(() => {

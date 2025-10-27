@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import {
   VStack,
   HStack,
+  Flex,
   Box,
   Text,
   Image,
@@ -58,6 +59,7 @@ export const CustomTokenDialog = ({
   defaultNetwork,
 }: CustomTokenDialogProps) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLookingUp, setIsLookingUp] = useState(false);
 
   // Determine initial network: use defaultNetwork if it's supported, otherwise fallback to Ethereum
   const getInitialNetwork = () => {
@@ -71,7 +73,7 @@ export const CustomTokenDialog = ({
   const [currentPage, setCurrentPage] = useState(0);
   const [processingToken, setProcessingToken] = useState<CustomToken | null>(null);
   const [processingResult, setProcessingResult] = useState<{
-    type: 'success' | 'warning';
+    type: 'success' | 'warning' | 'error';
     message: string;
     hasBalance: boolean;
     balance?: string;
@@ -123,7 +125,7 @@ export const CustomTokenDialog = ({
     return tokens;
   }, [selectedNetwork]);
 
-  // Filter tokens based on search query
+  // Filter tokens based on search query and auto-lookup contract addresses
   const filteredTokens = useMemo(() => {
     let filtered = networkTokens;
 
@@ -138,6 +140,30 @@ export const CustomTokenDialog = ({
 
     return filtered;
   }, [networkTokens, searchQuery]);
+
+  // Auto-lookup when search looks like a contract address with no results
+  React.useEffect(() => {
+    const trimmedQuery = searchQuery.trim();
+
+    // Check if search query looks like a contract address and we have no results
+    if (
+      trimmedQuery.startsWith('0x') &&
+      trimmedQuery.length === 42 && // Full contract address length
+      filteredTokens.length === 0 &&
+      !processingToken &&
+      !isLookingUp
+    ) {
+      // Only auto-lookup if it's a valid contract address format
+      if (isValidContractAddress(trimmedQuery)) {
+        console.log('🔍 Auto-detecting contract address lookup:', trimmedQuery);
+        // Small delay to debounce typing
+        const timer = setTimeout(() => {
+          handleLookupToken(trimmedQuery);
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [searchQuery, filteredTokens.length, processingToken, isLookingUp]);
 
   // Paginate tokens
   const totalPages = Math.ceil(filteredTokens.length / ITEMS_PER_PAGE);
@@ -239,6 +265,115 @@ export const CustomTokenDialog = ({
     setProcessingResult(null);
   };
 
+  // Validate contract address format
+  const isValidContractAddress = (address: string): boolean => {
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+  };
+
+  // Lookup custom token by contract address
+  const handleLookupToken = async (address?: string) => {
+    const contractAddr = address || searchQuery.trim();
+
+    if (!contractAddr) {
+      return;
+    }
+
+    if (!isValidContractAddress(contractAddr)) {
+      console.log('Invalid contract address format:', contractAddr);
+      return;
+    }
+
+    if (!pioneer.state?.app?.pioneer) {
+      console.error('Pioneer SDK not available');
+      return;
+    }
+
+    setIsLookingUp(true);
+
+    try {
+      console.log('🔍 Looking up custom token:', contractAddr, 'on', selectedNetwork);
+
+      const payload: any = {
+        networkId: selectedNetwork,
+        contractAddress: contractAddr.toLowerCase(),
+      };
+
+      // Add user address if available for balance checking
+      if (userAddress) {
+        payload.userAddress = userAddress;
+      }
+
+      console.log('📡 Calling app.pioneer.LookupTokenMetadata with:', payload);
+
+      // Call Pioneer SDK method to lookup token
+      const response = await pioneer.state.app.pioneer.LookupTokenMetadata(payload);
+
+      console.log('✅ Token lookup response:', response);
+      console.log('✅ Token lookup response.data:', response?.data);
+
+      if (!response || !response.data || !response.data.data) {
+        throw new Error('Failed to fetch token metadata');
+      }
+
+      // Response is nested: response.data.data contains the actual token info
+      const tokenData = response.data.data;
+      console.log('✅ Token found:', tokenData);
+      console.log('Token data fields:', {
+        symbol: tokenData.symbol,
+        name: tokenData.name,
+        contractAddress: tokenData.contractAddress,
+        caip: tokenData.caip,
+        decimals: tokenData.decimals,
+        icon: tokenData.icon,
+      });
+
+      // Build CAIP if not provided
+      const tokenCaip = tokenData.caip || `${selectedNetwork}/erc20:${contractAddr.toLowerCase()}`;
+
+      // Build custom token object
+      const customToken: CustomToken = {
+        symbol: tokenData.symbol || 'UNKNOWN',
+        name: tokenData.name || 'Unknown Token',
+        address: tokenData.contractAddress || contractAddr.toLowerCase(),
+        networkId: selectedNetwork,
+        caip: tokenCaip,
+        decimals: tokenData.decimals || 18,
+        icon: tokenData.icon || 'https://pioneers.dev/coins/coin.png',
+      };
+
+      console.log('✅ Built custom token:', customToken);
+
+      // Set as processing token and show result
+      setProcessingToken(customToken);
+
+      // Try to add the token
+      const result = await onAddToken(customToken);
+
+      if (result.success) {
+        setProcessingResult({
+          type: result.hasBalance ? 'success' : 'warning',
+          message: result.hasBalance
+            ? `✅ Token found! Balance: ${result.balance || 'checking...'}`
+            : `⚠️ Token added, but your account appears empty for this token`,
+          hasBalance: result.hasBalance,
+          balance: result.balance,
+        });
+      }
+
+      // Clear the search query
+      setSearchQuery('');
+    } catch (error: any) {
+      console.error('❌ Failed to lookup token:', error);
+      setProcessingResult({
+        type: 'error',
+        message: `❌ Error: ${error.message || 'Failed to lookup token'}`,
+        hasBalance: false,
+      });
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
   // Reset page when network or search changes
   React.useEffect(() => {
     setCurrentPage(0);
@@ -256,14 +391,20 @@ export const CustomTokenDialog = ({
       open={isOpen}
       onOpenChange={({ open }) => !open && onClose()}
       size="xl"
+      placement="center"
     >
       <DialogContent
         maxWidth="800px"
         bg="rgba(17, 17, 17, 0.98)"
         borderColor="#23DCC8"
         borderWidth="2px"
+        position="fixed"
+        top="50%"
+        left="50%"
+        transform="translate(-50%, -50%)"
+        margin="0"
       >
-        <DialogHeader borderBottom="1px solid rgba(255, 255, 255, 0.1)" pb={3}>
+        <DialogHeader borderBottom="1px solid rgba(255, 255, 255, 0.1)" pb={4} pt={4} px={6}>
           <DialogTitle color="white" fontSize="lg">
             Custom Token Manager
           </DialogTitle>
@@ -353,19 +494,39 @@ export const CustomTokenDialog = ({
               {processingResult && (
                 <Box
                   borderRadius="lg"
-                  bg={processingResult.type === 'success' ? 'rgba(35, 220, 200, 0.15)' : 'rgba(255, 170, 0, 0.15)'}
-                  borderColor={processingResult.type === 'success' ? '#23DCC8' : '#ffaa00'}
+                  bg={
+                    processingResult.type === 'success'
+                      ? 'rgba(35, 220, 200, 0.15)'
+                      : processingResult.type === 'error'
+                      ? 'rgba(255, 70, 70, 0.15)'
+                      : 'rgba(255, 170, 0, 0.15)'
+                  }
+                  borderColor={
+                    processingResult.type === 'success'
+                      ? '#23DCC8'
+                      : processingResult.type === 'error'
+                      ? '#ff4646'
+                      : '#ffaa00'
+                  }
                   borderWidth="2px"
                   p={4}
                 >
                   <HStack gap={3} width="full">
                     {processingResult.type === 'success' ? (
                       <FaCheckCircle color="#23DCC8" size={20} />
+                    ) : processingResult.type === 'error' ? (
+                      <FaTimes color="#ff4646" size={20} />
                     ) : (
                       <FaExclamationTriangle color="#ffaa00" size={20} />
                     )}
                     <Text
-                      color={processingResult.type === 'success' ? '#23DCC8' : '#ffaa00'}
+                      color={
+                        processingResult.type === 'success'
+                          ? '#23DCC8'
+                          : processingResult.type === 'error'
+                          ? '#ff4646'
+                          : '#ffaa00'
+                      }
                       fontSize="md"
                       fontWeight="500"
                     >
@@ -445,10 +606,10 @@ export const CustomTokenDialog = ({
 
             {/* Search Input */}
             <InputGroup
-              startElement={<FaSearch color="gray" size={14} />}
+              startElement={<Box pl={3}><FaSearch color="gray" size={14} /></Box>}
             >
               <Input
-                placeholder="Search by name, symbol, or address..."
+                placeholder="Search by name, symbol, or contract address (0x...)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 bg="rgba(30, 30, 30, 0.6)"
@@ -457,6 +618,7 @@ export const CustomTokenDialog = ({
                 _focus={{ borderColor: '#23DCC8', boxShadow: '0 0 0 1px #23DCC8' }}
                 color="white"
                 size="md"
+                pl={10}
               />
             </InputGroup>
 
@@ -579,12 +741,79 @@ export const CustomTokenDialog = ({
               })}
             </Grid>
 
-            {/* No results message */}
+            {/* No results message or loading state */}
             {filteredTokens.length === 0 && (
-              <Box py={8} textAlign="center">
-                <Text color="gray.500" fontSize="sm">
-                  {searchQuery ? `No tokens found matching "${searchQuery}"` : 'No tokens available for this network'}
-                </Text>
+              <Box py={12} textAlign="center">
+                {isLookingUp ? (
+                  <VStack gap={4}>
+                    <Box
+                      animation="pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+                      css={{
+                        '@keyframes pulse': {
+                          '0%, 100%': { opacity: 1 },
+                          '50%': { opacity: 0.5 },
+                        },
+                      }}
+                    >
+                      <Spinner size="xl" color="#23DCC8" thickness="4px" />
+                    </Box>
+                    <VStack gap={2}>
+                      <Text color="#23DCC8" fontSize="lg" fontWeight="bold">
+                        🔍 Looking up token...
+                      </Text>
+                      <Text color="gray.300" fontSize="sm">
+                        Fetching token metadata from blockchain
+                      </Text>
+                      <Text color="gray.500" fontSize="xs" fontFamily="monospace">
+                        {searchQuery.substring(0, 10)}...{searchQuery.substring(searchQuery.length - 8)}
+                      </Text>
+                    </VStack>
+                  </VStack>
+                ) : searchQuery && searchQuery.startsWith('0x') ? (
+                  <VStack gap={3}>
+                    {isValidContractAddress(searchQuery.trim()) ? (
+                      <>
+                        <Box
+                          w="60px"
+                          h="60px"
+                          borderRadius="full"
+                          bg="rgba(35, 220, 200, 0.1)"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          animation="pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+                        >
+                          <FaSearch color="#23DCC8" size="24px" />
+                        </Box>
+                        <Text color="#23DCC8" fontSize="md" fontWeight="medium">
+                          Preparing to lookup token...
+                        </Text>
+                        <Text color="gray.500" fontSize="xs">
+                          Contract address detected
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text color="orange.400" fontSize="md" fontWeight="medium">
+                          Invalid contract address format
+                        </Text>
+                        <Text color="gray.500" fontSize="xs">
+                          Contract addresses must be 42 characters
+                        </Text>
+                        <Text color="gray.500" fontSize="xs" fontFamily="monospace">
+                          Format: 0x + 40 hex digits
+                        </Text>
+                        <Text color="gray.600" fontSize="xs">
+                          Current length: {searchQuery.trim().length}
+                        </Text>
+                      </>
+                    )}
+                  </VStack>
+                ) : (
+                  <Text color="gray.500" fontSize="sm">
+                    {searchQuery ? `No tokens found matching "${searchQuery}"` : 'No tokens available for this network'}
+                  </Text>
+                )}
               </Box>
             )}
 
