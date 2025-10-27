@@ -280,6 +280,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     setSelectedAddress(null);
     setIsInitialLoad(true);
 
+    // Clear old asset context in Pioneer SDK to prevent stale data
+    if (app?.clearAssetContext) {
+      app.clearAssetContext();
+      console.log('🗑️ [Asset] Cleared old asset context from Pioneer SDK');
+    }
+
     // Wait for app to be ready
     if (!app || !app.balances || !app.pubkeys) {
       console.log('⏳ [Asset] Waiting for app to be ready...');
@@ -531,6 +537,25 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     // Close button always goes to dashboard regardless of back button behavior
     console.log('❌ [Asset] Close button clicked, navigating to dashboard');
     router.push('/');
+  };
+
+  // Handle Send button click - ensure asset context is set before switching views
+  const handleSendClick = async () => {
+    console.log('📤 [Asset] Send button clicked, ensuring asset context is set');
+
+    if (app?.setAssetContext && assetContext) {
+      try {
+        await app.setAssetContext(assetContext);
+        console.log('✅ [Asset] Asset context confirmed set in Pioneer SDK before Send:', assetContext.symbol);
+      } catch (error) {
+        console.error('❌ [Asset] Error setting asset context before Send:', error);
+      }
+    }
+
+    // Now call the parent's onSendClick to switch views
+    if (onSendClick) {
+      onSendClick();
+    }
   };
 
   // Add a utility function for middle ellipsis
@@ -1003,7 +1028,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     bg: 'rgba(255, 215, 0, 0.1)',
                     borderColor: theme.gold,
                   }}
-                  onClick={onSendClick}
+                  onClick={handleSendClick}
                 >
                   <Flex gap={2} align="center">
                     <FaPaperPlane />
