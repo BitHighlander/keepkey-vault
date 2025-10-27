@@ -31,6 +31,7 @@ export interface PioneerContextValue {
   state: any;
   setAssetContext: (assetData: AssetContextState, chatId?: string) => void;
   clearAssetContext: (chatId?: string) => void;
+  triggerBalanceRefresh: () => void;
   isAssetViewActive: boolean;
   setIsAssetViewActive: (isActive: boolean) => void;
 }
@@ -60,7 +61,9 @@ export function AppProvider({
     // Add state for asset context
     const [assetContext, setAssetContext] = useState<AssetContextState | null>(null);
     const [isAssetViewActive, setIsAssetViewActive] = useState<boolean>(false);
-    
+    // Add refresh counter to force re-renders when balances update
+    const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
+
     // Create wrapper for pioneer with added asset context
     const pioneerWithAssetContext = {
         ...pioneer,
@@ -69,7 +72,8 @@ export function AppProvider({
             app: {
                 ...pioneer?.state?.app,
                 assetContext,
-            }
+            },
+            balanceRefreshCounter, // Include counter in state
         },
         // Add methods for asset management
         setAssetContext: (assetData: AssetContextState) => {
@@ -81,6 +85,11 @@ export function AppProvider({
             console.log('🔄 Clearing asset context');
             setAssetContext(null);
             setIsAssetViewActive(false);
+        },
+        // Add method to trigger balance refresh (forces re-render)
+        triggerBalanceRefresh: () => {
+            console.log('🔄 Triggering balance refresh counter');
+            setBalanceRefreshCounter(prev => prev + 1);
         },
         isAssetViewActive,
         setIsAssetViewActive

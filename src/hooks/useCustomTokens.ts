@@ -108,55 +108,98 @@ export const useCustomTokens = () => {
 
       console.log('✅ AddCustomToken response:', response);
 
-      if (response && response.success) {
+      // Handle nested response structure: response.data.success or response.success
+      const isSuccess = response?.success || response?.data?.success;
+      console.log('✅ AddCustomToken success status:', isSuccess);
+
+      if (response && isSuccess) {
         // Refresh the token list from the server
         await fetchCustomTokens();
 
         console.log('✅ Token added successfully!');
 
-        // Check token balance using the dedicated endpoint
+        // Check token balance using the dedicated endpoint with retry logic
         console.log('💰 Checking custom token balance for:', token.caip);
 
-        try {
-          // Use the dedicated GetCustomTokenBalances method
-          const balanceResult = await app.pioneer.GetCustomTokenBalances({
-            networkId: token.networkId,
-            address: userAddress
-          });
+        // Helper function to check balance with retry
+        const checkBalanceWithRetry = async (retries = 3, delay = 800): Promise<{
+          success: boolean;
+          hasBalance: boolean;
+          balance?: string;
+        }> => {
+          for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+              console.log(`💰 Balance check attempt ${attempt}/${retries}`);
 
-          console.log('💰 Custom token balance result:', balanceResult);
+              // Add delay before retry attempts (but not the first attempt)
+              if (attempt > 1) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+              }
 
-          // Handle nested response structure
-          const balanceTokens = balanceResult?.data?.data?.tokens || balanceResult?.data?.tokens || balanceResult?.tokens || [];
-          const tokenBalance = balanceTokens.find(
-            (t: any) => (t.token?.symbol === token.symbol || t.symbol === token.symbol) &&
-                       (t.token?.address?.toLowerCase() === token.address.toLowerCase() ||
-                        t.address?.toLowerCase() === token.address.toLowerCase())
-          );
+              // Use the dedicated GetCustomTokenBalances method
+              const balanceResult = await app.pioneer.GetCustomTokenBalances({
+                networkId: token.networkId,
+                address: userAddress
+              });
 
-          if (tokenBalance) {
-            const balance = tokenBalance.token?.balance || tokenBalance.balance || '0';
-            console.log('✅ Token has balance:', balance);
-            return {
-              success: true,
-              hasBalance: parseFloat(balance) > 0,
-              balance
-            };
-          } else {
-            console.log('⚠️ Token added but no balance found');
-            return {
-              success: true,
-              hasBalance: false
-            };
+              console.log('💰 Custom token balance result:', balanceResult);
+
+              // Handle nested response structure
+              const balanceTokens = balanceResult?.data?.data?.tokens || balanceResult?.data?.tokens || balanceResult?.tokens || [];
+              const tokenBalance = balanceTokens.find(
+                (t: any) => {
+                  // Try matching by CAIP first
+                  if (t.assetCaip?.toLowerCase() === token.caip?.toLowerCase()) {
+                    return true;
+                  }
+                  // Fallback: match by symbol and check if address is in assetCaip
+                  if ((t.token?.symbol === token.symbol || t.symbol === token.symbol) &&
+                      (t.assetCaip?.toLowerCase().includes(token.address.toLowerCase()) ||
+                       t.token?.address?.toLowerCase() === token.address.toLowerCase() ||
+                       t.address?.toLowerCase() === token.address.toLowerCase())) {
+                    return true;
+                  }
+                  return false;
+                }
+              );
+
+              if (tokenBalance) {
+                const balance = tokenBalance.token?.balance || tokenBalance.balance || '0';
+                console.log(`✅ Token has balance (attempt ${attempt}):`, balance);
+
+                return {
+                  success: true,
+                  hasBalance: parseFloat(balance) > 0,
+                  balance
+                };
+              } else if (attempt < retries) {
+                console.log(`⚠️ No balance found on attempt ${attempt}, retrying...`);
+              } else {
+                console.log('⚠️ Token added but no balance found after all retries');
+                return {
+                  success: true,
+                  hasBalance: false
+                };
+              }
+            } catch (err: any) {
+              console.error(`❌ Error checking balance (attempt ${attempt}):`, err);
+              if (attempt === retries) {
+                // Still return success since the token was added
+                return {
+                  success: true,
+                  hasBalance: false
+                };
+              }
+            }
           }
-        } catch (refreshErr: any) {
-          console.error('❌ Error checking balance:', refreshErr);
-          // Still return success since the token was added
+
           return {
             success: true,
             hasBalance: false
           };
-        }
+        };
+
+        return await checkBalanceWithRetry();
       }
 
       console.warn('⚠️ API call succeeded but unexpected response format');
