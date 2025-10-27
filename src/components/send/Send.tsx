@@ -35,6 +35,16 @@ import {
 } from '@/components/ui/dialog'
 import { AssetHeaderCard } from './AssetHeaderCard'
 import ChangeControl from './ChangeControl'
+import { enrichPubkeysWithUsageInfo, isUTXONetwork } from '@/utils/utxoAddressUtils'
+import { ReviewTransaction } from './ReviewTransaction'
+import { formatTransactionDetails as formatTxDetails, type NetworkType } from '@/utils/transactionFormatter'
+import {
+  formatUsd as formatUsdValue,
+  usdToNative as convertUsdToNative,
+  nativeToUsd as convertNativeToUsd,
+  isPriceAvailable as checkPriceAvailable,
+  calculateFeeInUsd as calcFeeInUsd
+} from '@/utils/currencyConverter'
 
 // Add sound effect imports
 const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
@@ -76,6 +86,11 @@ interface Pubkey {
   pathMaster: string;
   networks: string[];
   scriptType?: string;
+  // UTXO address usage info
+  receiveIndex?: number;
+  changeIndex?: number;
+  usedReceiveAddresses?: number;
+  usedChangeAddresses?: number;
 }
 
 // Tendermint networks with memo support
@@ -525,94 +540,53 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId, assetContext?.nativeSymbol])
 
-  // Format USD value
-  const formatUsd = (value: number) => {
-    return value.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    })
-  }
+  // Enrich UTXO pubkeys with address usage info (receive/change indices)
+  useEffect(() => {
+    const enrichPubkeys = async () => {
+      if (!assetContext?.pubkeys || assetContext.pubkeys.length === 0) {
+        return;
+      }
 
-  // Helper function to check if price data is available
-  const isPriceAvailable = (): boolean => {
-    return !!(assetContext?.priceUsd && parseFloat(assetContext.priceUsd) > 0);
-  }
+      // Check if this is a UTXO network
+      const networkId = assetContext.networkId || assetContext.caip || '';
+      if (!isUTXONetwork(networkId)) {
+        return;
+      }
 
-  // Convert USD to native token amount
-  const usdToNative = (usdAmount: string): string => {
-    if (!usdAmount || !assetContext.priceUsd || parseFloat(assetContext.priceUsd) === 0) return '0';
-    const parsedUsd = parseFloat(usdAmount);
-    const parsedPrice = parseFloat(assetContext.priceUsd);
+      console.log('🔄 [Send] Fetching UTXO address usage info for pubkeys...');
 
-    // Check for NaN or invalid values
-    if (isNaN(parsedUsd) || isNaN(parsedPrice) || parsedPrice === 0) {
-      console.warn('Invalid USD to native conversion:', { usdAmount, priceUsd: assetContext.priceUsd });
-      return '0';
-    }
+      try {
+        const enrichedPubkeys = await enrichPubkeysWithUsageInfo(
+          assetContext.pubkeys,
+          networkId
+        );
 
-    const nativeAmount = parsedUsd / parsedPrice;
+        // Update assetContext with enriched pubkeys
+        if (app?.setAssetContext && enrichedPubkeys.length > 0) {
+          await app.setAssetContext({
+            ...assetContext,
+            pubkeys: enrichedPubkeys
+          });
+        }
+      } catch (error) {
+        console.error('❌ [Send] Error enriching pubkeys:', error);
+      }
+    };
 
-    // Check if result is NaN
-    if (isNaN(nativeAmount)) {
-      console.warn('NaN result in USD to native conversion:', { parsedUsd, parsedPrice });
-      return '0';
-    }
+    enrichPubkeys();
+  }, [assetContext?.symbol, assetContext?.networkId]); // Only re-run when asset changes
 
-    // Return formatted with appropriate decimal places
-    return nativeAmount.toFixed(8);
-  }
-
-  // Convert native token amount to USD
-  const nativeToUsd = (nativeAmount: string): string => {
-    if (!nativeAmount || !assetContext.priceUsd) return '0';
-    const usdAmount = parseFloat(nativeAmount) * parseFloat(assetContext.priceUsd);
-    // Return with 2 decimal places for USD
-    return usdAmount.toFixed(2);
-  }
+  // Currency conversion helpers
+  const formatUsd = (value: number) => formatUsdValue(value);
+  const isPriceAvailable = () => checkPriceAvailable(assetContext);
+  const usdToNative = (usdAmount: string) => convertUsdToNative(usdAmount, assetContext?.priceUsd);
+  const nativeToUsd = (nativeAmount: string) => convertNativeToUsd(nativeAmount, assetContext?.priceUsd);
 
   // Calculate fee in USD
   const updateFeeInUsd = (feeInNative: string) => {
-    if (!feeInNative || !assetContext?.priceUsd) {
-      setEstimatedFeeUsd('0.00');
-      return;
-    }
-    
-    try {
-      let feeValue = parseFloat(feeInNative);
-      
-      // Get network type for proper unit conversion
-      let networkId = assetContext.networkId || '';
-      
-      // Handle wildcard network IDs
-      if (networkId.includes('*') && assetContext.caip) {
-        const caipParts = assetContext.caip.split('/');
-        if (caipParts[0] && !caipParts[0].includes('*')) {
-          networkId = caipParts[0];
-        }
-      }
-      
-      const networkType = getNetworkType(networkId);
-      
-      // Special handling based on network type
-      if (networkType === 'EVM' && feeValue > 1) {
-        // Convert from gwei to ETH equivalent
-        const gweiToEth = 0.000000001;
-        feeValue = feeValue * gweiToEth;
-      } else if (networkType === 'UTXO') {
-        // For UTXO chains, the API might return fee in satoshis
-        // Check if the fee seems too large (likely in satoshis)
-        if (feeValue > 0.1) {
-          // Convert from satoshis to full coin value (1 BCH = 100,000,000 satoshis)
-          feeValue = feeValue / 100000000;
-        }
-      }
-      
-      const feeUsd = feeValue * parseFloat(assetContext.priceUsd);
-      setEstimatedFeeUsd(feeUsd.toFixed(2));
-    } catch (error) {
-      console.error('Error calculating fee in USD:', error);
-      setEstimatedFeeUsd('0.00');
-    }
+    const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
+    const feeUsd = calcFeeInUsd(feeInNative, assetContext?.priceUsd, networkType, assetContext?.networkId);
+    setEstimatedFeeUsd(feeUsd);
   };
 
   // Add helper function to classify the network type
@@ -1533,113 +1507,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   
   // Format transaction details for display
   const formatTransactionDetails = (tx: any): React.ReactNode => {
-    if (!tx) return null;
-    
-    // Get network type for formatting
     const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
-    const isBCH = assetContext?.networkId?.includes('bitcoincash') || 
-                  assetContext?.networkId?.includes('bip122:000000000000000000651ef99cb9fcbe');
-    
-    // Different formatting based on network type
-    switch (networkType) {
-      case 'UTXO': {
-        return (
-          <Box width="100%">
-            <Text color="gray.500" fontSize="sm" mb={1}>Transaction Details</Text>
-            {tx.inputs && tx.inputs.length > 0 && (
-              <Box mb={3}>
-                <Text color="gray.500" fontSize="xs">Inputs ({tx.inputs.length})</Text>
-                <Box maxH="100px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
-                  {tx.inputs.map((input: any, idx: number) => (
-                    <Text key={idx} fontFamily="mono" color="white" fontSize="10px" mb={1}>
-                      {input.txid?.substring(0, 8)}...{input.txid?.substring(input.txid.length - 8)} : {input.vout} 
-                      {input.value && ` (${input.value} sats)`}
-                    </Text>
-                  ))}
-                </Box>
-              </Box>
-            )}
-            
-            {tx.outputs && tx.outputs.length > 0 && (
-              <Box>
-                <Text color="gray.500" fontSize="xs">Outputs ({tx.outputs.length})</Text>
-                <Box maxH="100px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
-                  {tx.outputs.map((output: any, idx: number) => (
-                    <Text key={idx} fontFamily="mono" color="white" fontSize="10px" mb={1} wordBreak="break-all">
-                      {output.address ? (
-                        <>
-                          {output.address?.substring(0, 8)}...{output.address?.substring(output.address.length - 8)}
-                          {output.amount && ` (${output.amount} sats)`}
-                        </>
-                      ) : (
-                        <>
-                          Change output
-                          {output.amount && ` (${output.amount} sats)`}
-                        </>
-                      )}
-                    </Text>
-                  ))}
-                </Box>
-              </Box>
-            )}
-            
-            {tx.fee && (
-              <Flex justify="space-between" mt={2}>
-                <Text color="gray.500" fontSize="xs">Transaction Fee</Text>
-                <Text color="white" fontSize="xs">{tx.fee} sats</Text>
-              </Flex>
-            )}
-          </Box>
-        );
-      }
-      
-      case 'EVM': {
-        return (
-          <Box width="100%">
-            <Text color="gray.500" fontSize="sm" mb={1}>Transaction Details</Text>
-            <Box maxH="150px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
-              {tx.to && (
-                <Flex justify="space-between" mb={1}>
-                  <Text color="gray.500">To:</Text>
-                  <Text color="white" fontFamily="mono" wordBreak="break-all">{tx.to}</Text>
-                </Flex>
-              )}
-              {tx.value && (
-                <Flex justify="space-between" mb={1}>
-                  <Text color="gray.500">Value:</Text>
-                  <Text color="white" fontFamily="mono">{tx.value}</Text>
-                </Flex>
-              )}
-              {tx.gasLimit && (
-                <Flex justify="space-between" mb={1}>
-                  <Text color="gray.500">Gas Limit:</Text>
-                  <Text color="white" fontFamily="mono">{tx.gasLimit}</Text>
-                </Flex>
-              )}
-              {tx.gasPrice && (
-                <Flex justify="space-between" mb={1}>
-                  <Text color="gray.500">Gas Price:</Text>
-                  <Text color="white" fontFamily="mono">{tx.gasPrice} Gwei</Text>
-                </Flex>
-              )}
-            </Box>
-          </Box>
-        );
-      }
-      
-      default:
-        // For other chains, just show the JSON structure
-        return (
-          <Box width="100%">
-            <Text color="gray.500" fontSize="sm" mb={1}>Transaction Details</Text>
-            <Box maxH="150px" overflowY="auto" mt={1} p={2} bg="rgba(0,0,0,0.2)" borderRadius="md" fontSize="xs">
-              <Text color="white" fontFamily="mono" wordBreak="break-all">
-                {JSON.stringify(tx, null, 2)}
-              </Text>
-            </Box>
-          </Box>
-        );
-    }
+    return formatTxDetails(tx, networkType as NetworkType);
   };
 
   // Function to open raw transaction dialog
@@ -2059,425 +1928,41 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       );
     }
     
-    // Transaction in progress
+    // Transaction in progress - use ReviewTransaction component
     return (
-      <Box height="100vh" bg={theme.bg}>
-        <Box 
-          bg={theme.cardBg}
-          borderColor={theme.border}
-          borderWidth="1px"
-          borderRadius="md"
-          width="100%"
-          height="100%"
-          display="flex"
-          flexDirection="column"
-          overflow="hidden"
-        >
-          {/* Header */}
-          <Box 
-            borderBottom="1px" 
-            borderColor={theme.border}
-            p={5}
-            bg={theme.cardBg}
-          >
-            <Flex justify="space-between" align="center">
-              <Text fontSize="lg" fontWeight="bold" color={assetColor}>
-                {transactionStep === 'review' ? 'Review Transaction' : 
-                 transactionStep === 'sign' ? 'Signing Transaction' : 
-                 transactionStep === 'broadcast' ? 'Broadcasting Transaction' : 'Confirm Transaction'}
-              </Text>
-              <IconButton
-                aria-label="Close"
-                onClick={closeConfirmation}
-                size="sm"
-                variant="ghost"
-                color={assetColor}
-                disabled={loading}
-              >
-                <FaTimes />
-              </IconButton>
-            </Flex>
-          </Box>
-          
-          {/* Main Content */}
-          <Box 
-            flex="1" 
-            p={5} 
-            overflowY="auto"
-          >
-            {/* Loading overlay for signing and broadcasting */}
-            {(loading && (transactionStep === 'sign' || transactionStep === 'broadcast')) && (
-              <Box
-                position="absolute"
-                top={0}
-                left={0}
-                right={0}
-                bottom={0}
-                bg="rgba(0, 0, 0, 0.8)"
-                zIndex={1000}
-                display="flex"
-                flexDirection="column"
-                justifyContent="center"
-                alignItems="center"
-                p={4}
-              >
-                {transactionStep === 'sign' ? (
-                  <>
-                    <Image 
-                      src="/images/hold-and-release.svg"
-                      alt="Hold and Release Button on KeepKey"
-                      width="200px"
-                      mb={6}
-                    />
-                    <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
-                      Check Your KeepKey Device
-                    </Text>
-                    <Text color="gray.400" fontSize="md" textAlign="center" maxWidth="400px" mb={2}>
-                      Please review the transaction details on your KeepKey
-                    </Text>
-                    <Text color="gray.400" fontSize="md" textAlign="center">
-                      Hold the button to confirm or release to cancel
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <KeepKeyUiGlyph
-                      boxSize="80px"
-                      color={assetColor}
-                      animation={`${scale} 2s ease-in-out infinite`}
-                      mb={6}
-                    />
-                    <Text color={assetColor} fontSize="xl" fontWeight="bold" mb={2}>
-                      Broadcasting Transaction...
-                    </Text>
-                    <Text color="gray.400" fontSize="md" textAlign="center">
-                      Submitting transaction to the network
-                    </Text>
-                  </>
-                )}
-              </Box>
-            )}
-            
-            <Stack gap={5}>
-              {/* Asset Information */}
-              <Flex align="center" gap={3} width="100%">
-                <Box 
-                  borderRadius="full" 
-                  overflow="hidden" 
-                  boxSize="40px"
-                  p={1}
-                  bg={theme.cardBg}
-                  border="1px solid"
-                  borderColor={theme.border}
-                >
-                  <Image 
-                    src={assetContext.icon}
-                    alt={`${assetContext.name} Icon`}
-                    boxSize="100%"
-                    objectFit="contain"
-                  />
-                </Box>
-                <Box>
-                  <Text fontWeight="bold" color="white">
-                    {isUsdInput ? usdToNative(amount) : amount} {assetContext.symbol}
-                  </Text>
-                  <Text color="gray.400" fontSize="sm">
-                    {formatUsd(parseFloat(isUsdInput ? amount : nativeToUsd(amount)))}
-                  </Text>
-                </Box>
-              </Flex>
-              
-              {/* Recipient Details */}
-              <Box 
-                p={4}
-                bg={theme.bg}
-                border="1px solid"
-                borderColor={theme.border}
-                borderRadius="md"
-                width="100%"
-              >
-                <Text fontSize="sm" color="gray.400" mb={1}>
-                  Recipient
-                </Text>
-                <Text color="white" wordBreak="break-all" fontSize="sm">
-                  {recipient}
-                </Text>
-                
-                {memo && (
-                  <>
-                    <Text fontSize="sm" color="gray.400" mt={3} mb={1}>
-                      Memo/Tag
-                    </Text>
-                    <Text color="white" wordBreak="break-all" fontSize="sm">
-                      {memo}
-                    </Text>
-                  </>
-                )}
-              </Box>
-              
-              {/* Fee Details - Hide for XRP */}
-              {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
-                <Box 
-                  p={4}
-                  bg={theme.bg}
-                  border="1px solid"
-                  borderColor={theme.border}
-                  borderRadius="md"
-                  width="100%"
-                >
-                  <Flex justify="space-between" align="center">
-                    <Text fontSize="sm" color="gray.400">
-                      Network Fee
-                    </Text>
-                    <Box textAlign="right">
-                      <Text color="white" fontSize="sm">
-                        {estimatedFee} {assetContext.symbol}
-                      </Text>
-                      <Text color="gray.400" fontSize="xs">
-                        ≈ ${estimatedFeeUsd} USD
-                      </Text>
-                    </Box>
-                  </Flex>
-                  
-                  <Flex justify="space-between" align="center" mt={3}>
-                    <Text fontSize="sm" color="gray.400">
-                      Total
-                    </Text>
-                    <Box textAlign="right">
-                      <Text color="white" fontWeight="bold" fontSize="sm">
-                        {(() => {
-                          const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-                          const totalNative = isMax ? balance : (parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0')).toFixed(8);
-                          return `${totalNative} ${assetContext.symbol}`;
-                        })()}
-                      </Text>
-                      <Text color="gray.400" fontSize="xs">
-                        {(() => {
-                          const nativeAmount = isUsdInput ? usdToNative(amount) : amount;
-                          const totalNative = parseFloat(nativeAmount || '0') + parseFloat(estimatedFee || '0');
-                        return formatUsd(totalNative * (assetContext.priceUsd || 0));
-                      })()}
-                    </Text>
-                  </Box>
-                </Flex>
-              </Box>
-              )}
-
-              {/* Change Control for UTXO transactions */}
-              {unsignedTx?.unsignedTx && getNetworkType(assetContext?.networkId || '') === 'UTXO' && (
-                <ChangeControl
-                  changeOutputs={unsignedTx.unsignedTx.outputs || []}
-                  assetColor={assetColor}
-                  assetColorLight={assetColorLight}
-                  theme={theme}
-                />
-              )}
-
-              {/* Transaction Details */}
-              {unsignedTx && (
-                <Box width="100%" mt={4}>
-                  <Box 
-                    as="button" 
-                    onClick={() => setShowTxDetails(!showTxDetails)}
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    width="100%"
-                    p={2}
-                    bg="transparent"
-                    border="1px solid"
-                    borderColor={theme.border}
-                    borderRadius="md"
-                    color="white"
-                    _hover={{ borderColor: assetColor }}
-                  >
-                    <Text fontSize="sm">
-                      {showTxDetails ? 'Hide Transaction Details' : 'Show Transaction Details'}
-                    </Text>
-                    <Box transform={showTxDetails ? 'rotate(180deg)' : 'none'} transition="transform 0.2s">
-                      <FaArrowRight transform="rotate(90deg)" />
-                    </Box>
-                  </Box>
-                  
-                  {showTxDetails && (
-                    <Box 
-                      mt={3} 
-                      p={3} 
-                      borderRadius="md" 
-                      bg={theme.bg} 
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                    >
-                      {formatTransactionDetails(unsignedTx?.unsignedTx)}
-                      
-                      {/* Add Raw Transaction Button */}
-                      <Button
-                        mt={3}
-                        size="sm"
-                        variant="outline"
-                        width="100%"
-                        borderColor={theme.border}
-                        color={assetColor}
-                        _hover={{ borderColor: assetColor, bg: assetColorLight }}
-                        onClick={openRawTxDialog}
-                      >
-                        Edit Raw Transaction JSON
-                      </Button>
-                    </Box>
-                  )}
-                </Box>
-              )}
-              
-              {/* Raw Transaction Dialog */}
-              {showRawTxDialog && (
-                <Box
-                  position="fixed"
-                  top="0"
-                  left="0"
-                  right="0"
-                  bottom="0"
-                  bg="rgba(0, 0, 0, 0.8)"
-                  zIndex="1000"
-                  display="flex"
-                  justifyContent="center"
-                  alignItems="center"
-                  p={4}
-                >
-                  <Box
-                    bg={theme.cardBg}
-                    borderRadius="md"
-                    borderWidth="1px"
-                    borderColor={theme.border}
-                    width="90%"
-                    maxWidth="800px"
-                    maxHeight="90vh"
-                    overflow="hidden"
-                    display="flex"
-                    flexDirection="column"
-                  >
-                    <Box
-                      p={4}
-                      borderBottom="1px"
-                      borderColor={theme.border}
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      <Text color={assetColor} fontWeight="bold" fontSize="lg">
-                        Raw Transaction JSON
-                      </Text>
-                      <IconButton
-                        aria-label="Close"
-                        size="sm"
-                        variant="ghost"
-                        color={assetColor}
-                        onClick={closeRawTxDialog}
-                      >
-                        <FaTimes />
-                      </IconButton>
-                    </Box>
-                    
-                    <Box
-                      p={4}
-                      flex="1"
-                      overflowY="auto"
-                    >
-                      <Text color="gray.400" fontSize="sm" mb={2}>
-                        Edit the transaction JSON below:
-                      </Text>
-                      <Textarea
-                        value={editedRawTxJson}
-                        onChange={handleRawTxJsonChange}
-                        p={3}
-                        height="300px"
-                        width="100%"
-                        fontFamily="mono"
-                        fontSize="sm"
-                        color="white"
-                        bg={theme.bg}
-                        border="1px solid"
-                        borderColor={theme.border}
-                        borderRadius="md"
-                        resize="vertical"
-                        _focus={{
-                          borderColor: assetColor,
-                          outline: "none"
-                        }}
-                      />
-                    </Box>
-                    
-                    <Box
-                      p={4}
-                      borderTop="1px"
-                      borderColor={theme.border}
-                      display="flex"
-                      justifyContent="flex-end"
-                      gap={3}
-                    >
-                      <Button
-                        variant="outline"
-                        color="gray.400"
-                        borderColor={theme.border}
-                        onClick={closeRawTxDialog}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        bg={assetColor}
-                        color="black"
-                        _hover={{ bg: assetColorHover }}
-                        onClick={applyEditedJson}
-                      >
-                        Apply Changes
-                      </Button>
-                    </Box>
-                  </Box>
-                </Box>
-              )}
-            </Stack>
-          </Box>
-          
-          {/* Footer with Action Buttons */}
-          <Box 
-            borderTop="1px" 
-            borderColor={theme.border}
-            p={5}
-          >
-            <Stack gap={3}>
-              <Button
-                width="100%"
-                bg={assetColor}
-                color="black"
-                _hover={{
-                  bg: assetColorHover,
-                }}
-                onClick={confirmTransaction}
-                loading={loading}
-                height="56px"
-                fontSize="lg"
-                boxShadow={`0px 4px 12px ${assetColor}4D`}
-              >
-                Sign & Send
-              </Button>
-              
-              <Button
-                width="100%"
-                variant="outline"
-                color={assetColor}
-                borderColor={theme.border}
-                _hover={{
-                  bg: 'rgba(255, 215, 0, 0.1)',
-                  borderColor: assetColor,
-                }}
-                onClick={closeConfirmation}
-                height="56px"
-              >
-                Cancel
-              </Button>
-            </Stack>
-          </Box>
-        </Box>
-      </Box>
+      <ReviewTransaction
+        transactionStep={transactionStep}
+        loading={loading}
+        unsignedTx={unsignedTx}
+        assetContext={assetContext}
+        assetColor={assetColor}
+        assetColorLight={assetColorLight}
+        assetColorHover={assetColorHover}
+        amount={amount}
+        recipient={recipient}
+        memo={memo}
+        estimatedFee={estimatedFee}
+        estimatedFeeUsd={estimatedFeeUsd}
+        balance={balance}
+        isMax={isMax}
+        isUsdInput={isUsdInput}
+        showTxDetails={showTxDetails}
+        showRawTxDialog={showRawTxDialog}
+        editedRawTxJson={editedRawTxJson}
+        theme={theme}
+        closeConfirmation={closeConfirmation}
+        confirmTransaction={confirmTransaction}
+        setShowTxDetails={setShowTxDetails}
+        openRawTxDialog={openRawTxDialog}
+        closeRawTxDialog={closeRawTxDialog}
+        handleRawTxJsonChange={handleRawTxJsonChange}
+        applyEditedJson={applyEditedJson}
+        formatTransactionDetails={formatTransactionDetails}
+        usdToNative={usdToNative}
+        nativeToUsd={nativeToUsd}
+        formatUsd={formatUsd}
+        getNetworkType={getNetworkType}
+      />
     );
   }
 

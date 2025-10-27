@@ -21,6 +21,11 @@ interface Pubkey {
   pathMaster: string
   networks: string[]
   scriptType?: string
+  // UTXO address usage info
+  receiveIndex?: number
+  changeIndex?: number
+  usedReceiveAddresses?: number
+  usedChangeAddresses?: number
 }
 
 interface AssetHeaderCardProps {
@@ -206,6 +211,22 @@ export const AssetHeaderCard: React.FC<AssetHeaderCardProps> = ({
                     label = `${pubkey.note} (Recommended) - ${pubkey.pathMaster}`;
                   } else if (pubkey.note) {
                     label = `${pubkey.note} - ${pubkey.pathMaster}`;
+                  }
+
+                  // Add UTXO address usage info if available
+                  const hasUsageInfo = typeof pubkey.changeIndex === 'number' ||
+                                      typeof pubkey.receiveIndex === 'number';
+
+                  if (hasUsageInfo) {
+                    const receiveInfo = typeof pubkey.receiveIndex === 'number'
+                      ? ` | Receive: ${pubkey.usedReceiveAddresses || 0} used (next: ${pubkey.receiveIndex})`
+                      : '';
+
+                    const changeInfo = typeof pubkey.changeIndex === 'number'
+                      ? ` | Change: ${pubkey.usedChangeAddresses || 0} used (next: ${pubkey.changeIndex})`
+                      : '';
+
+                    label = `${label}${receiveInfo}${changeInfo}`;
                   }
 
                   return (

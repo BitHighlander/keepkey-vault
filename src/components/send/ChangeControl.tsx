@@ -6,8 +6,10 @@ import {
   Button,
   Icon,
   Stack,
+  Image,
 } from '@chakra-ui/react';
 import { FaChevronDown, FaChevronUp, FaShieldAlt, FaInfoCircle } from 'react-icons/fa';
+import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 
 // Simple Badge component replacement
 const Badge: React.FC<{ colorScheme?: string; fontSize?: string; children: React.ReactNode }> = ({
@@ -52,12 +54,21 @@ interface ChangeOutput {
   addressType?: string;
 }
 
+interface AddressUsageInfo {
+  usedReceiveAddresses: number;
+  usedChangeAddresses: number;
+  receiveIndex: number;
+  changeIndex: number;
+}
+
 interface ChangeControlProps {
   changeOutputs: ChangeOutput[];
   assetColor: string;
   assetColorLight: string;
   theme: any;
   onChangeAddressUpdate?: (outputIndex: number, newScriptType: string) => void;
+  // Optional: usage info by address type (xpub path)
+  usageInfo?: Record<string, AddressUsageInfo>;
 }
 
 /**
@@ -73,6 +84,27 @@ const pathArrayToString = (pathArray: number[]): string => {
     const value = isHardened ? num - 0x80000000 : num;
     return `${value}${isHardened ? "'" : ''}`;
   }).join('/');
+};
+
+/**
+ * Extracts change indicator and address index from BIP44 path
+ * BIP44 format: m/purpose'/coin_type'/account'/change/address_index
+ * Returns: { isChange: boolean, addressIndex: number }
+ */
+const extractPathInfo = (pathArray: number[]): { isChange: boolean; addressIndex: number } => {
+  if (!pathArray || pathArray.length < 5) {
+    return { isChange: false, addressIndex: 0 };
+  }
+
+  // Index 3 is the change indicator (0 = receive, 1 = change)
+  const changeIndicator = pathArray[3] >= 0x80000000 ? pathArray[3] - 0x80000000 : pathArray[3];
+  // Index 4 is the address index
+  const addressIndex = pathArray[4] >= 0x80000000 ? pathArray[4] - 0x80000000 : pathArray[4];
+
+  return {
+    isChange: changeIndicator === 1,
+    addressIndex: addressIndex,
+  };
 };
 
 /**
@@ -159,6 +191,7 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
   assetColorLight,
   theme,
   onChangeAddressUpdate,
+  usageInfo,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -212,6 +245,42 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
           boxSize={4}
         />
       </Flex>
+
+      {/* Primary Change Output (Non-Expanded View) */}
+      {!isExpanded && changeOnlyOutputs.length > 0 && (() => {
+        const primaryOutput = changeOnlyOutputs[0];
+        const path = primaryOutput.addressNList || primaryOutput.address_n || [];
+        const pathString = pathArrayToString(path);
+        const pathInfo = extractPathInfo(path);
+        const scriptInfo = primaryOutput.scriptType
+          ? getScriptTypeInfo(primaryOutput.scriptType)
+          : getScriptTypeFromPath(path);
+
+        return (
+          <Box mt={3}>
+            {/* Bitcoin Address with KeepKey Indicator */}
+            {primaryOutput.address && (
+              <Flex align="center" gap={2} mb={2}>
+                <KeepKeyUiGlyph boxSize="16px" color={assetColor} />
+                <Text fontSize="xs" fontFamily="mono" color="white" wordBreak="break-all">
+                  {primaryOutput.address}
+                </Text>
+              </Flex>
+            )}
+
+            {/* Derivation Path */}
+            <Flex align="center" gap={2}>
+              <Text fontSize="xs" color="gray.400">Path:</Text>
+              <Text fontSize="xs" fontFamily="mono" color={assetColor}>
+                {pathString}
+              </Text>
+              <Badge colorScheme="green" fontSize="8px">
+                {scriptInfo.label}
+              </Badge>
+            </Flex>
+          </Box>
+        );
+      })()}
 
       {/* Firmware Validation Notice */}
       <Box
@@ -294,9 +363,12 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
                 {/* Change Address if available */}
                 {output.address && (
                   <Box mt={2}>
-                    <Text fontSize="xs" color="gray.400" mb={1}>
-                      Change Address
-                    </Text>
+                    <Flex align="center" gap={2} mb={1}>
+                      <KeepKeyUiGlyph boxSize="12px" color={assetColor} />
+                      <Text fontSize="xs" color="gray.400">
+                        Change Address
+                      </Text>
+                    </Flex>
                     <Text
                       fontSize="xs"
                       fontFamily="mono"
@@ -310,6 +382,39 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
                     </Text>
                   </Box>
                 )}
+
+                {/* Address Usage Information */}
+                {usageInfo && (() => {
+                  const pathInfo = extractPathInfo(path);
+                  // Get account path (first 3 elements of the path)
+                  const accountPath = pathArrayToString(path.slice(0, 3));
+                  const usage = usageInfo[accountPath];
+
+                  if (usage) {
+                    return (
+                      <Box mt={2}>
+                        <Text fontSize="xs" color="gray.400" mb={1}>
+                          Address Usage
+                        </Text>
+                        <Flex gap={3} fontSize="xs">
+                          <Box>
+                            <Text color="gray.400">Receive:</Text>
+                            <Text color="white" fontFamily="mono">
+                              {usage.usedReceiveAddresses} used (next: {usage.receiveIndex})
+                            </Text>
+                          </Box>
+                          <Box>
+                            <Text color="gray.400">Change:</Text>
+                            <Text color={assetColor} fontFamily="mono" fontWeight="bold">
+                              {usage.usedChangeAddresses} used (next: {usage.changeIndex})
+                            </Text>
+                          </Box>
+                        </Flex>
+                      </Box>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Advanced Options */}
                 {onChangeAddressUpdate && (
