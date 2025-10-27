@@ -1492,10 +1492,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Step 1: Sign the transaction
       setTransactionStep('sign')
       const signedTxData = await signTransaction(unsignedTx)
-      
+
       // Step 2: Broadcast the transaction
       await broadcastTransaction(signedTxData)
-      
+
       console.log('Transaction sent successfully')
     } catch (error) {
       console.error('Transaction error:', error)
@@ -1504,7 +1504,53 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setLoading(false)
     }
   }
-  
+
+  // View change address on device
+  const handleViewChangeOnDevice = async (output: any) => {
+    if (!app?.keepKeySdk) {
+      console.error('KeepKey SDK not available')
+      return
+    }
+
+    try {
+      setLoading(true)
+      console.log('👁️ [Send] Viewing change address on device...')
+      console.log('🔑 [Send] Change output:', output)
+
+      if (!output.addressNList && !output.address_n) {
+        throw new Error('No address path available')
+      }
+
+      const addressNList = output.addressNList || output.address_n
+      const scriptType = output.scriptType || 'p2wpkh'
+
+      console.log('🔐 [Send] Network ID:', assetContext.networkId)
+      console.log('📝 [Send] Script Type:', scriptType)
+      console.log('🛣️ [Send] Address Path:', addressNList)
+
+      // Call KeepKey SDK directly with the exact path from the change output
+      // Don't use getAndVerifyAddress because it modifies the path indices
+      const addressInfo: any = {
+        address_n: addressNList,
+        show_display: true,
+        script_type: scriptType,
+        coin: 'Bitcoin' // For Bitcoin mainnet
+      }
+
+      console.log('🔑 [Send] Calling utxoGetAddress with:', addressInfo)
+
+      const { address: deviceAddress } = await app.keepKeySdk.address.utxoGetAddress(addressInfo)
+
+      console.log('✅ [Send] Change address displayed on device:', deviceAddress)
+    } catch (error: any) {
+      console.error('❌ [Send] Error displaying address on device:', error)
+      setError(error.message || 'Failed to display address on device')
+      setShowErrorDialog(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Format transaction details for display
   const formatTransactionDetails = (tx: any): React.ReactNode => {
     const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
@@ -1962,6 +2008,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         nativeToUsd={nativeToUsd}
         formatUsd={formatUsd}
         getNetworkType={getNetworkType}
+        onViewChangeOnDevice={handleViewChangeOnDevice}
       />
     );
   }

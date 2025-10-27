@@ -6,9 +6,8 @@ import {
   Button,
   Icon,
   Stack,
-  Image,
 } from '@chakra-ui/react';
-import { FaChevronDown, FaChevronUp, FaShieldAlt, FaInfoCircle } from 'react-icons/fa';
+import { FaChevronDown, FaChevronUp, FaInfoCircle, FaEye, FaBitcoin } from 'react-icons/fa';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 
 // Simple Badge component replacement
@@ -67,6 +66,7 @@ interface ChangeControlProps {
   assetColorLight: string;
   theme: any;
   onChangeAddressUpdate?: (outputIndex: number, newScriptType: string) => void;
+  onViewOnDevice?: (output: ChangeOutput) => void;
   // Optional: usage info by address type (xpub path)
   usageInfo?: Record<string, AddressUsageInfo>;
 }
@@ -191,6 +191,7 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
   assetColorLight,
   theme,
   onChangeAddressUpdate,
+  onViewOnDevice,
   usageInfo,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -208,6 +209,12 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
   console.log('ChangeControl: Total outputs:', changeOutputs.length);
   console.log('ChangeControl: Change outputs:', changeOnlyOutputs.length);
   console.log('ChangeControl: Change outputs data:', changeOnlyOutputs);
+
+  // Log if change output has address or not
+  if (changeOnlyOutputs.length > 0) {
+    console.log('ChangeControl: First change output has address?', !!changeOnlyOutputs[0].address);
+    console.log('ChangeControl: First change output address:', changeOnlyOutputs[0].address);
+  }
 
   if (changeOnlyOutputs.length === 0) {
     return null;
@@ -258,46 +265,67 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
 
         return (
           <Box mt={3}>
-            {/* Bitcoin Address with KeepKey Indicator */}
-            {primaryOutput.address && (
-              <Flex align="center" gap={2} mb={2}>
-                <KeepKeyUiGlyph boxSize="16px" color={assetColor} />
-                <Text fontSize="xs" fontFamily="mono" color="white" wordBreak="break-all">
-                  {primaryOutput.address}
-                </Text>
-              </Flex>
-            )}
-
-            {/* Derivation Path */}
-            <Flex align="center" gap={2}>
-              <Text fontSize="xs" color="gray.400">Path:</Text>
-              <Text fontSize="xs" fontFamily="mono" color={assetColor}>
-                {pathString}
+            {/* Change Address Info */}
+            <Flex align="center" gap={2} mb={3}>
+              <Icon as={FaBitcoin} color={assetColor} boxSize="16px" />
+              <Text fontSize="sm" fontWeight="semibold" color="white">
+                Your Change Address
               </Text>
               <Badge colorScheme="green" fontSize="8px">
                 {scriptInfo.label}
               </Badge>
             </Flex>
+
+            {/* Address Display Box */}
+            <Box
+              p={3}
+              bg="rgba(0, 0, 0, 0.3)"
+              borderRadius="md"
+              border="1px solid"
+              borderColor={theme.border}
+            >
+              {/* Show address if available, otherwise show derivation path */}
+              {primaryOutput.address ? (
+                <>
+                  <Flex align="center" gap={2} mb={2}>
+                    <Text fontSize="xs" color="gray.400">Address:</Text>
+                  </Flex>
+                  <Text fontSize="xs" fontFamily="mono" color="white" wordBreak="break-all" mb={3}>
+                    {primaryOutput.address}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Flex align="center" gap={2} mb={2}>
+                    <Text fontSize="xs" color="gray.400">Derivation Path:</Text>
+                  </Flex>
+                  <Text fontSize="xs" fontFamily="mono" color={assetColor} mb={3}>
+                    {pathString}
+                  </Text>
+                  <Text fontSize="xs" color="gray.500" mb={3}>
+                    Address will be derived using this path on your device
+                  </Text>
+                </>
+              )}
+
+              {/* View on Device Button */}
+              <Button
+                size="sm"
+                width="100%"
+                variant="outline"
+                color={assetColor}
+                borderColor={theme.border}
+                _hover={{ bg: assetColorLight, borderColor: assetColor }}
+                leftIcon={<Icon as={FaEye} />}
+                onClick={() => onViewOnDevice?.(primaryOutput)}
+                isDisabled={!onViewOnDevice}
+              >
+                View & Verify on Device
+              </Button>
+            </Box>
           </Box>
         );
       })()}
-
-      {/* Firmware Validation Notice */}
-      <Box
-        mt={3}
-        p={3}
-        bg={assetColorLight}
-        borderRadius="md"
-        border="1px solid"
-        borderColor={assetColor}
-      >
-        <Flex align="center" gap={2} fontSize="xs" color="white">
-          <Icon as={FaShieldAlt} color={assetColor} />
-          <Text>
-            KeepKey firmware validates change addresses internally to ensure they belong to your device
-          </Text>
-        </Flex>
-      </Box>
 
       {/* Expandable content */}
       {isExpanded && (

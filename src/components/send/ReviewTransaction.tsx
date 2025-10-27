@@ -65,6 +65,7 @@ interface ReviewTransactionProps {
   nativeToUsd: (native: string) => string
   formatUsd: (value: number) => string
   getNetworkType: (networkId: string) => string
+  onViewChangeOnDevice?: (output: any) => void
 }
 
 export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
@@ -99,6 +100,7 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
   nativeToUsd,
   formatUsd,
   getNetworkType,
+  onViewChangeOnDevice,
 }) => {
   return (
     <Box height="100vh" bg={theme.bg}>
@@ -310,6 +312,7 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
                 assetColor={assetColor}
                 assetColorLight={assetColorLight}
                 theme={theme}
+                onViewOnDevice={onViewChangeOnDevice}
               />
             )}
 
