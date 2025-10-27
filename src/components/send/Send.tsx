@@ -131,6 +131,7 @@ interface SendPayload {
   feeLevel: number;
   isMax: boolean;
   memo?: string;
+  changeScriptType?: string; // Optional: specify change address script type
 }
 
 interface TransactionState {
@@ -188,9 +189,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
   const [selectedPubkey, setSelectedPubkey] = useState<Pubkey | null>(null)
   const [nativeGasBalance, setNativeGasBalance] = useState<string>('0') // CACAO/gas balance for selected pubkey
-  
+
   // Add state to track if we're entering amount in USD
   const [isUsdInput, setIsUsdInput] = useState<boolean>(false)
+
+  // State for change address script type (for UTXO chains)
+  const [changeScriptType, setChangeScriptType] = useState<string | undefined>(undefined)
   
   // Transaction state
   const [txHash, setTxHash] = useState<string>('')
@@ -1108,7 +1112,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       if (memo && supportsMemo) {
         sendPayload.memo = memo;
       }
-      
+
+      // Add change script type for UTXO chains if specified
+      if (changeScriptType) {
+        sendPayload.changeScriptType = changeScriptType;
+        console.log('🔄 [Send] Using custom change script type:', changeScriptType);
+      }
+
       console.log('Build TX Payload:', sendPayload);
       console.log('Fee details:', {
         selectedFeeLevel,
@@ -1555,16 +1565,32 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const handleChangeAddressUpdate = async (outputIndex: number, newScriptType: string) => {
     console.log('🔄 [Send] Changing address type for output', outputIndex, 'to', newScriptType)
 
-    // For now, just log - full implementation would regenerate the transaction
-    // with the new script type for the change output
-    console.warn('⚠️ [Send] Change address type update not yet implemented')
-    console.log('📝 [Send] Would change output', outputIndex, 'to script type:', newScriptType)
+    try {
+      setLoading(true)
 
-    // TODO: Implement transaction regeneration with new script type
-    // This would involve:
-    // 1. Updating the change output script type in the unsigned transaction
-    // 2. Recalculating the transaction with the new change address
-    // 3. Updating the UI with the new transaction details
+      // Update the change script type state
+      setChangeScriptType(newScriptType)
+      console.log('📝 [Send] Set change script type to:', newScriptType)
+
+      // Rebuild the transaction with the new script type
+      console.log('🔨 [Send] Rebuilding transaction with new change address type...')
+      const rebuiltTx = await buildTransaction()
+
+      if (rebuiltTx) {
+        console.log('✅ [Send] Transaction rebuilt successfully with new change address type')
+        setUnsignedTx(rebuiltTx)
+      } else {
+        throw new Error('Failed to rebuild transaction')
+      }
+    } catch (error: any) {
+      console.error('❌ [Send] Error changing address type:', error)
+      setError(error.message || 'Failed to change address type')
+      setShowErrorDialog(true)
+      // Reset to previous state on error
+      setChangeScriptType(undefined)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Format transaction details for display
