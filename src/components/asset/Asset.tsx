@@ -344,6 +344,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         }
       }
 
+      // Get explorer info from assetsMap or fallback to network-specific defaults
+      const assetInfo = app.assetsMap?.get(caip);
+      const networkAssetInfo = app.assetsMap?.get(tokenNetworkId);
+
       // Set token asset context
       const tokenAssetContextData = {
         networkId: tokenNetworkId,
@@ -363,9 +367,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         type: 'token',
         nativeBalance: nativeBalance,
         nativeSymbol: nativeSymbol,
-        explorer: app.assetsMap?.get(caip)?.explorer || getExplorerForNetwork(tokenNetworkId).explorer,
-        explorerAddressLink: app.assetsMap?.get(caip)?.explorerAddressLink || getExplorerForNetwork(tokenNetworkId).explorerAddressLink,
-        explorerTxLink: app.assetsMap?.get(caip)?.explorerTxLink || getExplorerForNetwork(tokenNetworkId).explorerTxLink,
+        explorer: assetInfo?.explorer || networkAssetInfo?.explorer,
+        explorerAddressLink: assetInfo?.explorerAddressLink || networkAssetInfo?.explorerAddressLink,
+        explorerTxLink: assetInfo?.explorerTxLink || networkAssetInfo?.explorerTxLink,
         pubkeys: (app.pubkeys || []).filter((p: any) => p.networks.includes(tokenNetworkId))
       };
 
