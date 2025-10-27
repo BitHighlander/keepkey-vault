@@ -55,6 +55,7 @@ import { ReportDialog } from './ReportDialog';
 import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
+import { DappStore } from './DappStore';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -1873,8 +1874,13 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
             </Box>
           );
         })()}
+
+        {/* Dapps Section - Show for all networks that support dapps */}
+        {assetContext.networkId && (
+          <DappStore networkId={assetContext.networkId} />
+        )}
       </Box>
-      
+
       {/* Report Dialog */}
       <ReportDialog
         isOpen={isReportDialogOpen}
