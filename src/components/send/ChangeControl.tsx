@@ -229,32 +229,8 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
       borderColor={theme.border}
       borderRadius="md"
     >
-      {/* Header with expand/collapse */}
-      <Flex
-        justify="space-between"
-        align="center"
-        cursor="pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-        _hover={{ opacity: 0.8 }}
-      >
-        <Flex align="center" gap={2}>
-          <Icon as={FaInfoCircle} color={assetColor} />
-          <Text fontSize="sm" fontWeight="bold" color="white">
-            Change Output Information
-          </Text>
-          <Badge colorScheme="orange" fontSize="10px">
-            {changeOnlyOutputs.length} change {changeOnlyOutputs.length === 1 ? 'output' : 'outputs'}
-          </Badge>
-        </Flex>
-        <Icon
-          as={isExpanded ? FaChevronUp : FaChevronDown}
-          color={assetColor}
-          boxSize={4}
-        />
-      </Flex>
-
-      {/* Primary Change Output (Non-Expanded View) */}
-      {!isExpanded && changeOnlyOutputs.length > 0 && (() => {
+      {/* Primary Change Output - Always Visible */}
+      {changeOnlyOutputs.length > 0 && (() => {
         const primaryOutput = changeOnlyOutputs[0];
         const path = primaryOutput.addressNList || primaryOutput.address_n || [];
         const pathString = pathArrayToString(path);
@@ -264,8 +240,8 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
           : getScriptTypeFromPath(path);
 
         return (
-          <Box mt={3}>
-            {/* Change Address Info */}
+          <>
+            {/* Change Address Header */}
             <Flex align="center" gap={2} mb={3}>
               <Icon as={FaBitcoin} color={assetColor} boxSize="16px" />
               <Text fontSize="sm" fontWeight="semibold" color="white">
@@ -322,10 +298,120 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
               >
                 View & Verify on Device
               </Button>
+
+              {/* Advanced Options - Script Type Selection */}
+              {onChangeAddressUpdate && (
+                <>
+                  <Flex
+                    mt={3}
+                    align="center"
+                    gap={2}
+                    cursor="pointer"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    _hover={{ opacity: 0.7 }}
+                  >
+                    <Text fontSize="xs" color="gray.500">
+                      Advanced
+                    </Text>
+                    <Icon
+                      as={showAdvanced ? FaChevronUp : FaChevronDown}
+                      color="gray.500"
+                      boxSize={2}
+                    />
+                  </Flex>
+
+                  {showAdvanced && (
+                    <Box mt={2} p={2} bg="rgba(0, 0, 0, 0.2)" borderRadius="md">
+                      <Text fontSize="xs" color="gray.400" mb={2}>
+                        Change Address Type:
+                      </Text>
+                      <Stack gap={2}>
+                        <Button
+                          size="xs"
+                          variant={scriptInfo.type === 'p2wpkh' ? 'solid' : 'outline'}
+                          bg={scriptInfo.type === 'p2wpkh' ? assetColor : 'transparent'}
+                          color={scriptInfo.type === 'p2wpkh' ? 'black' : 'white'}
+                          borderColor={theme.border}
+                          _hover={{ bg: scriptInfo.type === 'p2wpkh' ? assetColor : assetColorLight }}
+                          onClick={() => onChangeAddressUpdate(0, 'p2wpkh')}
+                        >
+                          Native SegWit (bc1...) - Recommended
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant={scriptInfo.type === 'p2sh-p2wpkh' ? 'solid' : 'outline'}
+                          bg={scriptInfo.type === 'p2sh-p2wpkh' ? assetColor : 'transparent'}
+                          color={scriptInfo.type === 'p2sh-p2wpkh' ? 'black' : 'white'}
+                          borderColor={theme.border}
+                          _hover={{ bg: scriptInfo.type === 'p2sh-p2wpkh' ? assetColor : assetColorLight }}
+                          onClick={() => onChangeAddressUpdate(0, 'p2sh-p2wpkh')}
+                        >
+                          Nested SegWit (3...)
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant={scriptInfo.type === 'p2pkh' ? 'solid' : 'outline'}
+                          bg={scriptInfo.type === 'p2pkh' ? assetColor : 'transparent'}
+                          color={scriptInfo.type === 'p2pkh' ? 'black' : 'white'}
+                          borderColor={theme.border}
+                          _hover={{ bg: scriptInfo.type === 'p2pkh' ? assetColor : assetColorLight }}
+                          onClick={() => onChangeAddressUpdate(0, 'p2pkh')}
+                        >
+                          Legacy (1...)
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant={scriptInfo.type === 'p2tr' ? 'solid' : 'outline'}
+                          bg={scriptInfo.type === 'p2tr' ? assetColor : 'transparent'}
+                          color={scriptInfo.type === 'p2tr' ? 'black' : 'white'}
+                          borderColor={theme.border}
+                          _hover={{ bg: scriptInfo.type === 'p2tr' ? assetColor : assetColorLight }}
+                          onClick={() => onChangeAddressUpdate(0, 'p2tr')}
+                        >
+                          Taproot (bc1p...)
+                        </Button>
+                      </Stack>
+                      <Text fontSize="xs" color="gray.500" mt={2} fontStyle="italic">
+                        Changing address type will regenerate the transaction
+                      </Text>
+                    </Box>
+                  )}
+                </>
+              )}
             </Box>
-          </Box>
+          </>
         );
       })()}
+
+      {/* Collapsible Advanced Details Section */}
+      {changeOnlyOutputs.length > 1 && (
+        <Flex
+          mt={3}
+          justify="space-between"
+          align="center"
+          cursor="pointer"
+          onClick={() => setIsExpanded(!isExpanded)}
+          _hover={{ opacity: 0.8 }}
+          p={2}
+          borderRadius="md"
+          bg="rgba(0, 0, 0, 0.2)"
+        >
+          <Flex align="center" gap={2}>
+            <Icon as={FaInfoCircle} color={assetColor} boxSize={3} />
+            <Text fontSize="xs" color="gray.400">
+              Additional Change Outputs
+            </Text>
+            <Badge colorScheme="orange" fontSize="8px">
+              {changeOnlyOutputs.length - 1} more
+            </Badge>
+          </Flex>
+          <Icon
+            as={isExpanded ? FaChevronUp : FaChevronDown}
+            color={assetColor}
+            boxSize={3}
+          />
+        </Flex>
+      )}
 
       {/* Expandable content */}
       {isExpanded && (

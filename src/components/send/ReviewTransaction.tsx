@@ -66,6 +66,7 @@ interface ReviewTransactionProps {
   formatUsd: (value: number) => string
   getNetworkType: (networkId: string) => string
   onViewChangeOnDevice?: (output: any) => void
+  onChangeAddressUpdate?: (outputIndex: number, newScriptType: string) => void
 }
 
 export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
@@ -101,6 +102,7 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
   formatUsd,
   getNetworkType,
   onViewChangeOnDevice,
+  onChangeAddressUpdate,
 }) => {
   return (
     <Box height="100vh" bg={theme.bg}>
@@ -313,6 +315,7 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
                 assetColorLight={assetColorLight}
                 theme={theme}
                 onViewOnDevice={onViewChangeOnDevice}
+                onChangeAddressUpdate={onChangeAddressUpdate}
               />
             )}
 

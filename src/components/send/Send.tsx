@@ -1551,6 +1551,22 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   }
 
+  // Handle change address type update
+  const handleChangeAddressUpdate = async (outputIndex: number, newScriptType: string) => {
+    console.log('🔄 [Send] Changing address type for output', outputIndex, 'to', newScriptType)
+
+    // For now, just log - full implementation would regenerate the transaction
+    // with the new script type for the change output
+    console.warn('⚠️ [Send] Change address type update not yet implemented')
+    console.log('📝 [Send] Would change output', outputIndex, 'to script type:', newScriptType)
+
+    // TODO: Implement transaction regeneration with new script type
+    // This would involve:
+    // 1. Updating the change output script type in the unsigned transaction
+    // 2. Recalculating the transaction with the new change address
+    // 3. Updating the UI with the new transaction details
+  }
+
   // Format transaction details for display
   const formatTransactionDetails = (tx: any): React.ReactNode => {
     const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
@@ -2009,6 +2025,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         formatUsd={formatUsd}
         getNetworkType={getNetworkType}
         onViewChangeOnDevice={handleViewChangeOnDevice}
+        onChangeAddressUpdate={handleChangeAddressUpdate}
       />
     );
   }
