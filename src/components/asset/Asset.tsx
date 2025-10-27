@@ -70,6 +70,7 @@ const theme = {
 const MotionBox = motion(Box);
 
 interface AssetProps {
+  caip: string; // The CAIP identifier for this asset
   onBackClick?: () => void;
   onSendClick?: () => void;
   onReceiveClick?: () => void;
@@ -151,7 +152,7 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
   );
 };
 
-export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }: AssetProps) => {
+export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapClick }: AssetProps) => {
   // State for managing the component's loading status
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<number>(Date.now());
@@ -173,6 +174,8 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const [isCustomTokenDialogOpen, setIsCustomTokenDialogOpen] = useState(false);
   // Add state for tracking back navigation loading
   const [isNavigatingBack, setIsNavigatingBack] = useState(false);
+  // Store the computed asset data locally
+  const [assetContext, setAssetContext] = useState<any>(null);
 
   // Custom tokens hook
   const { customTokens, addCustomToken, removeCustomToken, refreshCustomTokens } = useCustomTokens();
@@ -187,8 +190,7 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
-  const assetContext = app?.assetContext;
-  
+
   const router = useRouter();
 
   // Calculate the price (moved up for use in useMemo)
@@ -269,75 +271,166 @@ export const Asset = ({ onBackClick, onSendClick, onReceiveClick, onSwapClick }:
     });
   };
 
-  // Add component mount/unmount logging and handle loading state
+  // Fetch asset data based on CAIP prop
   useEffect(() => {
-    console.log('🎯 [Asset] Component mounted with context:', assetContext);
+    console.log('🎯 [Asset] Component mounted with CAIP:', caip);
 
-    // For debugging - log the Pioneer context
-    console.log('🎯 [Asset] Pioneer context:', {
-      app,
-      hasApp: !!app,
-      hasAssetContext: !!app?.assetContext,
-      hasSetAssetContext: !!app?.setAssetContext
-    });
+    // Reset state when CAIP changes
+    setLoading(true);
+    setSelectedAddress(null);
+    setIsInitialLoad(true);
 
-    // Reset component state when assetContext changes (navigating to new asset)
-    if (assetContext) {
-      console.log('✅ [Asset] AssetContext available, resetting component state');
-      // Reset all component state for the new asset
-      setPreviousBalance(assetContext.balance || '0');
-      setIsInitialLoad(true); // Mark as initial load for new asset
-      setSelectedAddress(null); // Clear selected address
+    // Wait for app to be ready
+    if (!app || !app.balances || !app.pubkeys) {
+      console.log('⏳ [Asset] Waiting for app to be ready...');
+      return;
+    }
+
+    console.log('🔍 [Asset] Fetching data for CAIP:', caip);
+
+    // Quick check if this is a token
+    const isCacaoNative = caip.includes('mayachain') && caip.includes('slip44:931');
+    const isToken = !isCacaoNative && (caip.includes('/denom:') || caip.includes('/ibc:') || caip.includes('erc20') || caip.includes('eip721') || /0x[a-fA-F0-9]{40}/.test(caip));
+
+    if (isToken) {
+      // Handle token case
+      console.log('🪙 [Asset] Loading token data');
+      const tokenBalance = app.balances?.find((balance: any) => balance.caip === caip);
+
+      if (!tokenBalance) {
+        console.error('⚠️ [Asset] Token not found:', caip);
+        setLoading(false);
+        return;
+      }
+
+      // Determine the network this token belongs to
+      let tokenNetworkId = '';
+      if (caip.includes('MAYA.') || caip.includes('cosmos:mayachain-mainnet-v1')) {
+        tokenNetworkId = 'cosmos:mayachain-mainnet-v1';
+      } else if (caip.includes('THOR.') || caip.includes('cosmos:thorchain-mainnet-v1')) {
+        tokenNetworkId = 'cosmos:thorchain-mainnet-v1';
+      } else if (caip.includes('OSMO.') || caip.includes('cosmos:osmosis-1')) {
+        tokenNetworkId = 'cosmos:osmosis-1';
+      } else if (caip.includes('eip155:')) {
+        const parts = caip.split('/');
+        tokenNetworkId = parts[0];
+      } else if (caip.includes('cosmos:')) {
+        const parts = caip.split('/');
+        tokenNetworkId = parts[0];
+      }
+
+      // Map network to native asset
+      const nativeAssetMap: { [key: string]: { caip: string, symbol: string } } = {
+        'cosmos:mayachain-mainnet-v1': { caip: 'cosmos:mayachain-mainnet-v1/slip44:931', symbol: 'CACAO' },
+        'cosmos:thorchain-mainnet-v1': { caip: 'cosmos:thorchain-mainnet-v1/slip44:931', symbol: 'RUNE' },
+        'cosmos:osmosis-1': { caip: 'cosmos:osmosis-1/slip44:118', symbol: 'OSMO' },
+        'eip155:1': { caip: 'eip155:1/slip44:60', symbol: 'ETH' },
+        'eip155:137': { caip: 'eip155:137/slip44:60', symbol: 'MATIC' },
+        'eip155:43114': { caip: 'eip155:43114/slip44:60', symbol: 'AVAX' },
+        'eip155:56': { caip: 'eip155:56/slip44:60', symbol: 'BNB' },
+        'eip155:8453': { caip: 'eip155:8453/slip44:60', symbol: 'ETH' },
+        'eip155:10': { caip: 'eip155:10/slip44:60', symbol: 'ETH' },
+        'eip155:42161': { caip: 'eip155:42161/slip44:60', symbol: 'ETH' },
+      };
+
+      const nativeAssetInfo = nativeAssetMap[tokenNetworkId];
+      let nativeBalance = '0';
+      let nativeSymbol = nativeAssetInfo?.symbol || 'GAS';
+
+      if (nativeAssetInfo) {
+        const nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === nativeAssetInfo.caip);
+        if (nativeAssetBalance) {
+          nativeBalance = nativeAssetBalance.balance;
+        }
+      }
+
+      // Set token asset context
+      const tokenAssetContextData = {
+        networkId: tokenNetworkId,
+        chainId: tokenNetworkId,
+        assetId: caip,
+        caip: caip,
+        name: tokenBalance.name || tokenBalance.symbol || tokenBalance.ticker || 'TOKEN',
+        networkName: tokenNetworkId.split(':').pop() || '',
+        symbol: tokenBalance.ticker || tokenBalance.symbol || 'TOKEN',
+        icon: tokenBalance.icon || tokenBalance.image || 'https://pioneers.dev/coins/pioneer.png',
+        color: tokenBalance.color || '#FFD700',
+        balance: tokenBalance.balance || '0',
+        value: tokenBalance.valueUsd || tokenBalance.value || 0,
+        precision: tokenBalance.precision || 18,
+        priceUsd: parseFloat(tokenBalance.priceUsd || tokenBalance.price || 0),
+        isToken: true,
+        type: 'token',
+        nativeBalance: nativeBalance,
+        nativeSymbol: nativeSymbol,
+        explorer: app.assetsMap?.get(caip)?.explorer || getExplorerForNetwork(tokenNetworkId).explorer,
+        explorerAddressLink: app.assetsMap?.get(caip)?.explorerAddressLink || getExplorerForNetwork(tokenNetworkId).explorerAddressLink,
+        explorerTxLink: app.assetsMap?.get(caip)?.explorerTxLink || getExplorerForNetwork(tokenNetworkId).explorerTxLink,
+        pubkeys: (app.pubkeys || []).filter((p: any) => p.networks.includes(tokenNetworkId))
+      };
+
+      console.log('✅ [Asset] Token data loaded:', tokenAssetContextData);
+      setAssetContext(tokenAssetContextData);
+      setPreviousBalance(tokenAssetContextData.balance);
       setLoading(false);
       return;
     }
-    
-    // Set a timeout to wait for assetContext to be populated
-    let checkCount = 0;
-    const maxChecks = 10;
-    
-    const checkAssetContext = () => {
-      // Re-access the latest context values
-      const currentApp = pioneer?.state?.app;
-      const currentAssetContext = currentApp?.assetContext;
-      
-      if (currentAssetContext) {
-        console.log('✅ [Asset] AssetContext became available on check', checkCount);
-        setLoading(false);
-        return true;
-      }
-      
-      checkCount++;
-      if (checkCount >= maxChecks) {
-        console.log('❌ [Asset] AssetContext still null after', maxChecks, 'checks');
-        console.log('❌ [Asset] Current app state:', {
-          hasApp: !!currentApp,
-          hasAssetContext: !!currentApp?.assetContext,
-          hasSetAssetContext: !!currentApp?.setAssetContext,
-          isDashboardAvailable: !!currentApp?.dashboard
-        });
-        setLoading(false);
-        return true;
-      }
-      
-      return false;
+
+    // Handle native asset case
+    console.log('💎 [Asset] Loading native asset data');
+
+    // Parse the CAIP
+    let networkId: string = caip;
+    let assetType: string = '';
+
+    if (caip.includes('/')) {
+      const parts = caip.split('/');
+      networkId = parts[0];
+      assetType = parts[1];
+    }
+
+    // Find the balance
+    let nativeAssetBalance = null;
+
+    // Special case for ETH
+    if (caip === 'eip155:1/slip44:60') {
+      nativeAssetBalance = app.balances?.find((balance: any) =>
+        balance.caip === caip &&
+        balance.name !== 'eETH' &&
+        balance.appId !== 'ether-fi' &&
+        (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
+      );
+    } else {
+      nativeAssetBalance = app.balances?.find((balance: any) =>
+        balance.caip === caip &&
+        (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
+      );
+    }
+
+    if (!nativeAssetBalance) {
+      nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
+    }
+
+    if (!nativeAssetBalance) {
+      console.error('⚠️ [Asset] Native asset not found:', caip);
+      setLoading(false);
+      return;
+    }
+
+    // CRITICAL FIX: For CACAO, override symbol
+    const isCacao = caip.includes('mayachain') && caip.includes('slip44:931');
+
+    const assetContextData = {
+      ...nativeAssetBalance,
+      caip: caip,
+      ...(isCacao && { symbol: 'CACAO' })
     };
-    
-    // Immediately check once
-    if (checkAssetContext()) return;
-    
-    // Then set up an interval for repeated checks
-    const timer = setInterval(() => {
-      if (checkAssetContext()) {
-        clearInterval(timer);
-      }
-    }, 500); // Check every 500ms
-    
-    return () => {
-      console.log('👋 [Asset] Component unmounting');
-      clearInterval(timer);
-    };
-  }, [app, assetContext, pioneer]);
+
+    console.log('✅ [Asset] Native asset data loaded:', assetContextData);
+    setAssetContext(assetContextData);
+    setPreviousBalance(assetContextData.balance);
+    setLoading(false);
+  }, [caip, app]);
 
   // Set up interval to sync market data every 15 seconds
   // SKIP interval when custom token dialog is open to prevent state refresh from closing the dialog
