@@ -376,6 +376,16 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       console.log('✅ [Asset] Token data loaded:', tokenAssetContextData);
       setAssetContext(tokenAssetContextData);
       setPreviousBalance(tokenAssetContextData.balance);
+
+      // Set asset context in Pioneer SDK for Send/Receive/Swap components
+      if (app?.setAssetContext) {
+        app.setAssetContext(tokenAssetContextData).then(() => {
+          console.log('✅ [Asset] Token asset context set in Pioneer SDK');
+        }).catch((error: any) => {
+          console.error('❌ [Asset] Error setting token asset context:', error);
+        });
+      }
+
       setLoading(false);
       return;
     }
@@ -433,6 +443,16 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     console.log('✅ [Asset] Native asset data loaded:', assetContextData);
     setAssetContext(assetContextData);
     setPreviousBalance(assetContextData.balance);
+
+    // Set asset context in Pioneer SDK for Send/Receive/Swap components
+    if (app?.setAssetContext) {
+      app.setAssetContext(assetContextData).then(() => {
+        console.log('✅ [Asset] Native asset context set in Pioneer SDK');
+      }).catch((error: any) => {
+        console.error('❌ [Asset] Error setting native asset context:', error);
+      });
+    }
+
     setLoading(false);
   }, [caip, app]);
 
