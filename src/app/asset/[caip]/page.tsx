@@ -446,10 +446,10 @@ export default function AssetPage() {
           console.log('✅ [AssetPage] Token asset context set successfully');
           setCurrentAssetCaip(caip);
 
-          // Small delay to ensure the UI updates with loading spinner first
+          // Small delay to ensure context is propagated before hiding loading
           setTimeout(() => {
             setIsAssetLoading(false);
-          }, 100);
+          }, 300);
           return; // Exit early, we're done
         } catch (error) {
           console.error('❌ [AssetPage] Error setting token asset context:', error);
@@ -534,10 +534,10 @@ export default function AssetPage() {
       console.log('✅ [AssetPage] Asset context set successfully with price data')
       setCurrentAssetCaip(caip);
 
-      // Small delay to ensure the UI updates with loading spinner first
+      // Small delay to ensure context is propagated before hiding loading
       setTimeout(() => {
         setIsAssetLoading(false);
-      }, 100);
+      }, 300);
     } catch (error) {
       console.error('❌ [AssetPage] Error setting asset context:', error)
       setIsAssetLoading(false);

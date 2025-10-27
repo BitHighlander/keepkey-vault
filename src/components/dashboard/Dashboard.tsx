@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import {
   Box,
   Flex,
@@ -13,6 +13,7 @@ import {
   Grid,
   GridItem,
   useDisclosure,
+  Spinner,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
@@ -260,6 +261,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [lastSync, setLastSync] = useState<number>(Date.now());
   const [previousTotalValue, setPreviousTotalValue] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingAssetCaip, setLoadingAssetCaip] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
@@ -870,20 +873,25 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         cursor="pointer"
                         onClick={() => {
                           console.log('📋 [Dashboard] Navigating to asset page:', network);
-                          
+
                           // We always use the full CAIP from gasAssetCaip for navigation
                           const caip = network.gasAssetCaip;
-                          
+
                           console.log('📋 [Dashboard] Using CAIP for navigation:', caip);
                           console.log('📋 [Dashboard] Network object:', network);
-                          
+
+                          // Set loading state immediately for instant feedback
+                          setLoadingAssetCaip(caip);
+
                           // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
-                          
+
                           console.log('📋 [Dashboard] Encoded parameters:', { encodedCaip });
-                          
-                          // Navigate using encoded parameters to the simplified route
-                          router.push(`/asset/${encodedCaip}`);
+
+                          // Navigate using startTransition for better perceived performance
+                          startTransition(() => {
+                            router.push(`/asset/${encodedCaip}`);
+                          });
                         }}
                         role="button"
                         aria-label={`Select ${network.gasAssetSymbol} network`}
@@ -896,11 +904,34 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         transition="all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
                       >
+                        {/* Loading overlay with spinner */}
+                        {loadingAssetCaip === network.gasAssetCaip && (
+                          <Flex
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            right={0}
+                            bottom={0}
+                            align="center"
+                            justify="center"
+                            bg="rgba(0, 0, 0, 0.7)"
+                            borderRadius="xl"
+                            zIndex={3}
+                            backdropFilter="blur(4px)"
+                          >
+                            <Spinner
+                              size="lg"
+                              color={network.color}
+                              thickness="3px"
+                              speed="0.6s"
+                            />
+                          </Flex>
+                        )}
                         <Flex align="center" justify="space-between" position="relative" zIndex={1}>
                           <HStack gap={4}>
-                            <Box 
-                              borderRadius="full" 
-                              overflow="hidden" 
+                            <Box
+                              borderRadius="full"
+                              overflow="hidden"
                               boxSize="44px"
                               bg={network.color}
                               boxShadow={`lg, inset 0 0 10px ${network.color}40`}
@@ -1312,20 +1343,25 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         cursor="pointer"
                         onClick={() => {
                           console.log('🪙 [Dashboard] Navigating to token page:', token);
-                          
+
                           // Use the token's CAIP for navigation
                           const caip = token.caip;
-                          
+
                           console.log('🪙 [Dashboard] Using token CAIP for navigation:', caip);
                           console.log('🪙 [Dashboard] Token object:', token);
-                          
+
+                          // Set loading state immediately for instant feedback
+                          setLoadingAssetCaip(caip);
+
                           // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
-                          
+
                           console.log('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
-                          
-                          // Navigate using encoded parameters to the simplified route
-                          router.push(`/asset/${encodedCaip}`);
+
+                          // Navigate using startTransition for better perceived performance
+                          startTransition(() => {
+                            router.push(`/asset/${encodedCaip}`);
+                          });
                         }}
                         role="button"
                         aria-label={`Select ${tokenSymbol} token`}
@@ -1338,11 +1374,34 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         transition="all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
                       >
+                        {/* Loading overlay with spinner */}
+                        {loadingAssetCaip === token.caip && (
+                          <Flex
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            right={0}
+                            bottom={0}
+                            align="center"
+                            justify="center"
+                            bg="rgba(0, 0, 0, 0.7)"
+                            borderRadius="xl"
+                            zIndex={3}
+                            backdropFilter="blur(4px)"
+                          >
+                            <Spinner
+                              size="lg"
+                              color={tokenColor}
+                              thickness="3px"
+                              speed="0.6s"
+                            />
+                          </Flex>
+                        )}
                         <Flex align="center" justify="space-between" position="relative" zIndex={1}>
                           <HStack gap={4}>
-                            <Box 
-                              borderRadius="full" 
-                              overflow="hidden" 
+                            <Box
+                              borderRadius="full"
+                              overflow="hidden"
                               boxSize="44px"
                               bg={tokenColor}
                               boxShadow={`lg, inset 0 0 10px ${tokenColor}40`}
