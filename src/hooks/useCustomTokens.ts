@@ -28,28 +28,29 @@ export const useCustomTokens = () => {
 
   // Fetch custom tokens from Pioneer server
   const fetchCustomTokens = useCallback(async () => {
-    if (!userAddress || !app?.spec) return;
+    if (!userAddress || !app?.pioneer) return;
 
     try {
       setIsLoading(true);
       setError(null);
 
-      console.log('🔍 Fetching custom tokens from server for:', userAddress);
+      console.log('🔍 Fetching custom tokens via Pioneer SDK for:', userAddress);
+      console.log('🔍 Checking if GetCustomTokens method exists:', typeof app.pioneer.GetCustomTokens);
 
-      // Extract base URL from spec
-      const baseUrl = app.spec.replace('/spec/swagger.json', '');
+      // The Pioneer SDK auto-generates methods from swagger spec
+      // If this fails, the SDK was initialized with wrong spec URL
+      if (typeof app.pioneer.GetCustomTokens !== 'function') {
+        throw new Error('GetCustomTokens method not available - SDK may be using wrong spec URL');
+      }
 
-      // Call the server API endpoint directly
-      const response = await fetch(`${baseUrl}/custom-tokens/get`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userAddress })
+      const response = await app.pioneer.GetCustomTokens({
+        userAddress
       });
 
-      const result = await response.json();
-      console.log('📦 Server response:', result);
+      console.log('📦 Custom tokens response:', response);
 
-      const tokens = result?.data?.tokens || [];
+      // Handle nested response structure: response.data.data.tokens
+      const tokens = response?.data?.data?.tokens || response?.data?.tokens || response?.tokens || [];
       setCustomTokens(tokens);
 
       console.log(`✅ Loaded ${tokens.length} custom tokens from server`);
@@ -71,8 +72,8 @@ export const useCustomTokens = () => {
     console.log('📝 addCustomToken called with:', token);
     console.log('User address:', userAddress);
 
-    if (!userAddress || !app?.spec) {
-      const errorMsg = 'No user address or app spec available';
+    if (!userAddress || !app?.pioneer) {
+      const errorMsg = 'No user address or Pioneer SDK available';
       console.error('❌', errorMsg);
       setError(errorMsg);
       return { success: false, hasBalance: false };
@@ -82,57 +83,64 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🌐 Adding custom token to server via API');
+      console.log('🌐 Adding custom token via Pioneer SDK');
+      console.log('🔍 Checking if AddCustomToken method exists:', typeof app.pioneer.AddCustomToken);
 
-      // Extract base URL from spec
-      const baseUrl = app.spec.replace('/spec/swagger.json', '');
+      // The Pioneer SDK auto-generates methods from swagger spec
+      // If this fails, the SDK was initialized with wrong spec URL
+      if (typeof app.pioneer.AddCustomToken !== 'function') {
+        throw new Error('AddCustomToken method not available - SDK may be using wrong spec URL');
+      }
 
-      // Call the server API endpoint directly
-      const response = await fetch(`${baseUrl}/custom-tokens/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userAddress,
-          token: {
-            networkId: token.networkId,
-            address: token.address,
-            caip: token.caip,
-            name: token.name,
-            symbol: token.symbol,
-            decimals: token.decimals,
-            icon: token.icon,
-            coingeckoId: token.coingeckoId,
-          }
-        })
+      const response = await app.pioneer.AddCustomToken({
+        userAddress,
+        token: {
+          networkId: token.networkId,
+          address: token.address,
+          caip: token.caip,
+          name: token.name,
+          symbol: token.symbol,
+          decimals: token.decimals,
+          icon: token.icon,
+          coingeckoId: token.coingeckoId,
+        }
       });
 
-      const result = await response.json();
-      console.log('✅ AddCustomToken response:', result);
+      console.log('✅ AddCustomToken response:', response);
 
-      if (result && result.success) {
+      if (response && response.success) {
         // Refresh the token list from the server
         await fetchCustomTokens();
 
         console.log('✅ Token added successfully!');
 
-        // Now check if the token has a balance
-        console.log('🔍 Checking token balance for:', token.caip);
-        try {
-          const balanceResult = await app.getBalance(token.networkId);
-          console.log('💰 Balance result:', balanceResult);
+        // Check token balance using the dedicated endpoint
+        console.log('💰 Checking custom token balance for:', token.caip);
 
-          // Find the specific token in the balance results
-          const tokenBalance = balanceResult?.find((b: any) =>
-            b.caip?.toLowerCase() === token.caip?.toLowerCase() ||
-            b.address?.toLowerCase() === token.address?.toLowerCase()
+        try {
+          // Use the dedicated GetCustomTokenBalances method
+          const balanceResult = await app.pioneer.GetCustomTokenBalances({
+            networkId: token.networkId,
+            address: userAddress
+          });
+
+          console.log('💰 Custom token balance result:', balanceResult);
+
+          // Handle nested response structure
+          const balanceTokens = balanceResult?.data?.data?.tokens || balanceResult?.data?.tokens || balanceResult?.tokens || [];
+          const tokenBalance = balanceTokens.find(
+            (t: any) => (t.token?.symbol === token.symbol || t.symbol === token.symbol) &&
+                       (t.token?.address?.toLowerCase() === token.address.toLowerCase() ||
+                        t.address?.toLowerCase() === token.address.toLowerCase())
           );
 
-          if (tokenBalance && parseFloat(tokenBalance.balance || '0') > 0) {
-            console.log('✅ Token has balance:', tokenBalance.balance);
+          if (tokenBalance) {
+            const balance = tokenBalance.token?.balance || tokenBalance.balance || '0';
+            console.log('✅ Token has balance:', balance);
             return {
               success: true,
-              hasBalance: true,
-              balance: tokenBalance.balance
+              hasBalance: parseFloat(balance) > 0,
+              balance
             };
           } else {
             console.log('⚠️ Token added but no balance found');
@@ -141,8 +149,8 @@ export const useCustomTokens = () => {
               hasBalance: false
             };
           }
-        } catch (balanceErr: any) {
-          console.error('❌ Error checking balance:', balanceErr);
+        } catch (refreshErr: any) {
+          console.error('❌ Error checking balance:', refreshErr);
           // Still return success since the token was added
           return {
             success: true,

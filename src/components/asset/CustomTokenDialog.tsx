@@ -221,31 +221,60 @@ export const CustomTokenDialog = ({
   };
 
   const handleRescan = async () => {
-    if (!processingToken || !pioneer.state?.app) return;
+    if (!processingToken || !pioneer.state?.app?.pioneer || !userAddress) return;
 
     setIsScanning(true);
     try {
-      console.log('🔄 Rescanning balance for:', processingToken.symbol);
+      console.log('🔄 Rescanning balance for:', processingToken.symbol, 'on', processingToken.networkId);
 
-      // Call getCharts to refresh all balances including custom tokens
-      if (pioneer.state.app.getCharts) {
-        await pioneer.state.app.getCharts();
-      }
+      // Use dedicated GetCustomTokenBalances endpoint to query web3 node directly
+      const balanceResult = await pioneer.state.app.pioneer.GetCustomTokenBalances({
+        networkId: processingToken.networkId,
+        address: userAddress
+      });
 
-      // Check balance again
-      const balanceResult = await pioneer.state.app.getBalance(processingToken.networkId);
-      const tokenBalance = balanceResult?.find((b: any) =>
-        b.caip?.toLowerCase() === processingToken.caip?.toLowerCase() ||
-        b.address?.toLowerCase() === processingToken.address?.toLowerCase()
+      console.log('💰 Custom token balance result:', balanceResult);
+
+      // Handle nested response structure
+      const balanceTokens = balanceResult?.data?.data?.tokens || balanceResult?.data?.tokens || balanceResult?.tokens || [];
+      console.log('📊 Balance tokens received:', balanceTokens);
+
+      // Match by CAIP or by symbol+address (address is in assetCaip, not as separate field)
+      const tokenBalance = balanceTokens.find(
+        (t: any) => {
+          // Try matching by CAIP first
+          if (t.assetCaip?.toLowerCase() === processingToken.caip?.toLowerCase()) {
+            return true;
+          }
+          // Fallback: match by symbol and check if address is in assetCaip
+          if ((t.token?.symbol === processingToken.symbol || t.symbol === processingToken.symbol) &&
+              t.assetCaip?.toLowerCase().includes(processingToken.address.toLowerCase())) {
+            return true;
+          }
+          return false;
+        }
       );
 
-      if (tokenBalance && parseFloat(tokenBalance.balance || '0') > 0) {
-        setProcessingResult({
-          type: 'success',
-          message: `✅ Token found! Balance: ${tokenBalance.balance}`,
-          hasBalance: true,
-          balance: tokenBalance.balance,
-        });
+      console.log('🎯 Matched token balance:', tokenBalance);
+
+      if (tokenBalance) {
+        const balance = tokenBalance.token?.balance || tokenBalance.balance || '0';
+        console.log('✅ Token balance found:', balance);
+
+        if (parseFloat(balance) > 0) {
+          setProcessingResult({
+            type: 'success',
+            message: `✅ Token found! Balance: ${balance}`,
+            hasBalance: true,
+            balance,
+          });
+        } else {
+          setProcessingResult({
+            type: 'warning',
+            message: `⚠️ Token added, but balance is 0`,
+            hasBalance: false,
+          });
+        }
       } else {
         setProcessingResult({
           type: 'warning',
@@ -255,6 +284,11 @@ export const CustomTokenDialog = ({
       }
     } catch (error) {
       console.error('Error rescanning:', error);
+      setProcessingResult({
+        type: 'warning',
+        message: `❌ Error checking balance: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        hasBalance: false,
+      });
     } finally {
       setIsScanning(false);
     }
@@ -305,8 +339,14 @@ export const CustomTokenDialog = ({
 
       console.log('📡 Calling app.pioneer.LookupTokenMetadata with:', payload);
 
-      // Call Pioneer SDK method to lookup token
-      const response = await pioneer.state.app.pioneer.LookupTokenMetadata(payload);
+      // Call Pioneer SDK method to lookup token with extended timeout
+      // This can be slow as it queries the blockchain
+      const response = await Promise.race([
+        pioneer.state.app.pioneer.LookupTokenMetadata(payload),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Lookup timeout - please enter token details manually')), 30000)
+        )
+      ]);
 
       console.log('✅ Token lookup response:', response);
       console.log('✅ Token lookup response.data:', response?.data);
