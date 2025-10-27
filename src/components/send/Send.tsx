@@ -34,6 +34,7 @@ import {
   DialogCloseTrigger,
 } from '@/components/ui/dialog'
 import { AssetHeaderCard } from './AssetHeaderCard'
+import ChangeControl from './ChangeControl'
 
 // Add sound effect imports
 const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
@@ -2261,7 +2262,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 </Flex>
               </Box>
               )}
-              
+
+              {/* Change Control for UTXO transactions */}
+              {unsignedTx?.unsignedTx && getNetworkType(assetContext?.networkId || '') === 'UTXO' && (
+                <ChangeControl
+                  changeOutputs={unsignedTx.unsignedTx.outputs || []}
+                  assetColor={assetColor}
+                  assetColorLight={assetColorLight}
+                  theme={theme}
+                />
+              )}
+
               {/* Transaction Details */}
               {unsignedTx && (
                 <Box width="100%" mt={4}>
