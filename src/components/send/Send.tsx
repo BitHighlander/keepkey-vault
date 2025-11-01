@@ -284,17 +284,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // Check if this is a UTXO network (Bitcoin, etc.)
         const networkId = assetContext.networkId || assetContext.caip || '';
         const isUtxoNetwork = UTXO_NETWORKS.some(id => networkId.includes(id)) || networkId.startsWith('bip122:');
-        
+
         if (isUtxoNetwork && assetContext.pubkeys && assetContext.pubkeys.length > 0) {
-          // For UTXO chains, sum all pubkey balances
-          console.log('Calculating UTXO balance from pubkeys:', assetContext.pubkeys);
-
           const assetCaip = assetContext.caip || assetContext.networkId;
-          let totalBalance = 0;
 
-          for (const pubkey of assetContext.pubkeys) {
-            // Find corresponding balance for this pubkey
-            // CRITICAL: Must match BOTH the address AND the asset CAIP
+          // CRITICAL FIX: If a specific pubkey is selected, only show that pubkey's balance
+          // Otherwise, sum all pubkey balances
+          if (selectedPubkey) {
+            console.log('🔍 [Send] Calculating balance for selected UTXO pubkey:', selectedPubkey);
+
+            // Find balance for the selected pubkey only
             const pubkeyBalance = app?.balances?.find((b: any) => {
               // First check if this balance is for the correct asset
               const isCorrectAsset = b.caip === assetCaip ||
@@ -306,22 +305,55 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               }
 
               // Then match by pubkey/address/master
-              return b.pubkey === pubkey.pubkey ||
-                     b.address === pubkey.address ||
-                     b.master === pubkey.master;
+              return b.pubkey === selectedPubkey.pubkey ||
+                     b.address === selectedPubkey.address ||
+                     b.master === selectedPubkey.master;
             });
 
             if (pubkeyBalance && pubkeyBalance.balance) {
-              const balanceValue = parseFloat(pubkeyBalance.balance);
-              if (!isNaN(balanceValue)) {
-                totalBalance += balanceValue;
-                console.log(`Added balance for ${pubkey.addressType || 'address'}: ${balanceValue}`);
+              newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
+              console.log('✅ [Send] Found balance for selected UTXO pubkey:', newBalance);
+            } else {
+              console.warn('⚠️ [Send] No balance found for selected UTXO pubkey, defaulting to 0');
+              newBalance = '0';
+            }
+          } else {
+            // No specific pubkey selected - sum all pubkey balances
+            console.log('Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
+
+            let totalBalance = 0;
+
+            for (const pubkey of assetContext.pubkeys) {
+              // Find corresponding balance for this pubkey
+              // CRITICAL: Must match BOTH the address AND the asset CAIP
+              const pubkeyBalance = app?.balances?.find((b: any) => {
+                // First check if this balance is for the correct asset
+                const isCorrectAsset = b.caip === assetCaip ||
+                                     b.networkId === assetCaip ||
+                                     b.symbol === assetContext.symbol;
+
+                if (!isCorrectAsset) {
+                  return false;
+                }
+
+                // Then match by pubkey/address/master
+                return b.pubkey === pubkey.pubkey ||
+                       b.address === pubkey.address ||
+                       b.master === pubkey.master;
+              });
+
+              if (pubkeyBalance && pubkeyBalance.balance) {
+                const balanceValue = parseFloat(pubkeyBalance.balance);
+                if (!isNaN(balanceValue)) {
+                  totalBalance += balanceValue;
+                  console.log(`Added balance for ${pubkey.addressType || 'address'}: ${balanceValue}`);
+                }
               }
             }
-          }
 
-          newBalance = totalBalance.toFixed(8);
-          console.log('Total UTXO balance calculated:', newBalance);
+            newBalance = totalBalance.toFixed(8);
+            console.log('Total UTXO balance calculated:', newBalance);
+          }
         } else {
           // For non-UTXO chains
           // When a specific pubkey is selected, ALWAYS look up its balance

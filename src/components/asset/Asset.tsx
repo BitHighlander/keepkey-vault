@@ -443,10 +443,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     const assetContextData = {
       ...nativeAssetBalance,
       caip: caip,
-      ...(isCacao && { symbol: 'CACAO' })
+      ...(isCacao && { symbol: 'CACAO' }),
+      // CRITICAL FIX: Add pubkeys for balance aggregation across all addresses
+      pubkeys: (app.pubkeys || []).filter((p: any) => p.networks.includes(networkId))
     };
 
     console.log('✅ [Asset] Native asset data loaded:', assetContextData);
+    console.log('🔑 [Asset] Pubkeys for aggregation:', assetContextData.pubkeys?.length || 0);
     setAssetContext(assetContextData);
     setPreviousBalance(assetContextData.balance);
 
@@ -927,14 +930,14 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   
                   {/* Show if balance is aggregated from multiple addresses */}
                   {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
-                    <Badge 
-                      colorScheme="blue" 
+                    <Badge
+                      colorScheme="blue"
                       variant="subtle"
                       fontSize="xs"
                       px={2}
                       py={1}
                     >
-                      Combined from {aggregatedBalance.balances.length} Pubkeys
+                      Summed from {aggregatedBalance.balances.length} pubkeys
                     </Badge>
                   )}
                   

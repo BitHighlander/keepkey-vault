@@ -1,5 +1,9 @@
 'use client'
 
+// Debug flag - set to false to reduce console noise
+const DEBUG_VERBOSE = false;
+const DEBUG_USD = true; // Keep USD debugging on
+
 import React, { useState, useEffect, useTransition } from 'react';
 import {
   Box,
@@ -34,7 +38,7 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
   const cleanUrl = React.useMemo(() => {
     // Check for null, undefined, or empty string
     if (!src || src.trim() === '') {
-      console.log('🖼️ [IconWithFallback] Empty or null src:', src);
+      if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Empty or null src:', src);
       return null;
     }
 
@@ -45,17 +49,17 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
         .filter(u => u.startsWith('http://') || u.startsWith('https://'));
 
       const firstUrl = urls[0] || null;
-      console.log('🖼️ [IconWithFallback] Multi URL detected:', { src, urls, firstUrl });
+      if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Multi URL detected:', { src, urls, firstUrl });
       return firstUrl;
     }
 
     // Return null if URL doesn't start with http (invalid)
     if (!src.startsWith('http://') && !src.startsWith('https://')) {
-      console.log('🖼️ [IconWithFallback] Invalid URL (no protocol):', src);
+      if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Invalid URL (no protocol):', src);
       return null;
     }
 
-    console.log('🖼️ [IconWithFallback] Valid URL:', src);
+    if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Valid URL:', src);
     return src;
   }, [src]);
 
@@ -81,7 +85,7 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
       boxSize={boxSize}
       objectFit="cover"
       onError={(e) => {
-        console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
+        if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
         setError(true);
       }}
     />
@@ -312,7 +316,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       const name = assetInfo?.name || null;
 
       // Debug logging
-      if (assetInfo) {
+      if (assetInfo && DEBUG_VERBOSE) {
         console.log('🏷️ [Dashboard] Asset lookup:', { caip, name, assetInfo });
       }
 
@@ -324,29 +328,33 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   useEffect(() => {
-    console.log('📊 [Dashboard] Component mounted');
-    console.log('🖼️ [Dashboard] Background image should be: url(/images/backgrounds/splash-bg.png)');
-    console.log('🎨 [Dashboard] Theme background color:', theme.bg);
-    
+    if (DEBUG_VERBOSE) {
+      console.log('📊 [Dashboard] Component mounted');
+      console.log('🖼️ [Dashboard] Background image should be: url(/images/backgrounds/splash-bg.png)');
+      console.log('🎨 [Dashboard] Theme background color:', theme.bg);
+    }
+
     // Check if the image is actually loading (use native Image, not Chakra's Image component)
     const img = new window.Image();
     img.onload = () => {
-      console.log('✅ [Dashboard] Background image loaded successfully');
+      if (DEBUG_VERBOSE) console.log('✅ [Dashboard] Background image loaded successfully');
     };
     img.onerror = (e) => {
       console.error('❌ [Dashboard] Background image failed to load:', e);
     };
     img.src = '/images/backgrounds/splash-bg.png';
-    
+
     fetchDashboard();
-    return () => console.log('📊 [Dashboard] Component unmounting');
+    return () => {
+      if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Component unmounting');
+    };
   }, [app, app?.dashboard]);
 
   // Add new useEffect to reload dashboard when assetContext becomes null
   useEffect(() => {
-    console.log('📊 [Dashboard] AssetContext changed:', app?.assetContext);
+    if (DEBUG_VERBOSE) console.log('📊 [Dashboard] AssetContext changed:', app?.assetContext);
     if (!app?.assetContext) {
-      console.log('📊 [Dashboard] AssetContext is null, reloading dashboard');
+      if (DEBUG_VERBOSE) console.log('📊 [Dashboard] AssetContext is null, reloading dashboard');
       fetchDashboard();
     }
   }, [app?.assetContext]);
@@ -359,7 +367,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       app
         .syncMarket()
         .then(() => {
-          console.log("📊 [Dashboard] syncMarket called from Dashboard");
+          if (DEBUG_VERBOSE) console.log("📊 [Dashboard] syncMarket called from Dashboard");
           // We now track real balance changes instead of artificial adjustments
           setLastSync(Date.now());
           fetchDashboard();
@@ -373,12 +381,23 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   }, [app]);
 
   const fetchDashboard = async () => {
-    console.log('📊 [Dashboard] Fetching dashboard data');
+    if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Fetching dashboard data');
     setLoading(true);
     try {
       if(app && app.dashboard) {
         const dashboard = app.dashboard;
-        console.log('📊 [Dashboard] Dashboard data received:', dashboard);
+        if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Dashboard data received:', dashboard);
+
+        // USD debugging - check if we have balances and prices
+        if (DEBUG_USD) {
+          console.log('💰 [USD DEBUG] Dashboard USD info:', {
+            totalValueUsd: dashboard.totalValueUsd,
+            networksCount: dashboard.networks?.length || 0,
+            hasBalances: app.balances?.length || 0,
+            sampleBalance: app.balances?.[0],
+            sampleNetwork: dashboard.networks?.[0]
+          });
+        }
         
         // Compare new total value with previous total value
         const newTotalValue = dashboard.totalValueUsd || 0;

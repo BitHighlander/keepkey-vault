@@ -1,6 +1,9 @@
 'use client'
 // @ts-nocheck
 
+// Debug flag - set to false to reduce console noise
+const DEBUG_VERBOSE = false;
+
 import { Box, Flex } from "@chakra-ui/react"
 import { keyframes } from '@emotion/react'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
@@ -54,26 +57,32 @@ export default function Home() {
 
   // Add debug logging for component mount and state changes
   useEffect(() => {
-    console.log('🏠 [Page] Component mounted');
-    return () => console.log('🏠 [Page] Component unmounting');
+    if (DEBUG_VERBOSE) console.log('🏠 [Page] Component mounted');
+    return () => {
+      if (DEBUG_VERBOSE) console.log('🏠 [Page] Component unmounting');
+    };
   }, []);
 
   useEffect(() => {
-    console.log('🔄 [Page] State update:', {
-      hasApp: !!app,
-      hasAssetContext: !!app?.assetContext,
-      hasDashboard: !!app?.dashboard,
-      hasPioneer: !!pioneer,
-      splashBgPath: splashBg // Debug: check if image imported correctly
-    });
+    if (DEBUG_VERBOSE) {
+      console.log('🔄 [Page] State update:', {
+        hasApp: !!app,
+        hasAssetContext: !!app?.assetContext,
+        hasDashboard: !!app?.dashboard,
+        hasPioneer: !!pioneer,
+        splashBgPath: splashBg // Debug: check if image imported correctly
+      });
+    }
   }, [app, pioneer]);
 
   // Debug loading screen state
   useEffect(() => {
-    if (showLoading) {
-      console.log('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
-    } else {
-      console.log('✅ [LOADING SCREEN] Loading screen hidden');
+    if (DEBUG_VERBOSE) {
+      if (showLoading) {
+        console.log('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
+      } else {
+        console.log('✅ [LOADING SCREEN] Loading screen hidden');
+      }
     }
   }, [showLoading]);
 

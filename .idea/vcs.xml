@@ -2,9 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/sample-code/RUNE-Tools" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/sample-code/swaps.pro-v10" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/sample-code/wallet-connect-dapp" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/sample-code/web-examples" vcs="Git" />
   </component>
 </project>
