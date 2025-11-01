@@ -120,7 +120,6 @@ export const AssetHeaderCard: React.FC<AssetHeaderCardProps> = ({
           <Box width="100%" mt={2}>
             {/* Header with Advanced button */}
             <Flex justify="space-between" align="center" mb={2}>
-              <Text color="gray.400" fontSize="sm">Address Type</Text>
               <Button
                 size="sm"
                 height="28px"
@@ -141,113 +140,119 @@ export const AssetHeaderCard: React.FC<AssetHeaderCardProps> = ({
 
             {/* Advanced Options - Collapsible */}
             {showAdvanced && (
-              <Box
-                mb={3}
-                p={3}
-                bg={theme.border}
-                borderRadius="8px"
-                borderWidth="1px"
-                borderColor={theme.border}
-              >
-                <Button
-                  width="100%"
-                  size="sm"
-                  height="36px"
-                  bg="transparent"
-                  color={assetColor}
+              <>
+                {/* Address Type Label - Only shown in advanced mode */}
+                <Text color="gray.400" fontSize="sm" mb={2}>Address Type</Text>
+
+                {/* Add Custom Path Button */}
+                <Box
+                  mb={3}
+                  p={3}
+                  bg={theme.border}
+                  borderRadius="8px"
                   borderWidth="1px"
-                  borderColor={assetColor}
-                  _hover={{ bg: assetColorLight }}
-                  onClick={onAddPathClick}
+                  borderColor={theme.border}
                 >
-                  <Box as="span" mr={2}>
-                    <FaPlus />
-                  </Box>
-                  Add Custom Path
-                </Button>
-              </Box>
+                  <Button
+                    width="100%"
+                    size="sm"
+                    height="36px"
+                    bg="transparent"
+                    color={assetColor}
+                    borderWidth="1px"
+                    borderColor={assetColor}
+                    _hover={{ bg: assetColorLight }}
+                    onClick={onAddPathClick}
+                  >
+                    <Box as="span" mr={2}>
+                      <FaPlus />
+                    </Box>
+                    Add Custom Path
+                  </Button>
+                </Box>
+
+                {/* Address Type Dropdown - Only shown in advanced mode */}
+                <select
+                  value={selectedPubkey?.pathMaster || ''}
+                  onChange={onPubkeyChange}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    backgroundColor: theme.cardBg,
+                    borderColor: theme.border,
+                    borderWidth: '1px',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = assetColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = theme.border;
+                  }}
+                >
+                  {(() => {
+                    // Sort pubkeys - prioritize Native Segwit for Bitcoin
+                    const sortedPubkeys = [...pubkeys].sort((a: Pubkey, b: Pubkey) => {
+                      // Bitcoin - Native Segwit (bc1...) should come first
+                      if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
+                      if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
+
+                      // Otherwise maintain order
+                      return 0;
+                    });
+
+                    return sortedPubkeys.map((pubkey: Pubkey) => {
+                      let label = pubkey.note || pubkey.pathMaster;
+
+                      // For Bitcoin addresses, add "(Recommended)" tag to Native Segwit
+                      if (pubkey.note?.includes('Native Segwit')) {
+                        label = `${pubkey.note} (Recommended) - ${pubkey.pathMaster}`;
+                      } else if (pubkey.note) {
+                        label = `${pubkey.note} - ${pubkey.pathMaster}`;
+                      }
+
+                      // Add UTXO address usage info if available
+                      const hasUsageInfo = typeof pubkey.changeIndex === 'number' ||
+                                          typeof pubkey.receiveIndex === 'number';
+
+                      if (hasUsageInfo) {
+                        const receiveInfo = typeof pubkey.receiveIndex === 'number'
+                          ? ` | Receive: ${pubkey.usedReceiveAddresses || 0} used (next: ${pubkey.receiveIndex})`
+                          : '';
+
+                        const changeInfo = typeof pubkey.changeIndex === 'number'
+                          ? ` | Change: ${pubkey.usedChangeAddresses || 0} used (next: ${pubkey.changeIndex})`
+                          : '';
+
+                        label = `${label}${receiveInfo}${changeInfo}`;
+                      }
+
+                      return (
+                        <option
+                          key={pubkey.pathMaster}
+                          value={pubkey.pathMaster}
+                          style={{
+                            backgroundColor: theme.cardBg,
+                            color: 'white',
+                            padding: '8px'
+                          }}
+                        >
+                          {label}
+                        </option>
+                      );
+                    });
+                  })()}
+                </select>
+              </>
             )}
 
-            {/* Address Type Dropdown */}
-            <select
-              value={selectedPubkey?.pathMaster || ''}
-              onChange={onPubkeyChange}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: theme.cardBg,
-                borderColor: theme.border,
-                borderWidth: '1px',
-                borderRadius: '8px',
-                color: 'white',
-                fontSize: '14px',
-                outline: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = assetColor;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = theme.border;
-              }}
-            >
-              {(() => {
-                // Sort pubkeys - prioritize Native Segwit for Bitcoin
-                const sortedPubkeys = [...pubkeys].sort((a: Pubkey, b: Pubkey) => {
-                  // Bitcoin - Native Segwit (bc1...) should come first
-                  if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
-                  if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
-
-                  // Otherwise maintain order
-                  return 0;
-                });
-
-                return sortedPubkeys.map((pubkey: Pubkey) => {
-                  let label = pubkey.note || pubkey.pathMaster;
-
-                  // For Bitcoin addresses, add "(Recommended)" tag to Native Segwit
-                  if (pubkey.note?.includes('Native Segwit')) {
-                    label = `${pubkey.note} (Recommended) - ${pubkey.pathMaster}`;
-                  } else if (pubkey.note) {
-                    label = `${pubkey.note} - ${pubkey.pathMaster}`;
-                  }
-
-                  // Add UTXO address usage info if available
-                  const hasUsageInfo = typeof pubkey.changeIndex === 'number' ||
-                                      typeof pubkey.receiveIndex === 'number';
-
-                  if (hasUsageInfo) {
-                    const receiveInfo = typeof pubkey.receiveIndex === 'number'
-                      ? ` | Receive: ${pubkey.usedReceiveAddresses || 0} used (next: ${pubkey.receiveIndex})`
-                      : '';
-
-                    const changeInfo = typeof pubkey.changeIndex === 'number'
-                      ? ` | Change: ${pubkey.usedChangeAddresses || 0} used (next: ${pubkey.changeIndex})`
-                      : '';
-
-                    label = `${label}${receiveInfo}${changeInfo}`;
-                  }
-
-                  return (
-                    <option
-                      key={pubkey.pathMaster}
-                      value={pubkey.pathMaster}
-                      style={{
-                        backgroundColor: theme.cardBg,
-                        color: 'white',
-                        padding: '8px'
-                      }}
-                    >
-                      {label}
-                    </option>
-                  );
-                });
-              })()}
-            </select>
-
-            {/* Selected Address Display */}
-            {selectedPubkey?.address && (
+            {/* Selected Address Display - Only shown in advanced mode */}
+            {showAdvanced && selectedPubkey?.address && (
               <Flex
                 align="center"
                 justify="center"
