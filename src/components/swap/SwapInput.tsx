@@ -41,13 +41,24 @@ export const SwapInput = ({
   maxBalanceUsd
 }: SwapInputProps) => {
   const [localIsUsdMode, setLocalIsUsdMode] = useState(isUsdMode);
+  const [localUsdInput, setLocalUsdInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Check if entered amount exceeds balance
   const exceedsBalance = !disabled && maxBalance && value && parseFloat(value) > parseFloat(maxBalance);
-  
+
   const handleToggle = () => {
-    setLocalIsUsdMode(!localIsUsdMode);
+    const newMode = !localIsUsdMode;
+    setLocalIsUsdMode(newMode);
+
+    // When switching TO USD mode, calculate USD from native
+    if (newMode && value && priceUsd) {
+      const calculatedUsd = (parseFloat(value) * priceUsd).toString();
+      setLocalUsdInput(calculatedUsd);
+    } else {
+      setLocalUsdInput('');
+    }
+
     if (onToggleMode) {
       onToggleMode();
     }
@@ -58,8 +69,9 @@ export const SwapInput = ({
     const currentValue = parseFloat(displayValue || '0');
     const step = localIsUsdMode ? 1 : 0.0001;
     const newValue = (currentValue + step).toFixed(localIsUsdMode ? 2 : 8);
-    
+
     if (localIsUsdMode && priceUsd) {
+      setLocalUsdInput(newValue);
       const nativeVal = (parseFloat(newValue) / priceUsd).toFixed(8);
       onChange(nativeVal);
     } else {
@@ -71,11 +83,12 @@ export const SwapInput = ({
     if (disabled) return;
     const currentValue = parseFloat(displayValue || '0');
     if (currentValue <= 0) return;
-    
+
     const step = localIsUsdMode ? 1 : 0.0001;
     const newValue = Math.max(0, currentValue - step).toFixed(localIsUsdMode ? 2 : 8);
-    
+
     if (localIsUsdMode && priceUsd) {
+      setLocalUsdInput(newValue);
       const nativeVal = (parseFloat(newValue) / priceUsd).toFixed(8);
       onChange(nativeVal);
     } else {
@@ -83,8 +96,16 @@ export const SwapInput = ({
     }
   };
   
-  const displayValue = localIsUsdMode ? usdAmount || '' : value;
-  const secondaryValue = localIsUsdMode ? value : usdAmount;
+  // In USD mode, show our local input (what user is typing)
+  // In native mode, show the parent's value
+  const displayValue = localIsUsdMode ? localUsdInput : value;
+
+  // Secondary value shows the opposite:
+  // In USD mode: show native amount
+  // In native mode: show calculated USD amount
+  const secondaryValue = localIsUsdMode
+    ? (value && parseFloat(value) > 0 ? parseFloat(value).toFixed(8) : '')
+    : (usdAmount || '');
   return (
     <Box
       bg="rgba(30, 30, 30, 0.6)"
@@ -151,6 +172,9 @@ export const SwapInput = ({
                   // Prevent invalid characters and multiple decimal points
                   if (val === '' || (/^\d*\.?\d*$/.test(val) && val.split('.').length <= 2)) {
                     if (localIsUsdMode && priceUsd) {
+                      // Store the raw USD input (what user is typing)
+                      setLocalUsdInput(val);
+                      // Convert to native and send to parent
                       const nativeVal = val ? (parseFloat(val) / priceUsd).toFixed(8) : '';
                       onChange(nativeVal);
                     } else {

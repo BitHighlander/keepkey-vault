@@ -26,12 +26,13 @@ import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { FaCoins } from 'react-icons/fa';
+import { getAssetIconUrl, getLocalIconUrl } from '@/lib/utils/assetIcons';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
 
 // Icon component with fallback cascade: primary → localhost:9001 → icon fallback
-const IconWithFallback = ({ src, alt, boxSize, color, symbol }: { src: string | null, alt: string, boxSize: string, color: string, symbol?: string }) => {
+const IconWithFallback = ({ src, alt, boxSize, color, caip }: { src: string | null, alt: string, boxSize: string, color: string, caip?: string }) => {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [triedFallback, setTriedFallback] = useState(false);
   const [showIconFallback, setShowIconFallback] = useState(false);
@@ -74,15 +75,15 @@ const IconWithFallback = ({ src, alt, boxSize, color, symbol }: { src: string | 
 
   // Handle image error with fallback cascade
   const handleError = () => {
-    if (!triedFallback && symbol) {
-      // Try localhost:9001 fallback using the symbol
-      const fallbackUrl = `http://localhost:9001/coins/${symbol.toLowerCase()}.png`;
-      if (DEBUG_VERBOSE) console.log('🔄 [IconWithFallback] Trying fallback:', { primary: cleanUrl, fallback: fallbackUrl, symbol });
+    if (!triedFallback && caip) {
+      // Try localhost:9001 fallback using base64-encoded CAIP
+      const fallbackUrl = getLocalIconUrl(caip);
+      if (DEBUG_VERBOSE) console.log('🔄 [IconWithFallback] Trying fallback:', { primary: cleanUrl, fallback: fallbackUrl, caip });
       setCurrentSrc(fallbackUrl);
       setTriedFallback(true);
     } else {
-      // Both failed or no symbol provided, show icon fallback
-      if (DEBUG_VERBOSE) console.log('❌ [IconWithFallback] All sources failed, using icon fallback:', { cleanUrl, symbol });
+      // Both failed or no CAIP provided, show icon fallback
+      if (DEBUG_VERBOSE) console.log('❌ [IconWithFallback] All sources failed, using icon fallback:', { cleanUrl, caip });
       setShowIconFallback(true);
     }
   };
@@ -328,19 +329,6 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
   };
 
-  // Transform icon URL to use keepkey.info CDN
-  const getKeepKeyIconUrl = (caip: string, fallbackIcon?: string): string => {
-    if (!caip) return fallbackIcon || 'https://pioneers.dev/coins/pioneer.png';
-
-    // Convert CAIP to base64 for keepkey.info CDN
-    try {
-      const base64Caip = btoa(caip);
-      return `https://api.keepkey.info/coins/${base64Caip}.png`;
-    } catch (error) {
-      console.error('❌ [Dashboard] Error encoding CAIP to base64:', error);
-      return fallbackIcon || 'https://pioneers.dev/coins/pioneer.png';
-    }
-  };
 
   // Helper function to get asset name from assetsMap
   const getAssetName = (caip: string): string | null => {
@@ -1009,10 +997,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               }}
                             >
                               <IconWithFallback
-                                src={network.icon}
+                                src={getAssetIconUrl(network.gasAssetCaip, network.icon)}
                                 alt={network.networkId}
                                 boxSize="44px"
                                 color={network.color}
+                                caip={network.gasAssetCaip}
                               />
                             </Box>
                             <Stack gap={0.5}>
@@ -1303,17 +1292,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     const { integer, largePart, smallPart } = formatBalance(token.balance);
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
 
-                     // Get token icon and color with better fallbacks
-                     // Use keepkey.info CDN with CAIP-based URLs (always works)
-                     let tokenIcon = getKeepKeyIconUrl(token.caip);
-
-                     // Get color from assetsMap or fallback to token color
+                     // Get token color with better fallbacks
                      const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
                      let tokenColor = assetInfo?.color || token.color;
 
-                     console.log('🔍 [Dashboard] Icon resolution:', {
+                     console.log('🔍 [Dashboard] Token info:', {
                        caip: token.caip,
-                       iconUrl: tokenIcon,
                        color: tokenColor
                      });
 
@@ -1341,8 +1325,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                        balance: token.balance,
                        valueUsd: tokenValueUsd,
                        type: token.type,
-                       iconSource: 'keepkey.info CDN (CAIP-based)',
-                       iconUrl: tokenIcon
+                       iconSource: 'keepkey.info CDN (CAIP-based)'
                      });
 
                     return (
@@ -1481,11 +1464,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               }}
                             >
                               <IconWithFallback
-                                src={tokenIcon}
+                                src={getAssetIconUrl(token.caip, token.icon)}
                                 alt={tokenName}
                                 boxSize="44px"
                                 color={tokenColor}
-                                symbol={tokenSymbol}
+                                caip={token.caip}
                               />
                             </Box>
                             <Stack gap={0.5}>
