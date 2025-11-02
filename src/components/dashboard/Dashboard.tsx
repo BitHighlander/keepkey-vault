@@ -30,9 +30,11 @@ import { FaCoins } from 'react-icons/fa';
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
 
-// Icon component with fallback
-const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, alt: string, boxSize: string, color: string }) => {
-  const [error, setError] = useState(false);
+// Icon component with fallback cascade: primary → localhost:9001 → icon fallback
+const IconWithFallback = ({ src, alt, boxSize, color, symbol }: { src: string | null, alt: string, boxSize: string, color: string, symbol?: string }) => {
+  const [currentSrc, setCurrentSrc] = useState<string | null>(null);
+  const [triedFallback, setTriedFallback] = useState(false);
+  const [showIconFallback, setShowIconFallback] = useState(false);
 
   // Clean URL - handle comma-separated URLs
   const cleanUrl = React.useMemo(() => {
@@ -63,7 +65,29 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
     return src;
   }, [src]);
 
-  if (!cleanUrl || error) {
+  // Initialize currentSrc when cleanUrl changes
+  React.useEffect(() => {
+    setCurrentSrc(cleanUrl);
+    setTriedFallback(false);
+    setShowIconFallback(false);
+  }, [cleanUrl]);
+
+  // Handle image error with fallback cascade
+  const handleError = () => {
+    if (!triedFallback && symbol) {
+      // Try localhost:9001 fallback using the symbol
+      const fallbackUrl = `http://localhost:9001/coins/${symbol.toLowerCase()}.png`;
+      if (DEBUG_VERBOSE) console.log('🔄 [IconWithFallback] Trying fallback:', { primary: cleanUrl, fallback: fallbackUrl, symbol });
+      setCurrentSrc(fallbackUrl);
+      setTriedFallback(true);
+    } else {
+      // Both failed or no symbol provided, show icon fallback
+      if (DEBUG_VERBOSE) console.log('❌ [IconWithFallback] All sources failed, using icon fallback:', { cleanUrl, symbol });
+      setShowIconFallback(true);
+    }
+  };
+
+  if (!currentSrc || showIconFallback) {
     return (
       <Box
         boxSize={boxSize}
@@ -80,14 +104,11 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
 
   return (
     <Image
-      src={cleanUrl}
+      src={currentSrc}
       alt={alt}
       boxSize={boxSize}
       objectFit="cover"
-      onError={(e) => {
-        if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
-        setError(true);
-      }}
+      onError={handleError}
     />
   );
 };
@@ -307,9 +328,29 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     return `${text.substring(0, charsToShow)}...${text.substring(text.length - charsToShow)}`;
   };
 
+  // Transform icon URL to use keepkey.info CDN
+  const getKeepKeyIconUrl = (caip: string, fallbackIcon?: string): string => {
+    if (!caip) return fallbackIcon || 'https://pioneers.dev/coins/pioneer.png';
+
+    // Convert CAIP to base64 for keepkey.info CDN
+    try {
+      const base64Caip = btoa(caip);
+      return `https://api.keepkey.info/coins/${base64Caip}.png`;
+    } catch (error) {
+      console.error('❌ [Dashboard] Error encoding CAIP to base64:', error);
+      return fallbackIcon || 'https://pioneers.dev/coins/pioneer.png';
+    }
+  };
+
   // Helper function to get asset name from assetsMap
   const getAssetName = (caip: string): string | null => {
     if (!app?.assetsMap || !caip) return null;
+
+    // Debug: Log all assetsMap keys once
+    if (!window.assetsMapLogged) {
+      console.log('🗺️ [Dashboard] assetsMap keys:', Array.from(app.assetsMap.keys()));
+      window.assetsMapLogged = true;
+    }
 
     try {
       const assetInfo = app.assetsMap.get(caip);
@@ -1263,33 +1304,33 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
 
                      // Get token icon and color with better fallbacks
-                     let tokenIcon = token.icon;
-                     let tokenColor = token.color;
+                     // Use keepkey.info CDN with CAIP-based URLs (always works)
+                     let tokenIcon = getKeepKeyIconUrl(token.caip);
 
-                     // Handle comma-separated icon URLs (take first valid one)
-                     if (tokenIcon && tokenIcon.includes(',')) {
-                       const urls = tokenIcon.split(',').filter((url: string) => url.trim().startsWith('http'));
-                       tokenIcon = urls[0] || null;
-                     }
+                     // Get color from assetsMap or fallback to token color
+                     const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
+                     let tokenColor = assetInfo?.color || token.color;
+
+                     console.log('🔍 [Dashboard] Icon resolution:', {
+                       caip: token.caip,
+                       iconUrl: tokenIcon,
+                       color: tokenColor
+                     });
 
                      // Determine token symbol and name
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
                      const tokenName = token.name || tokenSymbol;
 
-                     // Set fallback icon and color based on token type if not provided
-                     if (!tokenIcon || !tokenColor) {
+                     // Set fallback color based on token type if not provided
+                     if (!tokenColor) {
                        if (token.caip?.includes('MAYA.') || token.caip?.includes('cosmos:mayachain-mainnet-v1/denom:maya')) {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/maya.png';
-                         tokenColor = tokenColor || '#00D4AA';
+                         tokenColor = '#00D4AA';
                        } else if (token.caip?.includes('THOR.')) {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/thorchain.png';
-                         tokenColor = tokenColor || '#00CCFF';
+                         tokenColor = '#00CCFF';
                        } else if (token.caip?.includes('eip155:')) {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/ethereum.png';
-                         tokenColor = tokenColor || '#627EEA';
+                         tokenColor = '#627EEA';
                        } else {
-                         tokenIcon = tokenIcon || 'https://pioneers.dev/coins/pioneer.png';
-                         tokenColor = tokenColor || '#FFD700';
+                         tokenColor = '#FFD700';
                        }
                      }
 
@@ -1299,7 +1340,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                        symbol: tokenSymbol,
                        balance: token.balance,
                        valueUsd: tokenValueUsd,
-                       type: token.type
+                       type: token.type,
+                       iconSource: 'keepkey.info CDN (CAIP-based)',
+                       iconUrl: tokenIcon
                      });
 
                     return (
@@ -1442,6 +1485,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 alt={tokenName}
                                 boxSize="44px"
                                 color={tokenColor}
+                                symbol={tokenSymbol}
                               />
                             </Box>
                             <Stack gap={0.5}>

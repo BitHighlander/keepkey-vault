@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import {
   Box,
@@ -51,7 +52,7 @@ import {
 } from '@/services/thorchain';
 
 // Import THORChain pools configuration
-import { THORCHAIN_POOLS, getNativePools } from '@/config/thorchain-pools';
+import { THORCHAIN_POOLS, getNativePools, getPoolBySymbol, getPoolByCAIP } from '@/config/thorchain-pools';
 
 interface SwapProps {
   onBackClick?: () => void;
@@ -66,7 +67,68 @@ interface SwapProps {
  */
 const SUPPORTED_SWAP_ASSETS = THORCHAIN_POOLS;
 
+// Default CAIP identifiers for fallback pairs
+const DEFAULT_BTC_CAIP = 'bip122:000000000019d6689c085ae165831e93/slip44:0';
+const DEFAULT_ETH_CAIP = 'eip155:1/slip44:60';
+
+/**
+ * Parse asset pair from URL parameters
+ * Expects CAIP format (URL encoded):
+ * - ?from=bip122:000000000019d6689c085ae165831e93/slip44:0&to=eip155:1/slip44:60
+ * - ?assetUrl=bip122:000000000019d6689c085ae165831e93/slip44:0
+ *
+ * If only 'from' or 'assetUrl' is provided, defaults to:
+ * - BTC input -> ETH output
+ * - Any other input -> BTC output
+ *
+ * Returns null if invalid or not found
+ */
+function parseAssetPairFromUrl(searchParams: URLSearchParams | null): { from: string; to: string } | null {
+  if (!searchParams) return null;
+
+  // Format 1: ?from=<caip>&to=<caip>
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
+
+  if (fromParam && toParam) {
+    // Both provided - validate they're different
+    if (fromParam === toParam) {
+      console.warn('[Swap URL] Input and output CAIPs cannot be the same');
+      return null;
+    }
+    return { from: fromParam, to: toParam };
+  }
+
+  // Format 2: ?assetUrl=<caip> (input only, smart default for output)
+  const assetUrl = searchParams.get('assetUrl');
+  if (assetUrl || fromParam) {
+    const inputCaip = assetUrl || fromParam;
+
+    // Smart default: BTC -> ETH, anything else -> BTC
+    const outputCaip = inputCaip === DEFAULT_BTC_CAIP ? DEFAULT_ETH_CAIP : DEFAULT_BTC_CAIP;
+
+    return { from: inputCaip!, to: outputCaip };
+  }
+
+  return null;
+}
+
+/**
+ * Validate and get pool assets from CAIP
+ * Returns the pool asset if valid, null otherwise
+ */
+function validateAndGetPoolAsset(caip: string) {
+  const pool = getPoolByCAIP(caip);
+  if (!pool) {
+    console.warn(`[Swap URL] Asset CAIP not found in THORChain pools: ${caip}`);
+    return null;
+  }
+  return pool;
+}
+
 export const Swap = ({ onBackClick }: SwapProps) => {
+  // Get URL search params
+  const searchParams = useSearchParams();
   // Get app context from Pioneer
   const pioneer = usePioneerContext();
   const { state } = pioneer;
@@ -132,24 +194,36 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successTxid, setSuccessTxid] = useState<string>('');
 
-  // Helper function to get aggregated balance by symbol
-  const getUserBalance = (caip: string): string => {
-    if (!app?.balances || !caip) {
-      console.log('getUserBalance: Missing balances or caip', { balances: app?.balances?.length, caip });
+  // Helper function to get balance by CAIP
+  const getUserBalance = (caip: string | undefined): string => {
+    if (!caip) {
+      console.warn('getUserBalance: No CAIP provided');
       return '0';
     }
+    if (!app?.balances || app.balances.length === 0) {
+      console.warn('getUserBalance: No balances available');
+      return '0';
+    }
+    if (availableAssets.length === 0) {
+      console.warn('getUserBalance: No available assets yet');
+      return '0';
+    }
+
     try {
-      // Find the asset in our availableAssets which has aggregated balances
-      const asset = availableAssets.find((x: any) => 
-        x.caip === caip || 
-        x.caips?.includes(caip) || 
-        x.symbol === (app.balances.find((b: any) => b.caip === caip)?.symbol)
-      );
-      
-      console.log('getUserBalance: Found aggregated balance for', caip, asset?.balance);
-      return asset?.balance?.toString() || '0';
+      // Find the asset by exact CAIP match
+      const asset = availableAssets.find((x: any) => x.caip === caip);
+
+      if (!asset) {
+        console.warn(`getUserBalance: No asset found for CAIP ${caip}`, {
+          availableAssets: availableAssets.map(a => ({ caip: a.caip, symbol: a.symbol }))
+        });
+        return '0';
+      }
+
+      console.log(`getUserBalance: Found balance for ${caip}:`, asset.balance);
+      return asset.balance?.toString() || '0';
     } catch (e) {
-      console.log('getUserBalance: Error finding balance', e);
+      console.error('getUserBalance: Error finding balance', e);
       return '0';
     }
   };
@@ -167,17 +241,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   };
 
-  // Helper function to get USD balance
-  const getUserBalanceUSD = (caip: string): string => {
-    if (!app?.balances || !caip) return '0';
+  // Helper function to get USD balance by CAIP
+  const getUserBalanceUSD = (caip: string | undefined): string => {
+    if (!caip || !app?.balances || app.balances.length === 0 || availableAssets.length === 0) {
+      return '0';
+    }
     try {
-      const asset = availableAssets.find((x: any) => 
-        x.caip === caip || 
-        x.caips?.includes(caip) || 
-        x.symbol === (app.balances.find((b: any) => b.caip === caip)?.symbol)
-      );
+      // Find the asset by exact CAIP match
+      const asset = availableAssets.find((x: any) => x.caip === caip);
       return asset?.balanceUsd?.toString() || '0';
     } catch (e) {
+      console.error('getUserBalanceUSD: Error finding balance', e);
       return '0';
     }
   };
@@ -202,8 +276,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           return null;
         }
 
-        // Find matching supported asset from THORChain pools
-        const supportedAsset = SUPPORTED_SWAP_ASSETS.find(asset => asset.symbol === ticker);
+        // Find matching supported asset from THORChain pools by CAIP (not symbol!)
+        // This ensures ETH mainnet and ETH BNB Chain are kept separate
+        let supportedAsset = getPoolByCAIP(balance.caip);
+
+        // Fallback: if no exact CAIP match, try by symbol but log a warning
+        if (!supportedAsset) {
+          console.log(`⚠️ [SWAP] No exact CAIP match for ${balance.caip}, trying symbol fallback for ${ticker}`);
+          supportedAsset = SUPPORTED_SWAP_ASSETS.find(asset => asset.symbol === ticker);
+        }
+
         if (!supportedAsset) {
           console.log(`⚠️ [SWAP] No supported pool found for ticker: ${ticker} (caip: ${balance.caip})`);
           return null;
@@ -212,7 +294,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         const balanceAmount = parseFloat(balance.balance || '0');
         const valueUsd = parseFloat(balance.valueUsd || '0');
 
-        console.log(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}`);
+        console.log(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}, matched=${supportedAsset.asset}`);
 
         // Get icon from assetData (always available) or fallback to balance icon
         const assetInfo = app?.assets?.[balance.caip];
@@ -230,7 +312,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           balance: balanceAmount,
           balanceUsd: valueUsd,
           priceUsd: parseFloat(balance.priceUsd || '0'),
-          networkId: balance.networkId
+          networkId: balance.networkId,
+          isNative: supportedAsset.isNative // Add isNative flag
         };
       })
       .filter((asset: any) => {
@@ -257,7 +340,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     // Get all supported THORChain pool assets except the currently selected "from" asset
     // This ensures we can swap to any asset with an active pool, even with 0 balance
     const allSupportedAssets = SUPPORTED_SWAP_ASSETS.map(poolAsset => {
-      const balance = availableAssets.find(a => a.symbol === poolAsset.symbol);
+      // Match by CAIP, not symbol! This keeps ETH mainnet and ETH BNB separate
+      const balance = availableAssets.find(a => a.caip === poolAsset.caip);
 
       // Get icon from assetData (always available) - use CAIP from poolAsset
       const assetInfo = app?.assets?.[poolAsset.caip];
@@ -273,11 +357,63 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       };
     });
 
-    // Exclude the currently selected "from" asset
+    // Exclude the currently selected "from" asset by CAIP (not symbol)
+    // This allows swapping ETH mainnet → ETH BNB, for example
     return allSupportedAssets.filter(asset =>
-      asset.symbol !== app?.assetContext?.symbol
+      asset.caip !== app?.assetContext?.caip
     );
   }, [availableAssets, app?.assetContext?.symbol, app?.assets]);
+
+  // Initialize assets from URL parameters (runs once on mount)
+  useEffect(() => {
+    const urlPair = parseAssetPairFromUrl(searchParams);
+
+    if (urlPair && app?.setAssetContext && app?.setOutboundAssetContext && availableAssets.length > 0) {
+      console.log('🔗 [Swap URL] Parsed asset pair from URL:', urlPair);
+
+      // Validate both assets
+      const fromPool = validateAndGetPoolAsset(urlPair.from);
+      const toPool = validateAndGetPoolAsset(urlPair.to);
+
+      if (!fromPool || !toPool) {
+        console.error('❌ [Swap URL] Invalid asset pair - one or both assets not found in THORChain pools');
+        return;
+      }
+
+      // Check if input asset has balance in user's wallet
+      const fromAsset = availableAssets.find(a => a.caip === urlPair.from);
+      if (!fromAsset || fromAsset.balanceUsd <= 0.01) {
+        console.warn('⚠️ [Swap URL] Input asset has insufficient balance, using default selection');
+        return;
+      }
+
+      console.log('✅ [Swap URL] Setting assets from URL:', {
+        from: { caip: fromPool.caip, symbol: fromPool.symbol },
+        to: { caip: toPool.caip, symbol: toPool.symbol }
+      });
+
+      // Set FROM asset with user balance data
+      app.setAssetContext({
+        caip: fromAsset.caip,
+        networkId: fromAsset.networkId || caipToNetworkId(fromAsset.caip),
+        symbol: fromAsset.symbol,
+        name: fromAsset.name,
+        icon: fromAsset.icon,
+        priceUsd: fromAsset.priceUsd
+      });
+
+      // Set TO asset (may have 0 balance, that's ok)
+      const toAsset = availableAssets.find(a => a.caip === urlPair.to);
+      app.setOutboundAssetContext({
+        caip: toPool.caip,
+        networkId: toPool.networkId || caipToNetworkId(toPool.caip),
+        symbol: toPool.symbol,
+        name: toPool.name,
+        icon: toPool.icon,
+        priceUsd: toAsset?.priceUsd || 0
+      });
+    }
+  }, [searchParams]); // Only run when URL params change
 
   // Initialize default assets if not set
   useEffect(() => {
@@ -288,13 +424,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Smart selection for output asset based on input
       let defaultTo = null;
 
-      // If input is Bitcoin, default to Ethereum
+      // If input is Bitcoin, default to Ethereum (native, not wrapped)
       if (defaultFrom?.symbol === 'BTC') {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH');
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH' && a.isNative);
       }
       // If input is anything else, default to Bitcoin
       else {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC');
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
       }
 
       // If we couldn't find the preferred output, use the second highest value asset
@@ -311,7 +447,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       
       // Ensure we have balance data for the output asset
       if (defaultTo) {
-        const balanceData = availableAssets.find(a => a.symbol === defaultTo.symbol);
+        const balanceData = availableAssets.find(a => a.caip === defaultTo.caip);
         defaultTo = {
           ...defaultTo,
           balance: balanceData?.balance || 0,
@@ -333,20 +469,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   
   // Auto-select output asset when input asset changes
   useEffect(() => {
-    if (app?.assetContext?.symbol && !app?.outboundAssetContext?.symbol && app?.setOutboundAssetContext) {
+    if (app?.assetContext?.caip && !app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
       let defaultTo = null;
 
-      // If input is Bitcoin, default to Ethereum
+      // If input is Bitcoin, default to Ethereum (native, not wrapped)
       if (app.assetContext.symbol === 'BTC') {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH');
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH' && a.isNative);
       }
       // If input is anything else, default to Bitcoin
       else {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC');
+        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
       }
-      
+
       if (defaultTo) {
-        const balanceData = availableAssets.find(a => a.symbol === defaultTo.symbol);
+        const balanceData = availableAssets.find(a => a.caip === defaultTo.caip);
         app.setOutboundAssetContext({
           ...defaultTo,
           balance: balanceData?.balance || 0,
@@ -355,16 +491,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         });
       }
     }
-  }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets]);
+  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext]);
   
   // Set default input amount when both assets are selected and input is empty
   useEffect(() => {
-    if (app?.assetContext?.symbol && 
-        app?.outboundAssetContext?.symbol && 
-        !inputAmount && 
+    if (app?.assetContext?.caip &&
+        app?.outboundAssetContext?.caip &&
+        !inputAmount &&
         availableAssets.length > 0) {
-      
-      const fromAsset = availableAssets.find(a => a.symbol === app.assetContext.symbol);
+
+      const fromAsset = availableAssets.find(a => a.caip === app.assetContext.caip);
       
       if (fromAsset && fromAsset.balance > 0 && fromAsset.priceUsd > 0) {
         const maxUsdValue = fromAsset.balance * fromAsset.priceUsd;
@@ -396,20 +532,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         }
       }
     }
-  }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets.length]);
+  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, app?.assetContext?.symbol, app?.outboundAssetContext?.symbol, availableAssets.length, inputAmount]);
 
-  // Validate that we never have the same asset for both from and to
+  // Validate that we never have the same asset (by CAIP) for both from and to
   useEffect(() => {
-    if (app?.assetContext?.symbol && 
-        app?.outboundAssetContext?.symbol && 
-        app.assetContext.symbol === app.outboundAssetContext.symbol &&
+    if (app?.assetContext?.caip &&
+        app?.outboundAssetContext?.caip &&
+        app.assetContext.caip === app.outboundAssetContext.caip &&
         app?.setOutboundAssetContext &&
         availableAssets.length > 0) {
-      console.warn('⚠️ [Swap] Same asset detected for both from and to, fixing...');
+      console.warn('⚠️ [Swap] Same CAIP detected for both from and to, fixing...');
 
-      // Find an alternative asset for "to"
-      const alternativeAsset = availableAssets.find(a => a.symbol !== app.assetContext.symbol) ||
-                               SUPPORTED_SWAP_ASSETS.find(a => a.symbol !== app.assetContext.symbol);
+      // Find an alternative asset for "to" by CAIP (prefer native assets)
+      const alternativeAsset = availableAssets.find(a => a.caip !== app.assetContext.caip) ||
+                               SUPPORTED_SWAP_ASSETS.find(a => a.caip !== app.assetContext.caip && a.isNative) ||
+                               SUPPORTED_SWAP_ASSETS.find(a => a.caip !== app.assetContext.caip);
       
       if (alternativeAsset) {
         app.setOutboundAssetContext({
@@ -675,13 +812,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     const fromSel = app?.assetContext;
     const toSel = app?.outboundAssetContext;
     if (!fromSel || !toSel || !app?.setAssetContext || !app?.setOutboundAssetContext) return;
-    
-    // Prevent swapping if they're the same asset
-    if (fromSel.symbol === toSel.symbol) {
+
+    // Prevent swapping if they're the same asset (by CAIP)
+    // Allow swapping same symbol across chains (e.g., ETH mainnet → ETH BNB)
+    if (fromSel.caip === toSel.caip) {
       setError('Cannot swap the same asset');
       return;
     }
-    
+
     // Check if the "to" asset has any balance to become the "from" asset
     const toAssetBalance = parseFloat(getUserBalance(toSel.caip));
     if (toAssetBalance <= 0) {
@@ -1068,8 +1206,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   performSwap();
   }, [pendingSwap, app, quote, inputAmount]);
 
-  // Check if we're still loading assets - only show spinner if no balances at all
-  const isLoadingAssets = !app?.balances || (app.balances.length === 0 && !app?.assetContext);
+  // Check if we're still loading assets - show spinner until we have usable data
+  const isLoadingAssets = !app?.balances ||
+                          app.balances.length === 0 ||
+                          availableAssets.length === 0 ||
+                          (app?.assetContext?.caip && !availableAssets.find(a => a.caip === app.assetContext.caip));
 
   return (
     <Box
@@ -1686,13 +1827,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           onChange={handleInputChange}
                           showMaxButton={false} // Max button is now in AssetSelector
                           onMaxClick={handleMaxClick}
-                          usdAmount={inputAmount && app?.assetContext?.priceUsd ? 
-                            (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) : 
+                          usdAmount={inputAmount && app?.assetContext?.priceUsd ?
+                            (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) :
                             undefined}
                           symbol={app?.assetContext?.symbol}
                           priceUsd={app?.assetContext?.priceUsd ? parseFloat(app.assetContext.priceUsd) : undefined}
                           onToggleMode={() => setInputIsUSD(!inputIsUSD)}
                           isUsdMode={inputIsUSD}
+                          maxBalance={getUserBalance(app?.assetContext?.caip)}
+                          maxBalanceUsd={getUserBalanceUSD(app?.assetContext?.caip)}
                         />
                       </Box>
                     </Box>
@@ -1810,7 +1953,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       isDisabled={
                         !inputAmount ||
                         parseFloat(inputAmount) <= 0 ||
-                        app?.assetContext?.symbol === app?.outboundAssetContext?.symbol
+                        app?.assetContext?.caip === app?.outboundAssetContext?.caip ||
+                        (inputAmount && getUserBalance(app?.assetContext?.caip) && parseFloat(inputAmount) > parseFloat(getUserBalance(app?.assetContext?.caip)))
                       }
                       _disabled={{
                         bg: 'gray.700',
@@ -1818,9 +1962,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         cursor: 'not-allowed'
                       }}
                     >
-                      {app?.assetContext?.symbol === app?.outboundAssetContext?.symbol ?
+                      {app?.assetContext?.caip === app?.outboundAssetContext?.caip ?
                         'Select different assets' :
-                        (!inputAmount || parseFloat(inputAmount) <= 0 ? 'Enter an amount' : 'Swap')
+                        (inputAmount && getUserBalance(app?.assetContext?.caip) && parseFloat(inputAmount) > parseFloat(getUserBalance(app?.assetContext?.caip)) ?
+                          'Insufficient balance' :
+                          (!inputAmount || parseFloat(inputAmount) <= 0 ? 'Enter an amount' : 'Swap')
+                        )
                       }
                     </Button>
 

@@ -19,6 +19,8 @@ interface SwapInputProps {
   priceUsd?: number;
   onToggleMode?: () => void;
   isUsdMode?: boolean;
+  maxBalance?: string;
+  maxBalanceUsd?: string;
 }
 
 export const SwapInput = ({
@@ -34,10 +36,15 @@ export const SwapInput = ({
   symbol,
   priceUsd,
   onToggleMode,
-  isUsdMode = false
+  isUsdMode = false,
+  maxBalance,
+  maxBalanceUsd
 }: SwapInputProps) => {
   const [localIsUsdMode, setLocalIsUsdMode] = useState(isUsdMode);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Check if entered amount exceeds balance
+  const exceedsBalance = !disabled && maxBalance && value && parseFloat(value) > parseFloat(maxBalance);
   
   const handleToggle = () => {
     setLocalIsUsdMode(!localIsUsdMode);
@@ -83,9 +90,12 @@ export const SwapInput = ({
       bg="rgba(30, 30, 30, 0.6)"
       borderRadius="xl"
       p={3}
-      borderWidth="1px"
-      borderColor="rgba(255, 255, 255, 0.1)"
-      _hover={{ borderColor: disabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(35, 220, 200, 0.3)' }}
+      borderWidth="2px"
+      borderColor={exceedsBalance ? "red.500" : "rgba(255, 255, 255, 0.1)"}
+      _hover={{
+        borderColor: exceedsBalance ? "red.400" : (disabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(35, 220, 200, 0.3)')
+      }}
+      transition="border-color 0.2s"
     >
       {(label || (!disabled && priceUsd)) && (
         <HStack justify="space-between" mb={2}>
@@ -114,7 +124,7 @@ export const SwapInput = ({
         <VStack align="flex-start" gap={0} flex={1}>
           <HStack width="full" position="relative">
             {localIsUsdMode && (
-              <Text fontSize="2xl" fontWeight="medium" color={disabled ? 'gray.500' : 'white'} pl={2}>
+              <Text fontSize="2xl" fontWeight="medium" color={exceedsBalance ? 'red.400' : (disabled ? 'gray.500' : 'white')} pl={2}>
                 $
               </Text>
             )}
@@ -149,6 +159,7 @@ export const SwapInput = ({
                   }
                 }
               }}
+              color={exceedsBalance ? 'red.400' : 'white'}
               onFocus={(e) => {
                 // Select all text on focus for easy editing
                 e.target.select();
@@ -265,7 +276,18 @@ export const SwapInput = ({
             )}
           </HStack>
           {secondaryValue && (
-            <Text fontSize="sm" color="gray.400" px={2}>
+            <Text
+              fontSize="sm"
+              color="gray.400"
+              px={2}
+              cursor={!disabled && priceUsd ? "pointer" : "default"}
+              onClick={!disabled && priceUsd ? handleToggle : undefined}
+              _hover={!disabled && priceUsd ? {
+                color: "#23DCC8",
+                textDecoration: "underline"
+              } : undefined}
+              transition="color 0.2s"
+            >
               {localIsUsdMode ? (
                 <>
                   {disabled && parseFloat(secondaryValue) > 0 ? (
@@ -310,6 +332,14 @@ export const SwapInput = ({
           </Text>
         )}
       </HStack>
+
+      {/* Error message when exceeding balance */}
+      {exceedsBalance && maxBalance && (
+        <Text fontSize="xs" color="red.400" mt={2} px={2} fontWeight="medium">
+          Insufficient balance. Maximum: {parseFloat(maxBalance).toFixed(8)} {symbol}
+          {maxBalanceUsd && ` ($${parseFloat(maxBalanceUsd).toFixed(2)})`}
+        </Text>
+      )}
     </Box>
   );
 };

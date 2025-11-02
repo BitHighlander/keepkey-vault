@@ -56,6 +56,7 @@ import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
 import { DappStore } from './DappStore';
+import { getPoolByCAIP } from '@/config/thorchain-pools';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -78,8 +79,11 @@ interface AssetProps {
 }
 
 // Icon component with fallback for broken/empty images
-const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, alt: string, boxSize: string, color: string }) => {
-  const [error, setError] = useState(false);
+// Icon component with fallback cascade: primary → localhost:9001 → icon fallback
+const IconWithFallback = ({ src, alt, boxSize, color, symbol }: { src: string | null, alt: string, boxSize: string, color: string, symbol?: string }) => {
+  const [currentSrc, setCurrentSrc] = useState<string | null>(null);
+  const [triedFallback, setTriedFallback] = useState(false);
+  const [showIconFallback, setShowIconFallback] = useState(false);
 
   const cleanUrl = React.useMemo(() => {
     // Check for null, undefined, or empty string
@@ -109,7 +113,29 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
     return src;
   }, [src]);
 
-  if (!cleanUrl || error) {
+  // Initialize currentSrc when cleanUrl changes
+  React.useEffect(() => {
+    setCurrentSrc(cleanUrl);
+    setTriedFallback(false);
+    setShowIconFallback(false);
+  }, [cleanUrl]);
+
+  // Handle image error with fallback cascade
+  const handleError = () => {
+    if (!triedFallback && symbol) {
+      // Try localhost:9001 fallback using the symbol
+      const fallbackUrl = `http://localhost:9001/coins/${symbol.toLowerCase()}.png`;
+      console.log('🔄 [IconWithFallback] Trying fallback:', { primary: cleanUrl, fallback: fallbackUrl, symbol });
+      setCurrentSrc(fallbackUrl);
+      setTriedFallback(true);
+    } else {
+      // Both failed or no symbol provided, show icon fallback
+      console.log('❌ [IconWithFallback] All sources failed, using icon fallback:', { cleanUrl, symbol });
+      setShowIconFallback(true);
+    }
+  };
+
+  if (!currentSrc || showIconFallback) {
     return (
       <Box
         boxSize={boxSize}
@@ -139,14 +165,11 @@ const IconWithFallback = ({ src, alt, boxSize, color }: { src: string | null, al
       boxShadow="0 0 0 1px rgba(255, 255, 255, 0.15)"
     >
       <Image
-        src={cleanUrl}
+        src={currentSrc}
         alt={alt}
         boxSize="100%"
         objectFit="contain"
-        onError={(e) => {
-          console.log('🖼️ [IconWithFallback] Image load error:', cleanUrl);
-          setError(true);
-        }}
+        onError={handleError}
       />
     </Box>
   );
@@ -1079,7 +1102,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   <Text>Discover Tokens</Text>
                 </Flex>
               </Button> */}
-              {isFeatureEnabled('enableSwaps') && (
+              {isFeatureEnabled('enableSwaps') && getPoolByCAIP(assetContext.caip) && (
                 <Button
                   width="100%"
                   size="lg"
