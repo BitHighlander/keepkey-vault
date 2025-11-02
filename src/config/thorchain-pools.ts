@@ -358,8 +358,15 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
 
 /**
  * Get pool by symbol
+ * Prioritizes native assets over tokens (e.g., ETH.ETH over BSC.ETH)
  */
-export function getPoolBySymbol(symbol: string): ThorchainPool | undefined {
+export function getPoolBySymbol(symbol: string, preferNative: boolean = true): ThorchainPool | undefined {
+  if (preferNative) {
+    // First try to find native asset
+    const nativePool = THORCHAIN_POOLS.find(pool => pool.symbol === symbol && pool.isNative);
+    if (nativePool) return nativePool;
+  }
+  // Fall back to any matching symbol
   return THORCHAIN_POOLS.find(pool => pool.symbol === symbol);
 }
 
