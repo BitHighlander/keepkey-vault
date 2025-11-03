@@ -34,7 +34,6 @@ import {
   DialogCloseTrigger,
 } from '@/components/ui/dialog'
 import { AssetHeaderCard } from './AssetHeaderCard'
-import { AssetIcon } from '@/components/ui/AssetIcon'
 import ChangeControl from './ChangeControl'
 import { enrichPubkeysWithUsageInfo, isUTXONetwork } from '@/utils/utxoAddressUtils'
 import { ReviewTransaction } from './ReviewTransaction'
@@ -1960,9 +1959,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 </Text>
                 
                 {/* Asset Icon and Info */}
-                <Box
-                  borderRadius="full"
-                  overflow="hidden"
+                <Box 
+                  borderRadius="full" 
+                  overflow="hidden" 
                   boxSize="60px"
                   bg={theme.cardBg}
                   boxShadow="lg"
@@ -1970,13 +1969,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   borderWidth="1px"
                   borderColor={assetContext.color || theme.border}
                 >
-                  <AssetIcon
+                  <Image 
                     src={assetContext.icon}
-                    caip={assetContext.caip}
-                    symbol={assetContext.symbol}
                     alt={`${assetContext.name} Icon`}
                     boxSize="100%"
-                    color={assetContext.color || '#FFD700'}
+                    objectFit="contain"
                   />
                 </Box>
                 

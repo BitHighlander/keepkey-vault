@@ -1,12 +1,12 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, HStack, VStack, Text, Button, Image, Link, Code, Input } from '@chakra-ui/react';
+import { Box, Stack, HStack, VStack, Text, Button, Link, Code, Input } from '@chakra-ui/react';
 import { InputGroup } from '@/components/ui/input-group';
 import { keyframes } from '@emotion/react';
 import { FaCheckCircle, FaExternalLinkAlt, FaEnvelope } from 'react-icons/fa';
 import Confetti from 'react-confetti';
-
+import { AssetIcon } from '@/components/ui/AssetIcon';
 interface SwapSuccessProps {
   txid: string;
   fromAsset: any;
@@ -240,7 +240,7 @@ export const SwapSuccess = ({
           <HStack justify="center" align="center" gap={4}>
             {/* From */}
             <HStack gap={2}>
-              <Image src={fromAsset?.icon} alt={fromAsset?.name} boxSize="24px" />
+              <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="24px" color="#FFD700" />
               <Text fontSize="lg" fontWeight="semibold" color="gray.400">
                 {inputAmount} {fromAsset?.symbol}
               </Text>
@@ -253,7 +253,7 @@ export const SwapSuccess = ({
 
             {/* To */}
             <HStack gap={2}>
-              <Image src={toAsset?.icon} alt={toAsset?.name} boxSize="24px" />
+              <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="24px" color="#FFD700" />
               <Text fontSize="lg" fontWeight="semibold" color="green.400">
                 {outputAmount} {toAsset?.symbol}
               </Text>

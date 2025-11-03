@@ -12,6 +12,7 @@ import {
   Button,
 } from '@chakra-ui/react'
 import { FaCopy, FaChevronDown, FaChevronUp, FaPlus } from 'react-icons/fa'
+import { AssetIcon } from '@/components/ui/AssetIcon'
 
 interface Pubkey {
   address?: string
@@ -34,6 +35,7 @@ interface AssetHeaderCardProps {
     name: string
     symbol: string
     color?: string
+    caip?: string
     pubkeys?: Pubkey[]
   }
   balance: string
@@ -92,11 +94,13 @@ export const AssetHeaderCard: React.FC<AssetHeaderCardProps> = ({
           borderWidth="1px"
           borderColor={assetContext.color || theme.border}
         >
-          <Image
+          <AssetIcon
             src={assetContext.icon}
+            caip={assetContext.caip}
+            symbol={assetContext.symbol}
             alt={`${assetContext.name} Icon`}
             boxSize="100%"
-            objectFit="contain"
+            color={assetContext.color || '#FFD700'}
           />
         </Box>
 

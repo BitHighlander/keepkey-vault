@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import {
   Box,
@@ -873,10 +874,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const getAssetDisplay = (isFromAsset: boolean = false) => {
     const sel = isFromAsset ? app?.assetContext : app?.outboundAssetContext;
     if (!sel) return null;
-    return { 
-      symbol: sel.symbol, 
-      name: sel.name, 
-      icon: sel.icon || 'https://pioneers.dev/coins/coin.png' 
+    return {
+      symbol: sel.symbol,
+      name: sel.name,
+      icon: sel.icon || 'https://pioneers.dev/coins/coin.png',
+      caip: sel.caip // CRITICAL: Include CAIP for AssetIcon fallback cascade
     };
   };
 
@@ -1591,7 +1593,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   <HStack justify="space-between">
                     <Text fontSize="sm" color="gray.400">Destination Network:</Text>
                     <HStack gap={2}>
-                      <Image src={app?.outboundAssetContext?.icon} boxSize="16px" />
+                      <AssetIcon src={app?.outboundAssetContext?.icon} caip={app?.outboundAssetContext?.caip} symbol={app?.outboundAssetContext?.symbol} alt="asset" boxSize="16px" color="#FFD700" />
                       <Text fontSize="sm" fontWeight="medium">
                         {app?.outboundAssetContext?.name || app?.outboundAssetContext?.symbol}
                       </Text>

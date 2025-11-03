@@ -11,6 +11,7 @@ import {
   IconButton,
 } from '@chakra-ui/react'
 import { FaCopy } from 'react-icons/fa'
+import { AssetIcon } from '@/components/ui/AssetIcon'
 
 interface AssetInfoCardProps {
   assetContext: {
@@ -18,6 +19,7 @@ interface AssetInfoCardProps {
     name: string
     symbol: string
     color?: string
+    caip?: string
   }
   balance: string
   totalBalanceUsd: number
@@ -63,11 +65,13 @@ export const AssetInfoCard: React.FC<AssetInfoCardProps> = ({
           borderWidth="1px"
           borderColor={assetContext.color || theme.border}
         >
-          <Image
+          <AssetIcon
             src={assetContext.icon}
+            caip={assetContext.caip}
+            symbol={assetContext.symbol}
             alt={`${assetContext.name} Icon`}
             boxSize="100%"
-            objectFit="contain"
+            color={assetContext.color || '#FFD700'}
           />
         </Box>
         <Stack align="center" gap={1}>

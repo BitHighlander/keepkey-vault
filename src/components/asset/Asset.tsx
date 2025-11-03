@@ -57,6 +57,7 @@ import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
 import { DappStore } from './DappStore';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -77,103 +78,6 @@ interface AssetProps {
   onReceiveClick?: () => void;
   onSwapClick?: () => void;
 }
-
-// Icon component with fallback for broken/empty images
-// Icon component with fallback cascade: primary → localhost:9001 → icon fallback
-const IconWithFallback = ({ src, alt, boxSize, color, symbol }: { src: string | null, alt: string, boxSize: string, color: string, symbol?: string }) => {
-  const [currentSrc, setCurrentSrc] = useState<string | null>(null);
-  const [triedFallback, setTriedFallback] = useState(false);
-  const [showIconFallback, setShowIconFallback] = useState(false);
-
-  const cleanUrl = React.useMemo(() => {
-    // Check for null, undefined, or empty string
-    if (!src || src.trim() === '') {
-      console.log('🖼️ [IconWithFallback] Empty or null src:', src);
-      return null;
-    }
-
-    // Handle comma-separated URLs (take first valid one)
-    if (src.includes(',')) {
-      const urls = src.split(',')
-        .map(u => u.trim())
-        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
-
-      const firstUrl = urls[0] || null;
-      console.log('🖼️ [IconWithFallback] Multi URL detected:', { src, urls, firstUrl });
-      return firstUrl;
-    }
-
-    // Return null if URL doesn't start with http (invalid)
-    if (!src.startsWith('http://') && !src.startsWith('https://')) {
-      console.log('🖼️ [IconWithFallback] Invalid URL (no protocol):', src);
-      return null;
-    }
-
-    console.log('🖼️ [IconWithFallback] Valid URL:', src);
-    return src;
-  }, [src]);
-
-  // Initialize currentSrc when cleanUrl changes
-  React.useEffect(() => {
-    setCurrentSrc(cleanUrl);
-    setTriedFallback(false);
-    setShowIconFallback(false);
-  }, [cleanUrl]);
-
-  // Handle image error with fallback cascade
-  const handleError = () => {
-    if (!triedFallback && symbol) {
-      // Try localhost:9001 fallback using the symbol
-      const fallbackUrl = `http://localhost:9001/coins/${symbol.toLowerCase()}.png`;
-      console.log('🔄 [IconWithFallback] Trying fallback:', { primary: cleanUrl, fallback: fallbackUrl, symbol });
-      setCurrentSrc(fallbackUrl);
-      setTriedFallback(true);
-    } else {
-      // Both failed or no symbol provided, show icon fallback
-      console.log('❌ [IconWithFallback] All sources failed, using icon fallback:', { cleanUrl, symbol });
-      setShowIconFallback(true);
-    }
-  };
-
-  if (!currentSrc || showIconFallback) {
-    return (
-      <Box
-        boxSize={boxSize}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        fontSize="lg"
-        color={color}
-        bg="rgba(255, 255, 255, 0.05)"
-        borderRadius="md"
-      >
-        <FaCoins />
-      </Box>
-    );
-  }
-
-  return (
-    <Box
-      boxSize={boxSize}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      bg="rgba(255, 255, 255, 0.1)"
-      borderRadius="md"
-      p="3px"
-      position="relative"
-      boxShadow="0 0 0 1px rgba(255, 255, 255, 0.15)"
-    >
-      <Image
-        src={currentSrc}
-        alt={alt}
-        boxSize="100%"
-        objectFit="contain"
-        onError={handleError}
-      />
-    </Box>
-  );
-};
 
 export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapClick }: AssetProps) => {
   // State for managing the component's loading status
@@ -386,7 +290,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         name: tokenBalance.name || tokenBalance.symbol || tokenBalance.ticker || 'TOKEN',
         networkName: tokenNetworkId.split(':').pop() || '',
         symbol: tokenBalance.ticker || tokenBalance.symbol || 'TOKEN',
-        icon: tokenBalance.icon || tokenBalance.image || 'https://pioneers.dev/coins/pioneer.png',
+        icon: tokenBalance.icon || tokenBalance.image || '',
         color: tokenBalance.color || '#FFD700',
         balance: tokenBalance.balance || '0',
         value: tokenBalance.valueUsd || tokenBalance.value || 0,
@@ -888,11 +792,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       alignItems="center"
                       justifyContent="center"
                     >
-                      <Image
+                      <AssetIcon
                         src={assetContext.icon}
+                        caip={assetContext.caip}
+                        symbol={assetContext.symbol}
                         alt={`${assetContext.name} Icon`}
                         boxSize="100%"
-                        objectFit="contain"
+                        color={assetContext.color || theme.gold}
                       />
                     </Box>
                   </Box>
@@ -908,8 +814,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     borderWidth="1px"
                     borderColor={assetContext.color || theme.border}
                   >
-                    <IconWithFallback
+                    <AssetIcon
                       src={assetContext.icon}
+                      caip={assetContext.caip}
+                      symbol={assetContext.symbol}
                       alt={`${assetContext.name} Icon`}
                       boxSize="100%"
                       color={assetContext.color || theme.gold}
@@ -1880,10 +1788,24 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           const isEvmNetwork = assetContext.networkId?.startsWith('eip155:');
           const isCosmosNetwork = assetContext.networkId?.startsWith('cosmos:');
 
+          // Helper function to determine if a balance is a token (same logic as Dashboard)
+          const isTokenBalance = (balance: any): boolean => {
+            // Check explicit type first
+            if (balance.type === 'token') return true;
+
+            // Check explicit token flags
+            if (balance.token === true || balance.isToken === true) return true;
+
+            // Check if it has a contract address (ERC20, BEP20, etc.)
+            if (balance.contract) return true;
+
+            return false;
+          };
+
           // Filter tokens for the current network from app.balances
           const networkTokens = app?.balances?.filter((balance: any) =>
             balance.networkId === assetContext.networkId &&
-            balance.token === true &&
+            isTokenBalance(balance) &&
             parseFloat(balance.balance || '0') > 0
           ) || [];
 
@@ -1964,8 +1886,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       >
                         <Flex justify="space-between" align="center">
                           <HStack gap={3}>
-                            <IconWithFallback
+                            <AssetIcon
                               src={token.icon}
+                              caip={token.caip}
+                              symbol={token.symbol}
                               alt={token.name || token.symbol}
                               boxSize="40px"
                               color={theme.gold}

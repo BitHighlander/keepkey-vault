@@ -20,6 +20,7 @@ import {
   DialogCloseTrigger,
 } from '@/components/ui/dialog';
 import { InputGroup } from '@/components/ui/input-group';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 import { FaSearch } from 'react-icons/fa';
 import { middleEllipsis } from '@/utils/strings';
 
@@ -230,12 +231,13 @@ export const AssetPicker = ({
 
                     <VStack gap={2} align="center">
                       {/* Asset Icon */}
-                      <Image
+                      <AssetIcon
                         src={asset.icon}
+                        caip={asset.caip}
+                        symbol={asset.symbol}
                         alt={asset.name}
                         boxSize="48px"
-                        borderRadius="full"
-                        fallbackSrc="https://pioneers.dev/coins/coin.png"
+                        color="#FFD700"
                       />
 
                       {/* Asset Symbol */}

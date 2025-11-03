@@ -1,9 +1,10 @@
 'use client'
 
 import React from 'react';
-import { Box, Stack, HStack, VStack, Text, Button, Image } from '@chakra-ui/react';
+import { Box, Stack, HStack, VStack, Text, Button } from '@chakra-ui/react';
 import { FaArrowDown, FaShieldAlt } from 'react-icons/fa';
 import { usePioneerContext } from '@/components/providers/pioneer';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 const { createMemo, parseMemo, normalizeSwapMemo, validateThorchainSwapMemo } = require('@pioneer-platform/pioneer-coins');
 
 interface SwapConfirmProps {
@@ -48,7 +49,7 @@ export const SwapConfirm = ({
       <HStack justify="center" align="center" gap={4} py={4}>
         {/* From */}
         <HStack gap={2}>
-          <Image src={fromAsset?.icon} alt={fromAsset?.name} boxSize="28px" />
+          <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="28px" color="#FFD700" />
           <Text fontSize="2xl" fontWeight="bold" color="white">
             {inputAmount}
           </Text>
@@ -64,7 +65,7 @@ export const SwapConfirm = ({
 
         {/* To */}
         <HStack gap={2}>
-          <Image src={toAsset?.icon} alt={toAsset?.name} boxSize="28px" />
+          <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="28px" color="#FFD700" />
           <Text fontSize="2xl" fontWeight="bold" color="#23DCC8">
             {outputAmount}
           </Text>

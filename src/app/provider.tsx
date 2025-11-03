@@ -379,11 +379,12 @@ export function Provider({ children }: ProviderProps) {
         );
         
                 try {
-          // Use normal init flow but make it fast with cache-first
-          console.log("🔧 Calling appInit.init() with cache-first optimization...");
-          
+          // Use normal init flow with FULL SYNC (skipSync: false)
+          // This matches the working integration-coins pattern
+          console.log("🔧 Calling appInit.init() with FULL SYNC (skipSync: false)...");
+
           const resultInit = await Promise.race([
-            appInit.init({}, {}),
+            appInit.init({}, { skipSync: false }),  // ✅ CRITICAL: skipSync: false enables full initialization
             initTimeout
           ]);
           

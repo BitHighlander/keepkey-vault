@@ -27,6 +27,7 @@ import { FaSearch, FaPlus, FaTimes, FaCheck, FaCheckCircle, FaExclamationTriangl
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { CustomToken } from '@/hooks/useCustomTokens';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 
 interface CustomTokenDialogProps {
   isOpen: boolean;
@@ -471,12 +472,12 @@ export const CustomTokenDialog = ({
                 p={6}
               >
                 <HStack gap={4} mb={4}>
-                  <Image
-                    src={processingToken.icon || 'https://pioneers.dev/coins/coin.png'}
+                  <AssetIcon
+                    src={processingToken.icon}
+                    caip={processingToken.caip}
+                    symbol={processingToken.symbol}
                     alt={processingToken.name}
                     boxSize="64px"
-                    borderRadius="full"
-                    fallbackSrc="https://pioneers.dev/coins/coin.png"
                   />
                   <VStack align="start" gap={1} flex={1}>
                     <HStack>
@@ -736,12 +737,12 @@ export const CustomTokenDialog = ({
                       }}
                     >
                       {/* Token Icon */}
-                      <Image
-                        src={token.icon || 'https://pioneers.dev/coins/coin.png'}
+                      <AssetIcon
+                        src={token.icon}
+                        caip={token.caip}
+                        symbol={token.symbol}
                         alt={token.name}
                         boxSize="36px"
-                        borderRadius="full"
-                        fallbackSrc="https://pioneers.dev/coins/coin.png"
                       />
 
                       {/* Token Symbol */}

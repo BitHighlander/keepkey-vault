@@ -1,9 +1,10 @@
 'use client'
 
 import React from 'react';
-import { Box, HStack, Text, Image, Button } from '@chakra-ui/react';
+import { Box, HStack, Text, Button } from '@chakra-ui/react';
 import { FaChevronDown } from 'react-icons/fa';
 import CountUp from 'react-countup';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 
 interface AssetSelectorProps {
   asset: any;
@@ -15,11 +16,11 @@ interface AssetSelectorProps {
   showMaxButton?: boolean;
 }
 
-export const AssetSelector = ({ 
-  asset, 
-  balance, 
+export const AssetSelector = ({
+  asset,
+  balance,
   balanceUsd,
-  label, 
+  label,
   onClick,
   onMaxClick,
   showMaxButton = false
@@ -136,18 +137,14 @@ export const AssetSelector = ({
       >
         <HStack justify="space-between" width="full">
           <HStack gap={2}>
-            <Box
+            <AssetIcon
+              src={asset.icon}
+              caip={asset.caip}
+              symbol={asset.symbol}
+              alt={asset.name}
               boxSize="24px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              bg="rgba(255, 255, 255, 0.1)"
-              borderRadius="md"
-              p="2px"
-              boxShadow="0 0 0 1px rgba(255, 255, 255, 0.15)"
-            >
-              <Image src={asset.icon} alt={asset.name} boxSize="100%" objectFit="contain" />
-            </Box>
+              color="#FFD700"
+            />
             <Text fontWeight="medium" color="white" fontSize="sm">{asset.symbol}</Text>
           </HStack>
           <FaChevronDown color="gray" size={12} />

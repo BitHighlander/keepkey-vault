@@ -25,94 +25,11 @@ import { usePioneerContext } from '@/components/providers/pioneer'
 import { DonutChart, DonutChartItem, ChartLegend } from '@/components/chart';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
-import { FaCoins } from 'react-icons/fa';
-import { getAssetIconUrl, getLocalIconUrl } from '@/lib/utils/assetIcons';
+import { getAssetIconUrl } from '@/lib/utils/assetIcons';
+import { AssetIcon } from '@/components/ui/AssetIcon';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
-
-// Icon component with fallback cascade: primary → localhost:9001 → icon fallback
-const IconWithFallback = ({ src, alt, boxSize, color, caip }: { src: string | null, alt: string, boxSize: string, color: string, caip?: string }) => {
-  const [currentSrc, setCurrentSrc] = useState<string | null>(null);
-  const [triedFallback, setTriedFallback] = useState(false);
-  const [showIconFallback, setShowIconFallback] = useState(false);
-
-  // Clean URL - handle comma-separated URLs
-  const cleanUrl = React.useMemo(() => {
-    // Check for null, undefined, or empty string
-    if (!src || src.trim() === '') {
-      if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Empty or null src:', src);
-      return null;
-    }
-
-    // Handle comma-separated URLs (take first valid one)
-    if (src.includes(',')) {
-      const urls = src.split(',')
-        .map(u => u.trim())
-        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
-
-      const firstUrl = urls[0] || null;
-      if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Multi URL detected:', { src, urls, firstUrl });
-      return firstUrl;
-    }
-
-    // Return null if URL doesn't start with http (invalid)
-    if (!src.startsWith('http://') && !src.startsWith('https://')) {
-      if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Invalid URL (no protocol):', src);
-      return null;
-    }
-
-    if (DEBUG_VERBOSE) console.log('🖼️ [IconWithFallback] Valid URL:', src);
-    return src;
-  }, [src]);
-
-  // Initialize currentSrc when cleanUrl changes
-  React.useEffect(() => {
-    setCurrentSrc(cleanUrl);
-    setTriedFallback(false);
-    setShowIconFallback(false);
-  }, [cleanUrl]);
-
-  // Handle image error with fallback cascade
-  const handleError = () => {
-    if (!triedFallback && caip) {
-      // Try localhost:9001 fallback using base64-encoded CAIP
-      const fallbackUrl = getLocalIconUrl(caip);
-      if (DEBUG_VERBOSE) console.log('🔄 [IconWithFallback] Trying fallback:', { primary: cleanUrl, fallback: fallbackUrl, caip });
-      setCurrentSrc(fallbackUrl);
-      setTriedFallback(true);
-    } else {
-      // Both failed or no CAIP provided, show icon fallback
-      if (DEBUG_VERBOSE) console.log('❌ [IconWithFallback] All sources failed, using icon fallback:', { cleanUrl, caip });
-      setShowIconFallback(true);
-    }
-  };
-
-  if (!currentSrc || showIconFallback) {
-    return (
-      <Box
-        boxSize={boxSize}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        fontSize="lg"
-        color={color}
-      >
-        <FaCoins />
-      </Box>
-    );
-  }
-
-  return (
-    <Image
-      src={currentSrc}
-      alt={alt}
-      boxSize={boxSize}
-      objectFit="cover"
-      onError={handleError}
-    />
-  );
-};
 
 // Play sound utility function
 const playSound = (sound: HTMLAudioElement | null) => {
@@ -996,7 +913,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              <IconWithFallback
+                              <AssetIcon
                                 src={getAssetIconUrl(network.gasAssetCaip, network.icon)}
                                 alt={network.networkId}
                                 boxSize="44px"
@@ -1463,7 +1380,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 pointerEvents: "none",
                               }}
                             >
-                              <IconWithFallback
+                              <AssetIcon
                                 src={getAssetIconUrl(token.caip, token.icon)}
                                 alt={tokenName}
                                 boxSize="44px"

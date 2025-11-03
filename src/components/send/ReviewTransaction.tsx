@@ -13,6 +13,7 @@ import {
 } from '@chakra-ui/react'
 import { FaArrowRight, FaTimes } from 'react-icons/fa'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
+import { AssetIcon } from '@/components/ui/AssetIcon'
 import { keyframes } from '@emotion/react'
 import ChangeControl from './ChangeControl'
 
@@ -214,11 +215,13 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
                 border="1px solid"
                 borderColor={theme.border}
               >
-                <Image
+                <AssetIcon
                   src={assetContext.icon}
+                  caip={assetContext.caip}
+                  symbol={assetContext.symbol}
                   alt={`${assetContext.name} Icon`}
                   boxSize="100%"
-                  objectFit="contain"
+                  color={assetContext.color || '#FFD700'}
                 />
               </Box>
               <Box>
