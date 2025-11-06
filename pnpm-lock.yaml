@@ -28,8 +28,8 @@ importers:
         specifier: ^9.11.0
         version: 9.11.0(@types/node@20.19.23)
       '@pioneer-platform/pioneer-discovery':
-        specifier: ^8.11.14
-        version: 8.11.14(@types/node@20.19.23)
+        specifier: ^8.11.22
+        version: 8.11.22(@types/node@20.19.23)
       '@pioneer-platform/pioneer-sdk':
         specifier: ^8.11.17
         version: 8.11.17(@types/node@20.19.23)
@@ -115,6 +115,9 @@ importers:
       eslint-config-next:
         specifier: 15.1.7
         version: 15.1.7(eslint@9.38.0)(typescript@5.9.3)
+      ts-node:
+        specifier: ^10.9.2
+        version: 10.9.2(@types/node@20.19.23)(typescript@5.9.3)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -632,8 +635,8 @@ packages:
   '@pioneer-platform/pioneer-coins@9.11.0':
     resolution: {integrity: sha512-QwYGY+nfXLSLE6qMC/oySjEblhhoSDs/we1rgNPNZKX2ObWJM07Uq4H8UcomtiULBSMdBdIFtji0+WHhd0PqGA==}
 
-  '@pioneer-platform/pioneer-discovery@8.11.14':
-    resolution: {integrity: sha512-R9m+wkM/cvOn0q4LE7gHnee+iZrlHM2M+YrzoDA1zCKVTLCZfBQwnJjtmfBwJ42LdpO7BGV6Rb0c3xSdrhDnVQ==}
+  '@pioneer-platform/pioneer-discovery@8.11.22':
+    resolution: {integrity: sha512-ryAOehZdexLxD1pxsiXsaRWrcNvRv30tIYbAssqEUaPs8Dt3eVJoyWZLfZEeuZ+JLNC10Ldco0C8yb4fHnk2PA==}
 
   '@pioneer-platform/pioneer-events@8.11.0':
     resolution: {integrity: sha512-461VEaaDWBDdY6CKo5Sh6a74CJCE27D5xJVsKZlvB5LsCvbPJ07QiFqNab2l+jR7DsODvpuiuzA9ppyWffoZyw==}
@@ -4016,7 +4019,7 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-discovery@8.11.14(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-discovery@8.11.22(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
       '@pioneer-platform/pioneer-caip': 9.10.0
@@ -4051,7 +4054,7 @@ snapshots:
       '@pioneer-platform/pioneer-caip': 9.10.0
       '@pioneer-platform/pioneer-client': 9.10.3(@types/node@20.19.23)
       '@pioneer-platform/pioneer-coins': 9.11.0(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-discovery': 8.11.14(@types/node@20.19.23)
+      '@pioneer-platform/pioneer-discovery': 8.11.22(@types/node@20.19.23)
       '@pioneer-platform/pioneer-events': 8.11.0
       coinselect: 3.1.13
       eventemitter3: 5.0.1

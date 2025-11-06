@@ -1367,60 +1367,39 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                   </Text>
                                 </HStack>
                               )}
+
+                              {/* TX History Button */}
+                              {assetContext.explorer && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  color={theme.gold}
+                                  borderColor={theme.border}
+                                  width="100%"
+                                  mt={2}
+                                  _hover={{
+                                    bg: 'rgba(255, 215, 0, 0.1)',
+                                    borderColor: theme.gold,
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // For UTXO coins, use XPUB explorer if available
+                                    if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
+                                      window.open(`${assetContext.explorerXpubLink}${pubkey.pubkey}`, '_blank');
+                                    } else {
+                                      // Fallback to address explorer
+                                      window.open(`${assetContext.explorerAddressLink}${pubkey.address}`, '_blank');
+                                    }
+                                  }}
+                                >
+                                  TX History
+                                </Button>
+                              )}
                             </VStack>
                           </Box>
                         );
                       })}
                     </VStack>
-                  </VStack>
-                )}
-
-                {/* Explorer Links */}
-                {assetContext.explorer && (
-                  <VStack align="stretch" gap={3}>
-                    <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                      Explorer Links
-                    </Text>
-                    <HStack gap={2}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        color={theme.gold}
-                        borderColor={theme.border}
-                        _hover={{
-                          bg: 'rgba(255, 215, 0, 0.1)',
-                          borderColor: theme.gold,
-                        }}
-                        onClick={() => window.open(assetContext.explorer, '_blank')}
-                        flex="1"
-                      >
-                        View Explorer
-                      </Button>
-                      {assetContext.pubkeys?.[0] && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          color={theme.gold}
-                          borderColor={theme.border}
-                          _hover={{
-                            bg: 'rgba(255, 215, 0, 0.1)',
-                            borderColor: theme.gold,
-                          }}
-                          onClick={() => {
-                            // For UTXO coins, use XPUB explorer if available
-                            if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
-                              window.open(`${assetContext.explorerXpubLink}${assetContext.pubkeys[0].pubkey}`, '_blank');
-                            } else {
-                              // Fallback to address explorer
-                              window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank');
-                            }
-                          }}
-                          flex="1"
-                        >
-                          TX History
-                        </Button>
-                      )}
-                    </HStack>
                   </VStack>
                 )}
 
@@ -1692,60 +1671,39 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                 </Text>
                               </HStack>
                             )}
+
+                            {/* TX History Button */}
+                            {assetContext.explorer && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                color={theme.gold}
+                                borderColor={theme.border}
+                                width="100%"
+                                mt={2}
+                                _hover={{
+                                  bg: 'rgba(255, 215, 0, 0.1)',
+                                  borderColor: theme.gold,
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // For UTXO coins, use XPUB explorer if available
+                                  if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
+                                    window.open(`${assetContext.explorerXpubLink}${pubkey.pubkey}`, '_blank');
+                                  } else {
+                                    // Fallback to address explorer
+                                    window.open(`${assetContext.explorerAddressLink}${pubkey.address}`, '_blank');
+                                  }
+                                }}
+                              >
+                                TX History
+                              </Button>
+                            )}
                           </VStack>
                         </Box>
                       );
                     })}
                   </VStack>
-                </VStack>
-              )}
-
-              {/* Explorer Links */}
-              {assetContext.explorer && (
-                <VStack align="stretch" gap={3}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">
-                    Explorer Links
-                  </Text>
-                  <HStack gap={2}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      color={theme.gold}
-                      borderColor={theme.border}
-                      _hover={{
-                        bg: 'rgba(255, 215, 0, 0.1)',
-                        borderColor: theme.gold,
-                      }}
-                      onClick={() => window.open(assetContext.explorer, '_blank')}
-                      flex="1"
-                    >
-                      View Explorer
-                    </Button>
-                    {assetContext.pubkeys?.[0] && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        color={theme.gold}
-                        borderColor={theme.border}
-                        _hover={{
-                          bg: 'rgba(255, 215, 0, 0.1)',
-                          borderColor: theme.gold,
-                        }}
-                        onClick={() => {
-                          // For UTXO coins, use XPUB explorer if available
-                          if (assetContext.networkId?.startsWith('bip122:') && assetContext.explorerXpubLink) {
-                            window.open(`${assetContext.explorerXpubLink}${assetContext.pubkeys[0].pubkey}`, '_blank');
-                          } else {
-                            // Fallback to address explorer
-                            window.open(`${assetContext.explorerAddressLink}${assetContext.pubkeys[0].address}`, '_blank');
-                          }
-                        }}
-                        flex="1"
-                      >
-                        {assetContext.networkId?.startsWith('bip122:') ? 'View XPUB' : 'View Address'}
-                      </Button>
-                    )}
-                  </HStack>
                 </VStack>
               )}
 

@@ -10,8 +10,12 @@ import {
   Button,
   Input,
   IconButton,
+  Badge,
+  Image,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
+import { TutorialHighlight, useTutorial } from './TutorialHighlight';
+import { detectCurrentPage, getCurrentPageTutorial } from '@/lib/chat/pageContext';
 
 // Theme colors for chat
 const theme = {
@@ -19,6 +23,7 @@ const theme = {
   cardBg: '#111111',
   blue: '#3B82F6',
   blueHover: '#60A5FA',
+  gold: '#FFD700',
   border: '#222222',
 };
 
@@ -52,17 +57,31 @@ interface ChatPopupProps {
 
 export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: 'Hello! I\'m your KeepKey Vault assistant. I can help you with your portfolio, balances, and transactions. What would you like to know?',
-      timestamp: new Date(),
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hasNewPageMessage, setHasNewPageMessage] = useState(false);
+  const [previousPathname, setPreviousPathname] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Tutorial system integration
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const tutorialSteps = getCurrentPageTutorial(pathname);
+  const tutorial = useTutorial(tutorialSteps);
+
+  // Expose tutorial control to app for function calls
+  useEffect(() => {
+    if (app && tutorial) {
+      app.startTutorial = tutorial.startTutorial;
+      app.highlightElement = (elementId: string) => {
+        // Find the step that highlights this element
+        const step = tutorialSteps?.find(s => s.elementId === elementId);
+        if (step) {
+          tutorial.startTutorial();
+        }
+      };
+    }
+  }, [app, tutorial, tutorialSteps]);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -72,6 +91,83 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Generate page-specific welcome message
+  const generatePageWelcome = (pathname: string): string => {
+    const currentPage = detectCurrentPage(pathname);
+
+    if (!currentPage) {
+      return 'Hello! I\'m your KeepKey Vault assistant. Ask me about your portfolio, navigation, or how to use any feature!';
+    }
+
+    // Create contextual welcome based on page
+    const features = currentPage.keyFeatures.slice(0, 3).map(f => `• ${f}`).join('\n');
+    const hasTutorial = currentPage.tutorialSteps && currentPage.tutorialSteps.length > 0;
+    const tutorialPrompt = hasTutorial ? '\n\n💡 New here? Try: "Start tutorial"' : '';
+
+    return `📍 **${currentPage.name}**\n\n${currentPage.description}\n\n**What you can do:**\n${features}\n\n💬 Ask me: "What can I do here?" for more details${tutorialPrompt}`;
+  };
+
+  // Set initial welcome message
+  useEffect(() => {
+    if (messages.length === 0) {
+      const welcomeMessage = generatePageWelcome(pathname);
+      setMessages([
+        {
+          id: '1',
+          role: 'assistant',
+          content: welcomeMessage,
+          timestamp: new Date(),
+        },
+      ]);
+      setPreviousPathname(pathname);
+    }
+  }, [pathname, messages.length]);
+
+  // Detect page changes and send automatic welcome message
+  useEffect(() => {
+    // Skip if this is the first load (handled by initial welcome)
+    if (!previousPathname) {
+      setPreviousPathname(pathname);
+      return;
+    }
+
+    // Detect if pathname changed
+    if (pathname !== previousPathname) {
+      console.log('📍 Page changed:', { from: previousPathname, to: pathname });
+
+      // Generate new welcome message for the page
+      const pageWelcome = generatePageWelcome(pathname);
+
+      // Add page change message to chat
+      const pageChangeMessage: Message = {
+        id: `page-change-${Date.now()}`,
+        role: 'assistant',
+        content: pageWelcome,
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, pageChangeMessage]);
+
+      // Set notification badge if chat is closed
+      if (!isOpen) {
+        setHasNewPageMessage(true);
+      }
+
+      // Update previous pathname
+      setPreviousPathname(pathname);
+
+      // Auto-scroll to new message
+      setTimeout(scrollToBottom, 100);
+    }
+  }, [pathname, previousPathname, isOpen]);
+
+  // Clear notification badge when chat is opened
+  useEffect(() => {
+    if (isOpen && hasNewPageMessage) {
+      setHasNewPageMessage(false);
+    }
+  }, [isOpen, hasNewPageMessage]);
 
   // Process user input and generate responses
   const handleSendMessage = async () => {
@@ -89,8 +185,11 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
     setIsProcessing(true);
 
     try {
+      // Get current page context
+      const currentPage = detectCurrentPage(pathname);
+
       // Parse user intent and call appropriate Pioneer functions
-      const response = await processUserIntent(inputValue, app);
+      const response = await processUserIntent(inputValue, app, currentPage?.description);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -116,6 +215,19 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
 
   return (
     <>
+      {/* Tutorial Highlight Overlay */}
+      {tutorial.isActive && tutorial.currentStep && (
+        <TutorialHighlight
+          step={tutorial.currentStep}
+          onNext={tutorial.nextStep}
+          onPrevious={tutorial.previousStep}
+          onSkip={tutorial.skipTutorial}
+          totalSteps={tutorial.totalSteps}
+          isFirstStep={tutorial.isFirstStep}
+          isLastStep={tutorial.isLastStep}
+        />
+      )}
+
       {/* Floating Chat Button */}
       {!isOpen && (
         <Box
@@ -124,26 +236,64 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
           right="24px"
           zIndex={1000}
         >
-          <Button
-            onClick={() => setIsOpen(true)}
-            bg={theme.blue}
-            color="white"
-            size="lg"
-            borderRadius="full"
-            boxSize="60px"
-            p={0}
-            _hover={{
-              bg: theme.blueHover,
-              transform: 'scale(1.05)',
-            }}
-            _active={{
-              transform: 'scale(0.95)',
-            }}
-            animation={`${pulseAnimation} 2s ease-in-out infinite`}
-            boxShadow="0 4px 20px rgba(59, 130, 246, 0.4)"
-          >
-            <Text fontSize="2xl">💬</Text>
-          </Button>
+          <Box position="relative">
+            <Button
+              onClick={() => setIsOpen(true)}
+              bg={theme.blue}
+              color="white"
+              size="lg"
+              borderRadius="full"
+              boxSize="60px"
+              p={0}
+              _hover={{
+                bg: theme.blueHover,
+                transform: 'scale(1.05)',
+              }}
+              _active={{
+                transform: 'scale(0.95)',
+              }}
+              animation={`${pulseAnimation} 2s ease-in-out infinite`}
+              boxShadow="0 4px 20px rgba(59, 130, 246, 0.4)"
+            >
+              <Text fontSize="2xl">💬</Text>
+            </Button>
+
+            {/* Tutorial available badge OR new message notification */}
+            {hasNewPageMessage ? (
+              <Badge
+                position="absolute"
+                top="-8px"
+                right="-8px"
+                bg="#FF4444"
+                color="white"
+                borderRadius="full"
+                fontSize="xs"
+                px={2}
+                py={1}
+                fontWeight="bold"
+                boxShadow="0 2px 8px rgba(255, 68, 68, 0.6)"
+                animation={`${pulseAnimation} 1.5s ease-in-out infinite`}
+              >
+                New
+              </Badge>
+            ) : tutorialSteps && tutorialSteps.length > 0 ? (
+              <Badge
+                position="absolute"
+                top="-8px"
+                right="-8px"
+                bg={theme.gold}
+                color={theme.bg}
+                borderRadius="full"
+                fontSize="xs"
+                px={2}
+                py={1}
+                fontWeight="bold"
+                boxShadow="0 2px 8px rgba(255, 215, 0, 0.4)"
+              >
+                Tutorial
+              </Badge>
+            ) : null}
+          </Box>
         </Box>
       )}
 
@@ -175,20 +325,47 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
             bg={theme.bg}
           >
             <HStack gap={2}>
-              <Text fontSize="xl">💬</Text>
-              <Text fontSize="md" fontWeight="bold" color={theme.blue}>
-                KeepKey Assistant
-              </Text>
+              <Image
+                src="/images/venice.png"
+                alt="Venice AI"
+                boxSize="32px"
+                borderRadius="md"
+              />
+              <VStack align="start" gap={0}>
+                <Text fontSize="md" fontWeight="bold" color={theme.blue}>
+                  KeepKey Assistant
+                </Text>
+                <Text fontSize="xs" color="gray.500">
+                  AI inference provided by Venice
+                </Text>
+              </VStack>
             </HStack>
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.blue}
-              onClick={() => setIsOpen(false)}
-              _hover={{ bg: 'rgba(59, 130, 246, 0.1)' }}
-            >
-              ✕
-            </Button>
+            <HStack gap={2}>
+              {tutorialSteps && tutorialSteps.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  color={theme.gold}
+                  onClick={() => {
+                    tutorial.startTutorial();
+                    setIsOpen(false);
+                  }}
+                  _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                  title="Start tutorial for this page"
+                >
+                  🎓
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                color={theme.blue}
+                onClick={() => setIsOpen(false)}
+                _hover={{ bg: 'rgba(59, 130, 246, 0.1)' }}
+              >
+                ✕
+              </Button>
+            </HStack>
           </Flex>
 
           {/* Messages */}
@@ -314,134 +491,147 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
-// Process user intent and map to Pioneer SDK functions
-async function processUserIntent(input: string, app: any): Promise<{
+// Process user intent using SupportChat API (Venice.ai privacy-preserving)
+async function processUserIntent(input: string, app: any, currentPageContext?: string): Promise<{
   content: string;
   functionCall?: { name: string; arguments: any; result?: any };
 }> {
+  try {
+    // Get current page context
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+    const currentPage = detectCurrentPage(pathname);
+    const pageContext = currentPage
+      ? `Current Page: ${currentPage.name}\nPage Description: ${currentPage.description}\nAvailable Features: ${currentPage.keyFeatures.slice(0, 3).join(', ')}`
+      : 'Current Page: Unknown';
+
+    // Check if SupportChat API is available
+    const hasSupportChat = app?.pioneer?.SupportChat || app?.SupportChat;
+
+    if (!hasSupportChat) {
+      console.warn('SupportChat API not available, using fallback');
+      console.log('App structure:', {
+        hasPioneer: !!app?.pioneer,
+        pioneerKeys: app?.pioneer ? Object.keys(app.pioneer).slice(0, 5) : [],
+        appKeys: app ? Object.keys(app).slice(0, 10) : []
+      });
+      return fallbackProcessUserIntent(input, app, currentPage);
+    }
+
+    // Import function execution system
+    const { executeChatFunctions, formatExecutionResponse } = await import('@/lib/chat/executor');
+
+    // Enhance user input with page context
+    const contextualInput = `[Context: User is on "${currentPage?.name || 'unknown page'}"]\n\nUser: ${input}`;
+
+    // Call SupportChat API (server-side system prompt with Venice.ai qwen3-4b)
+    // NO client-side system prompt needed - it's injected server-side for privacy
+    const supportChatFn = app.pioneer?.SupportChat || app.SupportChat;
+    const response = await supportChatFn({
+      messages: [
+        { role: 'user', content: contextualInput }
+      ]
+    });
+
+    // Parse the AI response (handle response.data wrapper from swagger client)
+    const chatData = response.data || response;
+    if (!chatData?.choices?.[0]?.message?.content) {
+      throw new Error('Invalid response from SupportChat');
+    }
+
+    const intentResult = JSON.parse(chatData.choices[0].message.content);
+
+    // Execute the functions
+    const executionResult = await executeChatFunctions(
+      intentResult.intent,
+      intentResult.functions || [],
+      intentResult.parameters || {},
+      app
+    );
+
+    // Format the response
+    const content = formatExecutionResponse(intentResult, executionResult);
+
+    return {
+      content,
+      functionCall: executionResult.results.length > 0 ? {
+        name: executionResult.results.map(r => r.function).join(', '),
+        arguments: intentResult.parameters || {},
+        result: executionResult.data
+      } : undefined
+    };
+
+  } catch (error: any) {
+    console.error('ChatCompletion error:', error);
+    // Fallback to simple pattern matching
+    return fallbackProcessUserIntent(input, app);
+  }
+}
+
+// Fallback function for when ChatCompletion API is not available
+function fallbackProcessUserIntent(input: string, app: any, currentPage?: any): {
+  content: string;
+  functionCall?: { name: string; arguments: any; result?: any };
+} {
   const lowerInput = input.toLowerCase();
+
+  // Handle "what page am I on?" or "where am I?" queries
+  if (lowerInput.includes('what page') || lowerInput.includes('where am i')) {
+    if (currentPage) {
+      return {
+        content: `📍 You're currently on the **${currentPage.name}**\n\n${currentPage.description}\n\n**What you can do here:**\n${currentPage.keyFeatures.slice(0, 3).map((f: string) => `• ${f}`).join('\n')}\n\n💡 Try: "Start tutorial" to learn more!`
+      };
+    }
+    return { content: 'I\'m not sure which page you\'re on. Try refreshing the page!' };
+  }
 
   // Balance queries
   if (lowerInput.includes('balance') || lowerInput.includes('how much')) {
-    try {
-      const balances = app?.balances || [];
-      const totalValueUsd = app?.dashboard?.totalValueUsd || 0;
+    const balances = app?.balances || [];
+    const totalValueUsd = app?.dashboard?.totalValueUsd || 0;
 
-      const functionCall = {
-        name: 'getBalances',
-        arguments: {},
-        result: { balances, totalValueUsd },
-      };
-
-      if (balances.length === 0) {
-        return {
-          content: 'You currently have no balances. Your total portfolio value is $0.00.',
-          functionCall,
-        };
-      }
-
-      const topBalances = balances
-        .filter((b: any) => parseFloat(b.valueUsd || 0) > 0)
-        .sort((a: any, b: any) => parseFloat(b.valueUsd || 0) - parseFloat(a.valueUsd || 0))
-        .slice(0, 5);
-
-      let response = `Your total portfolio value is $${totalValueUsd.toFixed(2)}.\n\nTop assets:\n`;
-      topBalances.forEach((b: any) => {
-        response += `\n• ${b.symbol || b.ticker}: ${b.balance} ($${parseFloat(b.valueUsd || 0).toFixed(2)})`;
-      });
-
-      return { content: response, functionCall };
-    } catch (error) {
-      return { content: 'I had trouble fetching your balances. Please try again.' };
+    if (balances.length === 0) {
+      return { content: 'You currently have no balances. Your total portfolio value is $0.00.' };
     }
+
+    const topBalances = balances
+      .filter((b: any) => parseFloat(b.valueUsd || 0) > 0)
+      .sort((a: any, b: any) => parseFloat(b.valueUsd || 0) - parseFloat(a.valueUsd || 0))
+      .slice(0, 5);
+
+    let response = `Your total portfolio value is $${totalValueUsd.toFixed(2)}.\n\nTop assets:\n`;
+    topBalances.forEach((b: any) => {
+      response += `\n• ${b.symbol || b.ticker}: ${b.balance} ($${parseFloat(b.valueUsd || 0).toFixed(2)})`;
+    });
+
+    return { content: response };
   }
 
   // Network/blockchain queries
   if (lowerInput.includes('network') || lowerInput.includes('blockchain') || lowerInput.includes('chain')) {
-    try {
-      const networks = app?.dashboard?.networks || [];
-      const functionCall = {
-        name: 'getNetworks',
-        arguments: {},
-        result: networks,
-      };
+    const networks = app?.dashboard?.networks || [];
 
-      if (networks.length === 0) {
-        return {
-          content: 'No networks configured yet.',
-          functionCall,
-        };
-      }
-
-      let response = `You have ${networks.length} networks configured:\n`;
-      networks.slice(0, 10).forEach((n: any) => {
-        const value = n.totalValueUsd > 0 ? ` ($${n.totalValueUsd.toFixed(2)})` : ' (no balance)';
-        response += `\n• ${n.gasAssetSymbol}${value}`;
-      });
-
-      return { content: response, functionCall };
-    } catch (error) {
-      return { content: 'I had trouble fetching network information.' };
+    if (networks.length === 0) {
+      return { content: 'No networks configured yet.' };
     }
+
+    let response = `You have ${networks.length} networks configured:\n`;
+    networks.slice(0, 10).forEach((n: any) => {
+      const value = n.totalValueUsd > 0 ? ` ($${n.totalValueUsd.toFixed(2)})` : ' (no balance)';
+      response += `\n• ${n.gasAssetSymbol}${value}`;
+    });
+
+    return { content: response };
   }
 
-  // Pubkey/address queries
-  if (lowerInput.includes('address') || lowerInput.includes('pubkey') || lowerInput.includes('public key')) {
-    try {
-      const pubkeys = app?.pubkeys || [];
-      const functionCall = {
-        name: 'getPubkeys',
-        arguments: {},
-        result: pubkeys,
-      };
-
-      if (pubkeys.length === 0) {
-        return {
-          content: 'No addresses/pubkeys found. Please pair your KeepKey device first.',
-          functionCall,
-        };
-      }
-
-      let response = `You have ${pubkeys.length} addresses configured:\n`;
-      pubkeys.slice(0, 5).forEach((p: any) => {
-        response += `\n• ${p.symbol || 'Unknown'}: ${p.address || p.master || 'N/A'}`;
-      });
-
-      return { content: response, functionCall };
-    } catch (error) {
-      return { content: 'I had trouble fetching address information.' };
-    }
-  }
-
-  // Refresh/sync queries
-  if (lowerInput.includes('refresh') || lowerInput.includes('sync') || lowerInput.includes('update')) {
-    try {
-      if (app && typeof app.refresh === 'function') {
-        await app.refresh();
-        return {
-          content: 'Portfolio refreshed successfully! Your balances have been updated.',
-          functionCall: {
-            name: 'refresh',
-            arguments: {},
-            result: { success: true },
-          },
-        };
-      } else {
-        return { content: 'Refresh function is not available at the moment.' };
-      }
-    } catch (error) {
-      return { content: 'Failed to refresh portfolio. Please try again.' };
-    }
-  }
-
-  // Default response for unrecognized queries
+  // Default response
   return {
     content: `I can help you with:
 • Checking your balance and portfolio value
 • Viewing your networks and blockchains
-• Listing your addresses and pubkeys
+• Navigating to assets (e.g., "Show me Bitcoin")
+• Opening send/receive pages
 • Refreshing your portfolio data
 
-Try asking: "What's my balance?" or "Show me my networks"`,
+Try asking: "What's my balance?" or "Show me my Bitcoin"`,
   };
 }

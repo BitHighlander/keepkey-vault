@@ -1,0 +1,7 @@
+# Ignore all test output files
+*.json
+*.html
+*.md
+
+# But keep the directory structure
+!.gitignore
