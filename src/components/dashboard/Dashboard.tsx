@@ -27,6 +27,7 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
+import { ChatPopup } from '@/components/chat/ChatPopup';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -143,19 +144,19 @@ const LoadingScreen = () => (
 
 // Sort networks with specific priority for 0 balance assets
 const sortNetworks = (a: Network, b: Network) => {
-  // First sort by balance (non-zero first)
-  const aHasBalance = parseFloat(a.totalNativeBalance) > 0;
-  const bHasBalance = parseFloat(b.totalNativeBalance) > 0;
-  
+  // Check if network has any value (native balance OR tokens)
+  const aHasBalance = parseFloat(a.totalNativeBalance) > 0 || a.totalValueUsd > 0;
+  const bHasBalance = parseFloat(b.totalNativeBalance) > 0 || b.totalValueUsd > 0;
+
   if (aHasBalance && !bHasBalance) return -1;
   if (!aHasBalance && bHasBalance) return 1;
-  
+
   // If both have balance, sort by USD value (highest first)
   if (aHasBalance && bHasBalance) {
     return b.totalValueUsd - a.totalValueUsd;
   }
-  
-  // If both have 0 balance, apply special sorting
+
+  // If both have 0 balance (no native balance AND no token value), apply special sorting
   if (!aHasBalance && !bHasBalance) {
     const aIsUTXO = a.networkId.startsWith('bip122:');
     const bIsUTXO = b.networkId.startsWith('bip122:');
@@ -366,16 +367,16 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         // Set activeSliceIndex to the index of the top asset (with highest value)
         if (dashboard.networks && dashboard.networks.length > 0) {
           const sortedNetworks = [...dashboard.networks]
-            .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+            .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0)
             .sort((a, b) => b.totalValueUsd - a.totalValueUsd);
-            
+
           if (sortedNetworks.length > 0) {
             // Find the index of the top asset in the original filtered data
             const topAsset = sortedNetworks[0];
             const topAssetIndex = dashboard.networks
-              .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+              .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0)
               .findIndex((network: Network) => network.networkId === topAsset.networkId);
-              
+
             if (topAssetIndex >= 0) {
               console.log('📊 [Dashboard] Setting active slice to top asset:', topAsset.gasAssetSymbol);
               setActiveSliceIndex(topAssetIndex);
@@ -394,9 +395,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   // Prepare data for donut chart
+  // Include networks with either native balance OR token value (totalValueUsd > 0)
   const networksWithBalance = dashboard?.networks
-    ?.filter((network: Network) => parseFloat(network.totalNativeBalance) > 0) || [];
-  
+    ?.filter((network: Network) =>
+      parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0
+    ) || [];
+
   const hasAnyBalance = networksWithBalance.length > 0;
   
   const chartData = hasAnyBalance 
@@ -422,15 +426,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
           // Only apply the reset if we're still not hovering over anything
           if (activeSliceIndex === null) {
             const sortedNetworks = [...dashboard.networks]
-              .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+              .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0)
               .sort((a, b) => b.totalValueUsd - a.totalValueUsd);
-              
+
             if (sortedNetworks.length > 0) {
               const topAsset = sortedNetworks[0];
               const topAssetIndex = dashboard.networks
-                .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0)
+                .filter((network: Network) => parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0)
                 .findIndex((network: Network) => network.networkId === topAsset.networkId);
-                
+
               if (topAssetIndex >= 0) {
                 setActiveSliceIndex(topAssetIndex);
                 return;
@@ -778,8 +782,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                       (np: NetworkPercentage) => np.networkId === network.networkId
                     )?.percentage || 0;
 
+                    // Check if this network has tokens but no native gas
+                    const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;
+                    const hasTokenValue = network.totalValueUsd > 0 && !hasNativeBalance;
+
                     return (
-                      <Box 
+                      <Box
                         key={network.networkId}
                         w="100%"
                         p={5}
@@ -813,7 +821,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           borderRadius: "inherit",
                           pointerEvents: "none",
                         }}
-                        _hover={{ 
+                        _hover={{
                           transform: 'translateY(-2px)',
                           boxShadow: `0 8px 24px ${network.color}30, inset 0 0 30px ${network.color}20`,
                           borderColor: network.color,
@@ -921,10 +929,39 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 caip={network.gasAssetCaip}
                               />
                             </Box>
-                            <Stack gap={0.5}>
-                              <Text fontSize="md" fontWeight="bold" color={network.color}>
-                                {network.gasAssetSymbol}
-                              </Text>
+                            <Stack gap={0.5} flex="1">
+                              <HStack gap={2} align="center">
+                                <Text fontSize="md" fontWeight="bold" color={network.color}>
+                                  {network.gasAssetSymbol}
+                                </Text>
+                                {(() => {
+                                  // Check if this network has tokens but no native gas
+                                  const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;
+                                  const hasTokenValue = network.totalValueUsd > 0 && !hasNativeBalance;
+
+                                  if (hasTokenValue) {
+                                    return (
+                                      <Box
+                                        fontSize="xs"
+                                        fontWeight="bold"
+                                        px={2}
+                                        py={1}
+                                        borderRadius="md"
+                                        bg="red.500"
+                                        color="white"
+                                        title="CRITICAL: No gas for transactions - tokens are stranded!"
+                                        cursor="help"
+                                        boxShadow="0 2px 8px rgba(255, 0, 0, 0.4)"
+                                        border="1px solid"
+                                        borderColor="red.600"
+                                      >
+                                        ⚠️ NO GAS
+                                      </Box>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </HStack>
                               {(() => {
                                 const assetName = network.gasAssetName || getAssetName(network.gasAssetCaip);
                                 return assetName ? (
@@ -932,6 +969,31 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                     {assetName}
                                   </Text>
                                 ) : null;
+                              })()}
+                              {(() => {
+                                // Show warning if tokens but no gas
+                                const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;
+                                const hasTokenValue = network.totalValueUsd > 0 && !hasNativeBalance;
+
+                                if (hasTokenValue) {
+                                  return (
+                                    <Box
+                                      bg="red.900"
+                                      px={2}
+                                      py={1}
+                                      borderRadius="md"
+                                      borderLeft="3px solid"
+                                      borderColor="red.500"
+                                    >
+                                      <HStack gap={1} align="center">
+                                        <Text fontSize="xs" color="red.400" fontWeight="bold">
+                                          Add {network.gasAssetSymbol} to move tokens
+                                        </Text>
+                                      </HStack>
+                                    </Box>
+                                  );
+                                }
+                                return null;
                               })()}
                               <Box
                                 fontSize="xs"
@@ -970,8 +1032,95 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               </HStack>
                             </Stack>
                           </HStack>
-                          <Stack 
-                            align="flex-end" 
+
+                          {/* Token Icons Display - Center Section for Tokens Only */}
+                          {(() => {
+                            if (!hasTokenValue) return null;
+
+                            // Get tokens for this network
+                            const networkTokens = app?.balances?.filter((balance: any) => {
+                              const balanceNetworkId = balance.networkId;
+                              const isMatchingNetwork =
+                                balanceNetworkId === network.networkId ||
+                                (network.networkId === 'eip155:*' && balanceNetworkId?.startsWith('eip155:'));
+
+                              // Check if it's a token (has balance and not the native asset)
+                              const isToken = balance.caip !== network.gasAssetCaip &&
+                                              parseFloat(balance.balance || '0') > 0;
+
+                              return isMatchingNetwork && isToken;
+                            }) || [];
+
+                            if (networkTokens.length === 0) return null;
+
+                            // Limit to first 5 tokens for display
+                            const displayTokens = networkTokens.slice(0, 5);
+                            const hasMore = networkTokens.length > 5;
+
+                            return (
+                              <Flex
+                                direction="column"
+                                align="center"
+                                justify="center"
+                                gap={1}
+                                px={4}
+                              >
+                                {/* Stacked Token Icons */}
+                                <Flex
+                                  position="relative"
+                                  height="44px"
+                                  width={`${44 + (displayTokens.length - 1) * 28}px`}
+                                  alignItems="center"
+                                >
+                                  {displayTokens.map((token: any, index: number) => {
+                                    const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
+                                    const tokenColor = assetInfo?.color || token.color || '#FFD700';
+
+                                    return (
+                                      <Box
+                                        key={`${token.caip}-${index}`}
+                                        position="absolute"
+                                        left={`${index * 28}px`}
+                                        borderRadius="full"
+                                        overflow="hidden"
+                                        boxSize="44px"
+                                        bg={tokenColor}
+                                        boxShadow={`0 2px 8px ${tokenColor}40, inset 0 0 10px ${tokenColor}20`}
+                                        border="2px solid"
+                                        borderColor="gray.900"
+                                        title={`${token.symbol || token.ticker} - ${token.balance}`}
+                                        cursor="help"
+                                        transition="all 0.2s"
+                                        zIndex={displayTokens.length - index}
+                                        _hover={{
+                                          transform: 'scale(1.15) translateY(-4px)',
+                                          zIndex: 100,
+                                          boxShadow: `0 6px 16px ${tokenColor}60, inset 0 0 15px ${tokenColor}30`,
+                                        }}
+                                      >
+                                        <AssetIcon
+                                          src={getAssetIconUrl(token.caip, token.icon)}
+                                          alt={token.symbol || token.ticker}
+                                          boxSize="40px"
+                                          color={tokenColor}
+                                          caip={token.caip}
+                                        />
+                                      </Box>
+                                    );
+                                  })}
+                                </Flex>
+
+                                {/* Token Count Label */}
+                                <Text fontSize="xs" color="gray.400" fontWeight="semibold">
+                                  {networkTokens.length} token{networkTokens.length !== 1 ? 's' : ''}
+                                  {hasMore && ` (+${networkTokens.length - 5} more)`}
+                                </Text>
+                              </Flex>
+                            );
+                          })()}
+
+                          <Stack
+                            align="flex-end"
                             gap={0.5}
                             p={1}
                             borderRadius="md"

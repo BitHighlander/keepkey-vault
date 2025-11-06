@@ -15,6 +15,7 @@ import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
 import { getCustomPaths } from '@/lib/storage/customPaths'
+import { ChatPopup } from '@/components/chat/ChatPopup'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -27,8 +28,8 @@ const scale = keyframes`
 `
 
 // Get environment variables with fallbacks
-const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://pioneers.dev/spec/swagger.json'
-const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://pioneers.dev'
+const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://api.keepkey.info/spec/swagger.json'
+const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://api.keepkey.info'
 
 // Global flag to prevent multiple Pioneer initializations in development
 let PIONEER_INITIALIZED = false;
@@ -752,6 +753,8 @@ export function Provider({ children }: ProviderProps) {
     <ChakraProvider>
       <AppProvider pioneer={contextValue}>
         {children}
+        {/* Chat Popup - Persists across all pages */}
+        <ChatPopup app={pioneerSdk} />
       </AppProvider>
     </ChakraProvider>
   );
