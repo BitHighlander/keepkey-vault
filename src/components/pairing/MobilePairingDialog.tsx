@@ -64,17 +64,74 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
         throw new Error('Pioneer SDK not initialized');
       }
 
+      // Debug logging for context
+      console.log('🔍 [Pairing] state.context:', state.context);
+      console.log('🔍 [Pairing] app.context:', app.context);
+      console.log('🔍 [Pairing] app.keepKeySdk:', !!app.keepKeySdk);
+
+      // Check if KeepKey is connected (check SDK first, then context)
+      if (!app.keepKeySdk) {
+        console.error('❌ [Pairing] KeepKey SDK not found');
+        console.error('   - app.keepKeySdk:', app.keepKeySdk);
+        console.error('   - state.context:', state.context);
+        console.error('   - state.pubkeys:', state.pubkeys?.length || 0);
+        throw new Error('No KeepKey device connected. Please ensure:\n1. Your KeepKey is plugged in\n2. KeepKey Vault extension is running\n3. You\'ve unlocked your device');
+      }
+
+      // Also check context if available (secondary validation)
       if (!state.context || !state.context.includes('keepkey:')) {
-        throw new Error('No KeepKey device connected');
+        console.warn('⚠️ [Pairing] Context missing or invalid, but SDK is present. Continuing...');
       }
 
-      // Get device info
-      const deviceLabel = state.context.replace('keepkey:', '').replace('.json', '');
-      const features = await app.keepKeySdk?.system.info.getFeatures();
-
-      if (!features || !features.deviceId) {
-        throw new Error('Could not get device information');
+      // Get device features first
+      console.log('🔍 [Pairing] Attempting to get device features...');
+      console.log('🔍 [Pairing] app.keepKeySdk.system:', !!app.keepKeySdk?.system);
+      console.log('🔍 [Pairing] app.keepKeySdk.system.info:', !!app.keepKeySdk?.system?.info);
+      
+      let features;
+      try {
+        features = await app.keepKeySdk?.system.info.getFeatures();
+        console.log('✅ [Pairing] Device features received:', features);
+        console.log('🔍 [Pairing] Features keys:', Object.keys(features || {}));
+        console.log('🔍 [Pairing] Full features object:', JSON.stringify(features, null, 2));
+      } catch (featuresError) {
+        console.error('❌ [Pairing] Failed to get device features:', featuresError);
+        throw new Error(`Failed to get device features: ${(featuresError as Error).message}`);
       }
+
+      // Get device label from context (if available) or features
+      let deviceLabel = 'My KeepKey';
+      if (state.context && state.context.includes('keepkey:')) {
+        deviceLabel = state.context.replace('keepkey:', '').replace('.json', '');
+      } else if (features?.label) {
+        deviceLabel = features.label;
+      }
+
+      console.log('🏷️ [Pairing] Device label:', deviceLabel);
+      console.log('🆔 [Pairing] Device ID from features:', features?.deviceId);
+      console.log('🆔 [Pairing] Device ID from features.device_id:', (features as any)?.device_id);
+      
+      // Try to get deviceId from multiple possible locations
+      let deviceId = features?.deviceId || (features as any)?.device_id;
+      
+      // If still no deviceId, try to generate one from the context or use a fallback
+      if (!deviceId && state.context) {
+        // Use the device label as a stable identifier
+        deviceId = deviceLabel || 'keepkey-device';
+        console.log('⚠️ [Pairing] Using device label as fallback deviceId:', deviceId);
+      }
+
+      if (!features || !deviceId) {
+        console.error('❌ [Pairing] Invalid device features:', { 
+          features, 
+          hasDeviceId: !!deviceId,
+          hasContext: !!state.context,
+          deviceLabel 
+        });
+        throw new Error('Could not get device information. Device may not be ready or unlocked.');
+      }
+      
+      console.log('✅ [Pairing] Using deviceId:', deviceId);
 
       // Get all pubkeys
       const pubkeys = state.pubkeys || [];
@@ -82,32 +139,91 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
         throw new Error('No pubkeys available. Please ensure device is initialized.');
       }
 
-      console.log('Creating pairing with', pubkeys.length, 'pubkeys...');
-
-      // Call backend API to create pairing
-      const response = await fetch('/api/pairing', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          deviceId: features.deviceId,
-          label: deviceLabel || features.label || 'My KeepKey',
-          pubkeys: pubkeys.map((pk: any) => ({
-            pubkey: pk.pubkey,
-            pathMaster: pk.pathMaster,
-            networks: pk.networks,
-            address: pk.address,
-            master: pk.master,
-            note: pk.note,
-            type: pk.type,
-          })),
-        }),
+      console.log('🔑 [Pairing] Total pubkeys:', pubkeys.length);
+      console.log('🔑 [Pairing] First pubkey sample:', {
+        hasPubkey: !!pubkeys[0]?.pubkey,
+        hasPathMaster: !!pubkeys[0]?.pathMaster,
+        hasNetworks: !!pubkeys[0]?.networks,
+        networksLength: pubkeys[0]?.networks?.length,
+        hasAddress: !!pubkeys[0]?.address,
+        hasMaster: !!pubkeys[0]?.master,
       });
 
+      // Validate pubkeys have required fields
+      const invalidPubkeys = pubkeys.filter((pk: any) => 
+        !pk.pubkey || !pk.pathMaster || !pk.networks || !Array.isArray(pk.networks)
+      );
+      
+      if (invalidPubkeys.length > 0) {
+        console.error('❌ [Pairing] Invalid pubkeys found:', invalidPubkeys.length);
+        console.error('❌ [Pairing] Sample invalid pubkey:', invalidPubkeys[0]);
+        throw new Error(`${invalidPubkeys.length} pubkeys are missing required fields (pubkey, pathMaster, or networks)`);
+      }
+
+      console.log('✅ [Pairing] All pubkeys validated successfully');
+
+      // Prepare the request payload
+      const pairingPayload = {
+        deviceId: deviceId,
+        label: deviceLabel || features.label || 'My KeepKey',
+        pubkeys: pubkeys.map((pk: any) => ({
+          pubkey: pk.pubkey,
+          pathMaster: pk.pathMaster,
+          networks: pk.networks,
+          address: pk.address,
+          master: pk.master,
+          note: pk.note,
+          type: pk.type,
+        })),
+      };
+
+      console.log('📤 [Pairing] Sending request to /api/pairing');
+      console.log('📤 [Pairing] Payload summary:', {
+        deviceId: pairingPayload.deviceId,
+        label: pairingPayload.label,
+        pubkeysCount: pairingPayload.pubkeys.length,
+        firstPubkey: pairingPayload.pubkeys[0] ? {
+          networks: pairingPayload.pubkeys[0].networks?.slice(0, 3),
+          hasAddress: !!pairingPayload.pubkeys[0].address,
+          hasMaster: !!pairingPayload.pubkeys[0].master,
+        } : null
+      });
+      console.log('📤 [Pairing] Full payload:', JSON.stringify(pairingPayload, null, 2));
+
+      // Call backend API to create pairing
+      let response;
+      try {
+        response = await fetch('/api/pairing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(pairingPayload),
+        });
+        
+        console.log('📥 [Pairing] Response status:', response.status);
+        console.log('📥 [Pairing] Response statusText:', response.statusText);
+        console.log('📥 [Pairing] Response headers:', Object.fromEntries(response.headers.entries()));
+      } catch (fetchError) {
+        console.error('❌ [Pairing] Network request failed:', fetchError);
+        console.error('❌ [Pairing] Error type:', (fetchError as Error).name);
+        console.error('❌ [Pairing] Error message:', (fetchError as Error).message);
+        throw new Error(`Network request failed: ${(fetchError as Error).message}`);
+      }
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create pairing');
+        console.error('❌ [Pairing] API returned error status:', response.status);
+        let errorData;
+        try {
+          const responseText = await response.text();
+          console.log('📥 [Pairing] Raw error response:', responseText);
+          errorData = JSON.parse(responseText);
+          console.error('❌ [Pairing] Error data:', errorData);
+        } catch (parseError) {
+          console.error('❌ [Pairing] Could not parse error response:', parseError);
+          throw new Error(`Failed to create pairing (status ${response.status})`);
+        }
+        throw new Error(errorData.error || `Failed to create pairing (status ${response.status})`);
       }
 
       const data: PairingResponse = await response.json();

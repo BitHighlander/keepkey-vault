@@ -738,6 +738,7 @@ export function Provider({ children }: ProviderProps) {
       app: pioneerSdk,
       api: pioneerSdk?.pioneer,
       username: pioneerSdk?.username,
+      context: pioneerSdk?.context,  // CRITICAL: Add context for KeepKey device detection
       assetContext: pioneerSdk?.assetContext,
       outboundAssetContext: pioneerSdk?.outboundAssetContext,
       balances: pioneerSdk?.balances || [],
