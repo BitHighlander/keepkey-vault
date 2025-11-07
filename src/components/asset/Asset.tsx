@@ -48,7 +48,6 @@ import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchange
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
-import { isFeatureEnabled } from '@/config/features';
 import { BalanceDistribution } from '../balance/BalanceDistribution';
 import { aggregateBalances, AggregatedBalance } from '@/types/balance';
 import { ReportDialog } from './ReportDialog';
@@ -1010,7 +1009,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   <Text>Discover Tokens</Text>
                 </Flex>
               </Button> */}
-              {isFeatureEnabled('enableSwaps') && getPoolByCAIP(assetContext.caip) && (
+              {getPoolByCAIP(assetContext.caip) && (
                 <Button
                   width="100%"
                   size="lg"

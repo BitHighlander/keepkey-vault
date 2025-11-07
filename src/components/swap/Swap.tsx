@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { usePioneerContext } from '@/components/providers/pioneer';
+import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import {
   Box,
   Stack,
@@ -297,13 +298,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
         console.log(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}, matched=${supportedAsset.asset}`);
 
-        // Get icon from assetData (always available) or fallback to balance icon
-        const assetInfo = app?.assets?.[balance.caip];
-        const icon = assetInfo?.icon || balance.icon || supportedAsset.icon;
+        // Get icon using getAssetIconUrl helper for proper CDN URL
+        const icon = getAssetIconUrl(balance.caip, balance.icon || supportedAsset.icon);
 
-        // Get network name from assetInfo or construct from CAIP
-        const networkName = assetInfo?.networkName || balance.networkName || '';
-        const displayName = networkName ? `${assetInfo?.name || supportedAsset.name} (${networkName})` : (assetInfo?.name || supportedAsset.name);
+        // Get network name from balance or construct from CAIP
+        const networkName = balance.networkName || '';
+        const displayName = networkName ? `${supportedAsset.name} (${networkName})` : supportedAsset.name;
 
         return {
           caip: balance.caip,
@@ -344,13 +344,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Match by CAIP, not symbol! This keeps ETH mainnet and ETH BNB separate
       const balance = availableAssets.find(a => a.caip === poolAsset.caip);
 
-      // Get icon from assetData (always available) - use CAIP from poolAsset
-      const assetInfo = app?.assets?.[poolAsset.caip];
-      const icon = assetInfo?.icon || balance?.icon || poolAsset.icon;
+      // Get icon using getAssetIconUrl helper for proper CDN URL
+      const icon = getAssetIconUrl(poolAsset.caip, balance?.icon || poolAsset.icon);
 
       return {
         ...poolAsset,
-        name: assetInfo?.name || poolAsset.name,
+        name: poolAsset.name,
         icon: icon,
         balance: balance?.balance || 0,
         balanceUsd: balance?.balanceUsd || 0,
@@ -369,10 +368,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   useEffect(() => {
     const urlPair = parseAssetPairFromUrl(searchParams);
 
-    if (urlPair && app?.setAssetContext && app?.setOutboundAssetContext && availableAssets.length > 0) {
+    if (urlPair && app?.setAssetContext && app?.setOutboundAssetContext) {
       console.log('🔗 [Swap URL] Parsed asset pair from URL:', urlPair);
 
-      // Validate both assets
+      // Validate both assets exist in THORChain pools
       const fromPool = validateAndGetPoolAsset(urlPair.from);
       const toPool = validateAndGetPoolAsset(urlPair.to);
 
@@ -381,47 +380,52 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         return;
       }
 
-      // Check if input asset has balance in user's wallet
-      const fromAsset = availableAssets.find(a => a.caip === urlPair.from);
-      if (!fromAsset || fromAsset.balanceUsd <= 0.01) {
-        console.warn('⚠️ [Swap URL] Input asset has insufficient balance, using default selection');
-        return;
-      }
-
       console.log('✅ [Swap URL] Setting assets from URL:', {
         from: { caip: fromPool.caip, symbol: fromPool.symbol },
         to: { caip: toPool.caip, symbol: toPool.symbol }
       });
 
-      // Set FROM asset with user balance data
+      // Try to get user balance data if available
+      const fromAsset = availableAssets.find(a => a.caip === urlPair.from);
+      const toAsset = availableAssets.find(a => a.caip === urlPair.to);
+
+      // Set FROM asset - merge pool data with user balance if available
       app.setAssetContext({
-        caip: fromAsset.caip,
-        networkId: fromAsset.networkId || caipToNetworkId(fromAsset.caip),
-        symbol: fromAsset.symbol,
-        name: fromAsset.name,
-        icon: fromAsset.icon,
-        priceUsd: fromAsset.priceUsd
+        caip: fromPool.caip,
+        networkId: fromPool.networkId || caipToNetworkId(fromPool.caip),
+        symbol: fromPool.symbol,
+        name: fromPool.name,
+        icon: fromPool.icon,
+        priceUsd: fromAsset?.priceUsd || 0,
+        balance: fromAsset?.balance || 0,
+        balanceUsd: fromAsset?.balanceUsd || 0
       });
 
-      // Set TO asset (may have 0 balance, that's ok)
-      const toAsset = availableAssets.find(a => a.caip === urlPair.to);
+      // Set TO asset - merge pool data with user balance if available
       app.setOutboundAssetContext({
         caip: toPool.caip,
         networkId: toPool.networkId || caipToNetworkId(toPool.caip),
         symbol: toPool.symbol,
         name: toPool.name,
         icon: toPool.icon,
-        priceUsd: toAsset?.priceUsd || 0
+        priceUsd: toAsset?.priceUsd || 0,
+        balance: toAsset?.balance || 0,
+        balanceUsd: toAsset?.balanceUsd || 0
       });
     }
-  }, [searchParams]); // Only run when URL params change
+  }, [searchParams, availableAssets]); // Re-run when balances load to update prices
 
   // Initialize default assets if not set
   useEffect(() => {
-    if (!app?.assetContext?.caip && !app?.outboundAssetContext?.caip && availableAssets.length > 0) {
-      // Select the top USD value asset for "from"
-      const defaultFrom = availableAssets[0];
-      
+    if (!app?.assetContext?.caip && !app?.outboundAssetContext?.caip) {
+      // Try to use user's highest balance asset, fallback to BTC from pools
+      const defaultFrom = availableAssets[0] || SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
+
+      if (!defaultFrom) {
+        console.warn('[Swap] No default FROM asset available');
+        return;
+      }
+
       // Smart selection for output asset based on input
       let defaultTo = null;
 
@@ -434,34 +438,50 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
       }
 
-      // If we couldn't find the preferred output, use the second highest value asset
+      // If we couldn't find the preferred output, use the second highest value asset or another pool
       if (!defaultTo && availableAssets.length > 1) {
         defaultTo = availableAssets[1];
       }
 
-      // If still no output asset, find any other supported asset
+      // If still no output asset, find any other supported asset from pools
       if (!defaultTo) {
         defaultTo = SUPPORTED_SWAP_ASSETS.find(asset =>
-          asset.symbol !== defaultFrom?.symbol
+          asset.symbol !== defaultFrom?.symbol && asset.isNative
         );
       }
-      
-      // Ensure we have balance data for the output asset
-      if (defaultTo) {
-        const balanceData = availableAssets.find(a => a.caip === defaultTo.caip);
-        defaultTo = {
-          ...defaultTo,
-          balance: balanceData?.balance || 0,
-          balanceUsd: balanceData?.balanceUsd || 0,
-          priceUsd: balanceData?.priceUsd || 0
-        };
+
+      if (!defaultTo) {
+        console.warn('[Swap] No default TO asset available');
+        return;
       }
-      
+
+      // Merge pool data with user balance data if available
+      const fromBalanceData = availableAssets.find(a => a.caip === defaultFrom.caip);
+      const toBalanceData = availableAssets.find(a => a.caip === defaultTo.caip);
+
+      const fromAsset = {
+        ...defaultFrom,
+        balance: fromBalanceData?.balance || 0,
+        balanceUsd: fromBalanceData?.balanceUsd || 0,
+        priceUsd: fromBalanceData?.priceUsd || 0
+      };
+
+      const toAsset = {
+        ...defaultTo,
+        balance: toBalanceData?.balance || 0,
+        balanceUsd: toBalanceData?.balanceUsd || 0,
+        priceUsd: toBalanceData?.priceUsd || 0
+      };
+
       // Set the assets
-      if (defaultFrom && defaultTo && defaultFrom.symbol !== defaultTo.symbol) {
+      if (fromAsset && toAsset && fromAsset.caip !== toAsset.caip) {
         if (app?.setAssetContext && app?.setOutboundAssetContext) {
-          app.setAssetContext(defaultFrom);
-          app.setOutboundAssetContext(defaultTo);
+          console.log('📍 [Swap] Setting default assets:', {
+            from: { caip: fromAsset.caip, symbol: fromAsset.symbol },
+            to: { caip: toAsset.caip, symbol: toAsset.symbol }
+          });
+          app.setAssetContext(fromAsset);
+          app.setOutboundAssetContext(toAsset);
           // The default amount will be set by the dedicated useEffect
         }
       }
@@ -484,12 +504,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       if (defaultTo) {
         const balanceData = availableAssets.find(a => a.caip === defaultTo.caip);
+        console.log('🔄 [Swap] Auto-selecting output asset:', {
+          symbol: defaultTo.symbol,
+          caip: defaultTo.caip,
+          hasBalance: !!balanceData
+        });
         app.setOutboundAssetContext({
           ...defaultTo,
           balance: balanceData?.balance || 0,
           balanceUsd: balanceData?.balanceUsd || 0,
           priceUsd: balanceData?.priceUsd || 0
         });
+      } else {
+        console.warn('[Swap] Could not auto-select output asset for:', app.assetContext.symbol);
       }
     }
   }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext]);
@@ -522,7 +549,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           // If MAX is more than $100, use $100 worth
           const amountFor100Usd = 100 / fromAsset.priceUsd;
           setInputAmount(amountFor100Usd.toFixed(8));
-          setIsMaxAmount(false);
+          setIsMaxAmount(true); // FIXED: Set isMax to true so SDK uses coinSelectSplit for proper fee calculation
           setInputUSDValue('100.00');
         }
         
@@ -743,6 +770,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         await swapAssets();
         return;
       }
+
+      // Validate asset has required fields before attempting to set
+      if (!asset.caip) {
+        console.error('❌ Cannot set input asset: missing CAIP', asset);
+        setError('Invalid asset: missing CAIP identifier');
+        return;
+      }
+      if (!asset.symbol) {
+        console.error('❌ Cannot set input asset: missing symbol', asset);
+        setError('Invalid asset: missing symbol');
+        return;
+      }
+
       await app.setAssetContext({
         caip: asset.caip,
         networkId: asset.networkId || caipToNetworkId(asset.caip),
@@ -765,7 +805,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           // If MAX is more than $100, use $100 worth
           const amountFor100Usd = 100 / asset.priceUsd;
           setInputAmount(amountFor100Usd.toFixed(8));
-          setIsMaxAmount(false);
+          setIsMaxAmount(true); // FIXED: Set isMax to true so SDK uses coinSelectSplit for proper fee calculation
           setInputUSDValue('100.00');
         }
         
@@ -784,15 +824,35 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         await swapAssets();
         return;
       }
-      await app.setOutboundAssetContext({
-        caip: asset.caip,
-        networkId: asset.networkId || caipToNetworkId(asset.caip),
-        symbol: asset.symbol,
-        name: asset.name,
-        icon: asset.icon,
-        priceUsd: asset.priceUsd
-      });
-      
+
+      // Validate asset has required fields before attempting to set
+      if (!asset.caip) {
+        console.error('❌ Cannot set output asset: missing CAIP', asset);
+        setError('Invalid asset: missing CAIP identifier');
+        return;
+      }
+      if (!asset.symbol) {
+        console.error('❌ Cannot set output asset: missing symbol', asset);
+        setError('Invalid asset: missing symbol');
+        return;
+      }
+
+      try {
+        await app.setOutboundAssetContext({
+          caip: asset.caip,
+          networkId: asset.networkId || caipToNetworkId(asset.caip),
+          symbol: asset.symbol,
+          name: asset.name,
+          icon: asset.icon,
+          priceUsd: asset.priceUsd
+        });
+        console.log('✅ Output asset set successfully:', asset.symbol);
+      } catch (outboundError) {
+        console.error('❌ Failed to set output asset:', outboundError);
+        setError(`Failed to set output asset: ${asset.symbol}`);
+        return;
+      }
+
       // Fetch new quote if we have input amount
       if (inputAmount && parseFloat(inputAmount) > 0 && app?.assetContext?.symbol) {
         await fetchQuote(inputAmount, app.assetContext.symbol, asset.symbol);
@@ -832,26 +892,45 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setIsMaxAmount(false);
     
     // Store current values if we're swapping output to input
+    // Validate both assets have required fields before attempting swap
+    if (!fromSel.caip || !toSel.caip) {
+      console.error('❌ Cannot swap assets: missing CAIP', { fromSel, toSel });
+      setError('Invalid assets: missing CAIP identifiers');
+      return;
+    }
+    if (!fromSel.symbol || !toSel.symbol) {
+      console.error('❌ Cannot swap assets: missing symbol', { fromSel, toSel });
+      setError('Invalid assets: missing symbols');
+      return;
+    }
+
     const shouldFetchNewQuote = outputAmount && parseFloat(outputAmount) > 0;
     const newInputAmount = outputAmount;
-    
-    await app.setAssetContext({
-      caip: toSel.caip,
-      networkId: toSel.networkId || caipToNetworkId(toSel.caip),
-      symbol: toSel.symbol,
-      name: toSel.name,
-      icon: toSel.icon,
-      priceUsd: toSel.priceUsd
-    });
-    
-    await app.setOutboundAssetContext({
-      caip: fromSel.caip,
-      networkId: fromSel.networkId || caipToNetworkId(fromSel.caip),
-      symbol: fromSel.symbol,
-      name: fromSel.name,
-      icon: fromSel.icon,
-      priceUsd: fromSel.priceUsd
-    });
+
+    try {
+      await app.setAssetContext({
+        caip: toSel.caip,
+        networkId: toSel.networkId || caipToNetworkId(toSel.caip),
+        symbol: toSel.symbol,
+        name: toSel.name,
+        icon: toSel.icon,
+        priceUsd: toSel.priceUsd
+      });
+
+      await app.setOutboundAssetContext({
+        caip: fromSel.caip,
+        networkId: fromSel.networkId || caipToNetworkId(fromSel.caip),
+        symbol: fromSel.symbol,
+        name: fromSel.name,
+        icon: fromSel.icon,
+        priceUsd: fromSel.priceUsd
+      });
+      console.log('✅ Swapped assets successfully:', fromSel.symbol, '↔', toSel.symbol);
+    } catch (swapError) {
+      console.error('❌ Failed to swap assets:', swapError);
+      setError('Failed to swap assets');
+      return;
+    }
     
     // If we had an output amount, use it as the new input
     if (shouldFetchNewQuote) {
@@ -1123,15 +1202,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           return; // Skip actual swap execution
         }
         
-        // Execute the actual swap
+        // Execute the actual swap (BUILD + SIGN + BROADCAST)
         if (typeof app.swap === 'function') {
-          console.log('🚀 Executing swap transaction...');
+          console.log('🚀 Step 1: Building unsigned swap transaction...');
           const swapPayload: any = {
             caipIn: app?.assetContext?.caip,
             caipOut: app?.outboundAssetContext?.caip,
-            feeLevel: 3, // Use average/standard fee level (valid range: 1-5)
+            feeLevel: 5, // Use fastest fee level for swaps (valid range: 1-5)
           };
-          
+
           // Set isMax flag if MAX button was used
           console.log('🔍 Debug swap payload creation:', {
             isMaxAmount,
@@ -1146,59 +1225,217 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             console.log('📊 Regular swap - providing amount in payload');
             swapPayload.amount = inputAmount;
           }
-          
+
           console.log('📦 Swap payload:', swapPayload);
           console.log('🔍 isMaxAmount state:', isMaxAmount);
-          const result = await app.swap(swapPayload);
-          console.log('✅ Swap executed:', result);
-          
+
+          // STEP 1: Build unsigned transaction
+          const unsignedTx = await app.swap(swapPayload);
+          console.log('✅ Step 1 Complete: Unsigned transaction built:', unsignedTx);
+
+          if (!unsignedTx) {
+            throw new Error('Failed to build unsigned transaction');
+          }
+
+          // STEP 2: Sign transaction with device
+          console.log('🔐 Step 2: Signing transaction on KeepKey device...');
+          console.log('⚠️  Please confirm the transaction on your KeepKey device!');
+
+          let signedTx: any;
+          const networkId = app.assetContext.networkId;
+          const caip = app.assetContext.caip;
+
+          // Determine network type for signing
+          const networkIdToType: any = {
+            'bip122:000000000019d6689c085ae165831e93': 'UTXO',
+            'bip122:000000000000000000651ef99cb9fcbe': 'UTXO',
+            'bip122:000007d91d1254d60e2dd1ae58038307': 'UTXO',
+            'bip122:00000000001a91e3dace36e2be3bf030': 'UTXO',
+            'bip122:12a765e31ffd4059bada1e25190f6e98': 'UTXO',
+            'cosmos:mayachain-mainnet-v1': 'TENDERMINT',
+            'cosmos:osmosis-1': 'TENDERMINT',
+            'cosmos:cosmoshub-4': 'TENDERMINT',
+            'cosmos:kaiyo-1': 'TENDERMINT',
+            'cosmos:thorchain-mainnet-v1': 'TENDERMINT',
+            'eip155:1': 'EVM',
+            'eip155:137': 'EVM',
+            'eip155:8453': 'EVM',
+            'eip155:*': 'EVM',
+            'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
+            'zcash:main': 'UTXO',
+          };
+
+          const networkType = networkIdToType[networkId];
+          console.log('🔍 Network type for signing:', networkType);
+
+          if (networkType === 'UTXO') {
+            // Get the chain name for COIN_MAP
+            const chainName = NetworkIdToChain[networkId];
+            if (!chainName) {
+              throw new Error(`Chain mapping not found for network: ${networkId}`);
+            }
+
+            const signPayload: any = {
+              // @ts-ignore
+              coin: COIN_MAP_KEEPKEY_LONG[chainName],
+              inputs: unsignedTx.inputs,
+              outputs: unsignedTx.outputs,
+              version: 1,
+              locktime: 0,
+            };
+
+            // Add memo as OP_RETURN if present
+            if (unsignedTx.memo && unsignedTx.memo !== ' ') {
+              signPayload.opReturnData = unsignedTx.memo;
+            }
+
+            console.log('📝 UTXO sign payload:', signPayload);
+            const responseSign = await app.keepKeySdk.utxo.utxoSignTransaction(signPayload);
+            signedTx = responseSign.serializedTx;
+
+          } else if (networkType === 'EVM') {
+            console.log('📝 EVM sign payload:', unsignedTx);
+            const responseSign = await app.keepKeySdk.eth.ethSignTransaction(unsignedTx);
+            signedTx = responseSign.serialized;
+
+          } else if (networkType === 'TENDERMINT') {
+            // Tendermint chains (Cosmos, Thorchain, etc.)
+            console.log('📝 Tendermint sign payload:', unsignedTx);
+
+            const msgType = unsignedTx.signDoc?.msgs?.[0]?.type;
+            console.log('Tendermint message type:', msgType);
+
+            let responseSign: any;
+            switch (caip) {
+              case 'cosmos:thorchain-mainnet-v1/slip44:931':
+                responseSign = await app.keepKeySdk.thorchain.thorchainSignAmino(unsignedTx);
+                break;
+              case 'cosmos:cosmoshub-4/slip44:118':
+                if (msgType === 'cosmos-sdk/MsgDelegate') {
+                  responseSign = await app.keepKeySdk.cosmos.cosmosSignAminoDelegate(unsignedTx);
+                } else if (msgType === 'cosmos-sdk/MsgUndelegate') {
+                  responseSign = await app.keepKeySdk.cosmos.cosmosSignAminoUndelegate(unsignedTx);
+                } else {
+                  responseSign = await app.keepKeySdk.cosmos.cosmosSignAmino(unsignedTx);
+                }
+                break;
+              case 'cosmos:osmosis-1/slip44:118':
+                responseSign = await app.keepKeySdk.osmosis.osmosisSignAmino(unsignedTx);
+                break;
+              default:
+                throw new Error(`Unsupported Tendermint chain: ${caip}`);
+            }
+            signedTx = responseSign.serialized;
+
+          } else if (networkType === 'XRP') {
+            console.log('📝 XRP sign payload:', unsignedTx);
+            const responseSign = await app.keepKeySdk.ripple.rippleSignTransaction(unsignedTx);
+            signedTx = responseSign.serialized;
+
+          } else {
+            throw new Error(`Unsupported network type for signing: ${networkType}`);
+          }
+
+          console.log('✅ Step 2 Complete: Transaction signed!');
+
+          // STEP 3: Broadcast transaction
+          console.log('📡 Step 3: Broadcasting transaction to network...');
+
+          const broadcastPayload = {
+            networkId: caipToNetworkId(caip),
+            serialized: signedTx,
+          };
+
+          console.log('📝 Broadcast payload:', broadcastPayload);
+
+          const broadcastResult = await app.pioneer.Broadcast(broadcastPayload);
+          console.log('✅ Step 3 Complete: Broadcast result:', broadcastResult);
+
+          // Extract txid from broadcast result
+          let txid = broadcastResult?.data?.txid || broadcastResult?.data?.data?.txid || broadcastResult?.data;
+
+          if (!txid) {
+            throw new Error('Broadcast succeeded but no transaction ID returned');
+          }
+
+          // Remove 0x prefix if present (for Ethereum transactions)
+          if (typeof txid === 'string' && txid.startsWith('0x')) {
+            txid = txid.slice(2);
+          }
+
+          console.log('🎉 Swap successful! Transaction ID:', txid);
+
           // Now close everything
           setHasViewedOnDevice(true);
           setIsVerifyingOnDevice(false);
           setShowDeviceVerificationDialog(false);
           setVaultVerified(false);
           setMemoValid(null);
-          
-          // Extract transaction ID and remove 0x prefix if present
-          let txid = result?.txHash || result?.hash || result?.txid || result?.data?.result || result;
-          
-          // Remove 0x prefix if present (for Ethereum transactions)
-          if (typeof txid === 'string' && txid.startsWith('0x')) {
-            txid = txid.slice(2);
-          }
-          
-          console.log('🎉 Swap successful! Transaction ID:', txid);
-          
-          if (txid) {
-            // Show success screen
-            setSuccessTxid(String(txid));
-            setShowSuccess(true);
-            setConfirmMode(false);
-          } else {
-            // If no txid, reset normally
-            setInputAmount('');
-            setOutputAmount('');
-            setQuote(null);
-            setError('');
-            setConfirmMode(false);
-          }
-          
+
+          // Show success screen with real txid
+          setSuccessTxid(String(txid));
+          setShowSuccess(true);
+          setConfirmMode(false);
           setPendingSwap(false);
           setVerificationStep('destination'); // Reset for next swap
         }
       } catch (error: any) {
-        console.error('❌ Device verification failed:', error);
-        setDeviceVerificationError(error?.message || 'Failed to verify address on device');
+        console.error('❌ Swap execution failed:', error);
+
+        // Parse error message for better user feedback
+        let errorMessage = 'An error occurred during the swap';
+
+        if (error?.message) {
+          const msg = error.message.toLowerCase();
+
+          // Common error types with user-friendly messages
+          if (msg.includes('failed to fetch') || msg.includes('connection refused') || msg.includes('network')) {
+            errorMessage = 'Unable to connect to swap service. Please check your connection and try again.';
+          } else if (msg.includes('quote')) {
+            errorMessage = 'Failed to get swap quote. The swap route may not be available right now.';
+          } else if (msg.includes('insufficient') || msg.includes('balance')) {
+            errorMessage = 'Insufficient balance to complete this swap.';
+          } else if (msg.includes('user') && msg.includes('reject')) {
+            errorMessage = 'Transaction rejected on device.';
+          } else if (msg.includes('timeout')) {
+            errorMessage = 'Request timed out. Please try again.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+
+        setDeviceVerificationError(errorMessage);
         setIsVerifyingOnDevice(false);
-        throw error;
+        setIsLoading(false);
+        setPendingSwap(false);
+
+        // Don't throw - let user see error and close dialog
+        return;
       }
       } else {
         console.log('✅ Device verification completed, swap already executed');
       }
     } catch (error: any) {
       console.error('Error executing swap:', error);
-      const msg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
-      setError(msg);
+
+      // Parse error for user-friendly message
+      let errorMessage = 'An error occurred during the swap';
+
+      if (error?.message) {
+        const msg = error.message.toLowerCase();
+
+        if (msg.includes('failed to fetch') || msg.includes('connection refused') || msg.includes('network')) {
+          errorMessage = 'Unable to connect to swap service. Please check your connection and try again.';
+        } else if (msg.includes('quote')) {
+          errorMessage = 'Failed to get swap quote. The swap route may not be available right now.';
+        } else if (msg.includes('insufficient') || msg.includes('balance')) {
+          errorMessage = 'Insufficient balance to complete this swap.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
       setPendingSwap(false);
@@ -1208,11 +1445,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   performSwap();
   }, [pendingSwap, app, quote, inputAmount]);
 
-  // Check if we're still loading assets - show spinner until we have usable data
-  const isLoadingAssets = !app?.balances ||
-                          app.balances.length === 0 ||
-                          availableAssets.length === 0 ||
-                          (app?.assetContext?.caip && !availableAssets.find(a => a.caip === app.assetContext.caip));
+  // Check if we're still loading assets - show spinner until we have loaded balances data
+  // Note: Don't check availableAssets.length here - that's filtered data (could be 0 if all below threshold)
+  const isLoadingAssets = !app?.balances || app.balances.length === 0;
 
   return (
     <Box
@@ -1593,7 +1828,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   <HStack justify="space-between">
                     <Text fontSize="sm" color="gray.400">Destination Network:</Text>
                     <HStack gap={2}>
-                      <AssetIcon src={app?.outboundAssetContext?.icon} caip={app?.outboundAssetContext?.caip} symbol={app?.outboundAssetContext?.symbol} alt="asset" boxSize="16px" color="#FFD700" />
+                      <AssetIcon src={app?.outboundAssetContext?.icon} caip={app?.outboundAssetContext?.caip} symbol={app?.outboundAssetContext?.symbol} alt="asset" boxSize="16px" />
                       <Text fontSize="sm" fontWeight="medium">
                         {app?.outboundAssetContext?.name || app?.outboundAssetContext?.symbol}
                       </Text>
@@ -1654,16 +1889,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 </>
               ) : null}
 
-              {/* Action Buttons - Only show for destination step errors */}
-              {!isVerifyingOnDevice && deviceVerificationError && verificationStep === 'destination' && (
+              {/* Action Buttons - Show for ANY error to allow user to exit */}
+              {!isVerifyingOnDevice && deviceVerificationError && (
                 <HStack gap={3} pt={2}>
                   <Button
                     flex={1}
                     variant="ghost"
                     onClick={() => {
+                      // Fully reset swap state
                       setShowDeviceVerificationDialog(false);
                       setDeviceVerificationError(null);
                       setIsLoading(false);
+                      setPendingSwap(false);
+                      setIsVerifyingOnDevice(false);
+                      setVerificationStep('destination');
+                      setVaultVerified(false);
+                      setMemoValid(null);
+                      setConfirmMode(false); // Return to quote view
                     }}
                   >
                     Cancel

@@ -4,8 +4,7 @@
  */
 
 interface FeatureFlags {
-  enableSwaps: boolean;
-  // Add more feature flags here as needed
+  // Add feature flags here as needed
 }
 
 /**
@@ -13,19 +12,7 @@ interface FeatureFlags {
  * All flags default to false unless explicitly enabled
  */
 export const getFeatureFlags = (): FeatureFlags => {
-  // Check environment variable first (for build-time configuration)
-  const envSwapsEnabled = process.env.NEXT_PUBLIC_ENABLE_SWAPS === 'true';
-  
-  // Check localStorage for runtime overrides (only in browser)
-  let localSwapsEnabled = false;
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('feature_swaps_enabled');
-    localSwapsEnabled = stored === 'true';
-  }
-  
-  return {
-    enableSwaps: envSwapsEnabled || localSwapsEnabled,
-  };
+  return {};
 };
 
 /**

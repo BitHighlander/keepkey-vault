@@ -2,7 +2,7 @@
  * THORChain Supported Pools Configuration
  *
  * Auto-generated from THORChain Midgard API
- * Generated: 2025-10-23T05:25:56.844Z
+ * Generated: 2025-11-07T03:34:30.108Z
  *
  * This file contains all active THORChain pools mapped to CAIP format.
  * DO NOT EDIT MANUALLY - regenerate using: node scripts/fetch-thorchain-pools.js
@@ -31,7 +31,7 @@ export interface ThorchainPool {
 
 /**
  * All supported THORChain pools
- * Total: 30 pools
+ * Total: 31 pools
  */
 export const THORCHAIN_POOLS: ThorchainPool[] = [
   {
@@ -338,9 +338,9 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "asset": "THOR.RUJI",
     "chain": "THOR",
     "symbol": "RUJI",
-    "name": "THORChain",
+    "name": "THORChain RUJI",
     "icon": "https://pioneers.dev/coins/thorchain.png",
-    "caip": "cosmos:thorchain-mainnet-v1/slip44:931",
+    "caip": "cosmos:thorchain-mainnet-v1/slip44:931:RUJI",
     "networkId": "cosmos:thorchain-mainnet-v1",
     "isNative": true
   },
@@ -348,25 +348,28 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "asset": "THOR.TCY",
     "chain": "THOR",
     "symbol": "TCY",
-    "name": "THORChain",
+    "name": "THORChain TCY",
     "icon": "https://pioneers.dev/coins/thorchain.png",
-    "caip": "cosmos:thorchain-mainnet-v1/slip44:931",
+    "caip": "cosmos:thorchain-mainnet-v1/slip44:931:TCY",
     "networkId": "cosmos:thorchain-mainnet-v1",
+    "isNative": true
+  },
+  {
+    "asset": "XRP.XRP",
+    "chain": "XRP",
+    "symbol": "XRP",
+    "name": "XRP",
+    "icon": "https://pioneers.dev/coins/ripple.png",
+    "caip": "ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144",
+    "networkId": "ripple:4109c6f2045fc7eff4cde8f9905d19c2",
     "isNative": true
   }
 ];
 
 /**
  * Get pool by symbol
- * Prioritizes native assets over tokens (e.g., ETH.ETH over BSC.ETH)
  */
-export function getPoolBySymbol(symbol: string, preferNative: boolean = true): ThorchainPool | undefined {
-  if (preferNative) {
-    // First try to find native asset
-    const nativePool = THORCHAIN_POOLS.find(pool => pool.symbol === symbol && pool.isNative);
-    if (nativePool) return nativePool;
-  }
-  // Fall back to any matching symbol
+export function getPoolBySymbol(symbol: string): ThorchainPool | undefined {
   return THORCHAIN_POOLS.find(pool => pool.symbol === symbol);
 }
 

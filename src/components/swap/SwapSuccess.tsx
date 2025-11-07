@@ -74,6 +74,76 @@ export const SwapSuccess = ({
   // Midgard provides full cross-chain swap tracking
   const midgardApiLink = `https://midgard.ninerealms.com/v2/actions?txid=${upperTxid}`;
 
+  // Get block explorer link based on the source chain
+  const getBlockExplorerLink = (): string => {
+    // Check if it's an EVM transaction (has 0x prefix)
+    if (txid.startsWith('0x') || txid.startsWith('0X')) {
+      // Determine which EVM chain based on fromAsset
+      const symbol = fromAsset?.symbol?.toUpperCase();
+
+      // Ethereum
+      if (symbol === 'ETH' && fromAsset?.networkId?.includes('eip155:1')) {
+        return `https://etherscan.io/tx/${txid}`;
+      }
+      // BSC
+      if (symbol === 'BNB' || fromAsset?.networkId?.includes('eip155:56')) {
+        return `https://bscscan.com/tx/${txid}`;
+      }
+      // Avalanche
+      if (symbol === 'AVAX' || fromAsset?.networkId?.includes('eip155:43114')) {
+        return `https://snowtrace.io/tx/${txid}`;
+      }
+      // Polygon
+      if (symbol === 'MATIC' || fromAsset?.networkId?.includes('eip155:137')) {
+        return `https://polygonscan.com/tx/${txid}`;
+      }
+      // Default to Etherscan for unknown EVM chains
+      return `https://etherscan.io/tx/${txid}`;
+    }
+
+    // Bitcoin
+    if (fromAsset?.symbol?.toUpperCase() === 'BTC') {
+      return `https://mempool.space/tx/${txid}`;
+    }
+
+    // Bitcoin Cash
+    if (fromAsset?.symbol?.toUpperCase() === 'BCH') {
+      return `https://blockchair.com/bitcoin-cash/transaction/${txid}`;
+    }
+
+    // Litecoin
+    if (fromAsset?.symbol?.toUpperCase() === 'LTC') {
+      return `https://blockchair.com/litecoin/transaction/${txid}`;
+    }
+
+    // Dogecoin
+    if (fromAsset?.symbol?.toUpperCase() === 'DOGE') {
+      return `https://blockchair.com/dogecoin/transaction/${txid}`;
+    }
+
+    // Cosmos chains
+    if (fromAsset?.networkId?.includes('cosmos:')) {
+      const mintscanMap: Record<string, string> = {
+        'ATOM': 'cosmos',
+        'OSMO': 'osmosis',
+        'JUNO': 'juno',
+        'SCRT': 'secret',
+      };
+      const chain = mintscanMap[fromAsset?.symbol?.toUpperCase()] || 'cosmos';
+      return `https://www.mintscan.io/${chain}/txs/${txid}`;
+    }
+
+    // THORChain
+    if (fromAsset?.symbol?.toUpperCase() === 'RUNE') {
+      return `https://runescan.io/tx/${txid}`;
+    }
+
+    // Default to THORChain tracker for unknown chains
+    return thorchainTrackerLink;
+  };
+
+  const blockExplorerLink = getBlockExplorerLink();
+
   // Format transaction ID for display (show first and last characters)
   const formatTxid = (id: string) => {
     // Remove 0x prefix if present for THORChain display
@@ -240,7 +310,7 @@ export const SwapSuccess = ({
           <HStack justify="center" align="center" gap={4}>
             {/* From */}
             <HStack gap={2}>
-              <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="24px" color="#FFD700" />
+              <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="24px" />
               <Text fontSize="lg" fontWeight="semibold" color="gray.400">
                 {inputAmount} {fromAsset?.symbol}
               </Text>
@@ -253,7 +323,7 @@ export const SwapSuccess = ({
 
             {/* To */}
             <HStack gap={2}>
-              <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="24px" color="#FFD700" />
+              <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="24px" />
               <Text fontSize="lg" fontWeight="semibold" color="green.400">
                 {outputAmount} {toAsset?.symbol}
               </Text>
@@ -279,7 +349,7 @@ export const SwapSuccess = ({
                 {formatTxid(txid)}
               </Text>
               <Link
-                href={thorchainTrackerLink}
+                href={blockExplorerLink}
                 isExternal
                 target="_blank"
                 rel="noopener noreferrer"

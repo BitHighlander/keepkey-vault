@@ -14,6 +14,7 @@ import {
   Image,
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
+import { useRouter } from 'next/navigation';
 import { TutorialHighlight, useTutorial } from './TutorialHighlight';
 import { detectCurrentPage, getCurrentPageTutorial } from '@/lib/chat/pageContext';
 
@@ -69,7 +70,10 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
   const tutorialSteps = getCurrentPageTutorial(pathname);
   const tutorial = useTutorial(tutorialSteps);
 
-  // Expose tutorial control to app for function calls
+  // Get Next.js router for client-side navigation
+  const router = useRouter();
+
+  // Expose tutorial control and navigation to app for function calls
   useEffect(() => {
     if (app && tutorial) {
       app.startTutorial = tutorial.startTutorial;
@@ -80,8 +84,13 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
           tutorial.startTutorial();
         }
       };
+
+      // Attach router.push for client-side navigation
+      app.navigate = (path: string) => {
+        router.push(path);
+      };
     }
-  }, [app, tutorial, tutorialSteps]);
+  }, [app, tutorial, tutorialSteps, router]);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -136,6 +145,12 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
     if (pathname !== previousPathname) {
       console.log('📍 Page changed:', { from: previousPathname, to: pathname });
 
+      // Clear asset context if returning to homepage
+      if (pathname === '/' && app?.clearAssetContext) {
+        console.log('🏠 Returning to homepage - clearing asset context');
+        app.clearAssetContext();
+      }
+
       // Generate new welcome message for the page
       const pageWelcome = generatePageWelcome(pathname);
 
@@ -160,7 +175,7 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
       // Auto-scroll to new message
       setTimeout(scrollToBottom, 100);
     }
-  }, [pathname, previousPathname, isOpen]);
+  }, [pathname, previousPathname, isOpen, app]);
 
   // Clear notification badge when chat is opened
   useEffect(() => {
@@ -359,6 +374,28 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
               <Button
                 size="sm"
                 variant="ghost"
+                color="gray.400"
+                onClick={() => {
+                  // Clear messages and restart conversation
+                  const welcomeMessage = generatePageWelcome(pathname);
+                  setMessages([
+                    {
+                      id: Date.now().toString(),
+                      role: 'assistant',
+                      content: welcomeMessage,
+                      timestamp: new Date(),
+                    },
+                  ]);
+                  console.log('🔄 Chat conversation restarted');
+                }}
+                _hover={{ bg: 'rgba(255, 255, 255, 0.1)' }}
+                title="Clear chat and restart"
+              >
+                🔄
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
                 color={theme.blue}
                 onClick={() => setIsOpen(false)}
                 _hover={{ bg: 'rgba(59, 130, 246, 0.1)' }}
@@ -504,15 +541,16 @@ async function processUserIntent(input: string, app: any, currentPageContext?: s
       ? `Current Page: ${currentPage.name}\nPage Description: ${currentPage.description}\nAvailable Features: ${currentPage.keyFeatures.slice(0, 3).join(', ')}`
       : 'Current Page: Unknown';
 
-    // Check if SupportChat API is available
-    const hasSupportChat = app?.pioneer?.SupportChat || app?.SupportChat;
+    // Check if ChatCompletion API is available (this is what Pioneer SDK exposes)
+    const hasChatAPI = app?.pioneer?.ChatCompletion || app?.pioneer?.SupportChat;
 
-    if (!hasSupportChat) {
-      console.warn('SupportChat API not available, using fallback');
+    if (!hasChatAPI) {
+      console.warn('Chat API not available, using fallback');
       console.log('App structure:', {
         hasPioneer: !!app?.pioneer,
-        pioneerKeys: app?.pioneer ? Object.keys(app.pioneer).slice(0, 5) : [],
-        appKeys: app ? Object.keys(app).slice(0, 10) : []
+        pioneerKeys: app?.pioneer ? Object.keys(app.pioneer).slice(0, 10) : [],
+        hasChatCompletion: !!app?.pioneer?.ChatCompletion,
+        hasSupportChat: !!app?.pioneer?.SupportChat,
       });
       return fallbackProcessUserIntent(input, app, currentPage);
     }
@@ -520,16 +558,53 @@ async function processUserIntent(input: string, app: any, currentPageContext?: s
     // Import function execution system
     const { executeChatFunctions, formatExecutionResponse } = await import('@/lib/chat/executor');
 
-    // Enhance user input with page context
-    const contextualInput = `[Context: User is on "${currentPage?.name || 'unknown page'}"]\n\nUser: ${input}`;
+    // Build system prompt with page context
+    const systemPrompt = `You are a KeepKey Vault assistant. The user is currently on: "${currentPage?.name || 'unknown page'}".
 
-    // Call SupportChat API (server-side system prompt with Venice.ai qwen3-4b)
-    // NO client-side system prompt needed - it's injected server-side for privacy
-    const supportChatFn = app.pioneer?.SupportChat || app.SupportChat;
-    const response = await supportChatFn({
+Page Description: ${currentPage?.description || 'N/A'}
+Available Features: ${currentPage?.keyFeatures?.slice(0, 3).join(', ') || 'N/A'}
+
+Analyze the user's message and return JSON:
+{
+  "intent": "query_balance|query_network|action_send|action_receive|action_swap|navigation|query_help|query_page|general",
+  "functions": ["functionName1", "functionName2"],
+  "parameters": {"key": "value"},
+  "content": "friendly response text"
+}
+
+Available functions:
+- Navigation: navigateToAsset, navigateToSend, navigateToReceive, navigateToSwap, navigateToDashboard
+- Queries: getBalances, searchAssets, getNetworks, getAddress
+- Actions: refreshPortfolio
+- Tutorials: startTutorial, getPageHelp, highlightElement, explainElement, getProjectInfo
+
+**IMPORTANT Navigation Rules**:
+- For "How do I send X?" → use searchAssets + navigateToSend to open the send page for that asset
+- For "Show me how to receive X" → use searchAssets + navigateToReceive to open the receive page
+- For "I want to swap X" → use searchAssets + navigateToSwap to open the swap page
+- For "Show me X" → use searchAssets + navigateToAsset to open the asset details page
+- Always search for the asset first, then navigate with the CAIP identifier
+
+Examples:
+User: "How do I send Bitcoin?"
+→ {"intent": "action_send", "functions": ["searchAssets", "navigateToSend"], "parameters": {"query": "bitcoin"}, "content": "I'll open the Bitcoin send page for you. You'll be able to enter the recipient address and amount there."}
+
+User: "Show me my Ethereum"
+→ {"intent": "navigation", "functions": ["searchAssets", "navigateToAsset"], "parameters": {"query": "ethereum"}, "content": "Opening your Ethereum asset page..."}
+
+User: "How do I receive BTC?"
+→ {"intent": "action_receive", "functions": ["searchAssets", "navigateToReceive"], "parameters": {"query": "bitcoin"}, "content": "I'll show you your Bitcoin receiving address with a QR code..."}
+
+Be helpful, conversational, and context-aware based on the current page.`;
+
+    // Call ChatCompletion API with JSON mode
+    const response = await app.pioneer.ChatCompletion({
+      model: 'gpt-4o-mini-2024-07-18',
       messages: [
-        { role: 'user', content: contextualInput }
-      ]
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: input }
+      ],
+      response_format: { type: 'json_object' }
     });
 
     // Parse the AI response (handle response.data wrapper from swagger client)

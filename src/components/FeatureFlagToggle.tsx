@@ -72,27 +72,13 @@ export const FeatureFlagToggle = () => {
           <ModalCloseButton color="white" />
           <ModalBody pb={6}>
             <VStack gap={4} align="stretch">
-              <Text color="gray.400" fontSize="sm">
-                Toggle features on/off. Page will reload after changes.
+              <Text color="gray.400" fontSize="sm" textAlign="center">
+                No feature flags available at this time.
               </Text>
-              
-              <HStack justify="space-between">
-                <Box>
-                  <Text color="white" fontWeight="bold">Swaps</Text>
-                  <Text color="gray.400" fontSize="sm">
-                    Enable THORChain swap functionality
-                  </Text>
-                </Box>
-                <Switch
-                  isChecked={flags.enableSwaps}
-                  onChange={(e) => handleToggle('enableSwaps', e.target.checked)}
-                  colorScheme="green"
-                />
-              </HStack>
 
               <Box pt={4} borderTop="1px solid" borderColor="#222222">
                 <Text color="gray.500" fontSize="xs">
-                  Note: These settings persist in localStorage and override environment variables.
+                  Feature flags will appear here when new experimental features are added.
                 </Text>
               </Box>
             </VStack>

@@ -301,20 +301,22 @@ export function getAssetDecimals(symbol: string): number {
 }
 
 // Convert amount to base units based on asset
+// IMPORTANT: THORChain uses 8 decimals for ALL assets, regardless of native decimals
 export function toBaseUnit(amount: string, symbol: string): number {
   const value = parseFloat(amount);
-  const decimal = getAssetDecimals(symbol);
+  const decimal = 8; // THORChain always uses 8 decimals internally
   const result = Math.floor(value * Math.pow(10, decimal));
-  
+
   console.log('🔢 [THORChain] Converting to base units:', {
     symbol,
     inputAmount: amount,
     value,
     decimals: decimal,
     result,
-    resultFormatted: result.toLocaleString()
+    resultFormatted: result.toLocaleString(),
+    note: 'THORChain uses 8 decimals for all assets'
   });
-  
+
   return result;
 }
 

@@ -1033,11 +1033,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             </Stack>
                           </HStack>
 
-                          {/* Token Icons Display - Center Section for Tokens Only */}
+                          {/* Token Icons Display - Center Section for All Networks with Tokens */}
                           {(() => {
-                            if (!hasTokenValue) return null;
-
-                            // Get tokens for this network
+                            // Get tokens for this network (regardless of native balance)
                             const networkTokens = app?.balances?.filter((balance: any) => {
                               const balanceNetworkId = balance.networkId;
                               const isMatchingNetwork =

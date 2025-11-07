@@ -13,7 +13,6 @@ import {
 import Send from '@/components/send/Send'
 import Receive from '@/components/receive/Receive'
 import Swap from '@/components/swap/Swap'
-import { isFeatureEnabled } from '@/config/features'
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -202,11 +201,36 @@ export default function AssetPage() {
     return caip
   }, [params.caip])
 
+  // Check for view query parameter and automatically open the appropriate view (ONLY ON INITIAL LOAD)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search)
+      const viewParam = searchParams.get('view')
+
+      if (viewParam) {
+        const validView = viewParam as ViewType
+
+        // Only update if it's a valid view
+        if (['asset', 'send', 'receive', 'swap'].includes(validView)) {
+          console.log('🔍 [AssetPage] Auto-opening view from query parameter:', validView)
+          setCurrentView(validView)
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decodedCaip]) // Only run when CAIP changes (initial load or navigation to different asset)
+
   // Handle navigation functions
   const handleBack = () => {
     if (currentView !== 'asset') {
       // If in send, receive, or swap view, go back to asset view
       setCurrentView('asset')
+      // Clear URL query params
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('view')
+        window.history.replaceState({}, '', url.toString())
+      }
     } else {
       // If already in asset view, go back to dashboard
       console.log('🔙 [AssetPage] Navigating back to dashboard')
@@ -261,11 +285,7 @@ export default function AssetPage() {
               onBackClick={handleBack}
               onSendClick={() => setCurrentView('send')}
               onReceiveClick={() => setCurrentView('receive')}
-              onSwapClick={() => {
-                if (isFeatureEnabled('enableSwaps')) {
-                  setCurrentView('swap')
-                }
-              }}
+              onSwapClick={() => setCurrentView('swap')}
             />
           )}
 
@@ -278,7 +298,7 @@ export default function AssetPage() {
             <Receive onBackClick={handleBack} />
           )}
 
-          {currentView === 'swap' && isFeatureEnabled('enableSwaps') && (
+          {currentView === 'swap' && (
             <Swap onBackClick={handleBack} />
           )}
         </Box>

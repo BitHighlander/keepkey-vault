@@ -36,6 +36,9 @@ const CHAIN_TO_NETWORK_ID = {
   'GAIA': 'cosmos:cosmoshub-4',
   'THOR': 'cosmos:thorchain-mainnet-v1',
   'MAYA': 'cosmos:mayachain-mainnet-v1',
+
+  // XRP Ledger
+  'XRP': 'ripple:4109c6f2045fc7eff4cde8f9905d19c2',
 };
 
 /**
@@ -53,6 +56,7 @@ const CHAIN_TO_SLIP44 = {
   'GAIA': '118',
   'THOR': '931',
   'MAYA': '931',
+  'XRP': '144',
 };
 
 /**
@@ -69,6 +73,7 @@ const CHAIN_METADATA = {
   'GAIA': { name: 'Cosmos', icon: 'https://pioneers.dev/coins/cosmos.png' },
   'THOR': { name: 'THORChain', icon: 'https://pioneers.dev/coins/thorchain.png' },
   'MAYA': { name: 'Maya Protocol', icon: 'https://pioneers.dev/coins/mayaprotocol.png' },
+  'XRP': { name: 'XRP', icon: 'https://pioneers.dev/coins/ripple.png' },
 };
 
 /**

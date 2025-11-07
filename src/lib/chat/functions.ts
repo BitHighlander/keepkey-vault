@@ -78,8 +78,11 @@ export async function navigateToAsset(caip: string, app: any): Promise<FunctionR
     // Encode CAIP for URL (Base64)
     const encodedCaip = btoa(caip);
 
-    // Navigate to asset page
-    if (typeof window !== 'undefined') {
+    // Use router for client-side navigation if available
+    if (app.navigate) {
+      app.navigate(`/asset/${encodeURIComponent(encodedCaip)}`);
+    } else if (typeof window !== 'undefined') {
+      // Fallback to window.location for tests
       window.location.href = `/asset/${encodeURIComponent(encodedCaip)}`;
     }
 
@@ -102,6 +105,9 @@ export async function navigateToAsset(caip: string, app: any): Promise<FunctionR
 export async function navigateToSend(caip: string | undefined, app: any): Promise<FunctionResult> {
   try {
     let targetCaip = caip;
+    let asset: any = null;
+
+    console.log('🔍 [navigateToSend] Called with CAIP:', caip);
 
     // If no CAIP provided, use current asset context
     if (!targetCaip) {
@@ -113,19 +119,51 @@ export async function navigateToSend(caip: string | undefined, app: any): Promis
         };
       }
       targetCaip = assetContext.caip;
+      console.log('🔍 [navigateToSend] Using context CAIP:', targetCaip);
+    }
+
+    // Find the asset in balances to set context
+    asset = app?.balances?.find((b: any) => b.caip === targetCaip);
+    console.log('🔍 [navigateToSend] Found asset:', asset ? `${asset.symbol} (${asset.name})` : 'NOT FOUND');
+
+    if (asset) {
+      // Set asset context before navigation
+      const assetContext: AssetContextState = {
+        networkId: asset.networkId,
+        chainId: asset.chainId,
+        assetId: asset.assetId,
+        caip: asset.caip,
+        name: asset.name,
+        networkName: asset.networkName,
+        symbol: asset.symbol,
+        icon: asset.icon,
+        color: asset.color,
+        balance: asset.balance || '0',
+        value: parseFloat(asset.valueUsd || '0'),
+        precision: asset.precision || 18,
+        priceUsd: asset.priceUsd,
+        pubkeys: asset.pubkeys || [],
+      };
+
+      if (typeof app.setAssetContext === 'function') {
+        app.setAssetContext(assetContext);
+      }
     }
 
     // Encode CAIP for URL
     const encodedCaip = btoa(targetCaip);
 
-    // Navigate to asset page with send view
-    if (typeof window !== 'undefined') {
+    // Use router for client-side navigation if available
+    if (app.navigate) {
+      app.navigate(`/asset/${encodeURIComponent(encodedCaip)}?view=send`);
+    } else if (typeof window !== 'undefined') {
+      // Fallback to window.location for tests
       window.location.href = `/asset/${encodeURIComponent(encodedCaip)}?view=send`;
     }
 
     return {
       success: true,
-      message: 'Opening send page...',
+      message: `Opening send page${asset ? ` for ${asset.symbol}` : ''}...`,
     };
   } catch (error: any) {
     return {
@@ -141,6 +179,7 @@ export async function navigateToSend(caip: string | undefined, app: any): Promis
 export async function navigateToReceive(caip: string | undefined, app: any): Promise<FunctionResult> {
   try {
     let targetCaip = caip;
+    let asset: any = null;
 
     // If no CAIP provided, use current asset context
     if (!targetCaip) {
@@ -154,17 +193,47 @@ export async function navigateToReceive(caip: string | undefined, app: any): Pro
       targetCaip = assetContext.caip;
     }
 
+    // Find the asset in balances to set context
+    asset = app?.balances?.find((b: any) => b.caip === targetCaip);
+
+    if (asset) {
+      // Set asset context before navigation
+      const assetContext: AssetContextState = {
+        networkId: asset.networkId,
+        chainId: asset.chainId,
+        assetId: asset.assetId,
+        caip: asset.caip,
+        name: asset.name,
+        networkName: asset.networkName,
+        symbol: asset.symbol,
+        icon: asset.icon,
+        color: asset.color,
+        balance: asset.balance || '0',
+        value: parseFloat(asset.valueUsd || '0'),
+        precision: asset.precision || 18,
+        priceUsd: asset.priceUsd,
+        pubkeys: asset.pubkeys || [],
+      };
+
+      if (typeof app.setAssetContext === 'function') {
+        app.setAssetContext(assetContext);
+      }
+    }
+
     // Encode CAIP for URL
     const encodedCaip = btoa(targetCaip);
 
-    // Navigate to asset page with receive view
-    if (typeof window !== 'undefined') {
+    // Use router for client-side navigation if available
+    if (app.navigate) {
+      app.navigate(`/asset/${encodeURIComponent(encodedCaip)}?view=receive`);
+    } else if (typeof window !== 'undefined') {
+      // Fallback to window.location for tests
       window.location.href = `/asset/${encodeURIComponent(encodedCaip)}?view=receive`;
     }
 
     return {
       success: true,
-      message: 'Opening receive page...',
+      message: `Opening receive page${asset ? ` for ${asset.symbol}` : ''}...`,
     };
   } catch (error: any) {
     return {
@@ -180,6 +249,7 @@ export async function navigateToReceive(caip: string | undefined, app: any): Pro
 export async function navigateToSwap(caip: string | undefined, app: any): Promise<FunctionResult> {
   try {
     let targetCaip = caip;
+    let asset: any = null;
 
     // If no CAIP provided, use current asset context
     if (!targetCaip) {
@@ -193,17 +263,47 @@ export async function navigateToSwap(caip: string | undefined, app: any): Promis
       targetCaip = assetContext.caip;
     }
 
+    // Find the asset in balances to set context
+    asset = app?.balances?.find((b: any) => b.caip === targetCaip);
+
+    if (asset) {
+      // Set asset context before navigation
+      const assetContext: AssetContextState = {
+        networkId: asset.networkId,
+        chainId: asset.chainId,
+        assetId: asset.assetId,
+        caip: asset.caip,
+        name: asset.name,
+        networkName: asset.networkName,
+        symbol: asset.symbol,
+        icon: asset.icon,
+        color: asset.color,
+        balance: asset.balance || '0',
+        value: parseFloat(asset.valueUsd || '0'),
+        precision: asset.precision || 18,
+        priceUsd: asset.priceUsd,
+        pubkeys: asset.pubkeys || [],
+      };
+
+      if (typeof app.setAssetContext === 'function') {
+        app.setAssetContext(assetContext);
+      }
+    }
+
     // Encode CAIP for URL
     const encodedCaip = btoa(targetCaip);
 
-    // Navigate to asset page with swap view
-    if (typeof window !== 'undefined') {
+    // Use router for client-side navigation if available
+    if (app.navigate) {
+      app.navigate(`/asset/${encodeURIComponent(encodedCaip)}?view=swap`);
+    } else if (typeof window !== 'undefined') {
+      // Fallback to window.location for tests
       window.location.href = `/asset/${encodeURIComponent(encodedCaip)}?view=swap`;
     }
 
     return {
       success: true,
-      message: 'Opening swap page...',
+      message: `Opening swap page${asset ? ` for ${asset.symbol}` : ''}...`,
     };
   } catch (error: any) {
     return {
@@ -223,8 +323,11 @@ export async function navigateToDashboard(app: any): Promise<FunctionResult> {
       app.clearAssetContext();
     }
 
-    // Navigate to home
-    if (typeof window !== 'undefined') {
+    // Use router for client-side navigation if available
+    if (app.navigate) {
+      app.navigate('/');
+    } else if (typeof window !== 'undefined') {
+      // Fallback to window.location for tests
       window.location.href = '/';
     }
 

@@ -38,6 +38,29 @@ export const SwapConfirm = ({
 }: SwapConfirmProps) => {
   const { state } = usePioneerContext();
   const app = state?.app;
+
+  // Format amount for display with intelligent rounding
+  const formatAmount = (amount: string): string => {
+    const num = parseFloat(amount);
+    if (isNaN(num)) return amount;
+
+    // For very small numbers, use scientific notation
+    if (num < 0.000001 && num > 0) {
+      return num.toExponential(2);
+    }
+
+    // For small numbers, show more decimals
+    if (num < 0.001) return num.toFixed(8);
+    if (num < 1) return num.toFixed(6);
+    if (num < 100) return num.toFixed(4);
+
+    // For larger numbers, show fewer decimals
+    return num.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
   return (
     <VStack gap={8} width="full" align="stretch">
       {/* Title */}
@@ -49,9 +72,9 @@ export const SwapConfirm = ({
       <HStack justify="center" align="center" gap={4} py={4}>
         {/* From */}
         <HStack gap={2}>
-          <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="28px" color="#FFD700" />
+          <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="28px" />
           <Text fontSize="2xl" fontWeight="bold" color="white">
-            {inputAmount}
+            {formatAmount(inputAmount)}
           </Text>
           <Text fontSize="xl" color="gray.400">
             {fromAsset?.symbol}
@@ -65,9 +88,9 @@ export const SwapConfirm = ({
 
         {/* To */}
         <HStack gap={2}>
-          <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="28px" color="#FFD700" />
+          <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="28px" />
           <Text fontSize="2xl" fontWeight="bold" color="#23DCC8">
-            {outputAmount}
+            {formatAmount(outputAmount)}
           </Text>
           <Text fontSize="xl" color="gray.400">
             {toAsset?.symbol}
