@@ -597,14 +597,12 @@ User: "How do I receive BTC?"
 
 Be helpful, conversational, and context-aware based on the current page.`;
 
-    // Call ChatCompletion API with JSON mode
-    const response = await app.pioneer.ChatCompletion({
-      model: 'gpt-4o-mini-2024-07-18',
+    // Call SupportChat API (Venice.ai privacy-preserving endpoint)
+    const response = await app.pioneer.SupportChat({
+      model: 'qwen3-4b', // Fast Venice.ai model for support chat
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: input }
-      ],
-      response_format: { type: 'json_object' }
+      ]
     });
 
     // Parse the AI response (handle response.data wrapper from swagger client)
