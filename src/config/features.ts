@@ -4,7 +4,8 @@
  */
 
 interface FeatureFlags {
-  // Add feature flags here as needed
+  enableSwaps: boolean;
+  // Add more feature flags here as needed
 }
 
 /**
@@ -12,7 +13,9 @@ interface FeatureFlags {
  * All flags default to false unless explicitly enabled
  */
 export const getFeatureFlags = (): FeatureFlags => {
-  return {};
+  return {
+    enableSwaps: false, // Forced OFF - swaps are disabled
+  };
 };
 
 /**

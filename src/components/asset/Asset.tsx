@@ -57,6 +57,7 @@ import { useCustomTokens } from '@/hooks/useCustomTokens';
 import { DappStore } from './DappStore';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
 import { AssetIcon } from '@/components/ui/AssetIcon';
+import { isFeatureEnabled } from '@/config/features';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -1009,7 +1010,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   <Text>Discover Tokens</Text>
                 </Flex>
               </Button> */}
-              {getPoolByCAIP(assetContext.caip) && (
+              {isFeatureEnabled('enableSwaps') && getPoolByCAIP(assetContext.caip) && (
                 <Button
                   width="100%"
                   size="lg"
