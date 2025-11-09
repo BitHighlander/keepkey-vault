@@ -264,7 +264,7 @@ export class EVMReportGenerator extends BaseReportGenerator {
           data: {
             headers: ['Date', 'Type', 'From/To', 'Value', 'Status', 'TX Hash'],
             widths: ['15%', '10%', '25%', '15%', '10%', '25%'],
-            rows: allTransactions.slice(0, 50).map(tx => {
+            rows: allTransactions.map(tx => {
               const isSent = tx.from.toLowerCase() === tx.ownerAddress.toLowerCase();
               const counterparty = isSent ? tx.to : tx.from;
               const valueETH = parseFloat(tx.value) / 1e18;
@@ -291,7 +291,7 @@ export class EVMReportGenerator extends BaseReportGenerator {
           title: 'Transaction Summary',
           type: 'summary' as const,
           data: [
-            `Total Transactions: ${totalTxs}${totalTxs > 50 ? ' (showing 50 most recent)' : ''}`,
+            `Total Transactions: ${totalTxs}`,
             `Successful: ${successfulTxs}`,
             `Failed: ${totalTxs - successfulTxs}`,
             `Sent: ${sentTxs}`,
