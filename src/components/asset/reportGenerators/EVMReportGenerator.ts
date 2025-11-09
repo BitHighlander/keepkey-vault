@@ -17,7 +17,7 @@ export class EVMReportGenerator extends BaseReportGenerator {
       accountCount: 5, // EVM typically uses multiple addresses
       includeTransactions: true,
       includeAddresses: true,
-      lod: 1 // Default level of detail (synced with e2e)
+      lod: 4 // LOD 4 includes tokens + transaction history (from unchained)
     };
   }
 
@@ -57,6 +57,14 @@ export class EVMReportGenerator extends BaseReportGenerator {
     const serverReport = await this.fetchServerReport(serverUrl, assetContext.networkId, addresses, lod, options);
 
     console.log('✅ [API] Server report received');
+
+    // Get token data from charts/portfolio endpoint
+    console.log('📊 [API] Fetching token data from charts endpoint...');
+    const portfolioData = await this.fetchPortfolioData(serverUrl, assetContext.pubkeys);
+    console.log('✅ [API] Portfolio data received');
+
+    // Merge token data with report data
+    this.mergeTokenData(serverReport, portfolioData, assetContext);
 
     // Transform server response into report sections
     const sections = this.transformServerData(serverReport, assetContext);
@@ -110,6 +118,56 @@ export class EVMReportGenerator extends BaseReportGenerator {
   }
 
   /**
+   * Fetch portfolio data including tokens from charts endpoint
+   */
+  private async fetchPortfolioData(serverUrl: string, pubkeys: any[]): Promise<any> {
+    try {
+      const response = await fetch(`${serverUrl}/charts/portfolio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pubkeys })
+      });
+
+      if (!response.ok) {
+        console.warn('Portfolio endpoint failed, continuing without token data');
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.warn('Error fetching portfolio data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Merge token data from portfolio into report addresses
+   */
+  private mergeTokenData(reportData: any, portfolioData: any, assetContext: any): void {
+    if (!portfolioData || !reportData.addresses) return;
+
+    // Find tokens for this asset's addresses
+    reportData.addresses.forEach((addr: any) => {
+      const pubkey = assetContext.pubkeys.find((p: any) => p.address === addr.address);
+      if (!pubkey || !pubkey.balances) return;
+
+      // Extract tokens from balances (exclude native token)
+      const tokens = pubkey.balances
+        .filter((b: any) => b.symbol !== assetContext.symbol && b.balance && parseFloat(b.balance) > 0)
+        .map((b: any) => ({
+          symbol: b.symbol || b.ticker,
+          name: b.name || b.symbol,
+          address: b.contract || b.contractAddress || 'Unknown',
+          balance: b.balance,
+          decimals: b.decimals || 18,
+          balanceUSD: b.valueUsd || 0
+        }));
+
+      addr.tokens = tokens;
+    });
+  }
+
+  /**
    * Transform server API response into report sections
    */
   private transformServerData(serverData: any, assetContext: any): any[] {
@@ -131,19 +189,30 @@ export class EVMReportGenerator extends BaseReportGenerator {
 
     // Add address details
     if (serverData.addresses && serverData.addresses.length > 0) {
+      const hasTokens = serverData.lod >= 2;
       sections.push({
         title: 'Account Summary',
         type: 'table' as const,
         data: {
-          headers: ['Address', 'Balance', 'USD Value', 'Nonce', 'Tokens'],
-          widths: ['35%', '15%', '15%', '10%', '25%'],
-          rows: serverData.addresses.map((addr: any) => [
-            { text: this.truncateAddress(addr.address), fontSize: 9 },
-            `${addr.balanceETH || 0} ${assetContext.symbol}`,
-            `$${addr.balanceUSD || 0}`,
-            addr.nonce?.toString() || '0',
-            addr.tokenCount ? `${addr.tokenCount} tokens` : 'No tokens'
-          ])
+          headers: hasTokens
+            ? ['Address', 'Balance', 'USD Value', 'TX Count', 'Token Count']
+            : ['Address', 'Balance', 'USD Value', 'TX Count'],
+          widths: hasTokens
+            ? ['30%', '20%', '20%', '15%', '15%']
+            : ['30%', '25%', '25%', '20%'],
+          rows: serverData.addresses.map((addr: any) => {
+            const baseRow = [
+              { text: this.truncateAddress(addr.address), fontSize: 9 },
+              `${addr.balance?.toFixed(6) || '0.000000'} ${assetContext.symbol}`,
+              `$${addr.balanceUSD?.toFixed(2) || '0.00'}`,
+              addr.txCount?.toString() || '0'
+            ];
+            if (hasTokens) {
+              const tokenCount = addr.tokens?.length || 0;
+              baseRow.push(tokenCount > 0 ? `${tokenCount} tokens` : 'No tokens');
+            }
+            return baseRow;
+          })
         }
       });
     }
@@ -159,23 +228,98 @@ export class EVMReportGenerator extends BaseReportGenerator {
 
       if (allTokens.length > 0) {
         sections.push({
-          title: 'Token Holdings Detail',
+          title: 'Token Holdings',
           type: 'table' as const,
           data: {
-            headers: ['Token', 'Balance', 'USD Value', 'Contract'],
-            widths: ['25%', '20%', '20%', '35%'],
+            headers: ['Token', 'Name', 'Balance', 'USD Value', 'Contract Address'],
+            widths: ['15%', '25%', '15%', '15%', '30%'],
             rows: allTokens.map(token => [
               token.symbol || 'Unknown',
-              token.balance || '0',
-              `$${token.valueUSD || 0}`,
-              { text: this.truncateAddress(token.contractAddress || ''), fontSize: 8 }
+              token.name || 'Unknown',
+              this.formatTokenBalance(token.balance, token.decimals),
+              `$${token.balanceUSD?.toFixed(2) || '0.00'}`,
+              { text: this.truncateAddress(token.address || ''), fontSize: 8 }
             ])
           }
         });
       }
     }
 
+    // Add transaction history if LOD >= 3
+    if (serverData.lod >= 3 && serverData.addresses) {
+      const allTransactions: any[] = [];
+      serverData.addresses.forEach((addr: any) => {
+        if (addr.transactions && addr.transactions.length > 0) {
+          allTransactions.push(...addr.transactions.map((tx: any) => ({ ...tx, ownerAddress: addr.address })));
+        }
+      });
+
+      if (allTransactions.length > 0) {
+        // Sort by block number descending (most recent first)
+        allTransactions.sort((a, b) => (b.blockNumber || 0) - (a.blockNumber || 0));
+
+        sections.push({
+          title: 'Transaction History',
+          type: 'table' as const,
+          data: {
+            headers: ['Date', 'Type', 'From/To', 'Value', 'Status', 'TX Hash'],
+            widths: ['15%', '10%', '25%', '15%', '10%', '25%'],
+            rows: allTransactions.slice(0, 50).map(tx => {
+              const isSent = tx.from.toLowerCase() === tx.ownerAddress.toLowerCase();
+              const counterparty = isSent ? tx.to : tx.from;
+              const valueETH = parseFloat(tx.value) / 1e18;
+
+              return [
+                this.formatDate(tx.timestamp),
+                isSent ? 'SENT' : 'RECEIVED',
+                { text: this.truncateAddress(counterparty), fontSize: 8 },
+                `${valueETH.toFixed(6)} ${assetContext.symbol}`,
+                tx.status === 'success' ? '✓' : '✗',
+                { text: this.truncateAddress(tx.hash), fontSize: 7 }
+              ];
+            })
+          }
+        });
+
+        // Add transaction summary
+        const totalTxs = allTransactions.length;
+        const successfulTxs = allTransactions.filter(tx => tx.status === 'success').length;
+        const sentTxs = allTransactions.filter(tx => tx.from.toLowerCase() === tx.ownerAddress.toLowerCase()).length;
+        const receivedTxs = totalTxs - sentTxs;
+
+        sections.push({
+          title: 'Transaction Summary',
+          type: 'summary' as const,
+          data: [
+            `Total Transactions: ${totalTxs}${totalTxs > 50 ? ' (showing 50 most recent)' : ''}`,
+            `Successful: ${successfulTxs}`,
+            `Failed: ${totalTxs - successfulTxs}`,
+            `Sent: ${sentTxs}`,
+            `Received: ${receivedTxs}`
+          ]
+        });
+      }
+    }
+
     return sections;
+  }
+
+  private formatTokenBalance(balance: string, decimals: number): string {
+    try {
+      const num = parseFloat(balance) / Math.pow(10, decimals);
+      return num.toFixed(Math.min(decimals, 6));
+    } catch (e) {
+      return balance;
+    }
+  }
+
+  private formatDate(timestamp: string): string {
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (e) {
+      return timestamp;
+    }
   }
 
   private truncateAddress(address: string): string {
