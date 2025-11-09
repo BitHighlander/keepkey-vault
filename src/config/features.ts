@@ -13,8 +13,20 @@ interface FeatureFlags {
  * All flags default to false unless explicitly enabled
  */
 export const getFeatureFlags = (): FeatureFlags => {
+  // Check environment variable first, then localStorage override
+  const envSwapsEnabled = process.env.NEXT_PUBLIC_ENABLE_SWAPS === 'true';
+
+  // Check localStorage for runtime overrides (only on client side)
+  let localStorageOverride: boolean | null = null;
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('feature_enable_swaps');
+    if (stored !== null) {
+      localStorageOverride = stored === 'true';
+    }
+  }
+
   return {
-    enableSwaps: false, // Forced OFF - swaps are disabled
+    enableSwaps: localStorageOverride !== null ? localStorageOverride : envSwapsEnabled,
   };
 };
 

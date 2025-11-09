@@ -19,19 +19,19 @@ export class UTXOReportGenerator extends BaseReportGenerator {
       accountCount: 3,
       includeTransactions: false,
       includeAddresses: false,
-      lodLevel: 1, // Default to basic XPUB report
+      lod: 1, // Default to basic XPUB report (synced with e2e - was lodLevel)
       gapLimit: 20 // Default gap limit for address discovery
     };
   }
 
   async generateReport(assetContext: any, app: any, options: ReportOptions): Promise<ReportData> {
     const accountCount = options.accountCount || 3;
-    const lodLevel = options.lodLevel || 1;
+    const lod = options.lod || options.lodLevel || 1; // Support both lod and lodLevel for backward compatibility
 
     console.log('📊 [REPORT] Starting report generation:', {
       symbol: assetContext.symbol,
       accountCount,
-      lodLevel,
+      lod,
       gapLimit: options.gapLimit
     });
 
@@ -94,17 +94,17 @@ export class UTXOReportGenerator extends BaseReportGenerator {
       throw new Error(`❌ FATAL: No ${assetContext.symbol} balances found in loaded wallet data.`);
     }
 
-    console.log(`📡 [API] Calling Pioneer Server API with ${pubkeys.length} pubkeys at LOD ${lodLevel}...`);
+    console.log(`📡 [API] Calling Pioneer Server API with ${pubkeys.length} pubkeys at LOD ${lod}...`);
 
     // Call Pioneer Server REST API (matching e2e test exactly)
     const serverUrl = process.env.NEXT_PUBLIC_PIONEER_URL_SPEC?.replace('/spec/swagger.json', '') || 'http://localhost:9001';
-    const serverReport = await this.fetchServerReport(serverUrl, pubkeys, lodLevel, options.gapLimit || 20);
+    const serverReport = await this.fetchServerReport(serverUrl, pubkeys, lod, options.gapLimit || 20);
 
     console.log('✅ [API] Server report received');
 
     // Transform server response using E2E test logic
     console.log('🔄 [TRANSFORM] Transforming server data (using E2E test logic)...');
-    const reportSections = this.transformServerData(serverReport, lodLevel);
+    const reportSections = this.transformServerData(serverReport, lod);
 
     // Add device information section at the beginning
     const sections: any[] = [
@@ -128,9 +128,11 @@ export class UTXOReportGenerator extends BaseReportGenerator {
     ];
 
     return {
-      title: `${deviceName} Report LOD:${lodLevel}`,
+      title: `${deviceName} Report LOD:${lod}`,
       subtitle: `${assetContext.symbol} Wallet Analysis - ${accountCount} Accounts`,
       generatedDate: this.getCurrentDate(),
+      chain: assetContext.symbol, // Added for consistency with e2e tests
+      lod: lod, // Added for consistency with e2e tests
       sections
     };
   }

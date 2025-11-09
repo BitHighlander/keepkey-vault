@@ -12,7 +12,8 @@ export class GenericReportGenerator extends BaseReportGenerator {
     return {
       accountCount: 1,
       includeTransactions: false,
-      includeAddresses: true
+      includeAddresses: true,
+      lod: 1 // Default level of detail (synced with e2e)
     };
   }
 
@@ -87,6 +88,8 @@ export class GenericReportGenerator extends BaseReportGenerator {
       title: `${assetContext.name || 'Asset'} Report`,
       subtitle: `${assetContext.symbol || 'Token'} Account Analysis`,
       generatedDate: this.getCurrentDate(),
+      chain: assetContext.symbol || 'Unknown', // Added for consistency with e2e tests
+      lod: options.lod || options.lodLevel || 1, // Added for consistency with e2e tests
       sections
     };
   }

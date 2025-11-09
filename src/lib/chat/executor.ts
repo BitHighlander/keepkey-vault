@@ -91,6 +91,35 @@ async function executeFunction(
       case 'getProjectInfo':
         return await fn(parameters.topic || parameters.query || '');
 
+      // Capability & Intelligence functions
+      case 'getChainCapability':
+        return await fn(parameters.query || parameters.chain || '');
+
+      case 'getCAIPInfo':
+        return await fn(parameters.query || parameters.asset || '', app);
+
+      case 'getDeviceInfo':
+        return await fn(app);
+
+      case 'getVaultStatus':
+        return await fn(app);
+
+      case 'getSupportedChains':
+        return await fn(app);
+
+      // Path Intelligence functions
+      case 'getPathsForBlockchain':
+        return await fn(parameters.blockchain || parameters.query || '', app);
+
+      case 'listConfiguredPaths':
+        return await fn(parameters.blockchain || parameters.query, app);
+
+      case 'getPathInfo':
+        return await fn(parameters.path || parameters.query || '', app);
+
+      case 'suggestPathForBlockchain':
+        return await fn(parameters.blockchain || parameters.query || '', parameters.accountNumber || 0);
+
       default:
         return {
           success: false,
@@ -272,6 +301,20 @@ export function formatExecutionResponse(
     case 'query_address':
       if (executionResult.data?.address) {
         response += `\n\nAddress: ${executionResult.data.address}`;
+      }
+      break;
+
+    case 'query_caip':
+    case 'query_capability':
+    case 'query_status':
+    case 'query_path':
+      // For these intents, the function result message IS the complete response
+      // Replace the AI placeholder with the actual function result
+      if (executionResult.results && executionResult.results.length > 0) {
+        const functionResult = executionResult.results[0].result;
+        if (functionResult.message) {
+          response = functionResult.message;
+        }
       }
       break;
   }

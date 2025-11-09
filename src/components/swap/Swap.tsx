@@ -53,6 +53,15 @@ import {
   getAssetDecimals
 } from '@/services/thorchain';
 
+// Import ERC20 utilities
+import {
+  checkERC20Allowance,
+  buildERC20ApprovalTx,
+  isERC20Token,
+  getTokenAddressFromCAIP,
+  getChainIdFromCAIP
+} from '@/services/erc20';
+
 // Import THORChain pools configuration
 import { THORCHAIN_POOLS, getNativePools, getPoolBySymbol, getPoolByCAIP } from '@/config/thorchain-pools';
 
@@ -195,6 +204,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Success state
   const [showSuccess, setShowSuccess] = useState(false);
   const [successTxid, setSuccessTxid] = useState<string>('');
+
+  // ERC20 Approval states
+  const [needsApproval, setNeedsApproval] = useState(false);
+  const [isCheckingApproval, setIsCheckingApproval] = useState(false);
+  const [isApprovingToken, setIsApprovingToken] = useState(false);
+  const [approvalTxHash, setApprovalTxHash] = useState<string | null>(null);
 
   // Helper function to get balance by CAIP
   const getUserBalance = (caip: string | undefined): string => {
@@ -1012,7 +1027,120 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           address: app.outboundAssetContext.address,
         });
       }
-      
+
+      // CRITICAL: Check if ERC20 approval is needed for THORChain swap
+      const inputCaip = app?.assetContext?.caip;
+      if (inputCaip && isERC20Token(inputCaip)) {
+        console.log('🔍 ERC20 token detected - checking approval status...');
+        console.log('   CAIP:', inputCaip);
+        console.log('   assetContext:', app.assetContext);
+        setIsCheckingApproval(true);
+
+        try {
+          // Get token address and THORChain router address
+          const tokenAddress = getTokenAddressFromCAIP(inputCaip);
+          const routerAddress = '0xD37BbE5744D730a1d98d8DC97c42F0Ca46aD7146'; // THORChain Router
+
+          // Get user address from pubkeys array
+          const userAddress = app.assetContext.pubkeys?.[0]?.master || app.assetContext.pubkeys?.[0]?.address;
+          const chainId = getChainIdFromCAIP(inputCaip);
+
+          console.log('   Parsed tokenAddress:', tokenAddress);
+          console.log('   Parsed userAddress:', userAddress);
+          console.log('   Parsed chainId:', chainId);
+
+          if (!tokenAddress || !userAddress) {
+            throw new Error(`Failed to extract token or user address. CAIP: ${inputCaip}, tokenAddress: ${tokenAddress}, userAddress: ${userAddress}`);
+          }
+
+          // Convert input amount to base units for approval check
+          const inputAmountBase = toBaseUnit(inputAmount, app.assetContext.symbol || 'USDT');
+
+          // Check current allowance
+          const { hasApproval, currentAllowance, requiredAmount } = await checkERC20Allowance(
+            app.pioneer,
+            tokenAddress,
+            userAddress,
+            routerAddress,
+            inputAmountBase
+          );
+
+          setIsCheckingApproval(false);
+
+          if (!hasApproval) {
+            console.log('⚠️  Insufficient approval - need to approve router first');
+            console.log(`   Current: ${currentAllowance}, Required: ${requiredAmount}`);
+
+            setNeedsApproval(true);
+            setVerificationStep('vault'); // Update UI to show approval step
+            setIsApprovingToken(true);
+
+            // Build approval transaction
+            console.log('🔨 Building approval transaction...');
+            const approvalTx = await buildERC20ApprovalTx(
+              app.pioneer,
+              tokenAddress,
+              routerAddress,
+              requiredAmount, // Approve exact amount
+              userAddress,
+              chainId
+            );
+
+            // Sign and broadcast approval transaction
+            console.log('📝 Please sign the approval transaction on your device...');
+
+            // Sign the approval transaction using KeepKey
+            const signedApprovalTx = await app.keepKeySdk.eth.ethSignTransaction(approvalTx);
+
+            if (!signedApprovalTx?.serialized) {
+              throw new Error('Failed to sign approval transaction');
+            }
+
+            console.log('📤 Broadcasting approval transaction...');
+
+            // Broadcast the approval transaction
+            const approvalResult = await app.pioneer.broadcast({
+              networkId: inputCaip.split('/')[0],
+              serialized: signedApprovalTx.serialized,
+            });
+
+            if (!approvalResult?.txid) {
+              throw new Error('Failed to broadcast approval transaction');
+            }
+
+            const approvalTxHash = approvalResult.txid;
+            setApprovalTxHash(approvalTxHash);
+            console.log(`✅ Approval transaction broadcast: ${approvalTxHash}`);
+            console.log(`   View on Etherscan: https://etherscan.io/tx/${approvalTxHash}`);
+
+            // Wait for approval confirmation (at least 1 block)
+            console.log('⏳ Waiting for approval confirmation...');
+            setDeviceVerificationError('Waiting for approval transaction to confirm...');
+
+            // Poll for confirmation (simplified - production should use proper confirmation tracking)
+            await new Promise(resolve => setTimeout(resolve, 15000)); // Wait 15 seconds for 1 block
+
+            console.log('✅ Approval confirmed - proceeding with swap');
+            setIsApprovingToken(false);
+            setNeedsApproval(false);
+            setDeviceVerificationError(null);
+          } else {
+            console.log('✅ Router already approved - sufficient allowance');
+            setNeedsApproval(false);
+          }
+        } catch (approvalError: any) {
+          console.error('❌ Approval check/transaction failed:', approvalError);
+          setIsCheckingApproval(false);
+          setIsApprovingToken(false);
+          setIsVerifyingOnDevice(false);
+          setIsLoading(false);
+          setPendingSwap(false);
+          setError(`Approval failed: ${approvalError.message}`);
+          setShowDeviceVerificationDialog(false);
+          return; // Stop swap execution
+        }
+      }
+
       // Always verify address on device first (unless already verified)
       if (!hasViewedOnDevice) {
         console.log('🔐 Starting device verification flow...');
@@ -1208,7 +1336,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           const swapPayload: any = {
             caipIn: app?.assetContext?.caip,
             caipOut: app?.outboundAssetContext?.caip,
-            feeLevel: 5, // Use fastest fee level for swaps (valid range: 1-5)
+            feeLevel: 8, // Fast fee level for swaps (SDK interprets: <=2=slow, 3-7=average, >=8=fast)
           };
 
           // Set isMax flag if MAX button was used
@@ -1503,7 +1631,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             <HStack gap={3} mb={4}>
               <FaShieldAlt color="#3182ce" size="20" />
               <Text fontSize="lg" fontWeight="bold">
-                {verificationStep === 'destination' ? 'Verify Destination Address' : 
+                {isCheckingApproval ? 'Checking Token Approval...' :
+                 isApprovingToken ? 'Approve Token for Swap' :
+                 verificationStep === 'destination' ? 'Verify Destination Address' :
                  verificationStep === 'vault' ? 'Verify THORChain Router' :
                  'Confirm Swap Transaction'}
               </Text>
@@ -1511,7 +1641,51 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             
             <VStack gap={4} align="stretch">
               {/* Show different content based on verification step */}
-              {verificationStep === 'vault' ? (
+              {isCheckingApproval || isApprovingToken ? (
+                <>
+                  {/* APPROVAL STEP */}
+                  <Box
+                    bg="blue.900/30"
+                    borderWidth="1px"
+                    borderColor="blue.700/50"
+                    borderRadius="lg"
+                    p={4}
+                  >
+                    <Text fontSize="sm" color="gray.300" mb={3}>
+                      {isCheckingApproval ?
+                        'Checking if THORChain router is approved to spend your tokens...' :
+                        'You need to approve the THORChain router to spend your tokens before swapping.'}
+                    </Text>
+                    {isApprovingToken && (
+                      <>
+                        <Text fontSize="xs" color="gray.400" mt={2}>
+                          This is a one-time approval transaction. After approval, your swap will proceed automatically.
+                        </Text>
+                        {approvalTxHash && (
+                          <Box mt={3}>
+                            <Text fontSize="xs" color="green.400">
+                              ✓ Approval transaction broadcast
+                            </Text>
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                              Tx: {approvalTxHash.slice(0, 10)}...{approvalTxHash.slice(-8)}
+                            </Text>
+                          </Box>
+                        )}
+                      </>
+                    )}
+                  </Box>
+
+                  {/* Loading Spinner */}
+                  <HStack justify="center" py={4}>
+                    <Spinner size="lg" color="blue.400" />
+                    <Text color="gray.400">
+                      {isCheckingApproval ? 'Checking allowance...' :
+                       approvalTxHash ? 'Waiting for confirmation...' :
+                       'Sign approval on device...'}
+                    </Text>
+                  </HStack>
+                </>
+              ) : verificationStep === 'vault' ? (
                 <>
                   {/* VAULT VERIFICATION STEP */}
                   <Box

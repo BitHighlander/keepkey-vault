@@ -6,6 +6,14 @@
  */
 
 import { AssetContextState } from '@/components/providers/pioneer';
+import {
+  getSupportedChainsFromSDK,
+  getCAIPFromSDK,
+  getPathsForBlockchain,
+  listConfiguredPaths,
+  getPathInfo,
+  suggestPathForBlockchain
+} from './capabilities';
 
 // ============================================================================
 // Type Definitions
@@ -16,6 +24,89 @@ export interface FunctionResult {
   message: string;
   data?: any;
 }
+
+// ============================================================================
+// System-Grounded Capability Registry
+// ============================================================================
+
+/**
+ * VAULT_CAPABILITIES: Ground truth for what KeepKey supports
+ *
+ * This registry prevents chat hallucinations about unsupported features.
+ * NEVER respond with capabilities not listed here.
+ */
+export const VAULT_CAPABILITIES = {
+  supportedChains: [
+    { caip: 'bip122:000000000019d6689c085ae165831e93', name: 'Bitcoin', symbol: 'BTC', supported: true },
+    { caip: 'eip155:1', name: 'Ethereum', symbol: 'ETH', supported: true },
+    { caip: 'bip122:00000000001a91e3dace36e2be3bf030', name: 'Litecoin', symbol: 'LTC', supported: true },
+    { caip: 'bip122:0000000000000000000651ef99cb9fcb', name: 'Bitcoin Cash', symbol: 'BCH', supported: true },
+    { caip: 'bip122:12a765e31ffd4059bada1e25190f6e98', name: 'Dogecoin', symbol: 'DOGE', supported: true },
+    { caip: 'cosmos:cosmoshub-4', name: 'Cosmos Hub', symbol: 'ATOM', supported: true },
+    { caip: 'cosmos:thorchain-mainnet-v1', name: 'THORChain', symbol: 'RUNE', supported: true },
+    { caip: 'cosmos:mayachain-mainnet-v1', name: 'Maya Protocol', symbol: 'CACAO', supported: true },
+    { caip: 'cosmos:osmosis-1', name: 'Osmosis', symbol: 'OSMO', supported: true },
+    { caip: 'bip122:00000000000000000009c870a04e0d42', name: 'Dash', symbol: 'DASH', supported: true },
+    { caip: 'bip122:12a765e31ffd4059bada1e25190f6e99', name: 'Binance Chain', symbol: 'BNB', supported: true },
+  ],
+
+  features: {
+    // Bitcoin features
+    taproot: {
+      supported: 'receive_only',
+      details: 'KeepKey can receive to Taproot addresses (bc1p...) but cannot generate Taproot addresses. Receiving to Taproot is supported, but you must use legacy/segwit addresses for sending.',
+      reason: 'Taproot signing not yet implemented in firmware'
+    },
+
+    // Unsupported chains
+    solana: {
+      supported: false,
+      reason: 'Solana is not implemented in KeepKey firmware'
+    },
+    tron: {
+      supported: false,
+      reason: 'Tron is not implemented in KeepKey firmware'
+    },
+    cardano: {
+      supported: false,
+      reason: 'Cardano is not implemented in KeepKey firmware'
+    },
+    polkadot: {
+      supported: false,
+      reason: 'Polkadot is not implemented in KeepKey firmware'
+    },
+
+    // Security features
+    privateKeyExport: {
+      supported: false,
+      reason: 'Private keys never leave the KeepKey device - this is a critical security feature'
+    },
+    seedPhraseDisplay: {
+      supported: false,
+      reason: 'Seed phrases are only shown during initial device setup, never after'
+    },
+
+    // Supported features
+    multiChain: {
+      supported: true,
+      details: 'KeepKey supports 11+ blockchains across UTXO, EVM, and Cosmos ecosystems'
+    },
+    hardwareConfirmation: {
+      supported: true,
+      details: 'All transactions require physical confirmation on the KeepKey device'
+    },
+    addressDerivation: {
+      supported: true,
+      details: 'Supports BIP32/BIP39/BIP44 address derivation with multiple script types'
+    }
+  },
+
+  limitations: {
+    noPrivateKeyExport: true,
+    requiresDeviceConfirmation: true,
+    offlineSigningOnly: true
+  }
+};
 
 export interface Asset {
   caip: string;
@@ -720,6 +811,145 @@ export async function getProjectInfo(topic?: string): Promise<FunctionResult> {
 }
 
 // ============================================================================
+// 5. CAPABILITY & INTELLIGENCE FUNCTIONS
+// ============================================================================
+
+/**
+ * Check if KeepKey supports a specific chain or feature
+ */
+export async function getChainCapability(query: string): Promise<FunctionResult> {
+  const queryLower = query.toLowerCase().trim();
+
+  // Check if it's a known feature
+  const featureKey = Object.keys(VAULT_CAPABILITIES.features).find(
+    key => key.toLowerCase() === queryLower
+  );
+
+  if (featureKey) {
+    const feature = VAULT_CAPABILITIES.features[featureKey as keyof typeof VAULT_CAPABILITIES.features];
+
+    if (feature.supported === false) {
+      return {
+        success: true,
+        message: `❌ No, KeepKey does not support ${query}.\n\n${feature.reason}`,
+        data: { supported: false, feature: featureKey, ...feature }
+      };
+    } else if (feature.supported === 'receive_only') {
+      return {
+        success: true,
+        message: `⚠️ Partial support for ${query}:\n\n${feature.details}`,
+        data: { supported: 'partial', feature: featureKey, ...feature }
+      };
+    } else {
+      return {
+        success: true,
+        message: `✅ Yes, KeepKey supports ${query}!\n\n${feature.details}`,
+        data: { supported: true, feature: featureKey, ...feature }
+      };
+    }
+  }
+
+  // Check if it's a supported chain
+  const chain = VAULT_CAPABILITIES.supportedChains.find(
+    c => c.name.toLowerCase() === queryLower ||
+         c.symbol.toLowerCase() === queryLower
+  );
+
+  if (chain) {
+    return {
+      success: true,
+      message: `✅ Yes, KeepKey supports ${chain.name} (${chain.symbol})!\n\nCAIP: ${chain.caip}`,
+      data: { supported: true, chain }
+    };
+  }
+
+  // Unknown chain/feature
+  return {
+    success: true,
+    message: `❓ I don't have information about "${query}" support.\n\nKeepKey officially supports: ${VAULT_CAPABILITIES.supportedChains.map(c => c.symbol).join(', ')}`,
+    data: { supported: false, query }
+  };
+}
+
+/**
+ * Get CAIP identifier for a specific asset (uses Pioneer SDK)
+ */
+export async function getCAIPInfo(assetQuery: string, app: any): Promise<FunctionResult> {
+  // Use SDK-powered function instead of hardcoded registry
+  return await getCAIPFromSDK(assetQuery, app);
+}
+
+/**
+ * Get KeepKey device information (safe metadata only)
+ */
+export async function getDeviceInfo(app: any): Promise<FunctionResult> {
+  try {
+    const device = app?.deviceInfo || app?.keepkey;
+
+    if (!device) {
+      return {
+        success: false,
+        message: '❌ No KeepKey device connected.\n\nPlease connect your KeepKey and ensure it\'s unlocked.'
+      };
+    }
+
+    // Safe metadata only - NO PRIVATE DATA
+    const safeInfo = {
+      label: device.label || 'KeepKey',
+      firmware: device.firmwareVersion || 'Unknown',
+      model: device.model || 'KeepKey',
+      initialized: device.initialized ?? true
+    };
+
+    return {
+      success: true,
+      message: `**Device Information**\n\n📱 Label: ${safeInfo.label}\n🔧 Firmware: ${safeInfo.firmware}\n📦 Model: ${safeInfo.model}\n${safeInfo.initialized ? '✅' : '❌'} Initialized`,
+      data: safeInfo
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to get device info: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Get vault and portfolio status
+ */
+export async function getVaultStatus(app: any): Promise<FunctionResult> {
+  const status = {
+    device: {
+      connected: !!app?.deviceInfo,
+      label: app?.deviceInfo?.label || 'Unknown',
+      firmware: app?.deviceInfo?.firmwareVersion || 'Unknown'
+    },
+    portfolio: {
+      totalValueUsd: app?.dashboard?.totalValueUsd || 0,
+      assetsCount: app?.balances?.length || 0,
+      networksCount: app?.dashboard?.networks?.length || 0
+    },
+    server: {
+      pioneer: app?.pioneer ? 'Connected' : 'Disconnected'
+    }
+  };
+
+  return {
+    success: true,
+    message: `**Vault Status**\n\n📱 Device: ${status.device.connected ? '✅ Connected' : '❌ Disconnected'} (${status.device.label}, v${status.device.firmware})\n💰 Portfolio: $${status.portfolio.totalValueUsd.toFixed(2)} across ${status.portfolio.assetsCount} assets on ${status.portfolio.networksCount} networks\n🌐 Server: ${status.server.pioneer}`,
+    data: status
+  };
+}
+
+/**
+ * List all supported chains with CAIPs (uses Pioneer SDK)
+ */
+export async function getSupportedChains(app: any): Promise<FunctionResult> {
+  // Use SDK-powered function for REAL supported chains
+  return await getSupportedChainsFromSDK(app);
+}
+
+// ============================================================================
 // FUNCTION REGISTRY
 // ============================================================================
 
@@ -736,6 +966,19 @@ export const FUNCTION_REGISTRY = {
   searchAssets,
   getNetworks,
   getAddress,
+
+  // Capability & Intelligence (SDK-powered)
+  getChainCapability,
+  getCAIPInfo, // Now uses Pioneer SDK
+  getDeviceInfo,
+  getVaultStatus,
+  getSupportedChains, // Now uses Pioneer SDK
+
+  // Path Intelligence (SDK-powered)
+  getPathsForBlockchain,
+  listConfiguredPaths,
+  getPathInfo,
+  suggestPathForBlockchain,
 
   // Actions
   refreshPortfolio,

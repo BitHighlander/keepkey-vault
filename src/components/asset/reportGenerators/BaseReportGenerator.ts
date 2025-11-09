@@ -58,9 +58,29 @@ export abstract class BaseReportGenerator implements IBaseReportGenerator {
         text: `Generated on ${reportData.generatedDate}`,
         style: 'date',
         alignment: 'center',
-        margin: [0, 0, 0, 20]
+        margin: [0, 0, 0, 5]
       }
     ];
+
+    // Add metadata if present (chain and LOD)
+    const metadata: string[] = [];
+    if (reportData.chain) {
+      metadata.push(`Chain: ${reportData.chain}`);
+    }
+    if (reportData.lod !== undefined) {
+      metadata.push(`Level of Detail: ${reportData.lod}`);
+    }
+    if (metadata.length > 0) {
+      content.push({
+        text: metadata.join(' | '),
+        style: 'metadata',
+        alignment: 'center',
+        margin: [0, 0, 0, 20]
+      });
+    } else {
+      // Adjust margin of previous element if no metadata
+      content[content.length - 1].margin = [0, 0, 0, 20];
+    }
 
     // Check if we have address flow analysis
     const addressFlowAnalysis = (reportData.sections as any).addressFlowAnalysis;
@@ -190,6 +210,11 @@ export abstract class BaseReportGenerator implements IBaseReportGenerator {
       date: {
         fontSize: 12,
         color: '#999999'
+      },
+      metadata: {
+        fontSize: 10,
+        bold: true,
+        color: '#0066cc'
       },
       sectionHeader: {
         fontSize: 16,
