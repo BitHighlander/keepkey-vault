@@ -1,8 +1,9 @@
 // THORChain quote service for native asset swaps
 import { THORCHAIN_POOLS } from '../config/thorchain-pools';
 
-const THORNODE_URL = 'https://thornode.ninerealms.com';
-const MIDGARD_URL = 'https://midgard.ninerealms.com';
+export const THORNODE_URL = 'https://thornode.ninerealms.com';
+export const MIDGARD_URL = 'https://midgard.ninerealms.com';
+export const THORCHAIN_TRACKER_URL = 'https://track.ninerealms.com';
 
 // Dynamically generate asset mapping from THORChain pools config
 // This ensures we always have the latest pool assets without manual updates

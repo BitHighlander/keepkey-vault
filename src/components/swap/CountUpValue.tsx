@@ -32,11 +32,13 @@ export const CountUpValue: React.FC<CountUpValueProps> = ({
     <Text as="span" color={color} fontSize={fontSize}>
       {prefix}
       <CountUp
+        key={numValue} // Force re-mount when value changes to trigger animation
+        start={0}
         end={numValue}
         decimals={getDecimalPlaces(numValue, isUsd)}
         duration={duration}
         separator=","
-        preserveValue={true}
+        preserveValue={false} // Don't preserve to allow re-animation on value changes
       />
       {suffix}
     </Text>

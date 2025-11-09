@@ -32,13 +32,84 @@ export class EVMReportGenerator extends BaseReportGenerator {
       lod
     });
 
-    // Get addresses from assetContext.pubkeys
-    if (!assetContext.pubkeys || assetContext.pubkeys.length === 0) {
-      throw new Error('❌ FATAL: No pubkeys available in asset context. Ensure wallet is initialized.');
+    // Get pubkeys - try assetContext.pubkeys first, then fall back to app.balances
+    let pubkeys = assetContext.pubkeys;
+
+    if (!pubkeys || pubkeys.length === 0) {
+      console.log('⚠️ No pubkeys in assetContext, falling back to app.balances');
+      const allBalances = app.balances || [];
+
+      // For EVM chains, all use the same Ethereum address
+      // First, try to find addresses from the target chain
+      pubkeys = allBalances.filter((b: any) => {
+        const matchesSymbol = b.symbol === assetContext.symbol;
+
+        // Match networkId - try multiple fields and formats
+        const targetNetworkId = assetContext.networkId;
+        const balanceNetworkId = b.networkId || b.caip || b.network;
+
+        const matchesNetwork = balanceNetworkId === targetNetworkId ||
+                              balanceNetworkId?.includes(targetNetworkId) ||
+                              targetNetworkId?.includes(balanceNetworkId);
+
+        return matchesSymbol && matchesNetwork && b.address;
+      });
+
+      console.log(`📊 Found ${pubkeys.length} addresses from target chain balances`);
+
+      // If no addresses found on target chain, get Ethereum addresses (same for all EVM chains)
+      if (pubkeys.length === 0) {
+        console.log('⚠️ No addresses on target chain, falling back to ETH addresses (same for all EVM)');
+
+        // Debug: Show what ETH balances exist
+        const ethBalances = allBalances.filter((b: any) => b.symbol === 'ETH');
+        console.log(`📊 Debug: Found ${ethBalances.length} total ETH balances`);
+        if (ethBalances.length > 0) {
+          console.log('📊 Debug: Sample ETH balance:', {
+            symbol: ethBalances[0].symbol,
+            networkId: ethBalances[0].networkId,
+            caip: ethBalances[0].caip,
+            address: ethBalances[0].address,
+            pubkey: ethBalances[0].pubkey,
+            master: ethBalances[0].master,
+            path: ethBalances[0].path,
+            pathMaster: ethBalances[0].pathMaster
+          });
+        }
+
+        // Get ETH addresses - they work for all EVM chains
+        // Use pubkey or address field (pubkey is the actual address for EVM chains)
+        const ethAddresses = allBalances.filter((b: any) =>
+          b.symbol === 'ETH' &&
+          (b.networkId === 'eip155:1' || b.caip?.includes('eip155:1')) &&
+          (b.pubkey || b.address)
+        );
+
+        console.log(`📊 Found ${ethAddresses.length} ETH addresses to use for ${assetContext.symbol}`);
+
+        if (ethAddresses.length > 0) {
+          // Create pubkey objects with ETH addresses but target chain's networkId
+          // Use pubkey field as the address (it's the actual Ethereum address)
+          pubkeys = ethAddresses.map((ethBalance: any) => ({
+            address: ethBalance.pubkey || ethBalance.address,
+            path: ethBalance.path || ethBalance.pathMaster || "m/44'/60'/0'/0/0",
+            symbol: assetContext.symbol,
+            networkId: assetContext.networkId,
+            balance: '0', // Will be fetched from server
+            balances: [] // Will be populated with tokens
+          }));
+        }
+      }
+
+      console.log(`📊 Final: ${pubkeys.length} addresses for ${assetContext.symbol} (${assetContext.networkId})`);
+    }
+
+    if (!pubkeys || pubkeys.length === 0) {
+      throw new Error(`❌ FATAL: No addresses found for ${assetContext.symbol} (${assetContext.networkId}). Ensure wallet is loaded and this chain is supported.`);
     }
 
     // Build addresses array for server API call
-    const addresses = assetContext.pubkeys
+    const addresses = pubkeys
       .filter((p: any) => p.address)
       .slice(0, accountCount)
       .map((pubkey: any) => ({
@@ -60,11 +131,11 @@ export class EVMReportGenerator extends BaseReportGenerator {
 
     // Get token data from charts/portfolio endpoint
     console.log('📊 [API] Fetching token data from charts endpoint...');
-    const portfolioData = await this.fetchPortfolioData(serverUrl, assetContext.pubkeys);
+    const portfolioData = await this.fetchPortfolioData(serverUrl, pubkeys);
     console.log('✅ [API] Portfolio data received');
 
     // Merge token data with report data
-    this.mergeTokenData(serverReport, portfolioData, assetContext);
+    this.mergeTokenData(serverReport, portfolioData, assetContext, pubkeys);
 
     // Transform server response into report sections
     const sections = this.transformServerData(serverReport, assetContext);
@@ -143,12 +214,12 @@ export class EVMReportGenerator extends BaseReportGenerator {
   /**
    * Merge token data from portfolio into report addresses
    */
-  private mergeTokenData(reportData: any, portfolioData: any, assetContext: any): void {
-    if (!portfolioData || !reportData.addresses) return;
+  private mergeTokenData(reportData: any, portfolioData: any, assetContext: any, pubkeys: any[]): void {
+    if (!portfolioData || !reportData.addresses || !pubkeys) return;
 
     // Find tokens for this asset's addresses
     reportData.addresses.forEach((addr: any) => {
-      const pubkey = assetContext.pubkeys.find((p: any) => p.address === addr.address);
+      const pubkey = pubkeys.find((p: any) => p.address === addr.address);
       if (!pubkey || !pubkey.balances) return;
 
       // Extract tokens from balances (exclude native token)

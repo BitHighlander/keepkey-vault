@@ -11,7 +11,7 @@
 /**
  * Check if a spender (like THORChain router) has sufficient allowance to spend tokens
  *
- * @param pioneer - Pioneer SDK instance from app.pioneer
+ * @param sdk - Pioneer SDK instance (from state.app, not app.pioneer!)
  * @param tokenAddress - ERC20 token contract address (e.g., USDT)
  * @param ownerAddress - Token owner's address (your wallet)
  * @param spenderAddress - Address that will spend tokens (THORChain router)
@@ -20,7 +20,7 @@
  * @returns Object with hasApproval boolean and current allowance
  */
 export async function checkERC20Allowance(
-  pioneer: any,
+  sdk: any,
   tokenAddress: string,
   ownerAddress: string,
   spenderAddress: string,
@@ -36,8 +36,13 @@ export async function checkERC20Allowance(
       networkId
     });
 
+    // DEBUG: Verify SDK object and methods
+    console.log('🔧 DEBUG - SDK object type:', typeof sdk);
+    console.log('🔧 DEBUG - CheckERC20Allowance exists:', typeof sdk?.CheckERC20Allowance);
+    console.log('🔧 DEBUG - SDK keys sample:', Object.keys(sdk || {}).filter(k => k.includes('ERC20') || k.includes('Check')).slice(0, 10));
+
     // Call Pioneer SDK method (Pascal case)
-    const result = await pioneer.CheckERC20Allowance({
+    const result = await sdk.CheckERC20Allowance({
       networkId,
       contractAddress: tokenAddress,
       ownerAddress,
@@ -73,7 +78,7 @@ export async function checkERC20Allowance(
 /**
  * Build an ERC20 approval transaction
  *
- * @param pioneer - Pioneer SDK instance from app.pioneer
+ * @param sdk - Pioneer SDK instance (from state.app, not app.pioneer!)
  * @param tokenAddress - ERC20 token contract address
  * @param spenderAddress - Address to approve (THORChain router)
  * @param amount - Amount to approve in base units (or 'max' for unlimited)
@@ -82,7 +87,7 @@ export async function checkERC20Allowance(
  * @returns Unsigned transaction object ready to be signed
  */
 export async function buildERC20ApprovalTx(
-  pioneer: any,
+  sdk: any,
   tokenAddress: string,
   spenderAddress: string,
   amount: string,
@@ -108,7 +113,7 @@ export async function buildERC20ApprovalTx(
     });
 
     // Call Pioneer SDK method (Pascal case)
-    const result = await pioneer.BuildERC20ApprovalTx({
+    const result = await sdk.BuildERC20ApprovalTx({
       networkId,
       contractAddress: tokenAddress,
       spenderAddress,

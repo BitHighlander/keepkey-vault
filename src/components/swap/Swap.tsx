@@ -159,6 +159,17 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       hasOutboundAssetContext: !!app?.outboundAssetContext,
       outboundAssetContext: app?.outboundAssetContext
     });
+
+    // DEBUG: Verify ERC20 methods exist on app (the SDK instance)
+    if (app) {
+      console.log('🔧 DEBUG [Swap] - SDK instance type:', typeof app);
+      console.log('🔧 DEBUG [Swap] - CheckERC20Allowance:', typeof app.CheckERC20Allowance);
+      console.log('🔧 DEBUG [Swap] - BuildERC20ApprovalTx:', typeof app.BuildERC20ApprovalTx);
+      const erc20Methods = Object.keys(app).filter(k => k.includes('ERC20') || k.includes('Check') || k.includes('Build'));
+      console.log('🔧 DEBUG [Swap] - ERC20/Check/Build methods:', erc20Methods);
+    } else {
+      console.warn('⚠️  [Swap] app (SDK instance) is not available!');
+    }
     
     // Log dashboard networks for comparison
     if (app?.dashboard?.networks) {
@@ -1043,10 +1054,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
           // Get user address from pubkeys array
           const userAddress = app.assetContext.pubkeys?.[0]?.master || app.assetContext.pubkeys?.[0]?.address;
+
+          // Extract networkId in CAIP format (e.g., "eip155:1")
+          const networkId = inputCaip.split('/')[0];
           const chainId = getChainIdFromCAIP(inputCaip);
 
           console.log('   Parsed tokenAddress:', tokenAddress);
           console.log('   Parsed userAddress:', userAddress);
+          console.log('   Parsed networkId:', networkId);
           console.log('   Parsed chainId:', chainId);
 
           if (!tokenAddress || !userAddress) {
@@ -1058,11 +1073,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
           // Check current allowance
           const { hasApproval, currentAllowance, requiredAmount } = await checkERC20Allowance(
-            app.pioneer,
+            app,  // Pass the SDK instance, not app.pioneer
             tokenAddress,
             userAddress,
             routerAddress,
-            inputAmountBase
+            inputAmountBase,
+            networkId  // Pass CAIP format networkId for multi-chain support
           );
 
           setIsCheckingApproval(false);
@@ -1078,13 +1094,26 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             // Build approval transaction
             console.log('🔨 Building approval transaction...');
             const approvalTx = await buildERC20ApprovalTx(
-              app.pioneer,
+              app,  // Pass the SDK instance, not app.pioneer
               tokenAddress,
               routerAddress,
-              requiredAmount, // Approve exact amount
+              String(requiredAmount), // CRITICAL FIX: Ensure amount is a string for server validation
               userAddress,
-              chainId
+              networkId  // CRITICAL FIX: Pass CAIP format networkId (e.g., "eip155:1"), not numeric chainId
             );
+
+            // Debug the approval transaction format
+            console.log('📝 Approval transaction from server:', approvalTx);
+            console.log('📝 Transaction fields:', {
+              to: approvalTx.to,
+              from: approvalTx.from,
+              value: approvalTx.value,
+              data: approvalTx.data,
+              chainId: approvalTx.chainId,
+              nonce: approvalTx.nonce,
+              gasLimit: approvalTx.gasLimit,
+              gasPrice: approvalTx.gasPrice
+            });
 
             // Sign and broadcast approval transaction
             console.log('📝 Please sign the approval transaction on your device...');
@@ -1099,31 +1128,62 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             console.log('📤 Broadcasting approval transaction...');
 
             // Broadcast the approval transaction
-            const approvalResult = await app.pioneer.broadcast({
-              networkId: inputCaip.split('/')[0],
+            const approvalPayload = {
+              networkId: caipToNetworkId(inputCaip),
               serialized: signedApprovalTx.serialized,
-            });
+            };
 
-            if (!approvalResult?.txid) {
-              throw new Error('Failed to broadcast approval transaction');
+            console.log('📝 Approval broadcast payload:', approvalPayload);
+
+            const approvalResult = await app.pioneer.Broadcast(approvalPayload);
+            console.log('✅ Approval broadcast result:', approvalResult);
+            console.log('   approvalResult.data:', approvalResult?.data);
+            console.log('   approvalResult.data.txid:', approvalResult?.data?.txid);
+            console.log('   approvalResult.data.results:', approvalResult?.data?.results);
+            console.log('   approvalResult.data.results.txid:', approvalResult?.data?.results?.txid);
+
+            // Extract txid from broadcast result - try multiple paths
+            let approvalTxHash =
+              approvalResult?.data?.txid ||
+              approvalResult?.data?.results?.txid ||
+              approvalResult?.data?.data?.txid ||
+              approvalResult?.txid;
+
+            console.log('   Extracted approvalTxHash:', approvalTxHash);
+
+            if (!approvalTxHash || typeof approvalTxHash !== 'string') {
+              throw new Error(`Approval broadcast failed - invalid txid: ${JSON.stringify(approvalTxHash)}. Full result: ${JSON.stringify(approvalResult)}`);
             }
 
-            const approvalTxHash = approvalResult.txid;
             setApprovalTxHash(approvalTxHash);
             console.log(`✅ Approval transaction broadcast: ${approvalTxHash}`);
             console.log(`   View on Etherscan: https://etherscan.io/tx/${approvalTxHash}`);
 
             // Wait for approval confirmation (at least 1 block)
             console.log('⏳ Waiting for approval confirmation...');
-            setDeviceVerificationError('Waiting for approval transaction to confirm...');
+            console.log(`   Approval TX: https://etherscan.io/tx/${approvalTxHash}`);
+            setDeviceVerificationError('Waiting for approval transaction to confirm (15 seconds)...');
 
             // Poll for confirmation (simplified - production should use proper confirmation tracking)
-            await new Promise(resolve => setTimeout(resolve, 15000)); // Wait 15 seconds for 1 block
+            console.log('⏱️  Starting 15 second wait...');
+            const waitStart = Date.now();
+            await new Promise(resolve => {
+              console.log('⏱️  setTimeout scheduled');
+              setTimeout(() => {
+                console.log(`⏱️  setTimeout fired after ${Date.now() - waitStart}ms`);
+                resolve(true);
+              }, 15000);
+            });
+            console.log(`⏱️  Promise resolved after ${Date.now() - waitStart}ms`);
 
-            console.log('✅ Approval confirmed - proceeding with swap');
+            console.log('✅ Approval wait complete - proceeding with swap');
+            console.log('   Note: Actual confirmation not verified - proceeding optimistically');
             setIsApprovingToken(false);
             setNeedsApproval(false);
             setDeviceVerificationError(null);
+
+            console.log('🔄 Continuing swap flow after approval...');
+            console.log(`   hasViewedOnDevice: ${hasViewedOnDevice}`);
           } else {
             console.log('✅ Router already approved - sufficient allowance');
             setNeedsApproval(false);
@@ -1667,7 +1727,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                               ✓ Approval transaction broadcast
                             </Text>
                             <Text fontSize="xs" color="gray.500" mt={1}>
-                              Tx: {approvalTxHash.slice(0, 10)}...{approvalTxHash.slice(-8)}
+                              Tx: {typeof approvalTxHash === 'string' ? `${approvalTxHash.slice(0, 10)}...${approvalTxHash.slice(-8)}` : String(approvalTxHash)}
                             </Text>
                           </Box>
                         )}

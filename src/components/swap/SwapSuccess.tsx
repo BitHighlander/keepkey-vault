@@ -7,6 +7,7 @@ import { keyframes } from '@emotion/react';
 import { FaCheckCircle, FaExternalLinkAlt, FaEnvelope } from 'react-icons/fa';
 import Confetti from 'react-confetti';
 import { AssetIcon } from '@/components/ui/AssetIcon';
+import { MIDGARD_URL, THORCHAIN_TRACKER_URL } from '@/services/thorchain';
 interface SwapSuccessProps {
   txid: string;
   fromAsset: any;
@@ -68,78 +69,34 @@ export const SwapSuccess = ({
     ? txid.slice(2)
     : txid;
   const upperTxid = cleanTxid.toUpperCase();
-  const thorchainTrackerLink = `https://track.ninerealms.com/${upperTxid}?=${upperTxid}`;
+  const thorchainTrackerLink = `${THORCHAIN_TRACKER_URL}/${upperTxid}`;
 
   // Build Midgard API link for transaction details
   // Midgard provides full cross-chain swap tracking
-  const midgardApiLink = `https://midgard.ninerealms.com/v2/actions?txid=${upperTxid}`;
+  const midgardApiLink = `${MIDGARD_URL}/v2/actions?txid=${upperTxid}`;
 
-  // Get block explorer link based on the source chain
-  const getBlockExplorerLink = (): string => {
-    // Check if it's an EVM transaction (has 0x prefix)
-    if (txid.startsWith('0x') || txid.startsWith('0X')) {
-      // Determine which EVM chain based on fromAsset
-      const symbol = fromAsset?.symbol?.toUpperCase();
-
-      // Ethereum
-      if (symbol === 'ETH' && fromAsset?.networkId?.includes('eip155:1')) {
-        return `https://etherscan.io/tx/${txid}`;
-      }
-      // BSC
-      if (symbol === 'BNB' || fromAsset?.networkId?.includes('eip155:56')) {
-        return `https://bscscan.com/tx/${txid}`;
-      }
-      // Avalanche
-      if (symbol === 'AVAX' || fromAsset?.networkId?.includes('eip155:43114')) {
-        return `https://snowtrace.io/tx/${txid}`;
-      }
-      // Polygon
-      if (symbol === 'MATIC' || fromAsset?.networkId?.includes('eip155:137')) {
-        return `https://polygonscan.com/tx/${txid}`;
-      }
-      // Default to Etherscan for unknown EVM chains
-      return `https://etherscan.io/tx/${txid}`;
+  // Get block explorer link from asset data
+  // ALL assets should have explorerTxLink from Pioneer Discovery
+  // If it's missing, that's a bug in the asset data - NOT something to work around with hardcoded URLs
+  const getBlockExplorerLink = (): string | null => {
+    if (!fromAsset?.explorerTxLink) {
+      console.error('❌ Missing explorerTxLink in asset data:', {
+        symbol: fromAsset?.symbol,
+        networkId: fromAsset?.networkId,
+        caip: fromAsset?.caip,
+        message: 'This is a bug in Pioneer Discovery - asset data should include explorerTxLink'
+      });
+      return null;
     }
 
-    // Bitcoin
-    if (fromAsset?.symbol?.toUpperCase() === 'BTC') {
-      return `https://mempool.space/tx/${txid}`;
-    }
+    // Build the full explorer URL
+    const baseUrl = fromAsset.explorerTxLink.endsWith('/')
+      ? fromAsset.explorerTxLink
+      : `${fromAsset.explorerTxLink}/`;
 
-    // Bitcoin Cash
-    if (fromAsset?.symbol?.toUpperCase() === 'BCH') {
-      return `https://blockchair.com/bitcoin-cash/transaction/${txid}`;
-    }
-
-    // Litecoin
-    if (fromAsset?.symbol?.toUpperCase() === 'LTC') {
-      return `https://blockchair.com/litecoin/transaction/${txid}`;
-    }
-
-    // Dogecoin
-    if (fromAsset?.symbol?.toUpperCase() === 'DOGE') {
-      return `https://blockchair.com/dogecoin/transaction/${txid}`;
-    }
-
-    // Cosmos chains
-    if (fromAsset?.networkId?.includes('cosmos:')) {
-      const mintscanMap: Record<string, string> = {
-        'ATOM': 'cosmos',
-        'OSMO': 'osmosis',
-        'JUNO': 'juno',
-        'SCRT': 'secret',
-      };
-      const chain = mintscanMap[fromAsset?.symbol?.toUpperCase()] || 'cosmos';
-      return `https://www.mintscan.io/${chain}/txs/${txid}`;
-    }
-
-    // THORChain
-    if (fromAsset?.symbol?.toUpperCase() === 'RUNE') {
-      return `https://runescan.io/tx/${txid}`;
-    }
-
-    // Default to THORChain tracker for unknown chains
-    return thorchainTrackerLink;
+    const explorerUrl = `${baseUrl}${txid}`;
+    console.log('✅ Block explorer URL:', explorerUrl);
+    return explorerUrl;
   };
 
   const blockExplorerLink = getBlockExplorerLink();
@@ -336,29 +293,17 @@ export const SwapSuccess = ({
           <Text fontSize="sm" color="gray.500">
             Transaction ID
           </Text>
-          <Box 
-            bg="gray.900" 
-            borderRadius="lg" 
-            p={3} 
+          <Box
+            bg="gray.900"
+            borderRadius="lg"
+            p={3}
             width="full"
             borderWidth="1px"
             borderColor="gray.700"
           >
-            <HStack justify="center" gap={2}>
-              <Text fontSize="sm" fontFamily="mono" color="white" textTransform="uppercase">
-                {formatTxid(txid)}
-              </Text>
-              <Link
-                href={blockExplorerLink}
-                isExternal
-                target="_blank"
-                rel="noopener noreferrer"
-                color="blue.400"
-                _hover={{ color: 'blue.300' }}
-              >
-                <FaExternalLinkAlt size="14" />
-              </Link>
-            </HStack>
+            <Text fontSize="sm" fontFamily="mono" color="white" textTransform="uppercase" textAlign="center">
+              {formatTxid(txid)}
+            </Text>
           </Box>
         </VStack>
 
@@ -368,17 +313,17 @@ export const SwapSuccess = ({
             <Text fontSize="sm" color="gray.500">
               THORChain Memo
             </Text>
-            <Box 
-              bg="gray.900" 
-              borderRadius="lg" 
-              p={3} 
+            <Box
+              bg="gray.900"
+              borderRadius="lg"
+              p={3}
               width="full"
               borderWidth="1px"
               borderColor="gray.700"
             >
-              <Code 
-                fontSize="xs" 
-                bg="transparent" 
+              <Code
+                fontSize="xs"
+                bg="transparent"
                 color="cyan.400"
                 wordBreak="break-all"
               >
@@ -387,38 +332,6 @@ export const SwapSuccess = ({
             </Box>
           </VStack>
         )}
-
-        {/* View Swap Details on Midgard API */}
-        <Link href={midgardApiLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
-          <Button
-            variant="outline"
-            borderColor="#23DCC8"
-            color="#23DCC8"
-            _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
-            width="full"
-            height="48px"
-            borderRadius="xl"
-            rightIcon={<FaExternalLinkAlt />}
-          >
-            View Swap Details (Midgard API)
-          </Button>
-        </Link>
-
-        {/* Track THORChain Swap Button */}
-        <Link href={thorchainTrackerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
-          <Button
-            variant="outline"
-            borderColor="#23DCC8"
-            color="white"
-            _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
-            width="full"
-            height="48px"
-            borderRadius="xl"
-            rightIcon={<FaExternalLinkAlt />}
-          >
-            Track Swap Status
-          </Button>
-        </Link>
 
         {/* Email Swap Info Card */}
         <Box
@@ -519,6 +432,61 @@ export const SwapSuccess = ({
             )}
           </VStack>
         </Box>
+
+        {/* View on Block Explorer Button - only show if we have a valid explorer link */}
+        {blockExplorerLink && (
+          <Link href={blockExplorerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+            <Button
+              variant="outline"
+              borderColor="blue.500"
+              color="blue.400"
+              _hover={{ bg: 'rgba(59, 130, 246, 0.1)', borderColor: 'blue.400' }}
+              width="full"
+              height="48px"
+              borderRadius="xl"
+              rightIcon={<FaExternalLinkAlt />}
+            >
+              View on Block Explorer
+            </Button>
+          </Link>
+        )}
+
+        {/* View Swap Details on Midgard API */}
+        <Link href={midgardApiLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+          <Button
+            variant="outline"
+            borderColor="#23DCC8"
+            color="#23DCC8"
+            _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
+            width="full"
+            height="48px"
+            borderRadius="xl"
+            rightIcon={<FaExternalLinkAlt />}
+          >
+            View Swap Details (Midgard API)
+          </Button>
+        </Link>
+
+        {/* Track THORChain Swap Button */}
+        <VStack gap={2} width="full">
+          <Link href={thorchainTrackerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+            <Button
+              variant="outline"
+              borderColor="#23DCC8"
+              color="white"
+              _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
+              width="full"
+              height="48px"
+              borderRadius="xl"
+              rightIcon={<FaExternalLinkAlt />}
+            >
+              Track Swap Status
+            </Button>
+          </Link>
+          <Text fontSize="xs" color="gray.500" textAlign="center">
+            Note: Tracking will open in a new tab
+          </Text>
+        </VStack>
 
         {/* Done Button */}
         <Button
