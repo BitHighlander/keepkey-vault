@@ -163,7 +163,7 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
       console.log('✅ [Pairing] All pubkeys validated successfully');
 
       // Prepare the request payload
-      // For Bitcoin (UTXO chains), prioritize xpub (master) over single address for balance tracking
+      // For Bitcoin (UTXO chains), use pubkey field which contains the actual xpub
       const pairingPayload = {
         deviceId: deviceId,
         label: deviceLabel || features.label || 'My KeepKey',
@@ -175,10 +175,11 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
             pubkey: pk.pubkey,
             pathMaster: pk.pathMaster,
             networks: pk.networks,
-            // For UTXO chains, only include master (xpub), not individual address
-            // For other chains (EVM), include address as needed
+            // For UTXO chains, exclude address field - only use xpub via master
             address: isUTXO ? undefined : pk.address,
-            master: pk.master, // xpub for Bitcoin, critical for balance tracking
+            // For UTXO chains, use pubkey field which contains the actual xpub
+            // Pioneer SDK incorrectly puts address in master field, so we fix it here
+            master: isUTXO ? pk.pubkey : pk.master,
             note: pk.note,
             type: pk.type,
           };
