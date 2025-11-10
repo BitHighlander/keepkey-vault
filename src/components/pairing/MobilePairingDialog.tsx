@@ -163,18 +163,26 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
       console.log('✅ [Pairing] All pubkeys validated successfully');
 
       // Prepare the request payload
+      // For Bitcoin (UTXO chains), prioritize xpub (master) over single address for balance tracking
       const pairingPayload = {
         deviceId: deviceId,
         label: deviceLabel || features.label || 'My KeepKey',
-        pubkeys: pubkeys.map((pk: any) => ({
-          pubkey: pk.pubkey,
-          pathMaster: pk.pathMaster,
-          networks: pk.networks,
-          address: pk.address,
-          master: pk.master,
-          note: pk.note,
-          type: pk.type,
-        })),
+        pubkeys: pubkeys.map((pk: any) => {
+          // Check if this is a Bitcoin/UTXO chain pubkey
+          const isUTXO = pk.networks?.some((n: string) => n.startsWith('bip122:'));
+
+          return {
+            pubkey: pk.pubkey,
+            pathMaster: pk.pathMaster,
+            networks: pk.networks,
+            // For UTXO chains, only include master (xpub), not individual address
+            // For other chains (EVM), include address as needed
+            address: isUTXO ? undefined : pk.address,
+            master: pk.master, // xpub for Bitcoin, critical for balance tracking
+            note: pk.note,
+            type: pk.type,
+          };
+        }),
       };
 
       console.log('📤 [Pairing] Sending request to /api/pairing');
