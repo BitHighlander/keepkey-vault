@@ -76,55 +76,28 @@ export const SwapSuccess = ({
   const midgardApiLink = `${MIDGARD_URL}/v2/actions?txid=${upperTxid}`;
 
   // Get block explorer link from asset data
-  // ALL assets should have explorerTxLink from Pioneer Discovery
-  // If it's missing, fall back to generating from networkId/CAIP
+  // ALL assets MUST have explorerTxLink from Pioneer Discovery
   const getBlockExplorerLink = (): string | null => {
-    // Try to use explorerTxLink if available
-    if (fromAsset?.explorerTxLink) {
-      const baseUrl = fromAsset.explorerTxLink.endsWith('/')
-        ? fromAsset.explorerTxLink
-        : `${fromAsset.explorerTxLink}/`;
-      const explorerUrl = `${baseUrl}${txid}`;
-      console.log('✅ Block explorer URL (from explorerTxLink):', explorerUrl);
-      return explorerUrl;
-    }
+    console.log('🔍 getBlockExplorerLink - fromAsset:', fromAsset);
 
-    // Fallback: Generate explorer link from networkId or CAIP
-    console.warn('⚠️ Missing explorerTxLink, generating fallback from networkId/CAIP:', {
-      symbol: fromAsset?.symbol,
-      networkId: fromAsset?.networkId,
-      caip: fromAsset?.caip
-    });
-
-    const networkId = fromAsset?.networkId || fromAsset?.caip?.split('/')[0];
-    if (!networkId) {
-      console.error('❌ Cannot generate explorer link - no networkId or CAIP available');
+    if (!fromAsset?.explorerTxLink) {
+      console.error('❌ Missing explorerTxLink in asset data:', {
+        symbol: fromAsset?.symbol,
+        networkId: fromAsset?.networkId,
+        caip: fromAsset?.caip,
+        allKeys: fromAsset ? Object.keys(fromAsset) : [],
+        message: 'This is a bug - Pioneer SDK should ALWAYS provide explorerTxLink'
+      });
       return null;
     }
 
-    // Map networkId to explorer base URL
-    const explorerMap: Record<string, string> = {
-      'eip155:1': 'https://etherscan.io/tx',
-      'eip155:137': 'https://polygonscan.com/tx',
-      'eip155:43114': 'https://snowtrace.io/tx',
-      'eip155:56': 'https://bscscan.com/tx',
-      'eip155:8453': 'https://basescan.org/tx',
-      'eip155:42161': 'https://arbiscan.io/tx',
-      'eip155:10': 'https://optimistic.etherscan.io/tx',
-      'bip122:000000000019d6689c085ae165831e93': 'https://blockstream.info/tx',
-      'bip122:000000000000000000651ef99cb9fcbe': 'https://blockstream.info/bch/tx',
-      'bip122:12a765e31ffd4059bada1e25190f6e98': 'https://blockstream.info/ltc/tx',
-      'bip122:00000000001a91e3dace36e2be3bf030': 'https://sochain.com/tx/DOGE',
-    };
+    // Build the full explorer URL
+    const baseUrl = fromAsset.explorerTxLink.endsWith('/')
+      ? fromAsset.explorerTxLink
+      : `${fromAsset.explorerTxLink}/`;
 
-    const baseUrl = explorerMap[networkId];
-    if (!baseUrl) {
-      console.error('❌ Unknown network ID for explorer link:', networkId);
-      return null;
-    }
-
-    const explorerUrl = `${baseUrl}/${txid}`;
-    console.log('✅ Block explorer URL (fallback):', explorerUrl);
+    const explorerUrl = `${baseUrl}${txid}`;
+    console.log('✅ Block explorer URL:', explorerUrl);
     return explorerUrl;
   };
 

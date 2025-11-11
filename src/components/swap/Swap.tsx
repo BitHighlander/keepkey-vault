@@ -979,13 +979,26 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const getAssetDisplay = (isFromAsset: boolean = false) => {
     const sel = isFromAsset ? app?.assetContext : app?.outboundAssetContext;
     if (!sel) return null;
+
+    console.log('🔍 getAssetDisplay - asset context:', {
+      symbol: sel.symbol,
+      caip: sel.caip,
+      networkId: sel.networkId,
+      explorerTxLink: sel.explorerTxLink,
+      allKeys: Object.keys(sel)
+    });
+
+    // Pass through ALL relevant fields from asset context
     return {
       symbol: sel.symbol,
       name: sel.name,
       icon: sel.icon || 'https://pioneers.dev/coins/coin.png',
-      caip: sel.caip, // CRITICAL: Include CAIP for AssetIcon fallback cascade
-      networkId: sel.networkId, // REQUIRED: For explorer link generation
-      explorerTxLink: sel.explorerTxLink // REQUIRED: For block explorer links
+      caip: sel.caip,
+      networkId: sel.networkId,
+      explorerTxLink: sel.explorerTxLink,
+      explorerAddressLink: sel.explorerAddressLink,
+      // Pass through any other fields that might be needed
+      ...sel
     };
   };
 

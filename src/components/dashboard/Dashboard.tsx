@@ -78,6 +78,9 @@ interface Network {
   icon: string;
   color: string;
   totalNativeBalance: string;
+  fetchedAt?: number;      // Unix timestamp of balance fetch
+  fetchedAtISO?: string;   // ISO 8601 string
+  isStale?: boolean;       // True if > 5 minutes old
 }
 
 interface NetworkPercentage {
@@ -988,6 +991,45 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                   </Text>
                                 ) : null;
                               })()}
+                              {/* Balance Timestamp */}
+                              {network.fetchedAtISO && (
+                                <HStack gap={1.5} fontSize="2xs" color="gray.500">
+                                  <Text>
+                                    Updated: {new Date(network.fetchedAtISO).toLocaleTimeString()}
+                                  </Text>
+                                  {network.isStale ? (
+                                    <Box
+                                      as="span"
+                                      px={1.5}
+                                      py={0.5}
+                                      borderRadius="sm"
+                                      bg="orange.900"
+                                      color="orange.300"
+                                      fontSize="2xs"
+                                      fontWeight="medium"
+                                      border="1px solid"
+                                      borderColor="orange.700"
+                                    >
+                                      ⚠️ Stale
+                                    </Box>
+                                  ) : (
+                                    <Box
+                                      as="span"
+                                      px={1.5}
+                                      py={0.5}
+                                      borderRadius="sm"
+                                      bg="green.900"
+                                      color="green.300"
+                                      fontSize="2xs"
+                                      fontWeight="medium"
+                                      border="1px solid"
+                                      borderColor="green.700"
+                                    >
+                                      ✓ Fresh
+                                    </Box>
+                                  )}
+                                </HStack>
+                              )}
                               {(() => {
                                 // Show warning if tokens but no gas
                                 const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;

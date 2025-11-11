@@ -367,6 +367,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     // CRITICAL FIX: For CACAO, override symbol
     const isCacao = caip.includes('mayachain') && caip.includes('slip44:931');
 
+    console.log('🔍 [Asset] nativeAssetBalance source data:', nativeAssetBalance);
+    console.log('⏰ [Asset] Source timestamp fields:', {
+      fetchedAt: nativeAssetBalance.fetchedAt,
+      fetchedAtISO: nativeAssetBalance.fetchedAtISO,
+      isStale: nativeAssetBalance.isStale
+    });
+
     const assetContextData = {
       ...nativeAssetBalance,
       caip: caip,
@@ -377,6 +384,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
     console.log('✅ [Asset] Native asset data loaded:', assetContextData);
     console.log('🔑 [Asset] Pubkeys for aggregation:', assetContextData.pubkeys?.length || 0);
+    console.log('⏰ [Asset] Timestamp fields:', {
+      fetchedAt: assetContextData.fetchedAt,
+      fetchedAtISO: assetContextData.fetchedAtISO,
+      isStale: assetContextData.isStale
+    });
     setAssetContext(assetContextData);
     setPreviousBalance(assetContextData.balance);
 
@@ -740,6 +752,58 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
               borderColor={theme.border}
               position="relative"
             >
+              {/* Last Updated - Top Left */}
+              {assetContext.fetchedAtISO && (
+                <Box
+                  position="absolute"
+                  top={4}
+                  left={4}
+                  zIndex={1}
+                >
+                  <VStack align="flex-start" gap={0}>
+                    <Text fontSize="2xs" color="gray.500" fontWeight="medium">
+                      Last Updated
+                    </Text>
+                    <HStack gap={1}>
+                      <Text fontSize="xs" color="gray.300" fontWeight="semibold">
+                        {new Date(assetContext.fetchedAtISO).toLocaleTimeString()}
+                      </Text>
+                      {assetContext.isStale ? (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="orange.900"
+                          color="orange.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="orange.700"
+                        >
+                          ⚠️
+                        </Box>
+                      ) : (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="green.900"
+                          color="green.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="green.700"
+                        >
+                          ✓
+                        </Box>
+                      )}
+                    </HStack>
+                  </VStack>
+                </Box>
+              )}
+
               {/* Refresh Button - Top Right */}
               <Button
                 size="sm"
@@ -930,15 +994,55 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   </Text>
                   
                   <Text fontSize="3xl" fontWeight="bold" color={theme.gold}>
-                    $<CountUp 
+                    $<CountUp
                       key={`value-${lastSync}`}
-                      end={usdValue} 
+                      end={usdValue}
                       decimals={2}
                       duration={1.5}
                       separator=","
                     />
                   </Text>
-                  
+
+                  {/* Balance Timestamp */}
+                  {assetContext.fetchedAtISO && (
+                    <HStack gap={1.5} fontSize="xs" color="gray.500" justify="center">
+                      <Text>
+                        Updated: {new Date(assetContext.fetchedAtISO).toLocaleTimeString()}
+                      </Text>
+                      {assetContext.isStale ? (
+                        <Box
+                          as="span"
+                          px={1.5}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="orange.900"
+                          color="orange.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="orange.700"
+                        >
+                          ⚠️ Stale
+                        </Box>
+                      ) : (
+                        <Box
+                          as="span"
+                          px={1.5}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="green.900"
+                          color="green.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="green.700"
+                        >
+                          ✓ Fresh
+                        </Box>
+                      )}
+                    </HStack>
+                  )}
+
                   {/* Show if balance is aggregated from multiple addresses */}
                   {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
                     <Badge
@@ -1287,13 +1391,87 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   <HStack justify="space-between">
                     <Text color="gray.400">Price</Text>
                     <Text color="white">
-                      $<CountUp 
+                      $<CountUp
                         key={`price-${lastSync}`}
-                        end={priceUsd} 
+                        end={priceUsd}
                         decimals={2}
                         duration={1.5}
                         separator=","
                       />
+                    </Text>
+                  </HStack>
+                </VStack>
+
+                {/* Data Source Info */}
+                <VStack align="stretch" gap={3}>
+                  <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                    Data Source
+                  </Text>
+                  {assetContext.fetchedAtISO && (
+                    <HStack justify="space-between">
+                      <Text color="gray.400">Last Fetched</Text>
+                      <HStack gap={1}>
+                        <Text color="white" fontSize="sm">
+                          {new Date(assetContext.fetchedAtISO).toLocaleString()}
+                        </Text>
+                        {assetContext.isStale ? (
+                          <Box
+                            as="span"
+                            px={1}
+                            py={0.5}
+                            borderRadius="sm"
+                            bg="orange.900"
+                            color="orange.300"
+                            fontSize="2xs"
+                            fontWeight="medium"
+                          >
+                            Stale
+                          </Box>
+                        ) : (
+                          <Box
+                            as="span"
+                            px={1}
+                            py={0.5}
+                            borderRadius="sm"
+                            bg="green.900"
+                            color="green.300"
+                            fontSize="2xs"
+                            fontWeight="medium"
+                          >
+                            Fresh
+                          </Box>
+                        )}
+                      </HStack>
+                    </HStack>
+                  )}
+                  {assetContext.dataSource && (
+                    <HStack justify="space-between" align="flex-start">
+                      <Text color="gray.400">Blockchain Node</Text>
+                      <Text
+                        color="white"
+                        fontSize="xs"
+                        fontFamily="mono"
+                        textAlign="right"
+                        maxW="60%"
+                        wordBreak="break-all"
+                      >
+                        {(() => {
+                          // Mask any API keys in the URL
+                          const maskApiKeys = (url: string) => {
+                            return url
+                              .replace(/apikey=[^&]+/gi, 'apikey=***')
+                              .replace(/key=[^&]+/gi, 'key=***')
+                              .replace(/token=[^&]+/gi, 'token=***');
+                          };
+                          return maskApiKeys(assetContext.dataSource);
+                        })()}
+                      </Text>
+                    </HStack>
+                  )}
+                  <HStack justify="space-between" align="flex-start">
+                    <Text color="gray.400">Cache Status</Text>
+                    <Text color="white" fontSize="sm">
+                      {assetContext.isStale ? 'Needs Refresh' : 'Valid'}
                     </Text>
                   </HStack>
                 </VStack>
@@ -1591,13 +1769,87 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                 <HStack justify="space-between">
                   <Text color="gray.400">Price</Text>
                   <Text color="white">
-                    $<CountUp 
+                    $<CountUp
                       key={`price-${lastSync}`}
-                      end={priceUsd} 
+                      end={priceUsd}
                       decimals={2}
                       duration={1.5}
                       separator=","
                     />
+                  </Text>
+                </HStack>
+              </VStack>
+
+              {/* Data Source Info */}
+              <VStack align="stretch" gap={3}>
+                <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                  Data Source
+                </Text>
+                {assetContext.fetchedAtISO && (
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Last Fetched</Text>
+                    <HStack gap={1}>
+                      <Text color="white" fontSize="sm">
+                        {new Date(assetContext.fetchedAtISO).toLocaleString()}
+                      </Text>
+                      {assetContext.isStale ? (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="orange.900"
+                          color="orange.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                        >
+                          Stale
+                        </Box>
+                      ) : (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="green.900"
+                          color="green.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                        >
+                          Fresh
+                        </Box>
+                      )}
+                    </HStack>
+                  </HStack>
+                )}
+                {assetContext.dataSource && (
+                  <HStack justify="space-between" align="flex-start">
+                    <Text color="gray.400">Blockchain Node</Text>
+                    <Text
+                      color="white"
+                      fontSize="xs"
+                      fontFamily="mono"
+                      textAlign="right"
+                      maxW="60%"
+                      wordBreak="break-all"
+                    >
+                      {(() => {
+                        // Mask any API keys in the URL
+                        const maskApiKeys = (url: string) => {
+                          return url
+                            .replace(/apikey=[^&]+/gi, 'apikey=***')
+                            .replace(/key=[^&]+/gi, 'key=***')
+                            .replace(/token=[^&]+/gi, 'token=***');
+                        };
+                        return maskApiKeys(assetContext.dataSource);
+                      })()}
+                    </Text>
+                  </HStack>
+                )}
+                <HStack justify="space-between" align="flex-start">
+                  <Text color="gray.400">Cache Status</Text>
+                  <Text color="white" fontSize="sm">
+                    {assetContext.isStale ? 'Needs Refresh' : 'Valid'}
                   </Text>
                 </HStack>
               </VStack>

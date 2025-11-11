@@ -11,6 +11,9 @@ export interface BalanceDetail {
   label?: string;
   percentage?: number;
   networkId: string;
+  fetchedAt?: number;      // Unix timestamp when balance was fetched from blockchain
+  fetchedAtISO?: string;   // ISO 8601 string for display (e.g., "2025-01-11T12:34:56.789Z")
+  isStale?: boolean;       // True if balance is older than 5 minutes
 }
 
 export interface AggregatedBalance {
