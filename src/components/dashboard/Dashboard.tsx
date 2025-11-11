@@ -18,7 +18,10 @@ import {
   GridItem,
   useDisclosure,
   Spinner,
+  IconButton,
+  useToast,
 } from '@chakra-ui/react';
+import { FaSyncAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 import { usePioneerContext } from '@/components/providers/pioneer'
@@ -457,13 +460,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   // Handle portfolio refresh
-  const handlePortfolioRefresh = async () => {
-    console.log('🔄 [Dashboard] User clicked to refresh portfolio');
+  const handlePortfolioRefresh = async (forceRefresh = false) => {
+    console.log(`🔄 [Dashboard] User clicked to ${forceRefresh ? 'FORCE' : ''} refresh portfolio`);
     setIsRefreshing(true);
     try {
       if (app && typeof app.refresh === 'function') {
-        console.log('🔄 [Dashboard] Calling app.refresh()');
-        await app.refresh();
+        console.log(`🔄 [Dashboard] Calling app.refresh(${forceRefresh})`);
+        await app.refresh(forceRefresh);
       } else if (app && typeof app.sync === 'function') {
         console.log('🔄 [Dashboard] Calling app.sync()');
         await app.sync();
@@ -541,23 +544,37 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               KeepKey Vault
             </Text>
           </HStack>
-          <Button
-            size="sm"
-            variant="ghost"
-            color={theme.gold}
-            _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
-            onClick={onSettingsClick}
-          >
-            <HStack gap={2} align="center">
-              <Text>Settings</Text>
-              <Box 
-                w="2px" 
-                h="2px" 
-                borderRadius="full" 
-                bg={theme.gold} 
-              />
-            </HStack>
-          </Button>
+          <HStack gap={2}>
+            <IconButton
+              aria-label="Force refresh balances"
+              title="Force Refresh (bypass cache)"
+              icon={<FaSyncAlt />}
+              size="sm"
+              variant="ghost"
+              color={theme.gold}
+              _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
+              onClick={() => handlePortfolioRefresh(true)}
+              isLoading={isRefreshing}
+              isDisabled={isRefreshing}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              color={theme.gold}
+              _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
+              onClick={onSettingsClick}
+            >
+              <HStack gap={2} align="center">
+                <Text>Settings</Text>
+                <Box
+                  w="2px"
+                  h="2px"
+                  borderRadius="full"
+                  bg={theme.gold}
+                />
+              </HStack>
+            </Button>
+          </HStack>
         </HStack>
       </Box>
 

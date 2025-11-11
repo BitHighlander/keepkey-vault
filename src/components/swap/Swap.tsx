@@ -1022,11 +1022,30 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Handle the actual swap in useEffect when pendingSwap is true
   useEffect(() => {
     if (!pendingSwap) return;
-    
+
     const performSwap = async () => {
       console.log('🚀 Performing swap with device verification...');
-    
+      console.log('   vaultVerified:', vaultVerified);
+      console.log('   hasViewedOnDevice:', hasViewedOnDevice);
+
+      // If device verification hasn't been done yet, do it first
+      // If verification is done but user hasn't confirmed vault, wait
+      // Only proceed with swap if vaultVerified is true
+      if (!hasViewedOnDevice) {
+        console.log('📱 Starting device verification flow...');
+        // Continue with device verification below
+      } else if (!vaultVerified) {
+        console.log('⏳ Device verification done, waiting for user to confirm vault...');
+        return; // Wait for user to click "Proceed with Swap"
+      } else {
+        console.log('✅ Device verified and vault confirmed - proceeding with swap execution');
+        // Skip to swap execution (jump to line ~1404)
+      }
+
     try {
+      // DEVICE VERIFICATION PHASE
+      // Skip this entire section if already verified
+      if (!hasViewedOnDevice) {
       // Ensure SDK has an outbound address context
       if (app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
         await app.setOutboundAssetContext({
@@ -1225,7 +1244,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           'zcash:main': 'UTXO',
         }
         let networkType = networkIdToType[app.outboundAssetContext.networkId]
-        
+
+        // Fallback: if no exact match found, check for eip155:* pattern (all EVM chains)
+        if (!networkType && app.outboundAssetContext.networkId?.startsWith('eip155:')) {
+          networkType = 'EVM'
+          console.log('🔄 Using EVM fallback for network:', app.outboundAssetContext.networkId)
+        }
+
         console.log('🔍 Device verification context:', {
           networkId: app.outboundAssetContext.networkId,
           networkType,
@@ -1368,30 +1393,45 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         
         // Wait for user to verify vault and proceed
         console.log('⏳ Waiting for user to verify vault and proceed...');
-        setIsVerifyingOnDevice(true);
-        
+        setIsVerifyingOnDevice(false); // Allow user to click "Proceed with Swap"
+
         // Check for dev flag to skip actual swap
         const fakeTxid = process.env.NEXT_PUBLIC_DEV_FAKE_SWAP_TXID;
         if (fakeTxid) {
           console.log('🚧 DEVELOPMENT MODE: Using fake transaction ID:', fakeTxid);
-          
+
           // Close verification dialog
           setHasViewedOnDevice(true);
           setIsVerifyingOnDevice(false);
           setShowDeviceVerificationDialog(false);
-          
+
           // Show success screen with fake txid
           setSuccessTxid(fakeTxid);
           setShowSuccess(true);
           setConfirmMode(false);
           setPendingSwap(false);
           setVerificationStep('destination');
-          
+
           return; // Skip actual swap execution
         }
-        
-        // Execute the actual swap (BUILD + SIGN + BROADCAST)
-        if (typeof app.swap === 'function') {
+
+        // STOP HERE - wait for user to click "Proceed with Swap" button
+        // The swap will only execute when vaultVerified becomes true
+        console.log('🛑 Stopping execution - waiting for user confirmation');
+        return;
+        } catch (verificationError: any) {
+          console.error('❌ Device verification failed:', verificationError);
+          setDeviceVerificationError(verificationError.message || 'Device verification failed');
+          setIsVerifyingOnDevice(false);
+          throw verificationError;
+        }
+      } // End of if (app?.outboundAssetContext?.caip...)
+      } // End of if (!hasViewedOnDevice)
+
+      // SWAP EXECUTION PHASE
+      // This code only runs when vaultVerified === true
+      if (vaultVerified && typeof app.swap === 'function') {
+        try {
           console.log('🚀 Step 1: Building unsigned swap transaction...');
           const swapPayload: any = {
             caipIn: app?.assetContext?.caip,
@@ -1566,64 +1606,46 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setConfirmMode(false);
           setPendingSwap(false);
           setVerificationStep('destination'); // Reset for next swap
-        }
-      } catch (error: any) {
-        console.error('❌ Swap execution failed:', error);
+        } catch (error: any) {
+          console.error('❌ Swap execution failed:', error);
 
-        // Parse error message for better user feedback
-        let errorMessage = 'An error occurred during the swap';
+          // Parse error message for better user feedback
+          let errorMessage = 'An error occurred during the swap';
 
-        if (error?.message) {
-          const msg = error.message.toLowerCase();
+          if (error?.message) {
+            const msg = error.message.toLowerCase();
 
-          // Common error types with user-friendly messages
-          if (msg.includes('failed to fetch') || msg.includes('connection refused') || msg.includes('network')) {
-            errorMessage = 'Unable to connect to swap service. Please check your connection and try again.';
-          } else if (msg.includes('quote')) {
-            errorMessage = 'Failed to get swap quote. The swap route may not be available right now.';
-          } else if (msg.includes('insufficient') || msg.includes('balance')) {
-            errorMessage = 'Insufficient balance to complete this swap.';
-          } else if (msg.includes('user') && msg.includes('reject')) {
-            errorMessage = 'Transaction rejected on device.';
-          } else if (msg.includes('timeout')) {
-            errorMessage = 'Request timed out. Please try again.';
-          } else {
-            errorMessage = error.message;
+            // Common error types with user-friendly messages
+            if (msg.includes('failed to fetch') || msg.includes('connection refused') || msg.includes('network')) {
+              errorMessage = 'Unable to connect to swap service. Please check your connection and try again.';
+            } else if (msg.includes('quote')) {
+              errorMessage = 'Failed to get swap quote. The swap route may not be available right now.';
+            } else if (msg.includes('insufficient') || msg.includes('balance')) {
+              errorMessage = 'Insufficient balance to complete this swap.';
+            } else if (msg.includes('user') && msg.includes('reject')) {
+              errorMessage = 'Transaction rejected on device.';
+            } else if (msg.includes('timeout')) {
+              errorMessage = 'Request timed out. Please try again.';
+            } else {
+              errorMessage = error.message;
+            }
           }
+
+          setDeviceVerificationError(errorMessage);
+          setIsVerifyingOnDevice(false);
+          setIsLoading(false);
+          setPendingSwap(false);
+
+          // Don't throw - let user see error and close dialog
+          return;
+        } finally {
+          setIsLoading(false);
+          setPendingSwap(false);
         }
-
-        setDeviceVerificationError(errorMessage);
-        setIsVerifyingOnDevice(false);
-        setIsLoading(false);
-        setPendingSwap(false);
-
-        // Don't throw - let user see error and close dialog
-        return;
-      }
-      } else {
-        console.log('✅ Device verification completed, swap already executed');
-      }
+      } // End of if (vaultVerified && typeof app.swap === 'function')
     } catch (error: any) {
-      console.error('Error executing swap:', error);
-
-      // Parse error for user-friendly message
-      let errorMessage = 'An error occurred during the swap';
-
-      if (error?.message) {
-        const msg = error.message.toLowerCase();
-
-        if (msg.includes('failed to fetch') || msg.includes('connection refused') || msg.includes('network')) {
-          errorMessage = 'Unable to connect to swap service. Please check your connection and try again.';
-        } else if (msg.includes('quote')) {
-          errorMessage = 'Failed to get swap quote. The swap route may not be available right now.';
-        } else if (msg.includes('insufficient') || msg.includes('balance')) {
-          errorMessage = 'Insufficient balance to complete this swap.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-
-      setError(errorMessage);
+      console.error('❌ Outer swap error:', error);
+      setError(error.message || 'An error occurred');
     } finally {
       setIsLoading(false);
       setPendingSwap(false);
@@ -1631,7 +1653,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   };
   
   performSwap();
-  }, [pendingSwap, app, quote, inputAmount]);
+  }, [pendingSwap, app, quote, inputAmount, vaultVerified, hasViewedOnDevice]);
 
   // Check if we're still loading assets - show spinner until we have loaded balances data
   // Note: Don't check availableAssets.length here - that's filtered data (could be 0 if all below threshold)

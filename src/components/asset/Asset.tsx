@@ -731,31 +731,69 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
             mx={{ base: 'auto', lg: isDetailsExpanded ? '0' : 'auto' }}
           >
             {/* Asset Info Card */}
-            <Box 
-              bg={theme.cardBg} 
-              p={6} 
-              borderRadius="2xl" 
+            <Box
+              bg={theme.cardBg}
+              p={6}
+              borderRadius="2xl"
               boxShadow="lg"
               border="1px solid"
               borderColor={theme.border}
+              position="relative"
             >
+              {/* Refresh Button - Top Right */}
+              <Button
+                size="sm"
+                variant="ghost"
+                position="absolute"
+                top={4}
+                right={4}
+                color={theme.gold}
+                leftIcon={<FaSync />}
+                _hover={{
+                  color: theme.goldHover,
+                  bg: 'rgba(255, 215, 0, 0.1)',
+                }}
+                onClick={async () => {
+                  console.log('🔄 [Asset] Force refresh clicked from card');
+                  setIsRefreshing(true);
+                  try {
+                    if (app && typeof app.refresh === 'function') {
+                      await app.refresh(true); // Force refresh with cache bypass
+                    }
+                    // Also refresh charts for this network
+                    if (assetContext?.networkId && app && typeof app.getCharts === 'function') {
+                      await app.getCharts([assetContext.networkId]);
+                    }
+                  } catch (error) {
+                    console.error('❌ [Asset] Force refresh failed:', error);
+                  } finally {
+                    setIsRefreshing(false);
+                  }
+                }}
+                isLoading={isRefreshing}
+                loadingText="Refreshing..."
+              >
+                Refresh
+              </Button>
               <VStack align="center" gap={4}>
                 {/* Compound Avatar for Tokens */}
                 {assetContext.isToken ? (
                   <Box position="relative">
                     {/* Main Network Icon */}
-                    <Box 
-                      borderRadius="full" 
-                      overflow="hidden" 
+                    <Box
+                      borderRadius="full"
+                      overflow="hidden"
                       boxSize="80px"
                       bg={theme.cardBg}
                       boxShadow="lg"
                       p={2}
                       borderWidth="1px"
                       borderColor={theme.border}
+                      opacity={isRefreshing ? 0.5 : 1}
+                      transition="opacity 0.3s"
                     >
                       {/* Get network icon based on networkId */}
-                      <Image 
+                      <Image
                         src={(() => {
                           // Map networkId to network icon
                           const networkId = assetContext.networkId;
@@ -777,7 +815,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         objectFit="contain"
                       />
                     </Box>
-                    
+
                     {/* Token Icon as smaller overlay */}
                     <Box
                       position="absolute"
@@ -791,6 +829,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
+                      opacity={isRefreshing ? 0.5 : 1}
+                      transition="opacity 0.3s"
                     >
                       <AssetIcon
                         src={assetContext.icon}
@@ -801,27 +841,67 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         color={assetContext.color || theme.gold}
                       />
                     </Box>
+
+                    {/* Spinner Overlay */}
+                    {isRefreshing && (
+                      <Box
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        transform="translate(-50%, -50%)"
+                        zIndex={10}
+                      >
+                        <Spinner
+                          size="xl"
+                          color={theme.gold}
+                          thickness="4px"
+                          speed="0.8s"
+                        />
+                      </Box>
+                    )}
                   </Box>
                 ) : (
                   /* Native Asset Icon */
-                  <Box
-                    borderRadius="full"
-                    overflow="hidden"
-                    boxSize="80px"
-                    bg={theme.cardBg}
-                    boxShadow="lg"
-                    p={2}
-                    borderWidth="1px"
-                    borderColor={assetContext.color || theme.border}
-                  >
-                    <AssetIcon
-                      src={assetContext.icon}
-                      caip={assetContext.caip}
-                      symbol={assetContext.symbol}
-                      alt={`${assetContext.name} Icon`}
-                      boxSize="100%"
-                      color={assetContext.color || theme.gold}
-                    />
+                  <Box position="relative">
+                    <Box
+                      borderRadius="full"
+                      overflow="hidden"
+                      boxSize="80px"
+                      bg={theme.cardBg}
+                      boxShadow="lg"
+                      p={2}
+                      borderWidth="1px"
+                      borderColor={assetContext.color || theme.border}
+                      opacity={isRefreshing ? 0.5 : 1}
+                      transition="opacity 0.3s"
+                    >
+                      <AssetIcon
+                        src={assetContext.icon}
+                        caip={assetContext.caip}
+                        symbol={assetContext.symbol}
+                        alt={`${assetContext.name} Icon`}
+                        boxSize="100%"
+                        color={assetContext.color || theme.gold}
+                      />
+                    </Box>
+
+                    {/* Spinner Overlay */}
+                    {isRefreshing && (
+                      <Box
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        transform="translate(-50%, -50%)"
+                        zIndex={10}
+                      >
+                        <Spinner
+                          size="xl"
+                          color={theme.gold}
+                          thickness="4px"
+                          speed="0.8s"
+                        />
+                      </Box>
+                    )}
                   </Box>
                 )}
                 

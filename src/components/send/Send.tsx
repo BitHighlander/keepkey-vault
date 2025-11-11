@@ -36,6 +36,7 @@ import {
 import { AssetHeaderCard } from './AssetHeaderCard'
 import { AssetIcon } from '@/components/ui/AssetIcon'
 import ChangeControl from './ChangeControl'
+import { ConnectKeepKeyDialog } from './ConnectKeepKeyDialog'
 import { enrichPubkeysWithUsageInfo, isUTXONetwork } from '@/utils/utxoAddressUtils'
 import { ReviewTransaction } from './ReviewTransaction'
 import { formatTransactionDetails as formatTxDetails, type NetworkType } from '@/utils/transactionFormatter'
@@ -160,7 +161,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const { state } = pioneer
   const { app } = state
   const assetContext = app?.assetContext
-  
+
+  // Check if KeepKey is connected (check SDK first, then context)
+  const isKeepKeyConnected = !!(app?.keepKeySdk || app?.context)
+
   // Get the asset color dynamically, with fallback based on asset
   const getAssetColor = () => {
     if (assetContext?.color) return assetContext.color;
@@ -2122,8 +2126,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Normal send form
   return (
-    <Box 
-      width="100%" 
+    <Box
+      width="100%"
       maxWidth="600px"
       mx="auto"
       height="100vh"
@@ -2143,6 +2147,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         },
       }}
     >
+      {/* Connect KeepKey Dialog - Shows when no device is connected */}
+      <ConnectKeepKeyDialog isOpen={!isKeepKeyConnected} onBackToDashboard={onBackClick} />
+
       {/* Transaction Building Overlay */}
       {isBuildingTx && (
         <Box
@@ -2314,8 +2321,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         </Box>
       )}
     
-      <Box 
-        borderBottom="1px" 
+      <Box
+        borderBottom="1px"
         borderColor={theme.border}
         p={4}
         bg={theme.cardBg}
