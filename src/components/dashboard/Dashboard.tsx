@@ -492,8 +492,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   return (
-    <Box 
-      height="100vh" 
+    <>
+    <Box
+      height="100vh"
       bg={theme.bg}
       backgroundImage="url(/images/backgrounds/splash-bg.png)"
       backgroundSize="cover"
@@ -1666,13 +1667,17 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               </Button>
             </Flex>
           </Box>
-          
+
             {/* Add some padding at the bottom for better scrolling */}
             <Box height="20px" />
           </VStack>
         </Box>
       </Box>
     </Box>
+
+    {/* Chat Assistant - Global floating chat button */}
+    <ChatPopup app={app} />
+    </>
   );
 };
 
