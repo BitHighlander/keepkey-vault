@@ -15,6 +15,7 @@ import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
 import { getCustomPaths } from '@/lib/storage/customPaths'
+import { savePubkeys } from '@/lib/storage/pubkeyStorage'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -338,6 +339,22 @@ export function Provider({ children }: ProviderProps) {
           }
         }
 
+        // Validate we have either vault connection OR cached pubkeys
+        if (!detectedKeeperEndpoint && (!cachedPubkeys || cachedPubkeys.length === 0)) {
+          console.error('❌ [VALIDATION] Cannot start app - no vault detected and no cached pubkeys found');
+          console.error('❌ [VALIDATION] User must open KeepKey Desktop to pair device and cache pubkeys');
+          setIsVaultUnavailable(true);
+          setIsLoading(false);
+          PIONEER_INITIALIZED = false; // Reset flag so retry works
+          return; // Stop initialization
+        }
+
+        console.log('✅ [VALIDATION] Initialization prerequisites met:', {
+          vaultDetected: !!detectedKeeperEndpoint,
+          cachedPubkeysCount: cachedPubkeys?.length || 0,
+          mode: detectedKeeperEndpoint ? 'NORMAL' : 'VIEW-ONLY'
+        });
+
         // Build SDK config with conditional view-only mode flags
         const sdkConfig: any = {
           spec: PIONEER_URL,
@@ -560,7 +577,31 @@ export function Provider({ children }: ProviderProps) {
                 console.warn('⚠️ Failed to persist keepkeyApiKey after pairing:', storageError);
               }
             }
-            
+
+            // Save pubkeys to localStorage after successful pairing
+            if (appInit.pubkeys && appInit.pubkeys.length > 0) {
+              try {
+                // Get device info from the SDK or use defaults
+                const deviceInfo = {
+                  label: appInit.keepKeySdk?.device?.label || 'KeepKey',
+                  model: appInit.keepKeySdk?.device?.model || 'KeepKey',
+                  deviceId: appInit.keepKeySdk?.device?.deviceId || 'unknown',
+                  features: appInit.keepKeySdk?.device?.features,
+                };
+
+                const saved = savePubkeys(appInit.pubkeys, deviceInfo);
+                if (saved) {
+                  console.log('📂 ✅ Saved', appInit.pubkeys.length, 'pubkeys to localStorage after pairing');
+                } else {
+                  console.warn('⚠️ Failed to save pubkeys to localStorage (cache might be disabled)');
+                }
+              } catch (saveError) {
+                console.error('❌ Error saving pubkeys to localStorage:', saveError);
+              }
+            } else {
+              console.warn('⚠️ No pubkeys available to save after pairing');
+            }
+
             if (appInit.keepKeySdk) {
               console.log('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
               
@@ -662,10 +703,33 @@ export function Provider({ children }: ProviderProps) {
         
         if (appInit.dashboard) {
           console.log('💰 Dashboard data:', appInit.dashboard);
+
+          // Check if dashboard is empty (no meaningful data)
+          const hasNetworks = appInit.dashboard.networks && appInit.dashboard.networks.length > 0;
+          const hasBalances = appInit.balances && appInit.balances.length > 0;
+          const hasPubkeys = appInit.pubkeys && appInit.pubkeys.length > 0;
+
+          if (!hasNetworks && !hasBalances && !hasPubkeys) {
+            console.warn('⚠️ WARNING: Dashboard exists but appears to be EMPTY!');
+            console.warn('⚠️ Dashboard state:', {
+              networks: appInit.dashboard.networks?.length || 0,
+              balances: appInit.balances?.length || 0,
+              pubkeys: appInit.pubkeys?.length || 0,
+              keepKeySdk: !!appInit.keepKeySdk,
+              vaultDetected: !!detectedKeeperEndpoint
+            });
+          } else {
+            console.log('✅ Dashboard has data:', {
+              networks: appInit.dashboard.networks?.length || 0,
+              balances: appInit.balances?.length || 0,
+              pubkeys: appInit.pubkeys?.length || 0
+            });
+          }
         } else {
-          console.log('💰 No dashboard data - this indicates sync() was not called!');
-          console.log('💰 KeepKey SDK status:', !!appInit.keepKeySdk);
-          console.log('💰 This means KeepKey device is not connected or initialized');
+          console.warn('⚠️ No dashboard data - this indicates sync() was not called!');
+          console.warn('⚠️ KeepKey SDK status:', !!appInit.keepKeySdk);
+          console.warn('⚠️ Vault detected:', !!detectedKeeperEndpoint);
+          console.warn('⚠️ This may cause an empty dashboard to be shown');
         }
         setPioneerSdk(appInit);
       } catch (e) {
