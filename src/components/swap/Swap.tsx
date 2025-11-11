@@ -983,7 +983,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       symbol: sel.symbol,
       name: sel.name,
       icon: sel.icon || 'https://pioneers.dev/coins/coin.png',
-      caip: sel.caip // CRITICAL: Include CAIP for AssetIcon fallback cascade
+      caip: sel.caip, // CRITICAL: Include CAIP for AssetIcon fallback cascade
+      networkId: sel.networkId, // REQUIRED: For explorer link generation
+      explorerTxLink: sel.explorerTxLink // REQUIRED: For block explorer links
     };
   };
 
@@ -1021,7 +1023,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Handle the actual swap in useEffect when pendingSwap is true
   useEffect(() => {
-    if (!pendingSwap) return;
+    console.log('⚡ useEffect triggered!', { pendingSwap, vaultVerified, hasViewedOnDevice });
+    if (!pendingSwap) {
+      console.log('⏭️ Skipping - pendingSwap is false');
+      return;
+    }
 
     const performSwap = async () => {
       console.log('🚀 Performing swap with device verification...');
@@ -1346,7 +1352,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         
         // Address verified successfully
         console.log('✅ Destination address verified successfully on device!');
-        
+
+        // Mark device verification as complete
+        setHasViewedOnDevice(true);
+
         // Move to vault verification step
         setVerificationStep('vault');
         setIsVerifyingOnDevice(false);
@@ -1646,9 +1655,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     } catch (error: any) {
       console.error('❌ Outer swap error:', error);
       setError(error.message || 'An error occurred');
+      // Only reset pendingSwap on actual error (not when waiting for user)
+      setPendingSwap(false);
     } finally {
       setIsLoading(false);
-      setPendingSwap(false);
+      // DO NOT reset pendingSwap here - it needs to stay true while waiting for user confirmation
     }
   };
   
@@ -1915,15 +1926,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       _hover={{ bg: 'blue.600' }}
                       _active={{ bg: 'blue.700' }}
                       onClick={() => {
+                        console.log('🖱️ Proceed with Swap clicked!', { memoValid, vaultVerified });
                         if (memoValid !== false) {
+                          console.log('✅ Setting vaultVerified = true');
                           setVaultVerified(true);
                           setVerificationStep('swap');
                           setIsVerifyingOnDevice(true);
+                        } else {
+                          console.log('❌ Blocked by memoValid === false');
                         }
                       }}
                       flex={1}
                       isDisabled={memoValid === false || isVerifyingOnDevice}
                     >
+                      {console.log('🔘 Button rendering:', { memoValid, vaultVerified, isVerifyingOnDevice })}
                       Proceed with Swap
                     </Button>
                   </HStack>
