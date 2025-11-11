@@ -1236,7 +1236,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
               // Debug logging for token detection
               console.log('🪙 [Dashboard] Total balances:', app.balances.length);
-              console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
+              //console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
               console.log('🪙 [Dashboard] Token balances found:', tokenBalances.length);
             }
 
@@ -1360,10 +1360,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
                      let tokenColor = assetInfo?.color || token.color;
 
-                     console.log('🔍 [Dashboard] Token info:', {
-                       caip: token.caip,
-                       color: tokenColor
-                     });
+                     // console.log('🔍 [Dashboard] Token info:', {
+                     //   caip: token.caip,
+                     //   color: tokenColor
+                     // });
 
                      // Determine token symbol and name
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
@@ -1383,14 +1383,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      }
 
                      // Debug logging for token detection
-                     console.log('🪙 [Dashboard] Token detected:', {
-                       caip: token.caip,
-                       symbol: tokenSymbol,
-                       balance: token.balance,
-                       valueUsd: tokenValueUsd,
-                       type: token.type,
-                       iconSource: 'keepkey.info CDN (CAIP-based)'
-                     });
+                     // console.log('🪙 [Dashboard] Token detected:', {
+                     //   caip: token.caip,
+                     //   symbol: tokenSymbol,
+                     //   balance: token.balance,
+                     //   valueUsd: tokenValueUsd,
+                     //   type: token.type,
+                     //   iconSource: 'keepkey.info CDN (CAIP-based)'
+                     // });
 
                     return (
                       <Box

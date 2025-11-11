@@ -7,9 +7,16 @@ import {
   Image,
   Box,
 } from '@chakra-ui/react';
-import { FaGithub, FaBook, FaHome, FaTrash, FaBroadcastTower, FaRedo, FaMobileAlt } from 'react-icons/fa';
+import { FaGithub, FaBook, FaHome, FaTrash, FaBroadcastTower, FaRedo, FaMobileAlt, FaEye, FaCircle, FaToggleOn, FaToggleOff } from 'react-icons/fa';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { MobilePairingDialog } from '@/components/pairing/MobilePairingDialog';
+import {
+  hasStoredPubkeys,
+  getDeviceInfo,
+  clearPubkeys,
+  isCacheEnabled,
+  setCacheEnabled
+} from '@/lib/storage/pubkeyStorage';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -36,6 +43,18 @@ const Settings = ({ onClose }: SettingsProps) => {
     enableXfiMasking: false,
     enableKeplrMasking: false,
   });
+
+  // View-Only Mode Cache Settings
+  const [cacheEnabled, setCacheEnabledState] = useState(isCacheEnabled());
+  const [hasCachedPubkeys, setHasCachedPubkeys] = useState(hasStoredPubkeys());
+  const [cachedDeviceInfo, setCachedDeviceInfo] = useState(getDeviceInfo());
+
+  // Update cache status when settings dialog opens
+  useEffect(() => {
+    setHasCachedPubkeys(hasStoredPubkeys());
+    setCachedDeviceInfo(getDeviceInfo());
+    setCacheEnabledState(isCacheEnabled());
+  }, []);
 
   const handleToggle = async (setting: keyof typeof maskingSettings) => {
     try {
@@ -92,6 +111,30 @@ const Settings = ({ onClose }: SettingsProps) => {
       onClose();
     } catch (error) {
       console.error('Error announcing provider:', error);
+    }
+  };
+
+  const handleToggleCache = () => {
+    try {
+      const newValue = !cacheEnabled;
+      setCacheEnabled(newValue);
+      setCacheEnabledState(newValue);
+      console.log('View-only mode cache:', newValue ? 'enabled' : 'disabled');
+    } catch (error) {
+      console.error('Error toggling cache:', error);
+    }
+  };
+
+  const handleClearCache = () => {
+    try {
+      const success = clearPubkeys();
+      if (success) {
+        setHasCachedPubkeys(false);
+        setCachedDeviceInfo(null);
+        console.log('Cache cleared successfully');
+      }
+    } catch (error) {
+      console.error('Error clearing cache:', error);
     }
   };
 
@@ -167,6 +210,85 @@ const Settings = ({ onClose }: SettingsProps) => {
               <Text fontSize="xs" color="gray.500" textAlign="center">
                 View your portfolio on your phone
               </Text>
+            </VStack>
+          </Box>
+
+          {/* View-Only Mode Cache */}
+          <Box bg={theme.cardBg} p={4} borderRadius="xl" borderWidth="1px" borderColor={theme.border}>
+            <VStack gap={3} align="stretch">
+              <HStack justify="space-between">
+                <HStack gap={2}>
+                  <FaEye color={theme.gold} />
+                  <Text fontSize="md" fontWeight="bold" color={theme.gold}>
+                    View-Only Mode
+                  </Text>
+                </HStack>
+              </HStack>
+
+              {/* Toggle for enabling/disabling cache */}
+              <HStack justify="space-between" p={2} bg="rgba(255, 255, 255, 0.02)" borderRadius="md">
+                <VStack align="start" gap={0} flex={1}>
+                  <Text fontSize="sm" color="white">
+                    Enable Cache
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    Save pubkeys for offline viewing
+                  </Text>
+                </VStack>
+                <Box
+                  as="button"
+                  onClick={handleToggleCache}
+                  cursor="pointer"
+                  transition="all 0.2s"
+                  _hover={{ transform: 'scale(1.1)' }}
+                >
+                  {cacheEnabled ? (
+                    <FaToggleOn size={32} color="#00FF00" />
+                  ) : (
+                    <FaToggleOff size={32} color="#888888" />
+                  )}
+                </Box>
+              </HStack>
+
+              {/* Cache Status Indicator */}
+              <HStack justify="space-between" p={2} bg="rgba(255, 255, 255, 0.02)" borderRadius="md">
+                <VStack align="start" gap={0} flex={1}>
+                  <HStack gap={2}>
+                    <Text fontSize="sm" color="white">
+                      Cache Status
+                    </Text>
+                    <Box as={FaCircle} color={hasCachedPubkeys ? '#00FF00' : '#888888'} fontSize="8px" />
+                  </HStack>
+                  <Text fontSize="xs" color="gray.500">
+                    {hasCachedPubkeys
+                      ? `Ready • ${cachedDeviceInfo?.label || 'Device cached'}`
+                      : 'No pubkeys cached yet'}
+                  </Text>
+                </VStack>
+              </HStack>
+
+              {/* Clear Cache Button */}
+              {hasCachedPubkeys && (
+                <Button
+                  width="100%"
+                  size="sm"
+                  variant="outline"
+                  colorScheme="red"
+                  onClick={handleClearCache}
+                >
+                  <HStack gap={2}>
+                    <FaTrash />
+                    <Text>Clear Cache</Text>
+                  </HStack>
+                </Button>
+              )}
+
+              {/* Privacy Note */}
+              <Box p={2} bg="rgba(255, 215, 0, 0.05)" borderRadius="md" borderWidth="1px" borderColor="rgba(255, 215, 0, 0.2)">
+                <Text fontSize="xs" color="gray.400" textAlign="center">
+                  🔒 Your pubkeys are stored locally on your device only. They are <strong>never</strong> sent to our servers for your privacy.
+                </Text>
+              </Box>
             </VStack>
           </Box>
 

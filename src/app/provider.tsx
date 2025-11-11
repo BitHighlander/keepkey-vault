@@ -50,8 +50,9 @@ export function Provider({ children }: ProviderProps) {
     const initPioneerSDK = async () => {
       console.log('🔥 Starting direct Pioneer SDK initialization');
       PIONEER_INITIALIZED = true;
-      
+
       try {
+        console.log('🏁 [Loading] Setting isLoading to TRUE - starting initialization');
         setIsLoading(true);
         setError(null);
 
@@ -304,7 +305,7 @@ export function Provider({ children }: ProviderProps) {
           // Don't return - continue with initialization in view-only mode
         }
 
-        // Load cached pubkeys from localStorage for view-only mode
+        // Load cached pubkeys from localStorage (always try to load, regardless of vault detection)
         let cachedPubkeys: any[] | null = null;
         if (!detectedKeeperEndpoint) {
           console.log('📂 [CACHE] Step 1: Attempting to load pubkeys from localStorage...');
@@ -434,7 +435,7 @@ export function Provider({ children }: ProviderProps) {
           console.log("🔧 Calling appInit.init() with cache-first optimization...");
           
           const resultInit = await Promise.race([
-            appInit.init({}, {}),
+            appInit.init({}, { skipSync: false }),
             initTimeout
           ]);
           
@@ -444,6 +445,12 @@ export function Provider({ children }: ProviderProps) {
           console.log("📊 Wallets:", appInit.wallets.length);
           console.log("🔑 Pubkeys:", appInit.pubkeys.length);
           console.log("💰 Balances:", appInit.balances.length);
+          
+          // Explicitly fetch balances (following reference implementation pattern)
+          console.log("📊 Explicitly calling getBalances()...");
+          await appInit.getBalances();
+          console.log("✅ getBalances() completed");
+          console.log("💰 Balances after getBalances():", appInit.balances?.length || 0);
           
         } catch (initError: any) {
           clearInterval(progressInterval);
@@ -671,6 +678,7 @@ export function Provider({ children }: ProviderProps) {
         PIONEER_INITIALIZED = false; // Reset flag on error
         setError(e as Error);
       } finally {
+        console.log('🏁 [Loading] Setting isLoading to FALSE - initialization complete');
         setIsLoading(false);
       }
     };
@@ -764,12 +772,13 @@ export function Provider({ children }: ProviderProps) {
   }
 
   if (isLoading) {
+    console.log('🔄 [Loading] Rendering loading screen - isLoading is TRUE');
     return (
       <ChakraProvider>
-        <Flex 
-          width="100vw" 
-          height="100vh" 
-          justify="center" 
+        <Flex
+          width="100vw"
+          height="100vh"
+          justify="center"
           align="center"
           bg="gray.800"
           backgroundImage="url(/images/backgrounds/splash-bg.png)"
@@ -777,7 +786,7 @@ export function Provider({ children }: ProviderProps) {
           backgroundPosition="center"
           backgroundRepeat="no-repeat"
         >
-          <LogoIcon 
+          <LogoIcon
             boxSize="24"
             animation={`${scale} 2s ease-in-out infinite`}
             opacity="0.8"
@@ -786,6 +795,8 @@ export function Provider({ children }: ProviderProps) {
       </ChakraProvider>
     )
   }
+
+  console.log('✅ [Loading] Rendering app - isLoading is FALSE, pioneerSdk:', !!pioneerSdk);
 
   // Create a simple context value
   const contextValue = {
