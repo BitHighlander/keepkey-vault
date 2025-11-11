@@ -15,7 +15,6 @@ import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
 import { getCustomPaths } from '@/lib/storage/customPaths'
-import { ChatPopup } from '@/components/chat/ChatPopup'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -28,8 +27,8 @@ const scale = keyframes`
 `
 
 // Get environment variables with fallbacks
-const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://api.keepkey.info/spec/swagger.json'
-const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://api.keepkey.info'
+const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://pioneers.dev/spec/swagger.json'
+const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://pioneers.dev'
 
 // Global flag to prevent multiple Pioneer initializations in development
 let PIONEER_INITIALIZED = false;
@@ -301,21 +300,51 @@ export function Provider({ children }: ProviderProps) {
         }
         
         if (!detectedKeeperEndpoint) {
-          console.log('⚠️ [KKAPI DEBUG] Vault not detected - showing connection error');
-          setIsVaultUnavailable(true);
-          setIsLoading(false);
-          PIONEER_INITIALIZED = false; // Reset flag so retry can work
-          return; // Stop initialization if vault is not available
+          console.log('⚠️ [KKAPI DEBUG] Vault not detected - continuing in view-only mode');
+          // Don't return - continue with initialization in view-only mode
         }
-        
-        const appInit = new SDK(PIONEER_URL, {
+
+        // Load cached pubkeys from localStorage for view-only mode
+        let cachedPubkeys: any[] | null = null;
+        if (!detectedKeeperEndpoint) {
+          console.log('📂 [CACHE] Step 1: Attempting to load pubkeys from localStorage...');
+          const cachedPubkeysRaw = localStorage.getItem('keepkey_vault_pubkeys');
+          console.log('📂 [CACHE] Step 2: Raw value from localStorage:', cachedPubkeysRaw ? `${cachedPubkeysRaw.substring(0, 100)}...` : 'null');
+
+          if (cachedPubkeysRaw) {
+            try {
+              console.log('📂 [CACHE] Step 3: Parsing cached data...');
+              const cacheData = JSON.parse(cachedPubkeysRaw);
+              console.log('📂 [CACHE] Step 4: ✅ Successfully parsed cache data!');
+
+              // Extract the pubkeys array from the cache object
+              console.log('📂 [CACHE] Step 5: Extracting pubkeys array from cache...');
+              cachedPubkeys = cacheData?.pubkeys || null;
+              console.log('📂 [CACHE] Step 6: Number of pubkeys:', Array.isArray(cachedPubkeys) ? cachedPubkeys.length : 'not an array (missing pubkeys property?)');
+
+              if (Array.isArray(cachedPubkeys) && cachedPubkeys.length > 0) {
+                console.log('📂 [CACHE] Step 7: ✅ Successfully extracted', cachedPubkeys.length, 'pubkeys!');
+                console.log('📂 [CACHE] Step 8: Sample pubkey:', cachedPubkeys[0]);
+              } else {
+                console.warn('⚠️ [CACHE] Step 7: Cache data exists but no pubkeys array found');
+              }
+            } catch (parseError) {
+              console.error('❌ [CACHE] Step 3 FAILED: Error parsing cached data:', parseError);
+              cachedPubkeys = null;
+            }
+          } else {
+            console.log('📂 [CACHE] Step 2: No cached data found in localStorage');
+          }
+        }
+
+        // Build SDK config with conditional view-only mode flags
+        const sdkConfig: any = {
           spec: PIONEER_URL,
           wss: PIONEER_WSS,
           appName: 'KeepKey Portfolio',
           appIcon: 'https://pioneers.dev/coins/keepkey.png',
           blockchains,
           keepkeyApiKey,
-          keepkeyEndpoint: detectedKeeperEndpoint, // 👈 Pass the detected endpoint to SDK
           username,
           queryKey,
           paths,
@@ -324,7 +353,28 @@ export function Provider({ children }: ProviderProps) {
           covalentApiKey: 'cqt_rQ6333MVWCVJFVX3DbCCGMVqRH4q',
           utxoApiKey: 'B_s9XK926uwmQSGTDEcZB3vSAmt5t2',
           walletConnectProjectId: '18224df5f72924a5f6b3569fbd56ae16',
-        });
+        };
+
+        // Add view-only mode flags when no vault detected
+        if (!detectedKeeperEndpoint) {
+          console.log('🔧 [CONFIG] Step 9: Enabling view-only mode (no vault detected)');
+          sdkConfig.viewOnlyMode = true;
+          sdkConfig.skipDevicePairing = true;
+          sdkConfig.skipKeeperEndpoint = true;
+
+          // Add cached pubkeys to config if available
+          if (cachedPubkeys && Array.isArray(cachedPubkeys) && cachedPubkeys.length > 0) {
+            console.log('🔧 [CONFIG] Step 10: ✅ Adding', cachedPubkeys.length, 'cached pubkeys to SDK config');
+            sdkConfig.pubkeys = cachedPubkeys;
+          } else {
+            console.log('⚠️ [CONFIG] Step 10: No cached pubkeys to add to SDK config');
+          }
+        } else {
+          // Pass vault endpoint when available
+          sdkConfig.keepkeyEndpoint = detectedKeeperEndpoint;
+        }
+
+        const appInit = new SDK(PIONEER_URL, sdkConfig);
 
         console.log('🔧 Pioneer SDK instance created with config:', {
           mode: detectedKeeperEndpoint ? 'LOCAL DEV (Vault REST)' : 'LEGACY (Desktop REST)',
@@ -380,12 +430,11 @@ export function Provider({ children }: ProviderProps) {
         );
         
                 try {
-          // Use normal init flow with FULL SYNC (skipSync: false)
-          // This matches the working integration-coins pattern
-          console.log("🔧 Calling appInit.init() with FULL SYNC (skipSync: false)...");
-
+          // Use normal init flow but make it fast with cache-first
+          console.log("🔧 Calling appInit.init() with cache-first optimization...");
+          
           const resultInit = await Promise.race([
-            appInit.init({}, { skipSync: false }),  // ✅ CRITICAL: skipSync: false enables full initialization
+            appInit.init({}, {}),
             initTimeout
           ]);
           
@@ -480,10 +529,15 @@ export function Provider({ children }: ProviderProps) {
             console.warn('⚠️ Chart error details:', chartError);
             // Don't throw - this is not critical for basic functionality
           }
-          
+
           // Try to connect to KeepKey if available
-          console.log('🔑 Attempting to connect to KeepKey...');
-          console.log('🔑 KeepKey SDK before pairing:', !!appInit.keepKeySdk);
+          // Skip pairing if no vault detected (view-only mode)
+          if (!detectedKeeperEndpoint) {
+            console.log('🔑 ⏭️ Skipping KeepKey pairing - no vault detected (view-only mode)');
+            console.log('👁️ [VIEW-ONLY] App will use cached pubkeys and balances from localStorage');
+          } else {
+            console.log('🔑 Attempting to connect to KeepKey...');
+            console.log('🔑 KeepKey SDK before pairing:', !!appInit.keepKeySdk);
           
           try {
             const keepkeyConnected = await appInit.pairWallet('KEEPKEY');
@@ -563,6 +617,7 @@ export function Provider({ children }: ProviderProps) {
             console.error('🔑 ❌ KeepKey pairing failed:', pairError);
             console.log('🔑 This is expected if no KeepKey device is connected');
           }
+          } // End else block - pairing when vault is detected
         } catch (testError) {
           console.log('⚠️ SDK test failed:', testError);
           // Don't throw - these are optional features
@@ -739,7 +794,6 @@ export function Provider({ children }: ProviderProps) {
       app: pioneerSdk,
       api: pioneerSdk?.pioneer,
       username: pioneerSdk?.username,
-      context: pioneerSdk?.context,  // CRITICAL: Add context for KeepKey device detection
       assetContext: pioneerSdk?.assetContext,
       outboundAssetContext: pioneerSdk?.outboundAssetContext,
       balances: pioneerSdk?.balances || [],
@@ -753,8 +807,6 @@ export function Provider({ children }: ProviderProps) {
     <ChakraProvider>
       <AppProvider pioneer={contextValue}>
         {children}
-        {/* Chat Popup - Persists across all pages */}
-        <ChatPopup app={pioneerSdk} />
       </AppProvider>
     </ChakraProvider>
   );
