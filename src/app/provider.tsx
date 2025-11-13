@@ -518,10 +518,28 @@ export function Provider({ children }: ProviderProps) {
                 await appInit.getCharts();
                 console.log('✅ Chart fetching completed successfully');
                 console.log('📊 Balances after getCharts:', appInit.balances.length);
+                
+                // Verify tokens were loaded
+                const tokens = appInit.balances.filter((b: any) => b.token === true);
+                console.log('📊 Tokens loaded:', tokens.length);
+                if (tokens.length === 0) {
+                  console.warn('⚠️ getCharts completed but found 0 tokens - this may indicate a problem');
+                }
               } catch (chartError: any) {
+                // DETAILED ERROR LOGGING
+                console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.error('❌ CRITICAL: getCharts failed during initialization');
+                console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.error('Error type:', chartError?.constructor?.name);
+                console.error('Error message:', chartError?.message);
+                console.error('Error stack:', chartError?.stack);
+                console.error('Pioneer client exists:', !!appInit.pioneer);
+                console.error('Pubkeys count:', appInit.pubkeys?.length || 0);
+                console.error('Blockchains count:', appInit.blockchains?.length || 0);
+                console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                
                 // Check if it's a network support error
                 if (chartError?.message?.includes('network not live in blockchains')) {
-                  // Extract the unsupported network from the error message
                   const match = chartError.message.match(/"([^"]+)"/);
                   const network = match ? match[1] : 'unknown';
                   console.log(`ℹ️ Network ${network} not supported for charts - skipping`);

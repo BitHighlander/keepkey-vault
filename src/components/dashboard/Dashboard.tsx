@@ -31,6 +31,7 @@ import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { ChatPopup } from '@/components/chat/ChatPopup';
+import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -217,6 +218,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const { state } = pioneer;
   const { app } = state;
   const router = useRouter();
+  
+  // Pending swaps - using same pattern as other working hooks
+  const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
 
   // Format balance for display
   const formatBalance = (balance: string) => {
@@ -660,6 +664,48 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   zIndex: 1,
                 }}
               >
+            {/* Pending Swaps Badge - Top Right Corner */}
+            {pendingSwaps && pendingSwaps.filter(s => s.status === 'pending' || s.status === 'confirming').length > 0 && (
+              <Box
+                position="absolute"
+                top={4}
+                right={4}
+                zIndex={10}
+                px={3}
+                py={2}
+                borderRadius="lg"
+                bg="blue.900"
+                borderWidth="2px"
+                borderColor="blue.500"
+                boxShadow="0 4px 12px rgba(66, 153, 225, 0.3)"
+                cursor="pointer"
+                _hover={{
+                  bg: "blue.800",
+                  borderColor: "blue.400",
+                  transform: "scale(1.05)",
+                }}
+                transition="all 0.2s"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Navigate to ETH swap view (safe default that always exists)
+                  const ethCaip = 'eip155:1/slip44:60';
+                  router.push(`/asset/${btoa(ethCaip)}?view=swap`);
+                }}
+              >
+                <VStack gap={1} align="center">
+                  <Text fontSize="xs" color="blue.300" fontWeight="bold">
+                    ⏳ PENDING
+                  </Text>
+                  <Text fontSize="2xl" color="blue.200" fontWeight="bold">
+                    {pendingSwaps.filter(s => s.status === 'pending' || s.status === 'confirming').length}
+                  </Text>
+                  <Text fontSize="2xs" color="blue.400">
+                    swaps
+                  </Text>
+                </VStack>
+              </Box>
+            )}
+
             <Flex
               justify="center"
               align="center"
@@ -814,7 +860,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         p={5}
                         borderRadius="2xl"
                         borderWidth="1px"
-                        borderColor={`${network.color}40`}
+                        borderColor={`${network.color}70`}
+                        borderLeftWidth="4px"
+                        borderLeftColor={network.color}
                         boxShadow={`0 4px 20px ${network.color}20, inset 0 0 20px ${network.color}10`}
                         position="relative"
                         bg={`${network.color}15`}
@@ -844,8 +892,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         _hover={{
                           transform: 'translateY(-2px)',
-                          boxShadow: `0 8px 24px ${network.color}30, inset 0 0 30px ${network.color}20`,
+                          boxShadow: `0 8px 24px ${network.color}40, inset 0 0 30px ${network.color}20`,
                           borderColor: network.color,
+                          borderLeftWidth: "5px",
                           bg: `${network.color}25`,
                           _before: {
                             opacity: 0.8,
@@ -943,7 +992,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               }}
                             >
                               <AssetIcon
-                                src={getAssetIconUrl(network.gasAssetCaip, network.icon)}
+                                src={network.icon}
                                 alt={network.networkId}
                                 boxSize="44px"
                                 color={network.color}
@@ -952,7 +1001,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             </Box>
                             <Stack gap={0.5} flex="1">
                               <HStack gap={2} align="center">
-                                <Text fontSize="md" fontWeight="bold" color={network.color}>
+                                <Text 
+                                  fontSize="md" 
+                                  fontWeight="bold" 
+                                  color={network.gasAssetSymbol === 'XRP' ? 'white' : network.color}
+                                >
                                   {network.gasAssetSymbol}
                                 </Text>
                                 {(() => {
@@ -1057,13 +1110,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               })()}
                               <Box
                                 fontSize="xs"
-                                color="gray.400"
+                                color="gray.500"
                                 mb={1}
                                 title={network.gasAssetCaip || network.networkId}
                                 cursor="help"
                                 _hover={{
                                   textDecoration: 'underline',
-                                  textDecorationStyle: 'dotted'
+                                  textDecorationStyle: 'dotted',
+                                  color: 'gray.400'
                                 }}
                               >
                                 <Box
@@ -1086,7 +1140,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                     {smallPart}
                                   </Text>
                                 </Text>
-                                <Text fontSize="xs" color={network.color} fontWeight="medium">
+                                <Text 
+                                  fontSize="xs" 
+                                  color="gray.400"
+                                  fontWeight="medium"
+                                >
                                   {network.gasAssetSymbol}
                                 </Text>
                               </HStack>
@@ -1223,6 +1281,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               )}
             </VStack>
           </Box>
+
 
           {/* Tokens Section - Always Show */}
           {(() => {
@@ -1385,9 +1444,24 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 console.log('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
-                                } catch (chartError) {
-                                  console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
-                                  // Don't throw - this is a known issue with the Pioneer SDK
+                                  
+                                  // Verify tokens were loaded
+                                  const tokens = app.balances?.filter((b: any) => b.token === true) || [];
+                                  console.log('✅ [Dashboard] getCharts returned', tokens.length, 'tokens');
+                                  
+                                  if (tokens.length === 0) {
+                                    console.warn('⚠️ [Dashboard] getCharts completed but returned 0 tokens');
+                                  }
+                                } catch (chartError: any) {
+                                  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                                  console.error('❌ [Dashboard] getCharts failed:', chartError);
+                                  console.error('Error details:', {
+                                    message: chartError?.message,
+                                    type: chartError?.constructor?.name,
+                                    pioneer: !!app?.pioneer,
+                                    pubkeys: app?.pubkeys?.length || 0
+                                  });
+                                  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                                 }
                               } else if (app && typeof app.getCharts === 'function') {
                                 console.log('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');

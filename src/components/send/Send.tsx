@@ -167,6 +167,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Get the asset color dynamically, with fallback based on asset
   const getAssetColor = () => {
+    // XRP brand color is too dark (#23292F), use white instead
+    if (assetContext?.symbol?.toUpperCase() === 'XRP') {
+      return '#FFFFFF';
+    }
+    
     if (assetContext?.color) return assetContext.color;
     
     // Fallback colors for common assets
@@ -189,6 +194,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [amount, setAmount] = useState<string>('')
   const [recipient, setRecipient] = useState<string>('')
   const [memo, setMemo] = useState<string>('')
+  const [memoError, setMemoError] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(true)
   const [balance, setBalance] = useState<string>('0')
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
@@ -262,6 +268,44 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Path manager hook for adding custom paths
   const pathManager = usePathManager({ assetContext, app })
+
+  // XRP Destination Tag Validation Function
+  const validateXrpDestinationTag = (tag: string): string => {
+    // Empty is allowed (optional field)
+    if (!tag || tag.trim() === '') {
+      return ''
+    }
+    
+    // Must be numeric only
+    if (!/^\d+$/.test(tag.trim())) {
+      return 'Destination tag must be a number (0-4294967295)'
+    }
+    
+    // Must be in valid range (uint32)
+    const tagNum = parseInt(tag.trim(), 10)
+    if (isNaN(tagNum) || tagNum < 0 || tagNum > 4294967295) {
+      return 'Destination tag must be between 0 and 4294967295'
+    }
+    
+    return '' // Valid
+  }
+
+  // Handle memo change with validation for XRP
+  const handleMemoChange = (value: string) => {
+    setMemo(value)
+    
+    // Validate if this is XRP
+    const isXrp = assetContext?.symbol?.toUpperCase() === 'XRP' || 
+                  assetContext?.networkId?.includes('ripple') ||
+                  assetContext?.caip?.includes('ripple')
+    
+    if (isXrp) {
+      const error = validateXrpDestinationTag(value)
+      setMemoError(error)
+    } else {
+      setMemoError('') // Clear error for non-XRP networks
+    }
+  }
 
   // Calculate total balance - sum all pubkey balances for UTXO chains
   useEffect(() => {
@@ -1057,6 +1101,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const handleSend = async () => {
     if (!amount || !recipient) {
       console.error('Missing fields')
+      return
+    }
+
+    // Check for memo/destination tag validation errors
+    if (memoError) {
+      console.error('Memo validation error:', memoError)
+      setError(memoError)
+      setShowErrorDialog(true)
       return
     }
 
@@ -2603,24 +2655,37 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               borderRadius={theme.borderRadius} 
               p={theme.formPadding}
               borderWidth="1px"
-              borderColor={theme.border}
+              borderColor={memoError ? 'red.500' : theme.border}
             >
               <Stack gap={3}>
                 <Text color="white" fontWeight="medium">
-                  {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'} (Optional)
+                  {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'} (Optional)
                 </Text>
                 <Input
                   value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
+                  onChange={(e) => handleMemoChange(e.target.value)}
                   placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
                   color="white"
-                  borderColor={theme.border}
-                  _hover={{ borderColor: assetColorHover }}
-                  _focus={{ borderColor: assetColor }}
+                  borderColor={memoError ? 'red.500' : theme.border}
+                  _hover={{ borderColor: memoError ? 'red.600' : assetColorHover }}
+                  _focus={{ borderColor: memoError ? 'red.500' : assetColor }}
                   p={3}
                   height="50px"
                   fontSize="md"
+                  isInvalid={!!memoError}
                 />
+                {memoError && (
+                  <Text color="red.400" fontSize="sm" mt={1}>
+                    ⚠️ {memoError}
+                  </Text>
+                )}
+                {!memoError && (assetContext?.symbol?.toUpperCase() === 'XRP' || 
+                              assetContext?.networkId?.includes('ripple') ||
+                              assetContext?.caip?.includes('ripple')) && (
+                  <Text color="orange.300" fontSize="xs" mt={1}>
+                    ⚠️ Destination tags must be numbers only (0-4294967295). Sending to wrong tag can cause loss of funds.
+                  </Text>
+                )}
               </Stack>
             </Box>
           )}
