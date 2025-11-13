@@ -25,9 +25,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogRoot,
-  Code
+  Code,
+  Badge
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt, FaHistory } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
 import CountUp from 'react-countup';
 import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, validateThorchainSwapMemo } from '@pioneer-platform/pioneer-coins'
@@ -42,6 +43,8 @@ import { SwapQuote } from './SwapQuote';
 import { SwapConfirm } from './SwapConfirm';
 import { AssetPicker } from './AssetPicker';
 import { SwapSuccess } from './SwapSuccess';
+import { SwapHistory } from './SwapHistory';
+import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 
 // Import THORChain services
 import {
@@ -144,6 +147,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
+  
+  // Get pending swaps for badge
+  const { pendingSwaps } = usePendingSwaps();
 
   // Debug app state
   useEffect(() => {
@@ -221,6 +227,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [isCheckingApproval, setIsCheckingApproval] = useState(false);
   const [isApprovingToken, setIsApprovingToken] = useState(false);
   const [approvalTxHash, setApprovalTxHash] = useState<string | null>(null);
+
+  // Tab state for switching between Swap and History
+  const [activeTab, setActiveTab] = useState<'swap' | 'history'>('swap');
 
   // Helper function to get balance by CAIP
   const getUserBalance = (caip: string | undefined): string => {
@@ -324,8 +333,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
         console.log(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}, matched=${supportedAsset.asset}`);
 
-        // Get icon using getAssetIconUrl helper for proper CDN URL
-        const icon = getAssetIconUrl(balance.caip, balance.icon || supportedAsset.icon);
+        // Get icon from Pioneer SDK assetsMap FIRST, then fallback to balance.icon
+        // DO NOT use hardcoded icons from thorchain-pools
+        let icon = balance.icon; // Primary source: Pioneer balance data
+        if (!icon && app?.assetsMap) {
+          const assetInfo = app.assetsMap.get(balance.caip);
+          if (assetInfo?.icon) {
+            icon = assetInfo.icon;
+            console.log(`📍 [SWAP] Using icon from assetsMap for ${ticker}:`, icon);
+          }
+        }
+        // Final fallback: Use CDN with CAIP
+        if (!icon) {
+          icon = getAssetIconUrl(balance.caip);
+        }
 
         // Get network name from balance or construct from CAIP
         const networkName = balance.networkName || '';
@@ -370,8 +391,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Match by CAIP, not symbol! This keeps ETH mainnet and ETH BNB separate
       const balance = availableAssets.find(a => a.caip === poolAsset.caip);
 
-      // Get icon using getAssetIconUrl helper for proper CDN URL
-      const icon = getAssetIconUrl(poolAsset.caip, balance?.icon || poolAsset.icon);
+      // Get icon from Pioneer SDK assetsMap FIRST, then fallback chain
+      // DO NOT use hardcoded icons from thorchain-pools
+      let icon = balance?.icon; // From user's balance if they have it
+      if (!icon && app?.assetsMap) {
+        const assetInfo = app.assetsMap.get(poolAsset.caip);
+        if (assetInfo?.icon) {
+          icon = assetInfo.icon;
+        }
+      }
+      // Final fallback: Use CDN with CAIP
+      if (!icon) {
+        icon = getAssetIconUrl(poolAsset.caip);
+      }
 
       return {
         ...poolAsset,
@@ -388,7 +420,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     return allSupportedAssets.filter(asset =>
       asset.caip !== app?.assetContext?.caip
     );
-  }, [availableAssets, app?.assetContext?.symbol, app?.assets]);
+  }, [availableAssets, app?.assetContext?.symbol, app?.assets, app?.assetsMap]);
 
   // Initialize assets from URL parameters (runs once on mount)
   useEffect(() => {
@@ -2239,7 +2271,68 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         </Container>
       </Box>
 
-      {/* Main Content - Centered vertically */}
+      {/* Tab Selector - Always visible at top */}
+      <Box
+        position="absolute"
+        top="80px"
+        left="50%"
+        transform="translateX(-50%)"
+        zIndex={10}
+      >
+        <HStack gap={2}>
+          <Button
+            size="sm"
+            onClick={() => setActiveTab('swap')}
+            bg={activeTab === 'swap' ? '#23DCC8' : 'gray.800'}
+            color={activeTab === 'swap' ? 'black' : 'gray.400'}
+            _hover={{
+              bg: activeTab === 'swap' ? '#1FC4B3' : 'gray.700'
+            }}
+            leftIcon={<FaExchangeAlt />}
+          >
+            Swap
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setActiveTab('history')}
+            bg={activeTab === 'history' ? '#23DCC8' : 'gray.800'}
+            color={activeTab === 'history' ? 'black' : 'gray.400'}
+            _hover={{
+              bg: activeTab === 'history' ? '#1FC4B3' : 'gray.700'
+            }}
+            leftIcon={<FaHistory />}
+            position="relative"
+          >
+            History
+            {pendingSwaps.length > 0 && (
+              <Badge
+                position="absolute"
+                top="-6px"
+                right="-6px"
+                colorScheme="blue"
+                borderRadius="full"
+                fontSize="xs"
+                minW="18px"
+                h="18px"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+              >
+                {pendingSwaps.length}
+              </Badge>
+            )}
+          </Button>
+        </HStack>
+      </Box>
+
+      {/* Conditional Content Based on Active Tab */}
+      {activeTab === 'history' ? (
+        /* Full Page History View */
+        <Box pt="140px">
+          <SwapHistory />
+        </Box>
+      ) : (
+      /* Main Swap Content - Centered vertically */
       <Flex 
         align="center" 
         justify="center" 
@@ -2562,6 +2655,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           isFromSelection={false}
         />
       </Flex>
+      )}
     </Box>
   );
 };

@@ -543,9 +543,28 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         console.log('🔄 [Asset] Calling app.getCharts() with networkId:', assetContext.networkId);
         await app.getCharts([assetContext.networkId]);
         console.log('✅ [Asset] Charts refresh completed for', assetContext.networkId);
+        
+        // Verify tokens were found
+        const tokens = app.balances?.filter((b: any) => 
+          b.token === true && b.networkId === assetContext.networkId
+        ) || [];
+        console.log(`✅ [Asset] Found ${tokens.length} tokens for ${assetContext.networkId}`);
+        
+        if (tokens.length === 0) {
+          console.warn(`⚠️ [Asset] No tokens found for network ${assetContext.networkId}`);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.error('❌ [Asset] Charts refresh failed:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        type: error?.constructor?.name,
+        networkId: assetContext.networkId,
+        pioneer: !!app?.pioneer,
+        pubkeys: app?.pubkeys?.length || 0
+      });
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } finally {
       setIsRefreshing(false);
     }
@@ -974,7 +993,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     {assetContext.name}
                   </Text>
                   <HStack gap={2} align="center">
-                    <Text fontSize="md" color="gray.400">
+                    <Text fontSize="md" color="gray.300">
                       {assetContext.symbol}
                     </Text>
                     {assetContext.isToken && (
@@ -989,7 +1008,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   </HStack>
                   
                   {/* Display CAIP in small text */}
-                  <Text fontSize="xs" color="gray.500" fontFamily="mono">
+                  <Text fontSize="xs" color="gray.400" fontFamily="mono">
                     {assetContext.caip}
                   </Text>
                   
