@@ -74,18 +74,22 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
     });
     
     // Debug: Show all cosmos-related balances
-    const cosmosBalances = app.balances.filter((balance: any) => 
+    const cosmosBalances = app.balances.filter((balance: any) =>
       balance.networkId?.includes('cosmos') || balance.caip?.includes('cosmos')
     );
     console.log('🔍 [CosmosStaking] All cosmos balances found:', cosmosBalances.length);
     cosmosBalances.forEach((balance: any, index: number) => {
-      console.log(`🔍 [CosmosStaking] Cosmos balance ${index}:`, {
+      console.log(`🔍 [CosmosStaking] Cosmos balance ${index} - ALL PROPERTIES:`, balance);
+      console.log(`🔍 [CosmosStaking] Cosmos balance ${index} - KEY FIELDS:`, {
         caip: balance.caip,
         chart: balance.chart,
         pubkey: balance.pubkey,
         networkId: balance.networkId,
         type: balance.type,
-        balance: balance.balance
+        balance: balance.balance,
+        validator: balance.validator,
+        validatorAddress: balance.validatorAddress,
+        isStaking: balance.isStaking
       });
     });
     
@@ -102,21 +106,27 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
     });
 
     // Filter balances for staking positions
+    // Check both chart='staking' (local) and type property (production)
     const stakingBalances = app.balances.filter((balance: any) => {
-      const isStaking = balance.chart === 'staking';
+      const isStakingChart = balance.chart === 'staking';
+      const isStakingType = balance.type === 'delegation' || balance.type === 'reward' || balance.type === 'unbonding';
+      const isStaking = isStakingChart || isStakingType;
       const matchesAddress = balance.pubkey === address;
       const matchesNetwork = balance.networkId === networkId;
-      
+
       console.log('🔍 [CosmosStaking] Checking balance:', {
         caip: balance.caip,
         chart: balance.chart,
+        type: balance.type,
         pubkey: balance.pubkey,
         networkId: balance.networkId,
+        isStakingChart,
+        isStakingType,
         isStaking,
         matchesAddress,
         matchesNetwork
       });
-      
+
       return isStaking && matchesAddress && matchesNetwork;
     });
 
