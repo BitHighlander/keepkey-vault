@@ -339,6 +339,15 @@ export async function navigateToReceive(caip: string | undefined, app: any): Pro
  */
 export async function navigateToSwap(caip: string | undefined, app: any): Promise<FunctionResult> {
   try {
+    // Check if swap feature is enabled
+    const { isFeatureEnabled } = await import('@/config/features');
+    if (!isFeatureEnabled('enableSwaps')) {
+      return {
+        success: false,
+        message: 'Swap feature is currently disabled. Please enable it in settings.',
+      };
+    }
+
     let targetCaip = caip;
     let asset: any = null;
 

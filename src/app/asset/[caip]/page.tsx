@@ -13,6 +13,7 @@ import {
 import Send from '@/components/send/Send'
 import Receive from '@/components/receive/Receive'
 import Swap from '@/components/swap/Swap'
+import { isFeatureEnabled } from '@/config/features'
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -210,6 +211,12 @@ export default function AssetPage() {
       if (viewParam) {
         const validView = viewParam as ViewType
 
+        // Check feature flags before allowing swap view
+        if (validView === 'swap' && !isFeatureEnabled('enableSwaps')) {
+          console.warn('🚫 [AssetPage] Swap feature is disabled, ignoring view parameter')
+          return
+        }
+
         // Only update if it's a valid view
         if (['asset', 'send', 'receive', 'swap'].includes(validView)) {
           console.log('🔍 [AssetPage] Auto-opening view from query parameter:', validView)
@@ -285,7 +292,14 @@ export default function AssetPage() {
               onBackClick={handleBack}
               onSendClick={() => setCurrentView('send')}
               onReceiveClick={() => setCurrentView('receive')}
-              onSwapClick={() => setCurrentView('swap')}
+              onSwapClick={() => {
+                // Check feature flag before allowing swap navigation
+                if (isFeatureEnabled('enableSwaps')) {
+                  setCurrentView('swap')
+                } else {
+                  console.warn('🚫 [AssetPage] Swap feature is disabled')
+                }
+              }}
             />
           )}
 
@@ -298,7 +312,7 @@ export default function AssetPage() {
             <Receive onBackClick={handleBack} />
           )}
 
-          {currentView === 'swap' && (
+          {currentView === 'swap' && isFeatureEnabled('enableSwaps') && (
             <Swap onBackClick={handleBack} />
           )}
         </Box>

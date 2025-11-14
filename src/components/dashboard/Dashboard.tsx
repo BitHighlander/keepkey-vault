@@ -32,6 +32,7 @@ import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { ChatPopup } from '@/components/chat/ChatPopup';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
+import { isFeatureEnabled } from '@/config/features';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -664,8 +665,8 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   zIndex: 1,
                 }}
               >
-            {/* Pending Swaps Badge - Top Right Corner */}
-            {pendingSwaps && pendingSwaps.filter(s => s.status === 'pending' || s.status === 'confirming').length > 0 && (
+            {/* Pending Swaps Badge - Top Right Corner (only when swaps feature is enabled) */}
+            {isFeatureEnabled('enableSwaps') && pendingSwaps && pendingSwaps.filter(s => s.status === 'pending' || s.status === 'confirming').length > 0 && (
               <Box
                 position="absolute"
                 top={4}
@@ -687,9 +688,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 transition="all 0.2s"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Navigate to ETH swap view (safe default that always exists)
-                  const ethCaip = 'eip155:1/slip44:60';
-                  router.push(`/asset/${btoa(ethCaip)}?view=swap`);
+                  // Check if swap feature is enabled before navigating
+                  if (isFeatureEnabled('enableSwaps')) {
+                    // Navigate to ETH swap view (safe default that always exists)
+                    const ethCaip = 'eip155:1/slip44:60';
+                    router.push(`/asset/${btoa(ethCaip)}?view=swap`);
+                  } else {
+                    console.warn('🚫 [Dashboard] Swap feature is disabled');
+                  }
                 }}
               >
                 <VStack gap={1} align="center">
