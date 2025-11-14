@@ -135,39 +135,109 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
     }));
   };
 
-  // Refresh staking positions by calling getCharts
+  // Refresh staking positions by calling GetStakingPositions API directly
   const refreshStakingPositions = async () => {
-    if (!app?.getCharts || !app?.pubkeys || app.pubkeys.length === 0) {
-      console.log('⏭️ [CosmosStaking] Cannot refresh staking positions - no pubkeys available');
+    if (!assetContext?.networkId || !assetContext?.pubkeys?.[0]?.address) {
+      console.log('⏭️ [CosmosStaking] Cannot refresh - missing networkId or address');
       return;
     }
-    
+
     setIsRefreshing(true);
+    setLoading(true);
     try {
-      console.log('🔄 [CosmosStaking] Refreshing staking positions...');
-      await app.getCharts();
-      console.log('✅ [CosmosStaking] Staking positions refreshed');
-      
-      // Update positions after refresh
-      const positions = getStakingPositions();
-      setStakingPositions(positions);
+      const address = assetContext.pubkeys[0].address;
+      const networkId = assetContext.networkId;
+
+      console.log('🔄 [CosmosStaking] Fetching staking positions for:', { networkId, address });
+
+      if (!app?.pioneer) {
+        console.error('❌ [CosmosStaking] Pioneer client not available');
+        setError('Pioneer client not initialized');
+        return;
+      }
+
+      // Convert networkId to network name for API (same as SDK does)
+      let network: string;
+      if (networkId === 'cosmos:cosmoshub-4') {
+        network = 'cosmos';
+      } else if (networkId === 'cosmos:osmosis-1') {
+        network = 'osmosis';
+      } else {
+        console.error('❌ [CosmosStaking] Unsupported networkId for staking:', networkId);
+        setError(`Staking not supported for ${networkId}`);
+        setIsRefreshing(false);
+        setLoading(false);
+        return;
+      }
+
+      console.log('🔄 [CosmosStaking] Converted networkId to network:', { networkId, network });
+
+      // Use converted network name for API call
+      const response = await app.pioneer.GetStakingPositions({ network, address });
+
+      console.log('✅ [CosmosStaking] Staking API response:', response);
+      console.log('🔍 [CosmosStaking] Response.data type:', typeof response?.data);
+      console.log('🔍 [CosmosStaking] Response.data isArray:', Array.isArray(response?.data));
+      console.log('🔍 [CosmosStaking] Response.data content:', JSON.stringify(response?.data, null, 2));
+
+      if (response?.data && Array.isArray(response.data)) {
+        // Transform API response to match StakingPosition interface
+        const positions = response.data.map((pos: any) => ({
+          type: pos.type || 'delegation',
+          balance: pos.balance?.toString() || '0',
+          ticker: pos.ticker || pos.symbol || 'ATOM',
+          valueUsd: pos.valueUsd || 0,
+          validator: pos.validator || pos.validatorName || 'Unknown Validator',
+          validatorAddress: pos.validatorAddress || pos.validator || '',
+          status: pos.status || 'active',
+          caip: pos.caip || assetContext.caip
+        }));
+
+        setStakingPositions(positions);
+        console.log('✅ [CosmosStaking] Updated positions:', positions.length);
+      } else {
+        setStakingPositions([]);
+        console.log('⏭️ [CosmosStaking] No staking positions found');
+      }
     } catch (error) {
       console.error('❌ [CosmosStaking] Error refreshing staking positions:', error);
       setError('Failed to refresh staking positions');
     } finally {
       setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
   // Load staking data when component mounts or context changes
   useEffect(() => {
-    if (isExpanded && isCosmosNetwork) {
+    const loadStakingData = async () => {
+      if (!isExpanded || !isCosmosNetwork || !assetContext?.networkId) {
+        return;
+      }
+
+      console.log('🔄 [CosmosStaking] Loading staking data for:', assetContext.networkId);
+
+      // Call getCharts for this specific cosmos network to fetch staking positions
+      if (app && typeof app.getCharts === 'function') {
+        setLoading(true);
+        try {
+          console.log('🔄 [CosmosStaking] Calling app.getCharts for:', [assetContext.networkId]);
+          await app.getCharts([assetContext.networkId]);
+          console.log('✅ [CosmosStaking] getCharts completed');
+        } catch (error) {
+          console.error('❌ [CosmosStaking] getCharts failed:', error);
+        }
+      }
+
+      // Now get the staking positions from app.balances
       const positions = getStakingPositions();
       setStakingPositions(positions);
       setLoading(false);
       setError(null);
-    }
-  }, [isExpanded, isCosmosNetwork, assetContext, app?.balances]);
+    };
+
+    loadStakingData();
+  }, [isExpanded, isCosmosNetwork, assetContext?.networkId]);
 
   // Calculate totals
   const totalStakingValue = stakingPositions.reduce((sum, pos) => sum + (pos.valueUsd || 0), 0);

@@ -246,9 +246,9 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
   return (
     <DialogRoot open={isOpen} onOpenChange={({ open }) => !open && handleClose()}>
       <DialogContent maxWidth="500px" bg={theme.cardBg} borderColor={theme.border}>
-        <DialogHeader>
-          <DialogTitle color={theme.gold}>
-            <HStack gap={2}>
+        <DialogHeader px={6} pt={5} pb={4}>
+          <DialogTitle color={theme.gold} fontSize="xl" fontWeight="bold">
+            <HStack gap={3}>
               <FaMinus />
               <Text>Undelegate {assetContext?.symbol}</Text>
             </HStack>
@@ -256,10 +256,10 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
           <DialogCloseTrigger />
         </DialogHeader>
 
-        <DialogBody>
-          <VStack gap={4} align="stretch">
+        <DialogBody px={6} py={5}>
+          <VStack gap={6} align="stretch">
             {error && (
-              <Box p={3} bg="red.900" borderColor="red.500" borderWidth="1px" borderRadius="md">
+              <Box p={4} bg="red.900" borderColor="red.500" borderWidth="1px" borderRadius="md">
                 <Text color="red.200" fontSize="sm" fontWeight="bold">
                   ❌ Error: {error}
                 </Text>
@@ -269,18 +269,18 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
             {transactionStep === 'form' && (
               <>
                 {/* Warning about unbonding period */}
-                <Box p={3} bg="yellow.900" borderColor="yellow.500" borderWidth="1px" borderRadius="md">
-                  <Text color="yellow.200" fontSize="sm" fontWeight="bold">
+                <Box p={4} bg="yellow.900" borderColor="yellow.500" borderWidth="1px" borderRadius="md">
+                  <Text color="yellow.200" fontSize="sm" fontWeight="bold" mb={2}>
                     ⚠️ Unbonding Period: {unbondingPeriod}
                   </Text>
-                  <Text color="yellow.300" fontSize="xs" mt={1}>
+                  <Text color="yellow.300" fontSize="sm" lineHeight="tall">
                     Your tokens will be locked for {unbondingPeriod} after undelegation and will not earn rewards during this period.
                   </Text>
                 </Box>
 
                 {/* Delegation Selection */}
-                <VStack align="stretch" gap={2}>
-                  <Text color="white" fontWeight="medium">Select Delegation to Undelegate</Text>
+                <VStack align="stretch" gap={3}>
+                  <Text color="white" fontWeight="semibold" fontSize="md">Select Delegation to Undelegate</Text>
                   {delegationPositions.length === 0 ? (
                     <Box p={4} bg={theme.bg} borderRadius="md" borderWidth="1px" borderColor={theme.border} textAlign="center">
                       <Text color="gray.400">No active delegations found</Text>
@@ -291,13 +291,15 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedDelegation(e.target.value)}
                       style={{
                         width: '100%',
-                        padding: '8px 12px',
+                        padding: '12px 16px',
                         backgroundColor: theme.bg,
                         borderColor: theme.border,
                         borderWidth: '1px',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         color: 'white',
-                        fontSize: '14px'
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        outline: 'none'
                       }}
                     >
                       <option value="">Choose a delegation...</option>
@@ -310,21 +312,21 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
                   )}
                   
                   {selectedPosition && (
-                    <Box p={3} bg={theme.bg} borderRadius="md" borderWidth="1px" borderColor={theme.border}>
-                      <VStack align="stretch" gap={2}>
+                    <Box p={4} bg={theme.bg} borderRadius="md" borderWidth="1px" borderColor={theme.border}>
+                      <VStack align="stretch" gap={3}>
                         <HStack justify="space-between">
                           <Text color="gray.400" fontSize="sm">Validator:</Text>
-                          <Text color="white" fontWeight="medium">{selectedPosition.validator}</Text>
+                          <Text color="white" fontWeight="medium" fontSize="sm">{selectedPosition.validator}</Text>
                         </HStack>
                         <HStack justify="space-between">
                           <Text color="gray.400" fontSize="sm">Delegated Amount:</Text>
-                          <Text color="white" fontWeight="medium">
+                          <Text color="white" fontWeight="semibold" fontSize="sm">
                             {selectedPosition.balance} {selectedPosition.ticker}
                           </Text>
                         </HStack>
                         <HStack justify="space-between">
                           <Text color="gray.400" fontSize="sm">USD Value:</Text>
-                          <Text color={theme.gold} fontWeight="medium">
+                          <Text color={theme.gold} fontWeight="semibold" fontSize="sm">
                             ${selectedPosition.valueUsd?.toFixed(2) || '0.00'}
                           </Text>
                         </HStack>
@@ -341,9 +343,9 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
 
                 {/* Amount Input */}
                 {selectedPosition && (
-                  <VStack align="stretch" gap={2}>
-                    <Text color="white" fontWeight="medium">Amount to Undelegate</Text>
-                    <HStack>
+                  <VStack align="stretch" gap={3}>
+                    <Text color="white" fontWeight="semibold" fontSize="md">Amount to Undelegate</Text>
+                    <HStack gap={3}>
                       <Input
                         value={amount}
                         onChange={handleAmountChange}
@@ -354,24 +356,30 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
                         _hover={{ borderColor: theme.goldHover }}
                         _focus={{ borderColor: theme.gold }}
                         flex="1"
+                        size="lg"
+                        fontSize="md"
                       />
                       <Button
                         onClick={handleMaxClick}
-                        size="sm"
+                        size="lg"
                         variant="outline"
                         color={theme.gold}
-                        borderColor={theme.border}
-                        _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                        borderColor={theme.gold}
+                        _hover={{ bg: 'rgba(255, 215, 0, 0.1)', borderColor: theme.goldHover }}
+                        fontWeight="bold"
+                        px={6}
                       >
                         MAX
                       </Button>
                     </HStack>
-                    <Text color="gray.400" fontSize="xs">
-                      Available: {selectedPosition.balance} {selectedPosition.ticker}
-                    </Text>
-                    <Text color="gray.400" fontSize="xs">
-                      Estimated fee: {estimatedFee} {assetContext?.symbol}
-                    </Text>
+                    <VStack align="stretch" gap={1} mt={2}>
+                      <Text color="gray.400" fontSize="sm">
+                        Available: {selectedPosition.balance} {selectedPosition.ticker}
+                      </Text>
+                      <Text color="gray.400" fontSize="sm">
+                        Estimated fee: {estimatedFee} {assetContext?.symbol}
+                      </Text>
+                    </VStack>
                   </VStack>
                 )}
               </>
@@ -484,16 +492,18 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
           </VStack>
         </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter px={6} py={4}>
           {transactionStep === 'form' && (
             <HStack gap={3} width="100%">
               <Button
                 onClick={handleClose}
                 variant="outline"
                 color={theme.gold}
-                borderColor={theme.border}
-                _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                borderColor={theme.gold}
+                _hover={{ bg: 'rgba(255, 215, 0, 0.1)', borderColor: theme.goldHover }}
                 flex="1"
+                size="lg"
+                fontWeight="semibold"
               >
                 Cancel
               </Button>
@@ -505,12 +515,14 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
                 disabled={!canUndelegate || loading || delegationPositions.length === 0}
                 loading={loading}
                 flex="1"
+                size="lg"
+                fontWeight="bold"
               >
                 Undelegate
               </Button>
             </HStack>
           )}
-          
+
           {transactionStep === 'success' && (
             <Button
               onClick={handleClose}
@@ -518,6 +530,8 @@ export const UndelegateModal: React.FC<UndelegateModalProps> = ({
               color="black"
               _hover={{ bg: theme.goldHover }}
               width="100%"
+              size="lg"
+              fontWeight="bold"
             >
               Close
             </Button>

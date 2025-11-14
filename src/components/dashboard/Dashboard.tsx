@@ -412,14 +412,34 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0
     ) || [];
 
-  const hasAnyBalance = networksWithBalance.length > 0;
-  
-  const chartData = hasAnyBalance 
-    ? networksWithBalance.map((network: Network) => ({
-        name: network.gasAssetSymbol,
-        value: network.totalValueUsd,
-        color: network.color,
-      }))
+  // Get staking positions from app.balances with chart === 'staking'
+  // NOTE: Don't filter by valueUsd - prices may not be calculated yet
+  const stakingBalances = app?.balances?.filter((balance: any) =>
+    balance.chart === 'staking' && parseFloat(balance.balance || 0) > 0
+  ) || [];
+
+  // Calculate total staking value
+  const totalStakingValue = stakingBalances.reduce((sum: number, balance: any) =>
+    sum + parseFloat(balance.valueUsd || 0), 0
+  );
+
+  const hasAnyBalance = networksWithBalance.length > 0 || stakingBalances.length > 0;
+
+  const chartData = hasAnyBalance
+    ? [
+        // Network balances
+        ...networksWithBalance.map((network: Network) => ({
+          name: network.gasAssetSymbol,
+          value: network.totalValueUsd,
+          color: network.color,
+        })),
+        // Staking positions (if any)
+        ...(totalStakingValue > 0 ? [{
+          name: 'STAKING',
+          value: totalStakingValue,
+          color: '#9333EA', // Purple color for staking
+        }] : [])
+      ]
     : [];
 
   // Handle slice or legend hover
@@ -1752,6 +1772,397 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               bg={`${tokenColor}20`}
                             >
                               TOKEN
+                            </Text>
+                          </Stack>
+                        </Flex>
+                      </Box>
+                    );
+                  })
+                  )}
+                </VStack>
+              </Box>
+            );
+          })()}
+
+          {/* Staking Positions Section - Always Show */}
+          {(() => {
+            // Filter staking positions from balances
+            let stakingPositions: any[] = [];
+            if (app?.balances) {
+              stakingPositions = app.balances.filter((balance: any) => {
+                const isStaking = balance.chart === 'staking';
+                const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
+
+                // Debug logging
+                if (isStaking) {
+                  console.log('🔍 [Dashboard] Found staking balance:', {
+                    caip: balance.caip,
+                    chart: balance.chart,
+                    balance: balance.balance,
+                    valueUsd: balance.valueUsd,
+                    type: balance.type,
+                    ticker: balance.ticker
+                  });
+                }
+
+                return isStaking && hasBalance;
+              });
+
+              // Sort staking positions by USD value (highest first)
+              stakingPositions.sort((a: any, b: any) => {
+                const valueA = parseFloat(a.valueUsd || 0);
+                const valueB = parseFloat(b.valueUsd || 0);
+                return valueB - valueA; // Descending order
+              });
+
+              console.log('🏦 [Dashboard] Staking positions found:', stakingPositions.length);
+            }
+
+            return (
+              <Box w="100%">
+                <HStack justify="space-between" mb={5}>
+                  <HStack gap={2}>
+                    <Text fontSize="md" color="gray.400">Staking Positions</Text>
+                    <Text fontSize="xs" color="gray.600">
+                      ({stakingPositions.length})
+                    </Text>
+                    {stakingPositions.length > 0 && (
+                      <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                        • sorted by value
+                      </Text>
+                    )}
+                  </HStack>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    color={theme.gold}
+                    _hover={{ color: theme.goldHover }}
+                  >
+                    View All
+                  </Button>
+                </HStack>
+
+                <VStack gap={4}>
+                  {stakingPositions.length === 0 ? (
+                    // Empty state when no staking positions found
+                    <Box
+                      w="100%"
+                      p={6}
+                      borderRadius="2xl"
+                      borderWidth="2px"
+                      borderStyle="dashed"
+                      borderColor="gray.600"
+                      bg="gray.800"
+                      position="relative"
+                      _hover={{
+                        borderColor: theme.gold,
+                        bg: 'rgba(255, 215, 0, 0.05)',
+                      }}
+                      transition="all 0.2s"
+                      cursor="pointer"
+                    >
+                      <VStack gap={3} py={4}>
+                        <Box
+                          borderRadius="full"
+                          p={3}
+                          bg="gray.700"
+                          color="gray.400"
+                        >
+                          <Text fontSize="2xl">🏦</Text>
+                        </Box>
+                        <Text fontSize="md" color="gray.400" fontWeight="medium">
+                          No Staking Positions
+                        </Text>
+                        <Text fontSize="sm" color="gray.500" textAlign="center" maxW="320px">
+                          Delegations, rewards, and unbonding positions will appear here when you stake on Cosmos chains.
+                        </Text>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          color={theme.gold}
+                          borderColor={theme.gold}
+                          _hover={{
+                            bg: `${theme.gold}20`,
+                            borderColor: theme.goldHover,
+                            color: theme.goldHover
+                          }}
+                          onClick={async () => {
+                            console.log('🔍 [Dashboard] User clicked refresh staking');
+                            setIsRefreshing(true);
+                            try {
+                              if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
+                                console.log('🔄 [Dashboard] Calling app.getCharts() for staking');
+                                try {
+                                  await app.getCharts();
+                                  console.log('✅ [Dashboard] getCharts completed for staking');
+                                } catch (chartError: any) {
+                                  console.error('❌ [Dashboard] getCharts failed:', chartError);
+                                }
+                              }
+                              await fetchDashboard();
+                            } catch (error) {
+                              console.error('❌ [Dashboard] Refresh failed:', error);
+                            } finally {
+                              setIsRefreshing(false);
+                            }
+                          }}
+                          loading={isRefreshing}
+                          loadingText="Refreshing..."
+                        >
+                          Refresh Staking
+                        </Button>
+                      </VStack>
+                    </Box>
+                  ) : (
+                    // Show actual staking positions when found
+                    stakingPositions.map((position: any, index: number) => {
+                    const { integer, largePart, smallPart } = formatBalance(position.balance);
+                    const stakingValueUsd = parseFloat(position.valueUsd || 0);
+
+                     // Get staking color
+                     const stakingColor = '#9333EA'; // Purple for staking positions
+
+                     // Determine position type and badge color
+                     const positionType = position.type || 'delegation';
+                     const badgeColorScheme =
+                       positionType === 'delegation' ? 'purple' :
+                       positionType === 'reward' ? 'green' :
+                       positionType === 'unbonding' ? 'yellow' : 'purple';
+
+                     // Determine ticker
+                     const positionTicker = position.ticker || position.symbol || 'ATOM';
+                     const positionName = position.name || `${positionTicker} Staking`;
+
+                    return (
+                      <Box
+                        key={`${position.caip}_${position.pubkey}_${index}`}
+                        w="100%"
+                        p={5}
+                        borderRadius="2xl"
+                        borderWidth="1px"
+                        borderColor={`${stakingColor}40`}
+                        boxShadow={`0 4px 20px ${stakingColor}20, inset 0 0 20px ${stakingColor}10`}
+                        position="relative"
+                        bg={`${stakingColor}15`}
+                        _before={{
+                          content: '""',
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: `linear-gradient(135deg, ${stakingColor}40 0%, ${stakingColor}20 100%)`,
+                          opacity: 0.6,
+                          borderRadius: "inherit",
+                          pointerEvents: "none",
+                        }}
+                        _after={{
+                          content: '""',
+                          position: "absolute",
+                          top: "-50%",
+                          left: "-50%",
+                          right: "-50%",
+                          bottom: "-50%",
+                          background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
+                          opacity: 0.5,
+                          borderRadius: "inherit",
+                          pointerEvents: "none",
+                        }}
+                        _hover={{
+                          transform: 'translateY(-2px)',
+                          boxShadow: `0 8px 24px ${stakingColor}30, inset 0 0 30px ${stakingColor}20`,
+                          borderColor: stakingColor,
+                          bg: `${stakingColor}25`,
+                          _before: {
+                            opacity: 0.8,
+                            background: `linear-gradient(135deg, ${stakingColor}50 0%, ${stakingColor}30 100%)`,
+                          },
+                          _after: {
+                            opacity: 0.7,
+                          },
+                        }}
+                        _active={{
+                          transform: 'scale(0.98) translateY(-1px)',
+                          boxShadow: `0 2px 12px ${stakingColor}20`,
+                          transition: 'all 0.1s ease-in-out',
+                        }}
+                        _focus={{
+                          outline: 'none',
+                          boxShadow: `0 0 0 2px ${stakingColor}, 0 8px 24px ${stakingColor}30`,
+                        }}
+                        cursor="pointer"
+                        onClick={() => {
+                          console.log('🏦 [Dashboard] Navigating to staking asset page:', position);
+
+                          // Use the position's CAIP for navigation (the native asset CAIP, not a staking-specific one)
+                          const caip = position.caip;
+
+                          console.log('🏦 [Dashboard] Using position CAIP for navigation:', caip);
+
+                          // Set loading state
+                          setLoadingAssetCaip(caip);
+
+                          // Use Base64 encoding for complex IDs
+                          const encodedCaip = btoa(caip);
+
+                          // Navigate using startTransition
+                          startTransition(() => {
+                            router.push(`/asset/${encodedCaip}`);
+                          });
+                        }}
+                        role="button"
+                        aria-label={`Select ${positionTicker} ${positionType}`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            router.push(`/asset/${btoa(position.caip)}`);
+                          }
+                        }}
+                        transition="all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+                      >
+                        {/* Loading overlay with spinner */}
+                        {loadingAssetCaip === position.caip && (
+                          <Flex
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            right={0}
+                            bottom={0}
+                            align="center"
+                            justify="center"
+                            bg="rgba(0, 0, 0, 0.7)"
+                            borderRadius="xl"
+                            zIndex={3}
+                            backdropFilter="blur(4px)"
+                          >
+                            <Spinner
+                              size="lg"
+                              color={stakingColor}
+                              thickness="3px"
+                              speed="0.6s"
+                            />
+                          </Flex>
+                        )}
+                        <Flex align="center" justify="space-between" position="relative" zIndex={1}>
+                          <HStack gap={4}>
+                            <Box
+                              borderRadius="full"
+                              overflow="hidden"
+                              boxSize="44px"
+                              bg={stakingColor}
+                              boxShadow={`lg, inset 0 0 10px ${stakingColor}40`}
+                              position="relative"
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="center"
+                              _after={{
+                                content: '""',
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: `linear-gradient(135deg, ${stakingColor}40 0%, transparent 100%)`,
+                                opacity: 0.6,
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <Text fontSize="2xl">
+                                {positionType === 'delegation' ? '🔒' :
+                                 positionType === 'reward' ? '💰' :
+                                 positionType === 'unbonding' ? '⏳' : '🏦'}
+                              </Text>
+                            </Box>
+                            <Stack gap={0.5}>
+                              <HStack gap={2}>
+                                <Text fontSize="md" fontWeight="bold" color={stakingColor}>
+                                  {positionTicker}
+                                </Text>
+                                <Badge
+                                  colorScheme={badgeColorScheme}
+                                  variant="subtle"
+                                  fontSize="xs"
+                                  textTransform="uppercase"
+                                >
+                                  {positionType}
+                                </Badge>
+                              </HStack>
+                              {position.validatorAddress && (
+                                <Box
+                                  fontSize="xs"
+                                  color="gray.400"
+                                  mb={1}
+                                  title={position.validatorAddress}
+                                  cursor="help"
+                                  _hover={{
+                                    textDecoration: 'underline',
+                                    textDecorationStyle: 'dotted'
+                                  }}
+                                >
+                                  <Box
+                                    as="span"
+                                    display={{ base: 'inline', md: 'none' }}
+                                  >
+                                    {middleEllipsis(position.validatorAddress, 14)}
+                                  </Box>
+                                  <Box
+                                    as="span"
+                                    display={{ base: 'none', md: 'inline' }}
+                                  >
+                                    {position.validatorAddress}
+                                  </Box>
+                                </Box>
+                              )}
+                              <HStack gap={2} align="center">
+                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
+                                  {integer}.{largePart}
+                                  <Text as="span" fontSize="xs" color="gray.300">
+                                    {smallPart}
+                                  </Text>
+                                </Text>
+                                <Text fontSize="xs" color={stakingColor} fontWeight="medium">
+                                  {positionTicker}
+                                </Text>
+                              </HStack>
+                            </Stack>
+                          </HStack>
+                          <Stack
+                            align="flex-end"
+                            gap={0.5}
+                            p={1}
+                            borderRadius="md"
+                            position="relative"
+                            zIndex={2}
+                            transition="all 0.15s ease-in-out"
+                            _hover={{
+                              bg: `${stakingColor}30`,
+                              boxShadow: `0 0 8px ${stakingColor}40`,
+                            }}
+                          >
+                            <Text
+                              fontSize="md"
+                              color={stakingColor}
+                              fontWeight="medium"
+                            >
+                              $<CountUp
+                                key={`staking-${position.caip}-${position.pubkey}-${index}-${lastSync}`}
+                                end={stakingValueUsd}
+                                decimals={2}
+                                duration={1.5}
+                                separator=","
+                              />
+                            </Text>
+                            <Text
+                              fontSize="xs"
+                              color={`${stakingColor}80`}
+                              fontWeight="medium"
+                              px={1}
+                              py={0.5}
+                              borderRadius="sm"
+                              bg={`${stakingColor}20`}
+                            >
+                              STAKING
                             </Text>
                           </Stack>
                         </Flex>
