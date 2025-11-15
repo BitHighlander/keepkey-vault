@@ -529,34 +529,39 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       });
   };
 
-  // Refresh charts to discover tokens for the current network
+  // Force refresh balances with cache busting
   const handleRefreshCharts = async () => {
     if (!assetContext?.networkId) {
       console.error('❌ [Asset] No networkId available');
       return;
     }
 
-    console.log('🔄 [Asset] Refreshing charts for network:', assetContext.networkId);
+    console.log('🔄 [Asset] Force refreshing balances for network:', assetContext.networkId);
     setIsRefreshing(true);
     try {
-      if (app && typeof app.getCharts === 'function') {
-        console.log('🔄 [Asset] Calling app.getCharts() with networkId:', assetContext.networkId);
-        await app.getCharts([assetContext.networkId]);
-        console.log('✅ [Asset] Charts refresh completed for', assetContext.networkId);
-        
-        // Verify tokens were found
-        const tokens = app.balances?.filter((b: any) => 
-          b.token === true && b.networkId === assetContext.networkId
-        ) || [];
-        console.log(`✅ [Asset] Found ${tokens.length} tokens for ${assetContext.networkId}`);
-        
-        if (tokens.length === 0) {
-          console.warn(`⚠️ [Asset] No tokens found for network ${assetContext.networkId}`);
+      if (app && typeof app.getBalances === 'function') {
+        console.log('🔄 [Asset] Calling app.getBalances(true) to force cache bust and refresh balances');
+        // Pass forceRefresh=true to bypass balance cache and get fresh blockchain data
+        await app.getBalances(true);
+        console.log('✅ [Asset] Balance refresh completed for', assetContext.networkId);
+
+        // Verify balances were updated
+        const assetBalance = app.balances?.find((b: any) =>
+          b.networkId === assetContext.networkId && b.isNative
+        );
+        console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
+
+        // Also refresh charts for token discovery (non-blocking)
+        if (typeof app.getCharts === 'function') {
+          console.log('🔄 [Asset] Also refreshing charts for token discovery...');
+          app.getCharts([assetContext.networkId]).catch((err: any) => {
+            console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
+          });
         }
       }
     } catch (error: any) {
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('❌ [Asset] Charts refresh failed:', error);
+      console.error('❌ [Asset] Balance refresh failed:', error);
       console.error('Error details:', {
         message: error?.message,
         type: error?.constructor?.name,
@@ -837,15 +842,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   bg: 'rgba(255, 215, 0, 0.1)',
                 }}
                 onClick={async () => {
-                  console.log('🔄 [Asset] Force refresh clicked from card');
+                  console.log('🔄 [Asset] Force refresh clicked from card - calling getBalances(true)');
                   setIsRefreshing(true);
                   try {
-                    if (app && typeof app.refresh === 'function') {
-                      await app.refresh(true); // Force refresh with cache bypass
+                    if (app && typeof app.getBalances === 'function') {
+                      console.log('🔄 [Asset] Calling app.getBalances(true) to force-refresh balances');
+                      await app.getBalances(true); // Force refresh balances with cache bypass
+                      console.log('✅ [Asset] Balance refresh completed');
+
+                      // Verify balance was updated
+                      const assetBalance = app.balances?.find((b: any) =>
+                        b.networkId === assetContext.networkId && b.isNative
+                      );
+                      console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
                     }
-                    // Also refresh charts for this network
+                    // Also refresh charts for token discovery (non-blocking)
                     if (assetContext?.networkId && app && typeof app.getCharts === 'function') {
-                      await app.getCharts([assetContext.networkId]);
+                      console.log('🔄 [Asset] Also refreshing charts for tokens...');
+                      app.getCharts([assetContext.networkId]).catch((err: any) => {
+                        console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
+                      });
                     }
                   } catch (error) {
                     console.error('❌ [Asset] Force refresh failed:', error);

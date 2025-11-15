@@ -162,16 +162,38 @@ export async function getThorchainQuote(
         statusText: response.statusText,
         error: errorText
       });
-      
-      // Try to parse error message
+
+      // Try to parse error message and extract meaningful info
+      let errorMessage = 'Failed to fetch swap quote';
       try {
         const errorData = JSON.parse(errorText);
         console.error('❌ [THORChain] Error details:', errorData);
+
+        // Extract the most relevant error message
+        if (errorData.message) {
+          errorMessage = errorData.message;
+
+          // Make specific errors more user-friendly
+          if (errorMessage.includes('trading is halted')) {
+            errorMessage = 'THORChain trading is currently halted. Please try again later.';
+          } else if (errorMessage.includes('insufficient funds')) {
+            errorMessage = 'Insufficient liquidity in pool for this swap.';
+          } else if (errorMessage.includes('pool is suspended')) {
+            errorMessage = 'This trading pool is temporarily suspended.';
+          }
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
       } catch (e) {
-        // Not JSON, log as is
+        // Not JSON, use status text if available
+        if (response.statusText) {
+          errorMessage = `${response.statusText}: ${errorText}`;
+        } else {
+          errorMessage = errorText || 'Unknown error from THORChain';
+        }
       }
-      
-      return null;
+
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -188,13 +210,14 @@ export async function getThorchainQuote(
     // Validate the response has required fields
     if (!data.expected_amount_out || data.expected_amount_out === "0") {
       console.error('⚠️ [THORChain] Invalid quote - zero or missing expected_amount_out:', data);
-      return null;
+      throw new Error('Invalid quote: zero output amount. Pool may have insufficient liquidity.');
     }
-    
+
     return data;
   } catch (error) {
     console.error('❌ [THORChain] Error fetching quote:', error);
-    return null;
+    // Re-throw the error so it can be caught by the caller with proper error message
+    throw error;
   }
 }
 

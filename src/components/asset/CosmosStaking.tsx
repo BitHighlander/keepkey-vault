@@ -187,12 +187,16 @@ export const CosmosStaking = ({ assetContext }: CosmosStakingProps) => {
 
       console.log('✅ [CosmosStaking] Staking API response:', response);
       console.log('🔍 [CosmosStaking] Response.data type:', typeof response?.data);
-      console.log('🔍 [CosmosStaking] Response.data isArray:', Array.isArray(response?.data));
+      console.log('🔍 [CosmosStaking] Response.data.data type:', typeof response?.data?.data);
+      console.log('🔍 [CosmosStaking] Response.data.data isArray:', Array.isArray(response?.data?.data));
       console.log('🔍 [CosmosStaking] Response.data content:', JSON.stringify(response?.data, null, 2));
 
-      if (response?.data && Array.isArray(response.data)) {
+      // API returns { data: { data: [...] } }
+      const stakingData = response?.data?.data || response?.data;
+
+      if (stakingData && Array.isArray(stakingData)) {
         // Transform API response to match StakingPosition interface
-        const positions = response.data.map((pos: any) => ({
+        const positions = stakingData.map((pos: any) => ({
           type: pos.type || 'delegation',
           balance: pos.balance?.toString() || '0',
           ticker: pos.ticker || pos.symbol || 'ATOM',

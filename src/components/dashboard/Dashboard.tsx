@@ -20,6 +20,7 @@ import {
   Spinner,
   IconButton,
   useToast,
+  Badge,
 } from '@chakra-ui/react';
 import { FaSyncAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';

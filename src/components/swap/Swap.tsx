@@ -711,9 +711,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         setOutputAmount('');
         setOutputUSDValue('');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ [Swap] Error fetching quote:', err);
-      setError('Failed to fetch swap quote');
+      // Extract the error message from the error object
+      const errorMessage = err?.message || 'Failed to fetch swap quote';
+      setError(errorMessage);
       setOutputAmount('');
       setOutputUSDValue('');
     } finally {
