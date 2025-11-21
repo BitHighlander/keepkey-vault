@@ -28,8 +28,8 @@ const scale = keyframes`
 `
 
 // Get environment variables with fallbacks
-const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://pioneers.dev/spec/swagger.json'
-const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://pioneers.dev'
+const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://api.keepkey.info/spec/swagger.json'
+const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://api.keepkey.info'
 
 // Global flag to prevent multiple Pioneer initializations in development
 let PIONEER_INITIALIZED = false;
@@ -430,7 +430,7 @@ export function Provider({ children }: ProviderProps) {
         }
         
         // Add progress tracking
-        let progressInterval = setInterval(() => {
+        const progressInterval = setInterval(() => {
           console.log('⏳ Still initializing...', {
             status: appInit.status,
             pioneer: !!appInit.pioneer,
@@ -867,12 +867,32 @@ export function Provider({ children }: ProviderProps) {
           backgroundSize="cover"
           backgroundPosition="center"
           backgroundRepeat="no-repeat"
+          flexDirection="column"
+          gap={4}
         >
           <LogoIcon
             boxSize="24"
             animation={`${scale} 2s ease-in-out infinite`}
             opacity="0.8"
+            border="2px solid"
+            borderColor="gold.500"
+            borderRadius="lg"
+            padding={2}
           />
+          <Flex
+            flexDirection="column"
+            align="center"
+            gap={1}
+            color="gray.400"
+            fontSize="sm"
+          >
+            <div style={{ color: '#D1D5DB' }}>
+              Loading balances on {availableChainsByWallet[WalletOption.KEEPKEY]?.length || 0} networks
+            </div>
+            <div style={{ color: '#9CA3AF', fontSize: '12px' }}>
+              (this may take a bit)
+            </div>
+          </Flex>
         </Flex>
       </ChakraProvider>
     )

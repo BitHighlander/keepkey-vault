@@ -358,10 +358,36 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
     }
 
+    // CRITICAL FIX: If no balance found (zero balance case), create placeholder from assetsMap
     if (!nativeAssetBalance) {
-      console.error('⚠️ [Asset] Native asset not found:', caip);
-      setLoading(false);
-      return;
+      console.warn('⚠️ [Asset] Native asset not found in balances, creating zero-balance placeholder:', caip);
+
+      // Get asset metadata from assetsMap
+      const assetInfo = app.assetsMap?.get(caip) || app.assetsMap?.get(caip.toLowerCase());
+
+      if (!assetInfo) {
+        console.error('❌ [Asset] Asset metadata not found in assetsMap:', caip);
+        setLoading(false);
+        return;
+      }
+
+      // Create zero-balance placeholder with all required fields
+      nativeAssetBalance = {
+        caip: caip,
+        ...assetInfo,
+        balance: '0',
+        valueUsd: '0',
+        price: 0,
+        priceUsd: 0,
+        networkId: networkId,
+        identifier: `${caip}:zero-balance`,
+        isZeroBalance: true, // Flag to indicate this is a placeholder
+        fetchedAt: Date.now(),
+        fetchedAtISO: new Date().toISOString(),
+        isStale: false
+      };
+
+      console.log('✅ [Asset] Created zero-balance placeholder:', nativeAssetBalance);
     }
 
     // CRITICAL FIX: For CACAO, override symbol

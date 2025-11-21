@@ -1264,7 +1264,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
                           <Stack
                             align="flex-end"
-                            gap={0.5}
+                            gap={2}
                             p={1}
                             borderRadius="md"
                             position="relative"
@@ -1275,30 +1275,66 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               boxShadow: `0 0 8px ${network.color}40`,
                             }}
                           >
-                            <Text 
-                              fontSize="md" 
-                              color={network.color}
-                              fontWeight="medium"
+                            <Stack align="flex-end" gap={0.5}>
+                              <Text
+                                fontSize="md"
+                                color={network.color}
+                                fontWeight="medium"
+                              >
+                                $<CountUp
+                                  key={`network-${network.networkId}-${lastSync}`}
+                                  end={network.totalValueUsd}
+                                  decimals={2}
+                                  duration={1.5}
+                                  separator=","
+                                />
+                              </Text>
+                              <Text
+                                fontSize="xs"
+                                color={`${network.color}80`}
+                                fontWeight="medium"
+                                px={1}
+                                py={0.5}
+                                borderRadius="sm"
+                                bg={`${network.color}20`}
+                              >
+                                {percentage.toFixed(1)}%
+                              </Text>
+                            </Stack>
+
+                            <Button
+                              size="sm"
+                              variant="solid"
+                              bg={network.color}
+                              color="black"
+                              fontWeight="bold"
+                              px={4}
+                              py={2}
+                              borderRadius="lg"
+                              boxShadow={`0 2px 8px ${network.color}40`}
+                              _hover={{
+                                bg: network.color,
+                                transform: 'translateY(-1px)',
+                                boxShadow: `0 4px 12px ${network.color}60`,
+                                filter: 'brightness(1.1)',
+                              }}
+                              _active={{
+                                transform: 'translateY(0px)',
+                                boxShadow: `0 1px 4px ${network.color}40`,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const caip = network.gasAssetCaip;
+                                setLoadingAssetCaip(caip);
+                                const encodedCaip = btoa(caip);
+                                startTransition(() => {
+                                  router.push(`/asset/${encodedCaip}`);
+                                });
+                              }}
+                              whiteSpace="nowrap"
                             >
-                              $<CountUp 
-                                key={`network-${network.networkId}-${lastSync}`}
-                                end={network.totalValueUsd} 
-                                decimals={2}
-                                duration={1.5}
-                                separator=","
-                              />
-                            </Text>
-                            <Text 
-                              fontSize="xs" 
-                              color={`${network.color}80`}
-                              fontWeight="medium"
-                              px={1}
-                              py={0.5}
-                              borderRadius="sm"
-                              bg={`${network.color}20`}
-                            >
-                              {percentage.toFixed(1)}%
-                            </Text>
+                              Select {network.gasAssetSymbol}
+                            </Button>
                           </Stack>
                         </Flex>
                       </Box>
