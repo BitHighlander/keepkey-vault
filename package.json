@@ -23,7 +23,7 @@
     "@pioneer-platform/pioneer-caip": "^9.10.0",
     "@pioneer-platform/pioneer-coins": "^9.11.0",
     "@pioneer-platform/pioneer-discovery": "^8.11.23",
-    "@pioneer-platform/pioneer-sdk": "^8.15.9",
+    "@pioneer-platform/pioneer-sdk": "^8.15.12",
     "@pioneer-platform/pioneer-types": "^8.11.0",
     "@pioneer-platform/thorchain-client": "^0.8.9",
     "@sendgrid/mail": "^8.1.6",

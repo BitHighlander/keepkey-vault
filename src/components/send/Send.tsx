@@ -1218,9 +1218,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         sendPayload.customFee = customFeeAmount;
       }
 
-      // Add memo for supported chains if provided
-      if (memo && supportsMemo) {
-        sendPayload.memo = memo;
+      // Add memo for supported chains
+      // For XRP, always include destination tag field (empty string if not provided)
+      // For other chains, only include if memo is provided
+      if (supportsMemo) {
+        const isXrp = assetContext?.symbol?.toUpperCase() === 'XRP' ||
+                      assetContext?.networkId?.startsWith('eip155:1/slip44:144');
+        sendPayload.memo = memo || (isXrp ? '' : undefined);
       }
 
       // Add change script type for UTXO chains if specified
