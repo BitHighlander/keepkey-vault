@@ -20,11 +20,11 @@
     "@chakra-ui/react": "^3.28.0",
     "@chakra-ui/react-types": "^2.0.6",
     "@emotion/react": "^11.14.0",
-    "@pioneer-platform/pioneer-caip": "^9.10.0",
-    "@pioneer-platform/pioneer-coins": "^9.11.0",
-    "@pioneer-platform/pioneer-discovery": "^8.11.23",
-    "@pioneer-platform/pioneer-sdk": "^8.15.12",
-    "@pioneer-platform/pioneer-types": "^8.11.0",
+    "@pioneer-platform/pioneer-caip": "^9.10.2",
+    "@pioneer-platform/pioneer-coins": "^9.11.2",
+    "@pioneer-platform/pioneer-discovery": "^8.15.17",
+    "@pioneer-platform/pioneer-sdk": "^8.15.22",
+    "@pioneer-platform/pioneer-types": "^8.11.1",
     "@pioneer-platform/thorchain-client": "^0.8.9",
     "@sendgrid/mail": "^8.1.6",
     "@types/d3": "^7.4.3",
@@ -60,7 +60,7 @@
   "pnpm": {
     "overrides": {
       "punycode": "2.1.1",
-      "@pioneer-platform/pioneer-client": "9.10.3"
+      "@pioneer-platform/pioneer-client": "9.10.12"
     }
   }
 }
