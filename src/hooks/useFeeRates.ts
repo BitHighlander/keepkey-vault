@@ -29,8 +29,10 @@ export interface UseFeeRatesResult {
 const UTXO_NETWORKS = [
   'bip122:000000000019d6689c085ae165831e93', // Bitcoin
   'bip122:12a765e31ffd4059bada1e25190f6e98', // Litecoin
-  'bip122:000000000933ea01ad0ee984209779ba', // Dogecoin
+  'bip122:00000000001a91e3dace36e2be3bf030', // Dogecoin (FIXED)
   'bip122:000000000000000000651ef99cb9fcbe', // Bitcoin Cash
+  'bip122:000007d91d1254d60e2dd1ae58038307', // Dash
+  'bip122:4da631f2ac1bed857bd968c67c913978', // DigiByte
 ];
 
 const EVM_NETWORKS = [

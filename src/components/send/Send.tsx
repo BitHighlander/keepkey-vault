@@ -1810,6 +1810,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             explorerUrl = `https://blockchair.com/dogecoin/transaction/${txHash}`;
           } else if (networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
             explorerUrl = `https://blockchair.com/bitcoin-cash/transaction/${txHash}`;
+          } else if (networkId.includes('bip122:4da631f2ac1bed857bd968c67c913978')) {
+            explorerUrl = `https://chainz.cryptoid.info/dgb/tx.dws?${txHash}.htm`;
           } else {
             console.error(`Unsupported UTXO network: ${networkId}`);
             alert(`Error: No explorer configured for UTXO network: ${networkId}`);

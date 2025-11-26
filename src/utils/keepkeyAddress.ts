@@ -5,6 +5,7 @@ const NetworkIdToChain: Record<string, string> = {
   'bip122:12a765e31ffd4059bada1e25190f6e98': 'litecoin',  // ✅ FIXED - LTC genesis hash
   'bip122:00000000001a91e3dace36e2be3bf030': 'dogecoin',
   'bip122:000007d91d1254d60e2dd1ae58038307': 'dash',      // ✅ FIXED - DASH genesis hash
+  'bip122:4da631f2ac1bed857bd968c67c913978': 'digibyte',  // ✅ DGB genesis hash
   'cosmos:mayachain-mainnet-v1': 'mayachain',
   'cosmos:osmosis-1': 'osmosis',
   'cosmos:cosmoshub-4': 'cosmos',
@@ -23,6 +24,7 @@ const COIN_MAP_KEEPKEY: Record<string, string> = {
   'litecoin': 'Litecoin',
   'dogecoin': 'Dogecoin',
   'dash': 'Dash',
+  'digibyte': 'DigiByte',
   'ethereum': 'Ethereum',
   'polygon': 'Polygon',
   'ripple': 'Ripple',
@@ -41,6 +43,7 @@ export const networkIdToType: Record<string, string> = {
   'bip122:12a765e31ffd4059bada1e25190f6e98': 'UTXO', // Litecoin ✅ FIXED
   'bip122:00000000001a91e3dace36e2be3bf030': 'UTXO', // Dogecoin
   'bip122:000007d91d1254d60e2dd1ae58038307': 'UTXO', // Dash ✅ FIXED
+  'bip122:4da631f2ac1bed857bd968c67c913978': 'UTXO', // DigiByte ✅ DGB
   'cosmos:mayachain-mainnet-v1': 'MAYACHAIN',
   'cosmos:osmosis-1': 'OSMOSIS',
   'cosmos:cosmoshub-4': 'COSMOS',

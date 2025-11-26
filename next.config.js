@@ -12,13 +12,14 @@ const nextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
-  webpack: (config) => {
-    config.resolve.fallback = { 
+  webpack: (config, { isServer }) => {
+    config.resolve.fallback = {
       ...config.resolve.fallback,
       net: false,
       tls: false,
       fs: false,
     };
+
     return config;
   },
 };
