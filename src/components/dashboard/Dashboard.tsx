@@ -321,7 +321,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   // Set up interval to sync market data every 15 seconds
   useEffect(() => {
     if (!app) return;
-    
+
     const intervalId = setInterval(() => {
       app
         .syncMarket()
@@ -338,6 +338,44 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
     return () => clearInterval(intervalId);
   }, [app]);
+
+  // Listen for real-time dashboard updates from Pioneer SDK
+  useEffect(() => {
+    if (!app?.events) return;
+
+    const handleDashboardUpdate = (data: any) => {
+      console.log('🔄 [Dashboard] Real-time update received:', {
+        trigger: data.trigger,
+        affectedAsset: data.affectedAsset,
+        valueChange: `$${data.previousTotal.toFixed(2)} → $${data.newTotal.toFixed(2)}`
+      });
+
+      // Update dashboard with new data
+      setDashboard(data.dashboard);
+
+      // Check for value increases and play sound if enabled
+      if (data.newTotal > data.previousTotal && data.previousTotal > 0) {
+        console.log("💰 [Dashboard] Portfolio value increased!", {
+          previous: data.previousTotal,
+          current: data.newTotal,
+          increase: data.newTotal - data.previousTotal
+        });
+        // playSound(chachingSound); // Disabled - sound is annoying
+      }
+
+      setPreviousTotalValue(data.newTotal);
+    };
+
+    // Subscribe to dashboard update events
+    console.log('📡 [Dashboard] Subscribing to DASHBOARD_UPDATE events');
+    app.events.on('DASHBOARD_UPDATE', handleDashboardUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      console.log('📡 [Dashboard] Unsubscribing from DASHBOARD_UPDATE events');
+      app.events.off('DASHBOARD_UPDATE', handleDashboardUpdate);
+    };
+  }, [app?.events]);
 
   const fetchDashboard = async () => {
     if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Fetching dashboard data');

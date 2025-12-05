@@ -7,11 +7,11 @@
         "@chakra-ui/react": "^3.28.0",
         "@chakra-ui/react-types": "^2.0.6",
         "@emotion/react": "^11.14.0",
-        "@pioneer-platform/pioneer-caip": "^9.10.2",
-        "@pioneer-platform/pioneer-coins": "^9.11.2",
-        "@pioneer-platform/pioneer-discovery": "^8.15.17",
-        "@pioneer-platform/pioneer-sdk": "^8.15.22",
-        "@pioneer-platform/pioneer-types": "^8.11.1",
+        "@pioneer-platform/pioneer-caip": "^9.10.3",
+        "@pioneer-platform/pioneer-coins": "^9.11.3",
+        "@pioneer-platform/pioneer-discovery": "^8.15.25",
+        "@pioneer-platform/pioneer-sdk": "^8.15.25",
+        "@pioneer-platform/pioneer-types": "^8.11.2",
         "@pioneer-platform/thorchain-client": "^0.8.9",
         "@sendgrid/mail": "^8.1.6",
         "@types/d3": "^7.4.3",
@@ -259,19 +259,19 @@
 
     "@pioneer-platform/loggerdog": ["@pioneer-platform/loggerdog@8.11.0", "", { "dependencies": { "os": "^0.1.1", "ts-node": "^10.9.1", "typescript": "^5.0.4" } }, "sha512-tX0g/Vmy5bbYqxz1vV1V+l6/jCR2xXWz3iA3JjxUdtErN7CwltJDssrPE4l7eDPEVnMWOPwjmic6jJZQ/7Xxtg=="],
 
-    "@pioneer-platform/pioneer-caip": ["@pioneer-platform/pioneer-caip@9.10.2", "", {}, "sha512-C374tMX94U1b7/JUm4tEgg6lL7PnQnZZGOR8iU++OzUnHo7qAhf0KB28N/hr4v1oyWDrtVJed8KyMZBzaf5fzg=="],
+    "@pioneer-platform/pioneer-caip": ["@pioneer-platform/pioneer-caip@9.10.3", "", {}, "sha512-rnjqeI7SNlhlSSAxwTA+kol+1zDXxFt4DT5lA5/xTGbdZrepbkfspx0ACpHM/TSWmwBs3ATJaGMIvOf16IYdBQ=="],
 
     "@pioneer-platform/pioneer-client": ["@pioneer-platform/pioneer-client@9.10.12", "", { "dependencies": { "swagger-client": "^3.23.1" } }, "sha512-3shJQ4MFolUgekb80sYs6EDcnIh3jR+QdUSQqzZ3il3If52M0A18fHwEF1sXgvcaj9L/Bt0ToT64S+S0dC1PtQ=="],
 
-    "@pioneer-platform/pioneer-coins": ["@pioneer-platform/pioneer-coins@9.11.2", "", { "dependencies": { "@pioneer-platform/loggerdog": "^8.11.0", "bignumber.js": "^9.0.1", "bs58check": "^3.0.1" } }, "sha512-2VaqUm2LtAbBovb47ENYnBFQlPn3NKDxwiVgXqCvkz7W5U/Mt46agWwSD2ThGxzwOsAzZjUTJPh3YaQSHVv2ag=="],
+    "@pioneer-platform/pioneer-coins": ["@pioneer-platform/pioneer-coins@9.11.3", "", { "dependencies": { "@pioneer-platform/loggerdog": "^8.11.0", "bignumber.js": "^9.0.1", "bs58check": "^3.0.1" } }, "sha512-BxsfHYVrJEDYD9wgK7WnqCDQbvYOYuZC1A3E11g8tNDXVQdHMSDjRqyIU9wBwzpSxZjAYHTmvW5VEd2lXU5LHA=="],
 
-    "@pioneer-platform/pioneer-discovery": ["@pioneer-platform/pioneer-discovery@8.15.17", "", { "dependencies": { "@pioneer-platform/pioneer-caip": "^9.10.2", "ethers": "5.7.2" } }, "sha512-W9SsZspBsAfRqImlm4ywU1E217uF6lMtoc8bNrqCclXy4rA0f/prJ5+jMAHp1dIOHQWAYZcVW94tcN36BBZ+Gg=="],
+    "@pioneer-platform/pioneer-discovery": ["@pioneer-platform/pioneer-discovery@8.15.25", "", { "dependencies": { "@pioneer-platform/pioneer-caip": "^9.10.3", "ethers": "5.7.2" } }, "sha512-CBMZRxhpOJzzCpHkd3txsZBp5J5ukiv8qZSxcvtSToMZd9YmVIh3jOeM4lqJbIebHhyZNrEYR44YBqd79fIt1Q=="],
 
     "@pioneer-platform/pioneer-events": ["@pioneer-platform/pioneer-events@8.12.0", "", { "dependencies": { "@pioneer-platform/pioneer-types": "^8.11.0", "@types/node": "^18.15.11", "cookie": "^1.0.2", "dotenv": "^16.4.7", "events": "^3.3.0", "socket.io-client": "^4.5.4", "ts-node": "^8.10.2", "typescript": "^5.0.4", "wait-promise": "^0.4.1" } }, "sha512-SoKuAwxZEzSGF6F1EtwQH0eQYu2fcfI+ZdMHOdwnL46KUCQl6kQMhBNRY6zHr6PcsUj0IeECWAQtwoVs9CgkGg=="],
 
-    "@pioneer-platform/pioneer-sdk": ["@pioneer-platform/pioneer-sdk@8.15.22", "", { "dependencies": { "@keepkey/keepkey-sdk": "^0.2.62", "@pioneer-platform/pioneer-caip": "^9.10.2", "@pioneer-platform/pioneer-client": "^9.10.12", "@pioneer-platform/pioneer-coins": "^9.11.2", "@pioneer-platform/pioneer-discovery": "^8.15.17", "@pioneer-platform/pioneer-events": "^8.12.0", "coinselect": "^3.1.13", "eventemitter3": "^5.0.1", "neotraverse": "^0.6.8", "socket.io-client": "^4.7.2" } }, "sha512-lLWiJUpitwbE1qKlirTERWb4VxhtZ9gMBK8Sq4Zw9OBgbZs+30ltZycGutPi1ftyX1oA5eP9DXoyxkYPE0XsaA=="],
+    "@pioneer-platform/pioneer-sdk": ["@pioneer-platform/pioneer-sdk@8.15.25", "", { "dependencies": { "@keepkey/keepkey-sdk": "^0.2.62", "@pioneer-platform/pioneer-caip": "^9.10.3", "@pioneer-platform/pioneer-client": "^9.10.12", "@pioneer-platform/pioneer-coins": "^9.11.3", "@pioneer-platform/pioneer-discovery": "^8.15.25", "@pioneer-platform/pioneer-events": "^8.12.0", "coinselect": "^3.1.13", "eventemitter3": "^5.0.1", "neotraverse": "^0.6.8", "socket.io-client": "^4.7.2" } }, "sha512-GXRxBeP2F5qHsL8fBBgUHctjQkGu2nMb0LI9bK8AaY1L9K6mbRYOylYrKaE7NVIGDPovrSm3TbOWKhp+ExfylA=="],
 
-    "@pioneer-platform/pioneer-types": ["@pioneer-platform/pioneer-types@8.11.1", "", {}, "sha512-DnafqQjUXSTumaGWArPHach/Ftg2CpUJzrqKCQBx3Cx7pq9n2bWfP1TYJIGhxnU4rDYUjMZmInQ/Au2f4H/Riw=="],
+    "@pioneer-platform/pioneer-types": ["@pioneer-platform/pioneer-types@8.11.2", "", {}, "sha512-H/F2CMZBqG2YMpLiOuYyykcEeJLDTx5Xhq7XkLIlUzbJ8twGCRF9ZCirTWYwcMcoJAghL8TNH91ZCG3mfFathQ=="],
 
     "@pioneer-platform/thorchain-client": ["@pioneer-platform/thorchain-client@0.8.12", "", { "dependencies": { "@pioneer-platform/loggerdog": "^8.11.0", "@pioneer-platform/pioneer-caip": "^9.10.0", "@pioneer-platform/pioneer-coins": "^9.11.0", "axios": "^1.6.0", "dotenv": "^17.2.3", "rango-sdk": "^0.1.45", "uuidv4": "^6.2.13" } }, "sha512-HWImVh/DVCzYh4A7+1D9OTkZDbpeiq6NqZ9G7IvgyEzP+aDhOc9oYIYutFvJkVEMXmFBZF3zJZXKCbSuvnNVfg=="],
 

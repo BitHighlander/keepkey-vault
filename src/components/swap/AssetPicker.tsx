@@ -23,6 +23,7 @@ import { InputGroup } from '@/components/ui/input-group';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { FaSearch } from 'react-icons/fa';
 import { middleEllipsis } from '@/utils/strings';
+import { extractNetworkId, getNetworkColor, getNetworkName, getNetworkSortOrder } from '@/lib/utils/networkIcons';
 
 interface Asset {
   caip: string;
@@ -62,8 +63,19 @@ export const AssetPicker = ({
     onClose();
   };
 
-  // Sort assets by USD value (descending) - largest first
+  // Sort assets by network first, then by USD value within each network
   const sortedAssets = [...assets].sort((a, b) => {
+    // Primary sort: by network (Bitcoin first, then ETH, BSC, AVAX, etc.)
+    const aNetworkId = a.networkId || extractNetworkId(a.caip);
+    const bNetworkId = b.networkId || extractNetworkId(b.caip);
+    const aNetworkOrder = getNetworkSortOrder(aNetworkId);
+    const bNetworkOrder = getNetworkSortOrder(bNetworkId);
+
+    if (aNetworkOrder !== bNetworkOrder) {
+      return aNetworkOrder - bNetworkOrder;
+    }
+
+    // Secondary sort: by USD value (descending) within same network
     const aUsd = a.balanceUsd ? (typeof a.balanceUsd === 'number' ? a.balanceUsd : parseFloat(a.balanceUsd.toString())) : 0;
     const bUsd = b.balanceUsd ? (typeof b.balanceUsd === 'number' ? b.balanceUsd : parseFloat(b.balanceUsd.toString())) : 0;
     return bUsd - aUsd; // Descending order
@@ -178,6 +190,9 @@ export const AssetPicker = ({
               {filteredAssets.map((asset) => {
                 const isSelected = currentAsset?.caip === asset.caip;
                 const hasBalance = asset.balance && parseFloat(asset.balance.toString()) > 0;
+                const networkId = asset.networkId || extractNetworkId(asset.caip);
+                const networkColor = getNetworkColor(networkId);
+                const networkName = getNetworkName(networkId);
 
                 return (
                   <Box
@@ -192,12 +207,15 @@ export const AssetPicker = ({
                     borderRadius="xl"
                     borderWidth="2px"
                     borderColor={isSelected ? '#23DCC8' : 'rgba(255, 255, 255, 0.1)'}
+                    borderTopColor={networkColor}
+                    borderTopWidth="3px"
                     p={4}
                     _hover={{
                       bg: isSelected ? 'rgba(35, 220, 200, 0.2)' : 'rgba(35, 220, 200, 0.1)',
                       borderColor: '#23DCC8',
+                      borderTopColor: networkColor,
                       transform: 'translateY(-2px)',
-                      boxShadow: '0 4px 12px rgba(35, 220, 200, 0.2)',
+                      boxShadow: `0 4px 12px rgba(35, 220, 200, 0.2), 0 -2px 8px ${networkColor}40`,
                     }}
                   >
                     {/* Selected Indicator */}
@@ -230,7 +248,7 @@ export const AssetPicker = ({
                     )}
 
                     <VStack gap={2} align="center">
-                      {/* Asset Icon */}
+                      {/* Asset Icon with Network Badge */}
                       <AssetIcon
                         src={asset.icon}
                         caip={asset.caip}
@@ -238,6 +256,8 @@ export const AssetPicker = ({
                         alt={asset.name}
                         boxSize="48px"
                         color="#FFD700"
+                        showNetworkBadge={true}
+                        networkId={networkId}
                       />
 
                       {/* Asset Symbol */}
@@ -251,6 +271,26 @@ export const AssetPicker = ({
                       >
                         {asset.symbol}
                       </Text>
+
+                      {/* Network Name Badge */}
+                      <Box
+                        bg={`${networkColor}20`}
+                        borderRadius="md"
+                        px={2}
+                        py={0.5}
+                        borderWidth="1px"
+                        borderColor={`${networkColor}60`}
+                      >
+                        <Text
+                          fontSize="9px"
+                          color={networkColor}
+                          fontWeight="semibold"
+                          textTransform="uppercase"
+                          letterSpacing="wide"
+                        >
+                          {networkName}
+                        </Text>
+                      </Box>
 
                       {/* Asset Name */}
                       <Text

@@ -72,13 +72,43 @@ export const FeatureFlagToggle = () => {
           <ModalCloseButton color="white" />
           <ModalBody pb={6}>
             <VStack gap={4} align="stretch">
-              <Text color="gray.400" fontSize="sm" textAlign="center">
-                No feature flags available at this time.
-              </Text>
+              {/* Swaps Feature Toggle */}
+              <HStack justify="space-between" p={3} bg="#1a1a1a" borderRadius="md">
+                <VStack align="start" gap={0}>
+                  <Text color="white" fontWeight="medium">
+                    Swaps
+                  </Text>
+                  <Text color="gray.400" fontSize="sm">
+                    Enable swap functionality
+                  </Text>
+                </VStack>
+                <Switch
+                  checked={flags.enableSwaps}
+                  onCheckedChange={(e) => handleToggle('enableSwaps', !!e.checked)}
+                  colorPalette="green"
+                />
+              </HStack>
+
+              {/* ZCash Feature Toggle */}
+              <HStack justify="space-between" p={3} bg="#1a1a1a" borderRadius="md">
+                <VStack align="start" gap={0}>
+                  <Text color="white" fontWeight="medium">
+                    ZCash (ZEC)
+                  </Text>
+                  <Text color="gray.400" fontSize="sm">
+                    Enable ZCash support (experimental)
+                  </Text>
+                </VStack>
+                <Switch
+                  checked={flags.enableZcash}
+                  onCheckedChange={(e) => handleToggle('enableZcash', !!e.checked)}
+                  colorPalette="green"
+                />
+              </HStack>
 
               <Box pt={4} borderTop="1px solid" borderColor="#222222">
                 <Text color="gray.500" fontSize="xs">
-                  Feature flags will appear here when new experimental features are added.
+                  Changes require a page reload to take effect.
                 </Text>
               </Box>
             </VStack>

@@ -35,6 +35,7 @@ import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, validateThorchainSwapMemo }
 import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip'
 // @ts-ignore
 import { caipToNetworkId } from '@pioneer-platform/pioneer-caip';
+import { isZcashEnabled, ZCASH_NETWORK_ID } from '@/config/features';
 
 // Import sub-components
 import { AssetSelector } from './AssetSelector';
@@ -1294,7 +1295,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           'eip155:137': 'EVM',
           'eip155:*': 'EVM',
           'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
-          'zcash:main': 'UTXO',
+          ...(isZcashEnabled() ? { [ZCASH_NETWORK_ID]: 'UTXO' } : {}),  // ZCash mainnet (conditional)
         }
         let networkType = networkIdToType[app.outboundAssetContext.networkId]
 
@@ -1546,7 +1547,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             'eip155:8453': 'EVM',
             'eip155:*': 'EVM',
             'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
-            'zcash:main': 'UTXO',
+            ...(isZcashEnabled() ? { [ZCASH_NETWORK_ID]: 'UTXO' } : {}),  // ZCash mainnet (conditional)
           };
 
           const networkType = networkIdToType[networkId];
@@ -1648,6 +1649,63 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           }
 
           console.log('🎉 Swap successful! Transaction ID:', txid);
+
+          // Save pending swap to database for history tracking
+          try {
+            console.log('💾 Saving swap to pending swaps database...');
+
+            // Get user address - prioritize ETH address for multi-chain swaps
+            const userAddress =
+              app?.pubkeys?.find((p: any) => p.networks?.includes('eip155:1') || p.networks?.includes('eip155:*'))?.address ||
+              app?.pubkeys?.find((p: any) => p.address)?.address ||
+              app?.assetContext?.pubkey ||
+              '';
+
+            if (!userAddress) {
+              console.warn('⚠️ No user address found - swap will not be saved to history');
+            } else {
+              const pendingSwapData = {
+                txHash: String(txid),
+                addresses: [userAddress],
+                sellAsset: {
+                  caip: app.assetContext.caip,
+                  symbol: app.assetContext.symbol || getAssetDisplay(true)?.symbol || 'UNKNOWN',
+                  amount: inputAmount,
+                  networkId: caipToNetworkId(app.assetContext.caip),
+                  address: userAddress,
+                  amountBaseUnits: inputAmount // TODO: Convert to base units if needed
+                },
+                buyAsset: {
+                  caip: app.outboundAssetContext.caip,
+                  symbol: app.outboundAssetContext.symbol || getAssetDisplay(false)?.symbol || 'UNKNOWN',
+                  amount: outputAmount,
+                  networkId: caipToNetworkId(app.outboundAssetContext.caip),
+                  address: userAddress,
+                  amountBaseUnits: outputAmount // TODO: Convert to base units if needed
+                },
+                quote: quote ? {
+                  memo: quote.memo,
+                  slippage: quote.slippageBps ? quote.slippageBps / 100 : 3,
+                  fees: quote.fees || {},
+                  raw: quote
+                } : undefined,
+                integration: 'thorchain',
+                status: 'pending'
+              };
+
+              console.log('💾 Pending swap data:', pendingSwapData);
+
+              if (typeof app.pioneer.CreatePendingSwap === 'function') {
+                const result = await app.pioneer.CreatePendingSwap(pendingSwapData);
+                console.log('✅ Swap saved to database:', result);
+              } else {
+                console.warn('⚠️ CreatePendingSwap method not available on Pioneer API');
+              }
+            }
+          } catch (saveError: any) {
+            // Don't fail the swap if saving to DB fails - just log it
+            console.error('⚠️ Failed to save swap to database (swap still succeeded):', saveError);
+          }
 
           // Now close everything
           setHasViewedOnDevice(true);
@@ -2256,81 +2314,78 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         zIndex={10}
       >
         <Container maxW="container.xl">
-          {/* Back button */}
-          <Button
-            leftIcon={<FaArrowLeft size={18} />}
-            variant="solid"
-            onClick={onBackClick}
-            color="white"
-            bg="gray.800"
-            _hover={{ bg: 'gray.700', transform: 'translateX(-2px)' }}
-            _active={{ bg: 'gray.600' }}
-            size="sm"
-            px={3}
-          >
-            Back
-          </Button>
-        </Container>
-      </Box>
+          <Flex align="center" justify="space-between">
+            {/* Back button */}
+            <Button
+              leftIcon={<FaArrowLeft size={18} />}
+              variant="solid"
+              onClick={onBackClick}
+              color="white"
+              bg="gray.800"
+              _hover={{ bg: 'gray.700', transform: 'translateX(-2px)' }}
+              _active={{ bg: 'gray.600' }}
+              size="sm"
+              px={3}
+            >
+              Back
+            </Button>
 
-      {/* Tab Selector - Always visible at top */}
-      <Box
-        position="absolute"
-        top="80px"
-        left="50%"
-        transform="translateX(-50%)"
-        zIndex={10}
-      >
-        <HStack gap={2}>
-          <Button
-            size="sm"
-            onClick={() => setActiveTab('swap')}
-            bg={activeTab === 'swap' ? '#23DCC8' : 'gray.800'}
-            color={activeTab === 'swap' ? 'black' : 'gray.400'}
-            _hover={{
-              bg: activeTab === 'swap' ? '#1FC4B3' : 'gray.700'
-            }}
-            leftIcon={<FaExchangeAlt />}
-          >
-            Swap
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setActiveTab('history')}
-            bg={activeTab === 'history' ? '#23DCC8' : 'gray.800'}
-            color={activeTab === 'history' ? 'black' : 'gray.400'}
-            _hover={{
-              bg: activeTab === 'history' ? '#1FC4B3' : 'gray.700'
-            }}
-            leftIcon={<FaHistory />}
-            position="relative"
-          >
-            History
-            {pendingSwaps.length > 0 && (
-              <Badge
-                position="absolute"
-                top="-6px"
-                right="-6px"
-                colorScheme="blue"
-                borderRadius="full"
-                fontSize="xs"
-                minW="18px"
-                h="18px"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
+            {/* Tab Selector - Centered */}
+            <HStack gap={2}>
+              <Button
+                size="sm"
+                onClick={() => setActiveTab('swap')}
+                bg={activeTab === 'swap' ? '#23DCC8' : 'gray.800'}
+                color={activeTab === 'swap' ? 'black' : 'gray.400'}
+                _hover={{
+                  bg: activeTab === 'swap' ? '#1FC4B3' : 'gray.700'
+                }}
+                leftIcon={<FaExchangeAlt />}
               >
-                {pendingSwaps.length}
-              </Badge>
-            )}
-          </Button>
-        </HStack>
+                Swap
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setActiveTab('history')}
+                bg={activeTab === 'history' ? '#23DCC8' : 'gray.800'}
+                color={activeTab === 'history' ? 'black' : 'gray.400'}
+                _hover={{
+                  bg: activeTab === 'history' ? '#1FC4B3' : 'gray.700'
+                }}
+                leftIcon={<FaHistory />}
+                position="relative"
+              >
+                History
+                {pendingSwaps.length > 0 && (
+                  <Badge
+                    position="absolute"
+                    top="-6px"
+                    right="-6px"
+                    colorScheme="blue"
+                    borderRadius="full"
+                    fontSize="xs"
+                    minW="18px"
+                    h="18px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    {pendingSwaps.length}
+                  </Badge>
+                )}
+              </Button>
+            </HStack>
+
+            {/* Empty space for balance */}
+            <Box w="80px" />
+          </Flex>
+        </Container>
       </Box>
 
       {/* Conditional Content Based on Active Tab */}
       {activeTab === 'history' ? (
         /* Full Page History View */
-        <Box pt="140px">
+        <Box pt="80px">
           <SwapHistory />
         </Box>
       ) : (
@@ -2418,6 +2473,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     setOutputAmount('');
                     setQuote(null);
                     setError('');
+
+                    // Refresh pending swaps to show the new swap in history
+                    refreshPendingSwaps();
                   }}
                 />
               ) : (

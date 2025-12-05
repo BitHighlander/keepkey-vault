@@ -25,6 +25,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Box, Image } from '@chakra-ui/react';
 import { FaCoins } from 'react-icons/fa';
 import { getAssetIconUrl, getLocalIconUrl } from '@/lib/utils/assetIcons';
+import { getNetworkIconUrl, extractNetworkId } from '@/lib/utils/networkIcons';
 
 interface AssetIconProps {
   /** Primary icon URL (from Pioneer SDK) */
@@ -41,6 +42,10 @@ interface AssetIconProps {
   color?: string;
   /** Enable debug logging */
   debug?: boolean;
+  /** Show network badge overlay */
+  showNetworkBadge?: boolean;
+  /** Network ID for badge (CAIP networkId format) */
+  networkId?: string;
 }
 
 export const AssetIcon: React.FC<AssetIconProps> = ({
@@ -51,6 +56,8 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
   boxSize,
   color = '#FFD700',
   debug = false,
+  showNetworkBadge = false,
+  networkId,
 }) => {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [fallbackLevel, setFallbackLevel] = useState<number>(0);
@@ -143,6 +150,13 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
     if (debug) console.log(`✅ [AssetIcon] Image loaded successfully at level ${fallbackLevel}:`, currentSrc);
   }, [fallbackLevel, currentSrc, debug]);
 
+  // Get network icon URL if badge is requested - MUST BE BEFORE CONDITIONAL RETURN
+  const networkIconUrl = useMemo(() => {
+    if (!showNetworkBadge) return null;
+    const netId = networkId || (caip ? extractNetworkId(caip) : null);
+    return netId ? getNetworkIconUrl(netId) : null;
+  }, [showNetworkBadge, networkId, caip]);
+
   // Show icon fallback
   if (showIconFallback || !currentSrc) {
     if (debug) console.log('🎨 [AssetIcon] Rendering FaCoins fallback');
@@ -195,6 +209,33 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
           </Box>
         }
       />
+
+      {/* Network Badge Overlay */}
+      {showNetworkBadge && networkIconUrl && (
+        <Box
+          position="absolute"
+          bottom="-2px"
+          right="-2px"
+          boxSize="40%"
+          minW="14px"
+          minH="14px"
+          bg="rgba(0, 0, 0, 0.8)"
+          borderRadius="full"
+          border="2px solid rgba(255, 255, 255, 0.2)"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          overflow="hidden"
+        >
+          <Image
+            src={networkIconUrl}
+            alt="Network"
+            boxSize="100%"
+            objectFit="contain"
+            fallback={<Box boxSize="100%" />}
+          />
+        </Box>
+      )}
     </Box>
   );
 };

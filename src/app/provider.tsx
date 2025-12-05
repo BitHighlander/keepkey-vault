@@ -1,10 +1,12 @@
+// @ts-ignore
+
 'use client'
 
 import React from 'react';
 import { useEffect, useState } from 'react'
 import { SDK } from '@pioneer-platform/pioneer-sdk'
 import { availableChainsByWallet, getChainEnumValue, WalletOption } from '@pioneer-platform/pioneer-types'
-// @ts-ignore
+// @ts-expect-error
 import { caipToNetworkId, ChainToNetworkId } from '@pioneer-platform/pioneer-caip'
 import { getPaths } from '@pioneer-platform/pioneer-coins'
 import { Provider as ChakraProvider } from "@/components/ui/provider"
@@ -14,6 +16,7 @@ import { keyframes } from '@emotion/react'
 import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
+import { isZcashEnabled, ZCASH_NETWORK_ID } from '@/config/features'
 import { getCustomPaths } from '@/lib/storage/customPaths'
 import { savePubkeys } from '@/lib/storage/pubkeyStorage'
 
@@ -245,10 +248,16 @@ export function Provider({ children }: ProviderProps) {
           // 'eip155:324', // zkSync Era
           // 'eip155:1101', // Polygon zkEVM
         ];
-        
+
+        // Filter ZCash if feature flag is disabled
+        if (!isZcashEnabled()) {
+          unsupportedNetworks.push(ZCASH_NETWORK_ID);
+          console.log('🚫 ZCash feature flag disabled - filtering out ZCash network');
+        }
+
         const originalLength = blockchains.length;
         blockchains = blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
-        
+
         console.log('🔧 Filtered blockchains:', {
           original: originalLength,
           filtered: blockchains.length,
