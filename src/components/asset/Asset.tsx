@@ -311,8 +311,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       setPreviousBalance(tokenAssetContextData.balance);
 
       // Set asset context in Pioneer SDK for Send/Receive/Swap components
+      // Remove custom UI-only fields (nativeBalance, nativeSymbol) before passing to SDK
       if (app?.setAssetContext) {
-        app.setAssetContext(tokenAssetContextData).then(() => {
+        const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = tokenAssetContextData;
+        app.setAssetContext(sdkContext).then(() => {
           console.log('✅ [Asset] Token asset context set in Pioneer SDK');
         }).catch((error: any) => {
           console.error('❌ [Asset] Error setting token asset context:', error);
@@ -419,8 +421,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     setPreviousBalance(assetContextData.balance);
 
     // Set asset context in Pioneer SDK for Send/Receive/Swap components
+    // Remove custom UI-only fields before passing to SDK
     if (app?.setAssetContext) {
-      app.setAssetContext(assetContextData).then(() => {
+      const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContextData;
+      app.setAssetContext(sdkContext).then(() => {
         console.log('✅ [Asset] Native asset context set in Pioneer SDK');
       }).catch((error: any) => {
         console.error('❌ [Asset] Error setting native asset context:', error);
@@ -513,7 +517,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
     if (app?.setAssetContext && assetContext) {
       try {
-        await app.setAssetContext(assetContext);
+        // Remove custom UI-only fields before passing to SDK
+        const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContext;
+        await app.setAssetContext(sdkContext);
         console.log('✅ [Asset] Asset context confirmed set in Pioneer SDK before Send:', assetContext.symbol);
       } catch (error) {
         console.error('❌ [Asset] Error setting asset context before Send:', error);
@@ -702,9 +708,25 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     );
   }
 
-  const formatBalance = (balance: string | number) => {
+  const formatBalance = (balance: string | number, customPrecision?: number) => {
     const numBalance = typeof balance === 'string' ? parseFloat(balance) : balance;
-    return numBalance.toFixed(8);
+
+    // Use custom precision if provided, otherwise REQUIRE SDK assetContext data
+    let decimals: number;
+    if (customPrecision !== undefined) {
+      decimals = customPrecision;
+    } else {
+      // CRITICAL: NEVER use fallbacks - fail fast if SDK data missing
+      decimals = assetContext.precision ?? assetContext.decimals;
+
+      if (decimals === undefined || decimals === null) {
+        const error = `CRITICAL: Asset ${assetContext.symbol || assetContext.caip || 'unknown'} has NO decimals/precision in assetContext! SDK data is missing.`;
+        console.error('❌', error, assetContext);
+        throw new Error(error);
+      }
+    }
+
+    return numBalance.toFixed(decimals);
   };
 
   // Calculate the USD value - use aggregated balance if available
@@ -1141,7 +1163,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         } : {}}
                       >
                         <Text fontSize="md" color={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.400" : "gray.300"}>
-                          {assetContext.nativeBalance ? formatBalance(assetContext.nativeBalance) : '0'} {assetContext.nativeSymbol || 'GAS'}
+                          {assetContext.nativeBalance ? formatBalance(assetContext.nativeBalance, 18) : '0'} {assetContext.nativeSymbol || 'GAS'}
                         </Text>
                         <Text fontSize="xs" color="gray.500">Gas Balance</Text>
                         

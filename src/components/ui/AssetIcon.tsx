@@ -5,9 +5,8 @@
  *
  * Fallback Strategy (CAIP identifiers only - NO symbol-based lookups):
  * 1. Primary URL (from Pioneer SDK/props)
- * 2. KeepKey CDN (api.keepkey.info) with base64-encoded CAIP
- * 3. Localhost fallback (localhost:9001) with base64-encoded CAIP
- * 4. Generic coin icon (FaCoins) as final fallback
+ * 2. KeepKey API (api.keepkey.info) with base64-encoded CAIP
+ * 3. Generic coin icon (FaCoins) as final fallback
  *
  * IMPORTANT: All icon lookups use base64-encoded CAIP identifiers, never symbol names.
  * The CDN saves icons by CAIP hash, not by symbol.
@@ -24,7 +23,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Box, Image } from '@chakra-ui/react';
 import { FaCoins } from 'react-icons/fa';
-import { getAssetIconUrl, getLocalIconUrl } from '@/lib/utils/assetIcons';
+import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { getNetworkIconUrl, extractNetworkId } from '@/lib/utils/networkIcons';
 
 interface AssetIconProps {
@@ -99,21 +98,11 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
     if (debug) console.log(`🔄 [AssetIcon] Trying fallback level ${nextLevel} (current: ${currentLevel})`);
 
     if (nextLevel === 1 && caip) {
-      // Level 1: Try KeepKey CDN with base64 CAIP
-      const cdnUrl = getAssetIconUrl(caip);
-      if (debug) console.log('🔄 [AssetIcon] Trying CDN fallback:', cdnUrl);
-      setCurrentSrc(cdnUrl);
+      // Level 1: Try KeepKey API with base64 CAIP
+      const apiUrl = getAssetIconUrl(caip);
+      if (debug) console.log('🔄 [AssetIcon] Trying KeepKey API fallback:', apiUrl);
+      setCurrentSrc(apiUrl);
       setFallbackLevel(1);
-      setImageKey(prev => prev + 1);
-      return;
-    }
-
-    if (nextLevel === 2 && caip) {
-      // Level 2: Try localhost with base64 CAIP
-      const localUrl = getLocalIconUrl(caip);
-      if (debug) console.log('🔄 [AssetIcon] Trying localhost fallback:', localUrl);
-      setCurrentSrc(localUrl);
-      setFallbackLevel(2);
       setImageKey(prev => prev + 1);
       return;
     }

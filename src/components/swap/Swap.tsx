@@ -652,10 +652,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const fetchQuote = async (amount: string, fromSymbol: string, toSymbol: string) => {
     setIsLoadingQuote(true);
     setError('');
-    
+
     try {
-      // Convert to base units
-      const baseAmount = toBaseUnit(amount, fromSymbol);
+      // Convert to base units using SDK assetContext
+      const baseAmount = toBaseUnit(amount, app?.assetContext);
       
       console.log('🔍 [Swap] Fetching quote:', {
         fromSymbol,
@@ -684,10 +684,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       
       if (quoteData && quoteData.expected_amount_out) {
         setQuote(quoteData);
-        
+
         // Convert output from base units and set it
         // THORChain always returns amounts in 8 decimal format, not native decimals
-        const outputInDisplay = fromBaseUnit(quoteData.expected_amount_out, toSymbol, true);
+        const outputInDisplay = fromBaseUnit(quoteData.expected_amount_out, app?.outboundAssetContext, true);
         console.log('💱 [Swap] Converted output:', {
           baseUnits: quoteData.expected_amount_out,
           displayUnits: outputInDisplay,
@@ -769,8 +769,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     console.log('🟡 MAX BUTTON CLICKED - BEFORE STATE CHANGE');
     const maxBalance = getUserBalance(app?.assetContext?.caip);
     if (maxBalance && parseFloat(maxBalance) > 0) {
-      // Get proper decimal precision for this asset
-      const decimals = getAssetDecimals(app?.assetContext?.symbol || 'BTC');
+      // Get proper decimal precision for this asset from SDK assetContext
+      const decimals = getAssetDecimals(app?.assetContext);
 
       // Leave a small amount for gas fees if it's a native token
       const isNativeToken = app?.assetContext?.symbol &&
@@ -1141,8 +1141,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             throw new Error(`Failed to extract token or user address. CAIP: ${inputCaip}, tokenAddress: ${tokenAddress}, userAddress: ${userAddress}`);
           }
 
-          // Convert input amount to base units for approval check
-          const inputAmountBase = toBaseUnit(inputAmount, app.assetContext.symbol || 'USDT');
+          // Convert input amount to base units for approval check using SDK assetContext
+          const inputAmountBase = toBaseUnit(inputAmount, app.assetContext);
 
           // Check current allowance
           const { hasApproval, currentAllowance, requiredAmount } = await checkERC20Allowance(

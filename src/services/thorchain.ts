@@ -288,51 +288,43 @@ export async function getExchangeRate(fromAsset: string, toAsset: string): Promi
   }
 }
 
-// Asset decimals mapping
-const ASSET_DECIMALS: Record<string, number> = {
-  // Native assets
-  'BTC': 8,
-  'ETH': 18,
-  'BCH': 8,
-  'LTC': 8,
-  'DOGE': 8,
-  'RUNE': 8,
-  'ATOM': 6,
-  'AVAX': 18,
-  'BNB': 8,
-  'CACAO': 10,
-  'OSMO': 6,
-  // ERC20 tokens
-  'USDT': 6,
-  'USDC': 6,
-  'DAI': 18,
-  'WBTC': 8,
-  'LINK': 18,
-  'UNI': 18,
-  'AAVE': 18,
-  'SUSHI': 18,
-  'SNX': 18,
-  'SOL': 9,
-  'BUSD': 18,
-  'WETH': 18,
-};
-
 /**
- * Get the decimal precision for an asset symbol
+ * Get the decimal precision for an asset from Pioneer SDK assetContext
+ *
+ * CRITICAL: This function REQUIRES assetContext from Pioneer SDK.
+ * We do NOT use hardcoded decimals or fallbacks - always trust the SDK.
+ *
+ * @param assetContext - Asset context from Pioneer SDK (REQUIRED)
+ * @returns Decimal precision for the asset
+ * @throws Error if assetContext is missing or lacks decimals/precision
  */
-export function getAssetDecimals(symbol: string): number {
-  return ASSET_DECIMALS[symbol] || 8;
+export function getAssetDecimals(assetContext: any): number {
+  // CRITICAL: Always use SDK assetContext data, NEVER hardcoded fallbacks
+  if (!assetContext) {
+    console.error('❌ CRITICAL: getAssetDecimals called without assetContext!');
+    throw new Error('getAssetDecimals requires assetContext from Pioneer SDK');
+  }
+
+  // Try precision first, then decimals
+  const decimals = assetContext.precision ?? assetContext.decimals;
+
+  if (decimals === undefined || decimals === null) {
+    console.error('❌ CRITICAL: assetContext missing decimals/precision:', assetContext);
+    throw new Error(`Asset ${assetContext.symbol || 'unknown'} has no decimals/precision in assetContext`);
+  }
+
+  return decimals;
 }
 
 // Convert amount to base units based on asset
 // IMPORTANT: THORChain uses 8 decimals for ALL assets, regardless of native decimals
-export function toBaseUnit(amount: string, symbol: string): number {
+export function toBaseUnit(amount: string, assetContext: any): number {
   const value = parseFloat(amount);
   const decimal = 8; // THORChain always uses 8 decimals internally
   const result = Math.floor(value * Math.pow(10, decimal));
 
   console.log('🔢 [THORChain] Converting to base units:', {
-    symbol,
+    symbol: assetContext?.symbol || 'unknown',
     inputAmount: amount,
     value,
     decimals: decimal,
@@ -346,15 +338,15 @@ export function toBaseUnit(amount: string, symbol: string): number {
 
 // Convert from base units to display units
 // IMPORTANT: THORChain uses 8 decimals for ALL assets internally
-export function fromBaseUnit(amount: string, symbol: string, isThorchainResponse: boolean = false): string {
+export function fromBaseUnit(amount: string, assetContext: any, isThorchainResponse: boolean = false): string {
   const value = parseFloat(amount);
 
   // THORChain always uses 8 decimals internally, regardless of the asset
-  const decimal = isThorchainResponse ? 8 : getAssetDecimals(symbol);
+  const decimal = isThorchainResponse ? 8 : getAssetDecimals(assetContext);
   const result = value / Math.pow(10, decimal);
-  
+
   console.log('💱 [THORChain] Converting from base units:', {
-    symbol,
+    symbol: assetContext?.symbol || 'unknown',
     baseAmount: amount,
     value,
     decimals: decimal,
@@ -362,7 +354,7 @@ export function fromBaseUnit(amount: string, symbol: string, isThorchainResponse
     result,
     resultFormatted: result.toFixed(18)
   });
-  
+
   // Format based on size - handle very small numbers better
   if (result === 0) return '0';
   if (result < 0.000001) return result.toExponential(2); // Use scientific notation for very small numbers
