@@ -31,11 +31,11 @@ importers:
         specifier: ^9.11.10
         version: 9.11.10(@types/node@20.19.23)
       '@pioneer-platform/pioneer-discovery':
-        specifier: ^8.15.34
-        version: 8.15.34
+        specifier: ^8.15.40
+        version: 8.15.40
       '@pioneer-platform/pioneer-sdk':
-        specifier: ^8.15.34
-        version: 8.15.34(@types/node@20.19.23)
+        specifier: ^8.15.40
+        version: 8.15.40(@types/node@20.19.23)
       '@pioneer-platform/pioneer-types':
         specifier: ^8.11.8
         version: 8.11.8
@@ -899,8 +899,8 @@ packages:
   '@pioneer-platform/pioneer-caip@9.10.10':
     resolution: {integrity: sha512-5TBehA9boBs7ptWuzFQUPCpcPrBa0zcLOtCcaFZAhNc4s/D7+VzLBB/CFWl4+um4IxLhKLMoPf3uKEbXwDzo2g==}
 
-  '@pioneer-platform/pioneer-caip@9.10.11':
-    resolution: {integrity: sha512-lrJKmFgK4MHuwmUrpSqJa6Xp2Vm8aOzwOLYdb1FVLjrhOoO0W2HxErz3RudKnJhMwI8Sabx1dLEAi8AJ4gb4AA==}
+  '@pioneer-platform/pioneer-caip@9.10.17':
+    resolution: {integrity: sha512-6Wl6bGrQaD3KnwUrAYfJFDQBfSxnYE7f7iv84OFHp8BO6ETUOWqkyeUTqdCXd16jWyUZkOOEfdS2Ug0teavdfQ==}
 
   '@pioneer-platform/pioneer-client@9.10.12':
     resolution: {integrity: sha512-3shJQ4MFolUgekb80sYs6EDcnIh3jR+QdUSQqzZ3il3If52M0A18fHwEF1sXgvcaj9L/Bt0ToT64S+S0dC1PtQ==}
@@ -908,23 +908,23 @@ packages:
   '@pioneer-platform/pioneer-coins@9.11.10':
     resolution: {integrity: sha512-WpFH88O3d2BqgzgiIcMKh3sirC31sNRDnHVGQvyq5DOv79MgYYw02HYOocTOTUj4hCOpU74NlpvLsxXZkdFkPQ==}
 
-  '@pioneer-platform/pioneer-coins@9.11.11':
-    resolution: {integrity: sha512-ZSt5LCihGj3KY4O10WRwdRFjffa+GBVnma4E3Z5atUWrWkf4oiKfi3nvEk4WUsqq+J/LlOqdw5jew9zXcjID8Q==}
+  '@pioneer-platform/pioneer-coins@9.11.17':
+    resolution: {integrity: sha512-yDI3SxnpNu2XCDmMAEjGEIAbFjI2lHR436dEq5lte1M5yqFItxsOXnTl6WtxJYYVtfkhA+pJXmIndGbxu9JC0g==}
 
-  '@pioneer-platform/pioneer-discovery@8.15.34':
-    resolution: {integrity: sha512-OlGCuhBoY1WHlN+mUA6HClGwlXntpAwtJvKQxiDEqSg+aJ8Smw6QjsKE31BN3Nur2/mJil5EV2+/HmTg9ra4ng==}
+  '@pioneer-platform/pioneer-discovery@8.15.40':
+    resolution: {integrity: sha512-V74YoJ3TH4CNJ2Ds5lkiEhgLf2TvnWKKpO3AsKWOSoS/0RtgFhMWGFgfdmmdNNu8bmvuWJiero3Pl9K9VGzrKg==}
 
-  '@pioneer-platform/pioneer-events@8.12.6':
-    resolution: {integrity: sha512-o2RXMh4hrgwzzbidRpSDLAFtNygqLGWme9kH8OqxZdm/BhMU9SBU73eWYOn++MDqLdemr6o4B1RPdvJByQUHAg==}
+  '@pioneer-platform/pioneer-events@8.12.12':
+    resolution: {integrity: sha512-H0YTILp1do5hKdWpfQ/Au9oFVXHh4JuDy2EauIyRfZvN3Vnp4Z3SeU1JTGtQ7KOXk47yD10D/8WWXVz98TuDmA==}
 
-  '@pioneer-platform/pioneer-sdk@8.15.34':
-    resolution: {integrity: sha512-aySf9u2mFYb12vTgXtVBGQGxAlAEuIjywgSJKPY4ofpkv45FZoqLEu21OrlslOmjnogpKJydIbKSXdDYyYSZig==}
+  '@pioneer-platform/pioneer-sdk@8.15.40':
+    resolution: {integrity: sha512-iAUssnFbTyuz0Nozy4AX1XbCWkHqDfraJp1n7bYtTC0YvfxJeEeBcHu74sr/llL/Y1WqQiF8CQtvZMAiXMtNxQ==}
+
+  '@pioneer-platform/pioneer-types@8.11.15':
+    resolution: {integrity: sha512-4xf5lZbbwRpR5oTplIErAluqR7uS0k2zYMJSKXWcuuplvQBIN5JkgsZ4JRse5+5Xv2DAkk+6H21q80TK4OutRA==}
 
   '@pioneer-platform/pioneer-types@8.11.8':
     resolution: {integrity: sha512-jvdStxmzgKXGpwe6jbz8PwuuvxZyn9I5RD3QGWQMIcPIMvaKfqXMBbD8bvgjy0DNAKRZWkqYsr3c6R0rIVsFgg==}
-
-  '@pioneer-platform/pioneer-types@8.11.9':
-    resolution: {integrity: sha512-mNYVxGrQOtJ5aSrV5dp+/45tDoYsv2orM+/9KhlP/BkpSQGDrZDY5LAOgvWlD1xUndyIixnbnqur/5wT/PLDpg==}
 
   '@pioneer-platform/thorchain-client@0.8.19':
     resolution: {integrity: sha512-Nu60cM4znkGncQ8cSPPezcGpWYjAUOORMy+7FQDVXjEnuxUK8rCMd0jL+kjFPfOKn5EnNg5rryvvFBBl1/G8dg==}
@@ -5417,7 +5417,7 @@ snapshots:
 
   '@pioneer-platform/pioneer-caip@9.10.10': {}
 
-  '@pioneer-platform/pioneer-caip@9.10.11': {}
+  '@pioneer-platform/pioneer-caip@9.10.17': {}
 
   '@pioneer-platform/pioneer-client@9.10.12':
     dependencies:
@@ -5435,7 +5435,7 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-coins@9.11.11(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-coins@9.11.17(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
       bignumber.js: 9.3.1
@@ -5445,17 +5445,17 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-discovery@8.15.34':
+  '@pioneer-platform/pioneer-discovery@8.15.40':
     dependencies:
-      '@pioneer-platform/pioneer-caip': 9.10.11
+      '@pioneer-platform/pioneer-caip': 9.10.17
       ethers: 5.7.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-events@8.12.6':
+  '@pioneer-platform/pioneer-events@8.12.12':
     dependencies:
-      '@pioneer-platform/pioneer-types': 8.11.9
+      '@pioneer-platform/pioneer-types': 8.11.15
       '@types/node': 18.19.130
       cookie: 1.1.1
       dotenv: 16.6.1
@@ -5469,14 +5469,14 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-sdk@8.15.34(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-sdk@8.15.40(@types/node@20.19.23)':
     dependencies:
       '@keepkey/keepkey-sdk': 0.2.62
-      '@pioneer-platform/pioneer-caip': 9.10.11
+      '@pioneer-platform/pioneer-caip': 9.10.17
       '@pioneer-platform/pioneer-client': 9.10.12
-      '@pioneer-platform/pioneer-coins': 9.11.11(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-discovery': 8.15.34
-      '@pioneer-platform/pioneer-events': 8.12.6
+      '@pioneer-platform/pioneer-coins': 9.11.17(@types/node@20.19.23)
+      '@pioneer-platform/pioneer-discovery': 8.15.40
+      '@pioneer-platform/pioneer-events': 8.12.12
       coinselect: 3.1.13
       eventemitter3: 5.0.1
       neotraverse: 0.6.18
@@ -5490,9 +5490,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-types@8.11.8': {}
+  '@pioneer-platform/pioneer-types@8.11.15': {}
 
-  '@pioneer-platform/pioneer-types@8.11.9': {}
+  '@pioneer-platform/pioneer-types@8.11.8': {}
 
   '@pioneer-platform/thorchain-client@0.8.19(@types/node@20.19.23)':
     dependencies:

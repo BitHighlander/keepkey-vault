@@ -32,7 +32,14 @@ const scale = keyframes`
 
 // Get environment variables with fallbacks
 const PIONEER_URL = process.env.NEXT_PUBLIC_PIONEER_URL || 'https://api.keepkey.info/spec/swagger.json'
-const PIONEER_WSS = process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://api.keepkey.info'
+// Allow user to configure WSS URL via Settings, fallback to env or default
+const getConfiguredWss = () => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('pioneerWss') || process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://api.keepkey.info';
+  }
+  return process.env.NEXT_PUBLIC_PIONEER_WSS || 'wss://api.keepkey.info';
+};
+const PIONEER_WSS = getConfiguredWss()
 
 // Global flag to prevent multiple Pioneer initializations in development
 let PIONEER_INITIALIZED = false;

@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Box,
   Text,
@@ -15,9 +15,11 @@ import {
   DialogTitle,
   DialogBody,
 } from '@/components/ui/dialog'
-import { FaUsb, FaSync, FaArrowLeft } from 'react-icons/fa'
+import { FaUsb, FaSync, FaArrowLeft, FaExternalLinkAlt } from 'react-icons/fa'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import { keyframes } from '@emotion/react'
+import { isMobileApp } from '@/lib/platformDetection'
+import { MobileWatchOnlyWarning } from '@/components/warnings/MobileWatchOnlyWarning'
 
 const pulse = keyframes`
   0% { transform: scale(1); opacity: 1; }
@@ -32,6 +34,30 @@ interface ConnectKeepKeyDialogProps {
 }
 
 export const ConnectKeepKeyDialog: React.FC<ConnectKeepKeyDialogProps> = ({ isOpen, onClose, onBackToDashboard }) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    // Detect mobile mode when dialog opens
+    if (isOpen) {
+      setIsMobile(isMobileApp());
+    }
+  }, [isOpen]);
+
+  // Function to launch KeepKey Desktop using the custom URI scheme
+  const launchKeepKeyDesktop = () => {
+    try {
+      // This uses the custom URI protocol that KeepKey Desktop should register
+      window.location.href = 'keepkey://launch';
+
+      // Try to reconnect after a brief delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to launch KeepKey Desktop:', error);
+    }
+  };
+
   return (
     <DialogRoot
       open={isOpen}
@@ -45,9 +71,10 @@ export const ConnectKeepKeyDialog: React.FC<ConnectKeepKeyDialogProps> = ({ isOp
         bg="#111111"
         border="1px solid #3A4A5C"
         borderRadius="12px"
+        maxW="520px"
       >
-        <DialogHeader pb={2}>
-          <Flex direction="column" gap={3}>
+        <DialogHeader pb={4} pt={6} px={6}>
+          <Flex direction="column" gap={4}>
             {/* Back to Dashboard Button */}
             {onBackToDashboard && (
               <Button
@@ -65,87 +92,121 @@ export const ConnectKeepKeyDialog: React.FC<ConnectKeepKeyDialogProps> = ({ isOp
 
             {/* Dialog Title */}
             <DialogTitle>
-              <Flex align="center" gap={2}>
+              <Flex align="center" gap={3}>
                 <Box color="#00C853">
-                  <FaUsb size={20} />
+                  <FaUsb size={24} />
                 </Box>
-                <Text>Connect Your KeepKey</Text>
+                <Text fontSize="xl">{isMobile ? 'Watch-Only Mode' : 'Connect Your KeepKey'}</Text>
               </Flex>
             </DialogTitle>
           </Flex>
         </DialogHeader>
 
-        <DialogBody>
-          <Stack gap={6}>
-            {/* KeepKey Icon with pulse animation */}
-            <Flex justify="center" py={4}>
-              <Box
-                animation={`${pulse} 2s ease-in-out infinite`}
-                color="#00C853"
-              >
-                <KeepKeyUiGlyph width={80} height={80} />
-              </Box>
-            </Flex>
+        <DialogBody px={6} pb={6}>
+          {isMobile ? (
+            // Mobile App - Watch Only Mode
+            <Stack gap={6}>
+              {/* Mobile Watch-Only Warning */}
+              <MobileWatchOnlyWarning variant="full" compact={false} />
 
-            {/* Instructions */}
-            <Stack gap={3}>
-              <Text fontSize="md" textAlign="center" color="gray.300">
-                To send transactions, you need to connect your KeepKey device
-              </Text>
-
-              <Box
-                bg="#1a1a1a"
-                p={4}
-                borderRadius="8px"
-                border="1px solid #2a2a2a"
-              >
-                <Stack gap={2}>
-                  <Text fontSize="sm" fontWeight="semibold" color="#00C853">
-                    Steps to connect:
-                  </Text>
-                  <Stack gap={1} pl={2}>
-                    <Text fontSize="sm" color="gray.400">
-                      1. Connect your KeepKey via USB
-                    </Text>
-                    <Text fontSize="sm" color="gray.400">
-                      2. Launch KeepKey Desktop
-                    </Text>
-                    <Text fontSize="sm" color="gray.400">
-                      3. Pioneer will re-sync automatically
-                    </Text>
-                  </Stack>
-                </Stack>
-              </Box>
-
-              <Text fontSize="xs" textAlign="center" color="gray.500" mt={2}>
-                The vault will detect your device automatically once connected
-              </Text>
+              {/* Action Button */}
+              <Stack gap={2} pt={2}>
+                {onClose && (
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    onClick={onClose}
+                    w="full"
+                  >
+                    Close
+                  </Button>
+                )}
+              </Stack>
             </Stack>
+          ) : (
+            // Web Browser - Normal Connection Flow
+            <Stack gap={8}>
+              {/* KeepKey Icon with pulse animation */}
+              <Flex justify="center" py={8}>
+                <Box
+                  animation={`${pulse} 2s ease-in-out infinite`}
+                  color="#00C853"
+                >
+                  <KeepKeyUiGlyph width={120} height={120} />
+                </Box>
+              </Flex>
 
-            {/* Action Buttons */}
-            <Stack gap={2} pt={2}>
-              <Button
-                colorScheme="green"
-                size="lg"
-                leftIcon={<FaSync />}
-                onClick={() => window.location.reload()}
-                w="full"
-              >
-                Refresh Page
-              </Button>
+              {/* Instructions */}
+              <Stack gap={5}>
+                <Text fontSize="md" textAlign="center" color="gray.300" px={4}>
+                  To send transactions, you need to connect your KeepKey device
+                </Text>
 
-              {onClose && (
+                <Box
+                  bg="#1a1a1a"
+                  p={6}
+                  borderRadius="12px"
+                  border="1px solid #2a2a2a"
+                >
+                  <Stack gap={4}>
+                    <Text fontSize="md" fontWeight="semibold" color="#00C853">
+                      Steps to connect:
+                    </Text>
+                    <Stack gap={3} pl={3}>
+                      <Text fontSize="sm" color="gray.300">
+                        1. Connect your KeepKey via USB
+                      </Text>
+                      <Text fontSize="sm" color="gray.300">
+                        2. Launch KeepKey Desktop
+                      </Text>
+                      <Text fontSize="sm" color="gray.300">
+                        3. Pioneer will re-sync automatically
+                      </Text>
+                    </Stack>
+                  </Stack>
+                </Box>
+
+                <Text fontSize="sm" textAlign="center" color="gray.500" pt={2}>
+                  The vault will detect your device automatically once connected
+                </Text>
+              </Stack>
+
+              {/* Action Buttons */}
+              <Stack gap={3} pt={4}>
                 <Button
-                  variant="ghost"
+                  colorScheme="green"
                   size="lg"
-                  onClick={onClose}
+                  leftIcon={<FaExternalLinkAlt />}
+                  onClick={launchKeepKeyDesktop}
                   w="full"
                 >
-                  Cancel
+                  Launch KeepKey Desktop
                 </Button>
-              )}
+
+                <Button
+                  variant="outline"
+                  colorScheme="green"
+                  size="lg"
+                  leftIcon={<FaSync />}
+                  onClick={() => window.location.reload()}
+                  w="full"
+                >
+                  Refresh Page
+                </Button>
+
+                {onClose && (
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    onClick={onClose}
+                    w="full"
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </Stack>
             </Stack>
-          </Stack>
+          )}
         </DialogBody>
       </DialogContent>
     </DialogRoot>

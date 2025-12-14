@@ -44,10 +44,12 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList, FaPen } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
+import { SignMessageDialog } from '@/components/receive/SignMessageDialog';
+import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
 import { BalanceDistribution } from '../balance/BalanceDistribution';
 import { aggregateBalances, AggregatedBalance } from '@/types/balance';
 import { ReportDialog } from './ReportDialog';
@@ -112,6 +114,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Track which networks have been scanned to avoid duplicate token discovery
   const [scannedNetworks, setScannedNetworks] = useState<Set<string>>(new Set());
+  // Sign Message state
+  const [selectedSigningPubkey, setSelectedSigningPubkey] = useState<any>(null);
 
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -312,13 +316,16 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
       // Set asset context in Pioneer SDK for Send/Receive/Swap components
       // Remove custom UI-only fields (nativeBalance, nativeSymbol) before passing to SDK
-      if (app?.setAssetContext) {
+      // CRITICAL FIX: Only call setAssetContext if pubkeys are loaded to prevent Pioneer SDK validation error
+      if (app?.setAssetContext && tokenAssetContextData.pubkeys && tokenAssetContextData.pubkeys.length > 0) {
         const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = tokenAssetContextData;
         app.setAssetContext(sdkContext).then(() => {
           console.log('✅ [Asset] Token asset context set in Pioneer SDK');
         }).catch((error: any) => {
           console.error('❌ [Asset] Error setting token asset context:', error);
         });
+      } else if (app?.setAssetContext) {
+        console.warn('⏳ [Asset] Skipping setAssetContext (token) - wallet not paired or no pubkeys loaded yet');
       }
 
       setLoading(false);
@@ -422,13 +429,16 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
     // Set asset context in Pioneer SDK for Send/Receive/Swap components
     // Remove custom UI-only fields before passing to SDK
-    if (app?.setAssetContext) {
+    // CRITICAL FIX: Only call setAssetContext if pubkeys are loaded to prevent Pioneer SDK validation error
+    if (app?.setAssetContext && assetContextData.pubkeys && assetContextData.pubkeys.length > 0) {
       const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContextData;
       app.setAssetContext(sdkContext).then(() => {
         console.log('✅ [Asset] Native asset context set in Pioneer SDK');
       }).catch((error: any) => {
         console.error('❌ [Asset] Error setting native asset context:', error);
       });
+    } else if (app?.setAssetContext) {
+      console.warn('⏳ [Asset] Skipping setAssetContext (native) - wallet not paired or no pubkeys loaded yet');
     }
 
     setLoading(false);
@@ -604,6 +614,84 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  // Handle Bitcoin message signing
+  const handleSignMessage = async (message: string, selectedAddress?: string): Promise<{ address: string; signature: string }> => {
+    if (!app) {
+      throw new Error('App not initialized');
+    }
+
+    if (!assetContext?.pubkeys || assetContext.pubkeys.length === 0) {
+      throw new Error('No addresses available');
+    }
+
+    // Find the pubkey to sign with - either from the parameter or the state
+    const pubkeyToUse = selectedAddress
+      ? assetContext.pubkeys.find((p: any) => p.address === selectedAddress)
+      : selectedSigningPubkey;
+
+    if (!pubkeyToUse) {
+      throw new Error('No address selected for signing');
+    }
+
+    console.log('🔐 [Asset SignMessage] Signing message with pubkey:', pubkeyToUse);
+
+    // Get the KeepKey wallet from the wallets array (same as Receive component)
+    const keepKeyWallet = app.wallets?.find((w: any) => w.wallet?.getVendor?.() === 'KeepKey')?.wallet;
+
+    if (!keepKeyWallet) {
+      throw new Error('KeepKey wallet not found in app.wallets');
+    }
+
+    console.log('✅ [Asset SignMessage] Found KeepKey wallet');
+
+    // Check if wallet supports Bitcoin message signing
+    if (typeof keepKeyWallet.btcSignMessage !== 'function') {
+      throw new Error('Wallet does not support Bitcoin message signing');
+    }
+
+    try {
+      // Convert BIP32 path to addressNList
+      const addressNList = bip32ToAddressNList(pubkeyToUse.path);
+
+      // Determine coin name based on networkId
+      const coinMap: Record<string, string> = {
+        'bip122:000000000019d6689c085ae165831e93': 'Bitcoin',
+        'bip122:000000000000000000651ef99cb9fcbe': 'BitcoinCash',
+        'bip122:12a765e31ffd4059bada1e25190f6e98': 'Litecoin',
+        'bip122:00000000001a91e3dace36e2be3bf030': 'Dogecoin',
+        'bip122:000007d91d1254d60e2dd1ae58038307': 'Dash',
+      };
+
+      const coin = coinMap[assetContext.networkId] || 'Bitcoin';
+
+      // Call btcSignMessage on the hdwallet instance
+      const signMessageParams = {
+        addressNList: addressNList,
+        coin: coin,
+        scriptType: pubkeyToUse.scriptType || 'p2pkh',
+        message: message
+      };
+
+      console.log('🔑 [Asset SignMessage] Calling btcSignMessage with params:', signMessageParams);
+
+      const result = await keepKeyWallet.btcSignMessage(signMessageParams);
+
+      console.log('✅ [Asset SignMessage] Message signed successfully:', result);
+
+      if (!result || !result.address || !result.signature) {
+        throw new Error('Invalid response from device');
+      }
+
+      return {
+        address: result.address,
+        signature: result.signature
+      };
+    } catch (error: any) {
+      console.error('❌ [Asset SignMessage] Failed to sign message:', error);
+      throw new Error(error?.message || 'Failed to sign message');
     }
   };
 
@@ -890,12 +978,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   bg: 'rgba(255, 215, 0, 0.1)',
                 }}
                 onClick={async () => {
-                  console.log('🔄 [Asset] Force refresh clicked from card - calling getBalances(true)');
+                  console.log('🔄 [Asset] Force refresh clicked - using networkId pattern from integration test');
                   setIsRefreshing(true);
                   try {
-                    if (app && typeof app.getBalances === 'function') {
-                      console.log('🔄 [Asset] Calling app.getBalances(true) to force-refresh balances');
-                      await app.getBalances(true); // Force refresh balances with cache bypass
+                    if (app && typeof app.getBalances === 'function' && assetContext?.networkId) {
+                      console.log(`🔄 [Asset] Calling app.getBalances({ networkId: "${assetContext.networkId}", forceRefresh: true })`);
+                      await app.getBalances({ networkId: assetContext.networkId, forceRefresh: true });
                       console.log('✅ [Asset] Balance refresh completed');
 
                       // Verify balance was updated
@@ -904,12 +992,18 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       );
                       console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
                     }
-                    // Also refresh charts for token discovery (non-blocking)
-                    if (assetContext?.networkId && app && typeof app.getCharts === 'function') {
-                      console.log('🔄 [Asset] Also refreshing charts for tokens...');
+                    // Only refresh charts for tokens on non-UTXO networks (EVM/Cosmos)
+                    // Native coins like BTC don't need chart/token discovery
+                    const isUtxoNetwork = assetContext?.networkId?.startsWith('bip122:');
+                    const shouldRefreshCharts = !isUtxoNetwork && assetContext?.isToken !== true && app && typeof app.getCharts === 'function';
+
+                    if (shouldRefreshCharts && assetContext?.networkId) {
+                      console.log('🔄 [Asset] Also refreshing charts for token discovery (EVM/Cosmos only)...');
                       app.getCharts([assetContext.networkId]).catch((err: any) => {
                         console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
                       });
+                    } else if (isUtxoNetwork) {
+                      console.log('⏭️  [Asset] Skipping chart refresh - UTXO networks don\'t have tokens');
                     }
                   } catch (error) {
                     console.error('❌ [Asset] Force refresh failed:', error);
@@ -1646,18 +1740,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                       {isUtxo ? pubkey.pubkey : pubkey.address}
                                     </Text>
                                   </Box>
-                                  <IconButton
+                                  <Button
                                     aria-label="Copy to clipboard"
-                                    icon={copiedItems[`pubkey-${index}-main`] ? <FaCheck /> : <FaCopy />}
-                                    size="xs"
-                                    variant="ghost"
-                                    colorScheme={copiedItems[`pubkey-${index}-main`] ? "green" : "gray"}
+                                    size="sm"
+                                    minW="auto"
+                                    p={2}
+                                    bg={copiedItems[`pubkey-${index}-main`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       copyToClipboard(isUtxo ? pubkey.pubkey : pubkey.address, `pubkey-${index}-main`);
                                     }}
-                                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                  />
+                                    _hover={{
+                                      bg: copiedItems[`pubkey-${index}-main`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                    }}
+                                  >
+                                    {copiedItems[`pubkey-${index}-main`] ? (
+                                      <FaCheck color="white" size={14} />
+                                    ) : (
+                                      <FaCopy color="white" size={14} />
+                                    )}
+                                  </Button>
                                 </Flex>
                               </Box>
 
@@ -1683,18 +1785,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                         {pubkey.address}
                                       </Text>
                                     </Box>
-                                    <IconButton
+                                    <Button
                                       aria-label="Copy address to clipboard"
-                                      icon={copiedItems[`pubkey-${index}-address`] ? <FaCheck /> : <FaCopy />}
-                                      size="xs"
-                                      variant="ghost"
-                                      colorScheme={copiedItems[`pubkey-${index}-address`] ? "green" : "gray"}
+                                      size="sm"
+                                      minW="auto"
+                                      p={2}
+                                      bg={copiedItems[`pubkey-${index}-address`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         copyToClipboard(pubkey.address, `pubkey-${index}-address`);
                                       }}
-                                      _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                    />
+                                      _hover={{
+                                        bg: copiedItems[`pubkey-${index}-address`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                      }}
+                                    >
+                                      {copiedItems[`pubkey-${index}-address`] ? (
+                                        <FaCheck color="white" size={14} />
+                                      ) : (
+                                        <FaCopy color="white" size={14} />
+                                      )}
+                                    </Button>
                                   </Flex>
                                 </Box>
                               )}
@@ -1742,6 +1852,20 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       })}
                     </VStack>
                   </VStack>
+                )}
+
+                {/* Sign Message Section - Only for UTXO chains (Bitcoin, etc.) */}
+                {assetContext.networkId?.startsWith('bip122:') && assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
+                  <Box>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium" mb={2}>
+                      Message Signing
+                    </Text>
+                    <SignMessageDialog
+                      onSignMessage={handleSignMessage}
+                      addresses={assetContext.pubkeys}
+                      showAddressSelector={true}
+                    />
+                  </Box>
                 )}
 
                 {/* Add Path Button */}
@@ -2024,18 +2148,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                     {isUtxo ? pubkey.pubkey : pubkey.address}
                                   </Text>
                                 </Box>
-                                <IconButton
+                                <Button
                                   aria-label="Copy to clipboard"
-                                  icon={copiedItems[`pubkey-mobile-${index}-main`] ? <FaCheck /> : <FaCopy />}
-                                  size="xs"
-                                  variant="ghost"
-                                  colorScheme={copiedItems[`pubkey-mobile-${index}-main`] ? "green" : "gray"}
+                                  size="sm"
+                                  minW="auto"
+                                  p={2}
+                                  bg={copiedItems[`pubkey-mobile-${index}-main`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     copyToClipboard(isUtxo ? pubkey.pubkey : pubkey.address, `pubkey-mobile-${index}-main`);
                                   }}
-                                  _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                />
+                                  _hover={{
+                                    bg: copiedItems[`pubkey-mobile-${index}-main`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                  }}
+                                >
+                                  {copiedItems[`pubkey-mobile-${index}-main`] ? (
+                                    <FaCheck color="white" size={14} />
+                                  ) : (
+                                    <FaCopy color="white" size={14} />
+                                  )}
+                                </Button>
                               </Flex>
                             </Box>
 
@@ -2061,18 +2193,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                       {pubkey.address}
                                     </Text>
                                   </Box>
-                                  <IconButton
+                                  <Button
                                     aria-label="Copy address to clipboard"
-                                    icon={copiedItems[`pubkey-mobile-${index}-address`] ? <FaCheck /> : <FaCopy />}
-                                    size="xs"
-                                    variant="ghost"
-                                    colorScheme={copiedItems[`pubkey-mobile-${index}-address`] ? "green" : "gray"}
+                                    size="sm"
+                                    minW="auto"
+                                    p={2}
+                                    bg={copiedItems[`pubkey-mobile-${index}-address`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       copyToClipboard(pubkey.address, `pubkey-mobile-${index}-address`);
                                     }}
-                                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                  />
+                                    _hover={{
+                                      bg: copiedItems[`pubkey-mobile-${index}-address`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                    }}
+                                  >
+                                    {copiedItems[`pubkey-mobile-${index}-address`] ? (
+                                      <FaCheck color="white" size={14} />
+                                    ) : (
+                                      <FaCopy color="white" size={14} />
+                                    )}
+                                  </Button>
                                 </Flex>
                               </Box>
                             )}
@@ -2120,6 +2260,20 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     })}
                   </VStack>
                 </VStack>
+              )}
+
+              {/* Sign Message Section - Mobile/Collapsed Version - Only for UTXO chains */}
+              {assetContext.networkId?.startsWith('bip122:') && assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
+                <Box>
+                  <Text color="gray.400" fontSize="sm" fontWeight="medium" mb={2}>
+                    Message Signing
+                  </Text>
+                  <SignMessageDialog
+                    onSignMessage={handleSignMessage}
+                    addresses={assetContext.pubkeys}
+                    showAddressSelector={true}
+                  />
+                </Box>
               )}
 
               {/* Add Path Button - Mobile/Collapsed Version */}
