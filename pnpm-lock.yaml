@@ -25,23 +25,23 @@ importers:
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.2.2)(react@19.2.1)
       '@pioneer-platform/pioneer-caip':
-        specifier: ^9.10.10
-        version: 9.10.10
+        specifier: ^9.10.21
+        version: 9.10.21
       '@pioneer-platform/pioneer-coins':
-        specifier: ^9.11.10
-        version: 9.11.10(@types/node@20.19.23)
+        specifier: ^9.11.21
+        version: 9.11.21(@types/node@20.19.23)
       '@pioneer-platform/pioneer-discovery':
-        specifier: ^8.15.40
-        version: 8.15.40
+        specifier: ^8.15.44
+        version: 8.15.44
       '@pioneer-platform/pioneer-sdk':
-        specifier: ^8.15.40
-        version: 8.15.40(@types/node@20.19.23)
+        specifier: ^8.15.44
+        version: 8.15.44(@types/node@20.19.23)
       '@pioneer-platform/pioneer-types':
-        specifier: ^8.11.8
-        version: 8.11.8
+        specifier: ^8.11.16
+        version: 8.11.16
       '@pioneer-platform/thorchain-client':
-        specifier: ^0.8.19
-        version: 0.8.19(@types/node@20.19.23)
+        specifier: ^0.8.29
+        version: 0.8.29(@types/node@20.19.23)
       '@sendgrid/mail':
         specifier: ^8.1.6
         version: 8.1.6
@@ -67,8 +67,8 @@ importers:
         specifier: ^0.541.0
         version: 0.541.0(react@19.2.1)
       next:
-        specifier: 16.0.7
-        version: 16.0.7(@babel/core@7.28.5)(babel-plugin-macros@3.1.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
+        specifier: 16.0.10
+        version: 16.0.10(@babel/core@7.28.5)(babel-plugin-macros@3.1.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -809,56 +809,56 @@ packages:
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
 
-  '@next/env@16.0.7':
-    resolution: {integrity: sha512-gpaNgUh5nftFKRkRQGnVi5dpcYSKGcZZkQffZ172OrG/XkrnS7UBTQ648YY+8ME92cC4IojpI2LqTC8sTDhAaw==}
+  '@next/env@16.0.10':
+    resolution: {integrity: sha512-8tuaQkyDVgeONQ1MeT9Mkk8pQmZapMKFh5B+OrFUlG3rVmYTXcXlBetBgTurKXGaIZvkoqRT9JL5K3phXcgang==}
 
   '@next/eslint-plugin-next@15.1.7':
     resolution: {integrity: sha512-kRP7RjSxfTO13NE317ek3mSGzoZlI33nc/i5hs1KaWpK+egs85xg0DJ4p32QEiHnR0mVjuUfhRIun7awqfL7pQ==}
 
-  '@next/swc-darwin-arm64@16.0.7':
-    resolution: {integrity: sha512-LlDtCYOEj/rfSnEn/Idi+j1QKHxY9BJFmxx7108A6D8K0SB+bNgfYQATPk/4LqOl4C0Wo3LACg2ie6s7xqMpJg==}
+  '@next/swc-darwin-arm64@16.0.10':
+    resolution: {integrity: sha512-4XgdKtdVsaflErz+B5XeG0T5PeXKDdruDf3CRpnhN+8UebNa5N2H58+3GDgpn/9GBurrQ1uWW768FfscwYkJRg==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [darwin]
 
-  '@next/swc-darwin-x64@16.0.7':
-    resolution: {integrity: sha512-rtZ7BhnVvO1ICf3QzfW9H3aPz7GhBrnSIMZyr4Qy6boXF0b5E3QLs+cvJmg3PsTCG2M1PBoC+DANUi4wCOKXpA==}
+  '@next/swc-darwin-x64@16.0.10':
+    resolution: {integrity: sha512-spbEObMvRKkQ3CkYVOME+ocPDFo5UqHb8EMTS78/0mQ+O1nqE8toHJVioZo4TvebATxgA8XMTHHrScPrn68OGw==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [darwin]
 
-  '@next/swc-linux-arm64-gnu@16.0.7':
-    resolution: {integrity: sha512-mloD5WcPIeIeeZqAIP5c2kdaTa6StwP4/2EGy1mUw8HiexSHGK/jcM7lFuS3u3i2zn+xH9+wXJs6njO7VrAqww==}
+  '@next/swc-linux-arm64-gnu@16.0.10':
+    resolution: {integrity: sha512-uQtWE3X0iGB8apTIskOMi2w/MKONrPOUCi5yLO+v3O8Mb5c7K4Q5KD1jvTpTF5gJKa3VH/ijKjKUq9O9UhwOYw==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
 
-  '@next/swc-linux-arm64-musl@16.0.7':
-    resolution: {integrity: sha512-+ksWNrZrthisXuo9gd1XnjHRowCbMtl/YgMpbRvFeDEqEBd523YHPWpBuDjomod88U8Xliw5DHhekBC3EOOd9g==}
+  '@next/swc-linux-arm64-musl@16.0.10':
+    resolution: {integrity: sha512-llA+hiDTrYvyWI21Z0L1GiXwjQaanPVQQwru5peOgtooeJ8qx3tlqRV2P7uH2pKQaUfHxI/WVarvI5oYgGxaTw==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
 
-  '@next/swc-linux-x64-gnu@16.0.7':
-    resolution: {integrity: sha512-4WtJU5cRDxpEE44Ana2Xro1284hnyVpBb62lIpU5k85D8xXxatT+rXxBgPkc7C1XwkZMWpK5rXLXTh9PFipWsA==}
+  '@next/swc-linux-x64-gnu@16.0.10':
+    resolution: {integrity: sha512-AK2q5H0+a9nsXbeZ3FZdMtbtu9jxW4R/NgzZ6+lrTm3d6Zb7jYrWcgjcpM1k8uuqlSy4xIyPR2YiuUr+wXsavA==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
 
-  '@next/swc-linux-x64-musl@16.0.7':
-    resolution: {integrity: sha512-HYlhqIP6kBPXalW2dbMTSuB4+8fe+j9juyxwfMwCe9kQPPeiyFn7NMjNfoFOfJ2eXkeQsoUGXg+O2SE3m4Qg2w==}
+  '@next/swc-linux-x64-musl@16.0.10':
+    resolution: {integrity: sha512-1TDG9PDKivNw5550S111gsO4RGennLVl9cipPhtkXIFVwo31YZ73nEbLjNC8qG3SgTz/QZyYyaFYMeY4BKZR/g==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
 
-  '@next/swc-win32-arm64-msvc@16.0.7':
-    resolution: {integrity: sha512-EviG+43iOoBRZg9deGauXExjRphhuYmIOJ12b9sAPy0eQ6iwcPxfED2asb/s2/yiLYOdm37kPaiZu8uXSYPs0Q==}
+  '@next/swc-win32-arm64-msvc@16.0.10':
+    resolution: {integrity: sha512-aEZIS4Hh32xdJQbHz121pyuVZniSNoqDVx1yIr2hy+ZwJGipeqnMZBJHyMxv2tiuAXGx6/xpTcQJ6btIiBjgmg==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [win32]
 
-  '@next/swc-win32-x64-msvc@16.0.7':
-    resolution: {integrity: sha512-gniPjy55zp5Eg0896qSrf3yB1dw4F/3s8VK1ephdsZZ129j2n6e1WqCbE2YgcKhW9hPB9TVZENugquWJD5x0ug==}
+  '@next/swc-win32-x64-msvc@16.0.10':
+    resolution: {integrity: sha512-E+njfCoFLb01RAFEnGZn6ERoOqhK1Gl3Lfz1Kjnj0Ulfu7oJbuMyvBKNj/bw8XZnenHDASlygTjZICQW+rYW1Q==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
@@ -896,38 +896,29 @@ packages:
   '@pioneer-platform/loggerdog@8.11.0':
     resolution: {integrity: sha512-tX0g/Vmy5bbYqxz1vV1V+l6/jCR2xXWz3iA3JjxUdtErN7CwltJDssrPE4l7eDPEVnMWOPwjmic6jJZQ/7Xxtg==}
 
-  '@pioneer-platform/pioneer-caip@9.10.10':
-    resolution: {integrity: sha512-5TBehA9boBs7ptWuzFQUPCpcPrBa0zcLOtCcaFZAhNc4s/D7+VzLBB/CFWl4+um4IxLhKLMoPf3uKEbXwDzo2g==}
-
-  '@pioneer-platform/pioneer-caip@9.10.17':
-    resolution: {integrity: sha512-6Wl6bGrQaD3KnwUrAYfJFDQBfSxnYE7f7iv84OFHp8BO6ETUOWqkyeUTqdCXd16jWyUZkOOEfdS2Ug0teavdfQ==}
+  '@pioneer-platform/pioneer-caip@9.10.21':
+    resolution: {integrity: sha512-guTZ+f5xujV3W3Rsgtci3JRkosmkXxM/2QGfRgKzqP5byEbt4W1smRA8sJFzYJEqnGUoZllo1pRZ2zKCSnxu6w==}
 
   '@pioneer-platform/pioneer-client@9.10.12':
     resolution: {integrity: sha512-3shJQ4MFolUgekb80sYs6EDcnIh3jR+QdUSQqzZ3il3If52M0A18fHwEF1sXgvcaj9L/Bt0ToT64S+S0dC1PtQ==}
 
-  '@pioneer-platform/pioneer-coins@9.11.10':
-    resolution: {integrity: sha512-WpFH88O3d2BqgzgiIcMKh3sirC31sNRDnHVGQvyq5DOv79MgYYw02HYOocTOTUj4hCOpU74NlpvLsxXZkdFkPQ==}
+  '@pioneer-platform/pioneer-coins@9.11.21':
+    resolution: {integrity: sha512-m4GDx80Rt6guzIgblz96yj8w7ZRGoJRA9Kbailmw9ldTi9Vn83jVaeBHCxmB9lrO+D7Sv80tU6d9/+ulHDAsvw==}
 
-  '@pioneer-platform/pioneer-coins@9.11.17':
-    resolution: {integrity: sha512-yDI3SxnpNu2XCDmMAEjGEIAbFjI2lHR436dEq5lte1M5yqFItxsOXnTl6WtxJYYVtfkhA+pJXmIndGbxu9JC0g==}
+  '@pioneer-platform/pioneer-discovery@8.15.44':
+    resolution: {integrity: sha512-wsCDouRJucwuxS26nNmDNus2NOcq+hGoSlFuYpKhJ6feK4HX9awlln9urOigCYHdZvmpRcpEoA01emQGSjElcg==}
 
-  '@pioneer-platform/pioneer-discovery@8.15.40':
-    resolution: {integrity: sha512-V74YoJ3TH4CNJ2Ds5lkiEhgLf2TvnWKKpO3AsKWOSoS/0RtgFhMWGFgfdmmdNNu8bmvuWJiero3Pl9K9VGzrKg==}
+  '@pioneer-platform/pioneer-events@8.12.13':
+    resolution: {integrity: sha512-1995D6MZrYtgqP2tTlB4daOhro3MjpzZT6pCfYeEdF6zbl3eAAUqf1rtmwTIPzzM/AJqRBA2qIiJiBivsZyFYg==}
 
-  '@pioneer-platform/pioneer-events@8.12.12':
-    resolution: {integrity: sha512-H0YTILp1do5hKdWpfQ/Au9oFVXHh4JuDy2EauIyRfZvN3Vnp4Z3SeU1JTGtQ7KOXk47yD10D/8WWXVz98TuDmA==}
+  '@pioneer-platform/pioneer-sdk@8.15.44':
+    resolution: {integrity: sha512-JZbvi9ORRkWfEtO4kBCRmvORlrzEGs0qgYFZv4UqOg72cm5EWXCdKts3Lty0c6H5klSycbY4tuVHl1dXVxHDKw==}
 
-  '@pioneer-platform/pioneer-sdk@8.15.40':
-    resolution: {integrity: sha512-iAUssnFbTyuz0Nozy4AX1XbCWkHqDfraJp1n7bYtTC0YvfxJeEeBcHu74sr/llL/Y1WqQiF8CQtvZMAiXMtNxQ==}
+  '@pioneer-platform/pioneer-types@8.11.16':
+    resolution: {integrity: sha512-5yCzjSzctfAg4UUxsV8wNKPTScAT4BP5Si4oar+kHovZWZEjhVHOyJj2svw0GogSD5u2Jn8JKNXxXAYNHh5pew==}
 
-  '@pioneer-platform/pioneer-types@8.11.15':
-    resolution: {integrity: sha512-4xf5lZbbwRpR5oTplIErAluqR7uS0k2zYMJSKXWcuuplvQBIN5JkgsZ4JRse5+5Xv2DAkk+6H21q80TK4OutRA==}
-
-  '@pioneer-platform/pioneer-types@8.11.8':
-    resolution: {integrity: sha512-jvdStxmzgKXGpwe6jbz8PwuuvxZyn9I5RD3QGWQMIcPIMvaKfqXMBbD8bvgjy0DNAKRZWkqYsr3c6R0rIVsFgg==}
-
-  '@pioneer-platform/thorchain-client@0.8.19':
-    resolution: {integrity: sha512-Nu60cM4znkGncQ8cSPPezcGpWYjAUOORMy+7FQDVXjEnuxUK8rCMd0jL+kjFPfOKn5EnNg5rryvvFBBl1/G8dg==}
+  '@pioneer-platform/thorchain-client@0.8.29':
+    resolution: {integrity: sha512-f3d3I0urdwmAa5t418hhBLGpBlWxVYE2iSTmA+z7X5vZKik6ecPOnVzUi+kctI8cS+69+PYnSbfSkUvSZs0Jcg==}
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
@@ -3324,8 +3315,8 @@ packages:
       react: ^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc
       react-dom: ^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc
 
-  next@16.0.7:
-    resolution: {integrity: sha512-3mBRJyPxT4LOxAJI6IsXeFtKfiJUbjCLgvXO02fV8Wy/lIhPvP94Fe7dGhUgHXcQy4sSuYwQNcOLhIfOm0rL0A==}
+  next@16.0.10:
+    resolution: {integrity: sha512-RtWh5PUgI+vxlV3HdR+IfWA1UUHu0+Ram/JBO4vWB54cVPentCD0e+lxyAYEsDTqGGMg7qpjhKh6dc6aW7W/sA==}
     engines: {node: '>=20.9.0'}
     hasBin: true
     peerDependencies:
@@ -5351,34 +5342,34 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
-  '@next/env@16.0.7': {}
+  '@next/env@16.0.10': {}
 
   '@next/eslint-plugin-next@15.1.7':
     dependencies:
       fast-glob: 3.3.1
 
-  '@next/swc-darwin-arm64@16.0.7':
+  '@next/swc-darwin-arm64@16.0.10':
     optional: true
 
-  '@next/swc-darwin-x64@16.0.7':
+  '@next/swc-darwin-x64@16.0.10':
     optional: true
 
-  '@next/swc-linux-arm64-gnu@16.0.7':
+  '@next/swc-linux-arm64-gnu@16.0.10':
     optional: true
 
-  '@next/swc-linux-arm64-musl@16.0.7':
+  '@next/swc-linux-arm64-musl@16.0.10':
     optional: true
 
-  '@next/swc-linux-x64-gnu@16.0.7':
+  '@next/swc-linux-x64-gnu@16.0.10':
     optional: true
 
-  '@next/swc-linux-x64-musl@16.0.7':
+  '@next/swc-linux-x64-musl@16.0.10':
     optional: true
 
-  '@next/swc-win32-arm64-msvc@16.0.7':
+  '@next/swc-win32-arm64-msvc@16.0.10':
     optional: true
 
-  '@next/swc-win32-x64-msvc@16.0.7':
+  '@next/swc-win32-x64-msvc@16.0.10':
     optional: true
 
   '@noble/curves@1.2.0':
@@ -5415,9 +5406,7 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-caip@9.10.10': {}
-
-  '@pioneer-platform/pioneer-caip@9.10.17': {}
+  '@pioneer-platform/pioneer-caip@9.10.21': {}
 
   '@pioneer-platform/pioneer-client@9.10.12':
     dependencies:
@@ -5425,7 +5414,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  '@pioneer-platform/pioneer-coins@9.11.10(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-coins@9.11.21(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
       bignumber.js: 9.3.1
@@ -5435,27 +5424,17 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-coins@9.11.17(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-discovery@8.15.44':
     dependencies:
-      '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
-      bignumber.js: 9.3.1
-      bs58check: 3.0.1
-    transitivePeerDependencies:
-      - '@swc/core'
-      - '@swc/wasm'
-      - '@types/node'
-
-  '@pioneer-platform/pioneer-discovery@8.15.40':
-    dependencies:
-      '@pioneer-platform/pioneer-caip': 9.10.17
+      '@pioneer-platform/pioneer-caip': 9.10.21
       ethers: 5.7.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-events@8.12.12':
+  '@pioneer-platform/pioneer-events@8.12.13':
     dependencies:
-      '@pioneer-platform/pioneer-types': 8.11.15
+      '@pioneer-platform/pioneer-types': 8.11.16
       '@types/node': 18.19.130
       cookie: 1.1.1
       dotenv: 16.6.1
@@ -5469,14 +5448,14 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-sdk@8.15.40(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-sdk@8.15.44(@types/node@20.19.23)':
     dependencies:
       '@keepkey/keepkey-sdk': 0.2.62
-      '@pioneer-platform/pioneer-caip': 9.10.17
+      '@pioneer-platform/pioneer-caip': 9.10.21
       '@pioneer-platform/pioneer-client': 9.10.12
-      '@pioneer-platform/pioneer-coins': 9.11.17(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-discovery': 8.15.40
-      '@pioneer-platform/pioneer-events': 8.12.12
+      '@pioneer-platform/pioneer-coins': 9.11.21(@types/node@20.19.23)
+      '@pioneer-platform/pioneer-discovery': 8.15.44
+      '@pioneer-platform/pioneer-events': 8.12.13
       coinselect: 3.1.13
       eventemitter3: 5.0.1
       neotraverse: 0.6.18
@@ -5490,15 +5469,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-types@8.11.15': {}
+  '@pioneer-platform/pioneer-types@8.11.16': {}
 
-  '@pioneer-platform/pioneer-types@8.11.8': {}
-
-  '@pioneer-platform/thorchain-client@0.8.19(@types/node@20.19.23)':
+  '@pioneer-platform/thorchain-client@0.8.29(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-caip': 9.10.10
-      '@pioneer-platform/pioneer-coins': 9.11.10(@types/node@20.19.23)
+      '@pioneer-platform/pioneer-caip': 9.10.21
+      '@pioneer-platform/pioneer-coins': 9.11.21(@types/node@20.19.23)
       axios: 1.13.2
       dotenv: 17.2.3
       rango-sdk: 0.1.71
@@ -8968,9 +8945,9 @@ snapshots:
       react: 19.2.1
       react-dom: 19.2.1(react@19.2.1)
 
-  next@16.0.7(@babel/core@7.28.5)(babel-plugin-macros@3.1.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1):
+  next@16.0.10(@babel/core@7.28.5)(babel-plugin-macros@3.1.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1):
     dependencies:
-      '@next/env': 16.0.7
+      '@next/env': 16.0.10
       '@swc/helpers': 0.5.15
       caniuse-lite: 1.0.30001759
       postcss: 8.4.31
@@ -8978,14 +8955,14 @@ snapshots:
       react-dom: 19.2.1(react@19.2.1)
       styled-jsx: 5.1.6(@babel/core@7.28.5)(babel-plugin-macros@3.1.0)(react@19.2.1)
     optionalDependencies:
-      '@next/swc-darwin-arm64': 16.0.7
-      '@next/swc-darwin-x64': 16.0.7
-      '@next/swc-linux-arm64-gnu': 16.0.7
-      '@next/swc-linux-arm64-musl': 16.0.7
-      '@next/swc-linux-x64-gnu': 16.0.7
-      '@next/swc-linux-x64-musl': 16.0.7
-      '@next/swc-win32-arm64-msvc': 16.0.7
-      '@next/swc-win32-x64-msvc': 16.0.7
+      '@next/swc-darwin-arm64': 16.0.10
+      '@next/swc-darwin-x64': 16.0.10
+      '@next/swc-linux-arm64-gnu': 16.0.10
+      '@next/swc-linux-arm64-musl': 16.0.10
+      '@next/swc-linux-x64-gnu': 16.0.10
+      '@next/swc-linux-x64-musl': 16.0.10
+      '@next/swc-win32-arm64-msvc': 16.0.10
+      '@next/swc-win32-x64-msvc': 16.0.10
       sharp: 0.34.5
     transitivePeerDependencies:
       - '@babel/core'

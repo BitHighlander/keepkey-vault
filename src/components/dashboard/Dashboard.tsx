@@ -19,7 +19,6 @@ import {
   useDisclosure,
   Spinner,
   IconButton,
-  useToast,
   Badge,
 } from '@chakra-ui/react';
 import { FaSyncAlt } from 'react-icons/fa';

@@ -19,6 +19,7 @@ import {
 import { keyframes } from '@emotion/react';
 import { motion } from 'framer-motion';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
+import { toaster } from '@/components/ui/toaster';
 
 // Animated KeepKey logo pulse effect
 const pulseAnimation = keyframes`
@@ -123,6 +124,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   const { app } = state;
 
   const router = useRouter();
+  // Using toaster from Chakra UI v3
 
   // Calculate the price (moved up for use in useMemo)
   const priceUsd = assetContext?.priceUsd || 0;
@@ -980,6 +982,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                 onClick={async () => {
                   console.log('🔄 [Asset] Force refresh clicked - using networkId pattern from integration test');
                   setIsRefreshing(true);
+
+                  const startBalance = app?.balances?.find((b: any) =>
+                    b.networkId === assetContext.networkId && b.isNative
+                  )?.balance || '0';
+
                   try {
                     if (app && typeof app.getBalances === 'function' && assetContext?.networkId) {
                       console.log(`🔄 [Asset] Calling app.getBalances({ networkId: "${assetContext.networkId}", forceRefresh: true })`);
@@ -990,7 +997,32 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       const assetBalance = app.balances?.find((b: any) =>
                         b.networkId === assetContext.networkId && b.isNative
                       );
-                      console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
+                      const newBalance = assetBalance?.balance || '0';
+                      console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, newBalance);
+
+                      // Show success notification with balance info
+                      if (newBalance !== startBalance) {
+                        toaster.create({
+                          title: 'Balance Synced',
+                          description: `Updated ${assetContext.ticker || 'asset'} balance: ${newBalance}`,
+                          type: 'success',
+                          duration: 3000,
+                        });
+                      } else if (parseFloat(newBalance) === 0) {
+                        toaster.create({
+                          title: 'Balance Synced',
+                          description: `No ${assetContext.ticker || 'asset'} balance found on-chain`,
+                          type: 'info',
+                          duration: 3000,
+                        });
+                      } else {
+                        toaster.create({
+                          title: 'Balance Synced',
+                          description: 'Balance is up to date',
+                          type: 'success',
+                          duration: 2000,
+                        });
+                      }
                     }
                     // Only refresh charts for tokens on non-UTXO networks (EVM/Cosmos)
                     // Native coins like BTC don't need chart/token discovery
@@ -1005,8 +1037,14 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     } else if (isUtxoNetwork) {
                       console.log('⏭️  [Asset] Skipping chart refresh - UTXO networks don\'t have tokens');
                     }
-                  } catch (error) {
+                  } catch (error: any) {
                     console.error('❌ [Asset] Force refresh failed:', error);
+                    toaster.create({
+                      title: 'Sync Failed',
+                      description: error?.message || 'Failed to refresh balance. Please check your connection and try again.',
+                      type: 'error',
+                      duration: 5000,
+                    });
                   } finally {
                     setIsRefreshing(false);
                   }
