@@ -58,14 +58,18 @@ export const VAULT_CAPABILITIES = {
       reason: 'Taproot signing not yet implemented in firmware'
     },
 
-    // Unsupported chains
+    // Recently added chain support
     solana: {
-      supported: false,
-      reason: 'Solana is not implemented in KeepKey firmware'
+      supported: true,
+      reason: 'Solana support available in pioneer-sdk v8.17.0+'
     },
     tron: {
-      supported: false,
-      reason: 'Tron is not implemented in KeepKey firmware'
+      supported: true,
+      reason: 'TRON support available in pioneer-sdk v8.17.0+'
+    },
+    ton: {
+      supported: true,
+      reason: 'TON support available via keepkey-server REST API'
     },
     cardano: {
       supported: false,
