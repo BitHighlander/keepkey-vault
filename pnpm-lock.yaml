@@ -34,8 +34,8 @@ importers:
         specifier: ^8.24.0
         version: 8.24.0
       '@pioneer-platform/pioneer-sdk':
-        specifier: ^8.24.1
-        version: 8.24.1(@types/node@20.19.23)
+        specifier: ^8.31.3
+        version: 8.31.3(@types/node@20.19.23)
       '@pioneer-platform/pioneer-types':
         specifier: ^8.19.0
         version: 8.19.0
@@ -908,8 +908,8 @@ packages:
   '@pioneer-platform/pioneer-events@8.20.1':
     resolution: {integrity: sha512-NMmj0c2UqQYDOeRwaJld0fukP2rpM9HVZBmn7Kek/1DqjKp3XTdJln6iS4aRfXf2QQzO+hIwho0W+jrrRn2Zgw==}
 
-  '@pioneer-platform/pioneer-sdk@8.24.1':
-    resolution: {integrity: sha512-QHqvs+hGxn2rkiZbPyrOVDOOfc7S2mmmP0h7E1G4Sl9eJuRMIQxGaO9SzRnimFe3DDJkbTZGMrkDGj3JmwIAMQ==}
+  '@pioneer-platform/pioneer-sdk@8.31.3':
+    resolution: {integrity: sha512-hjunvAeQfrft4RSTi9gqzrg6drkS0qOURbv3iYI+VKq5ROSChUfiI4CPfFDG7KtnHwVaU6TjGDyXDa7ppyk8BA==}
 
   '@pioneer-platform/pioneer-types@8.19.0':
     resolution: {integrity: sha512-12JYw0fDo2FkFyH3Qvl94qjlAoqGQFlYEUqo1QRa0uueaIsaFnUGSb4p5T3jqz93OLiAw+VdooG+Stgm7z16TA==}
@@ -5464,7 +5464,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-sdk@8.24.1(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-sdk@8.31.3(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/pioneer-caip': 9.19.0
       '@pioneer-platform/pioneer-client': 9.13.0
