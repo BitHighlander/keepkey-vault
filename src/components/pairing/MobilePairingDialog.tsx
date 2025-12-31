@@ -248,7 +248,7 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
       setExpiresAt(data.expiresAt);
 
       // Generate tiny QR code
-      const vaultUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const vaultUrl = 'https://vault.keepkey.com'; // Hardcoded production URL
 
       const qrPayload = {
         code: data.code,

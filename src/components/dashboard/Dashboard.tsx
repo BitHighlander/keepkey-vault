@@ -32,7 +32,7 @@ import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { ChatPopup } from '@/components/chat/ChatPopup';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
-import { isFeatureEnabled } from '@/config/features';
+import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -530,12 +530,24 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     console.log(`🔄 [Dashboard] User clicked to ${forceRefresh ? 'FORCE' : ''} refresh portfolio`);
     setIsRefreshing(true);
     try {
-      if (app && typeof app.refresh === 'function') {
-        console.log(`🔄 [Dashboard] Calling app.refresh(${forceRefresh})`);
-        await app.refresh(forceRefresh);
-      } else if (app && typeof app.sync === 'function') {
-        console.log('🔄 [Dashboard] Calling app.sync()');
-        await app.sync();
+      const v2Enabled = isPioneerV2Enabled();
+
+      // Only call v2 APIs if they're enabled
+      if (v2Enabled) {
+        if (app && typeof app.refresh === 'function') {
+          console.log(`🔄 [Dashboard] Calling app.refresh(${forceRefresh})`);
+          await app.refresh(forceRefresh);
+        } else if (app && typeof app.sync === 'function') {
+          console.log('🔄 [Dashboard] Calling app.sync()');
+          await app.sync();
+        }
+      } else {
+        console.log('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
+        // For v1, we can call getBalances directly
+        if (app && typeof app.getBalances === 'function') {
+          console.log('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
+          await app.getBalances();
+        }
       }
 
       // Also get charts/tokens (with error handling for staking position bug)
@@ -549,8 +561,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         }
       }
 
-      // Fetch dashboard data after refresh
-      await fetchDashboard();
+      // Fetch dashboard data after refresh (only if v2 enabled)
+      if (v2Enabled) {
+        await fetchDashboard();
+      }
 
       console.log('✅ [Dashboard] Portfolio refresh completed');
     } catch (error) {
@@ -1531,24 +1545,36 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             console.log('🔍 [Dashboard] User clicked refresh tokens');
                             setIsRefreshing(true);
                             try {
-                              if (app && typeof app.refresh === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.refresh()');
-                                await app.refresh();
-                              } else if (app && typeof app.sync === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.sync()');
-                                await app.sync();
+                              const v2Enabled = isPioneerV2Enabled();
+
+                              // Only call v2 APIs if they're enabled
+                              if (v2Enabled) {
+                                if (app && typeof app.refresh === 'function') {
+                                  console.log('🔄 [Dashboard] Calling app.refresh()');
+                                  await app.refresh();
+                                } else if (app && typeof app.sync === 'function') {
+                                  console.log('🔄 [Dashboard] Calling app.sync()');
+                                  await app.sync();
+                                }
+                              } else {
+                                console.log('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
+                                // For v1, we can call getBalances directly
+                                if (app && typeof app.getBalances === 'function') {
+                                  console.log('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
+                                  await app.getBalances();
+                                }
                               }
-                              
+
                               // Also get charts/tokens (with error handling for staking position bug)
                               if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
                                 console.log('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
-                                  
+
                                   // Verify tokens were loaded
                                   const tokens = app.balances?.filter((b: any) => b.token === true) || [];
                                   console.log('✅ [Dashboard] getCharts returned', tokens.length, 'tokens');
-                                  
+
                                   if (tokens.length === 0) {
                                     console.warn('⚠️ [Dashboard] getCharts completed but returned 0 tokens');
                                   }
@@ -1566,9 +1592,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               } else if (app && typeof app.getCharts === 'function') {
                                 console.log('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');
                               }
-                              
-                              // Fetch dashboard data after refresh
-                              await fetchDashboard();
+
+                              // Fetch dashboard data after refresh (only if v2 enabled)
+                              if (v2Enabled) {
+                                await fetchDashboard();
+                              }
                               
                               console.log('✅ [Dashboard] Refresh completed');
                             } catch (error) {

@@ -18,6 +18,7 @@ import {
   isCacheEnabled,
   setCacheEnabled
 } from '@/lib/storage/pubkeyStorage';
+import { NotificationSettings } from '@/components/notifications/NotificationSettings';
 
 // Theme colors - matching our dashboard theme
 const theme = {
@@ -35,7 +36,7 @@ interface SettingsProps {
 const Settings = ({ onClose }: SettingsProps) => {
   const pioneer = usePioneerContext();
   const { state } = pioneer;
-  const { app } = state;
+  const { app, status } = state;
   const [loading, setLoading] = useState(false);
   const [showMobilePairing, setShowMobilePairing] = useState(false);
 
@@ -66,16 +67,30 @@ const Settings = ({ onClose }: SettingsProps) => {
     setCachedDeviceInfo(getDeviceInfo());
     setCacheEnabledState(isCacheEnabled());
     checkPioneerServerStatus();
-  }, []);
+  }, [app, status, app?.pioneer]);
 
   // Check Pioneer Server connection status
   const checkPioneerServerStatus = async () => {
     setWssStatus('checking');
     try {
-      // Try to connect to the configured WSS URL (convert to HTTP for health check)
-      const httpUrl = pioneerWss.replace('wss://', 'https://').replace('ws://', 'http://');
-      const response = await fetch(`${httpUrl}/`, { method: 'HEAD' });
-      setWssStatus(response.ok ? 'connected' : 'disconnected');
+      // Check the actual Pioneer SDK connection status
+      if (app) {
+        // Check if pioneer client exists and is connected
+        // Use status from state, or check pioneer.isConnected, or WebSocket ready state
+        const isConnected = status === 'connected' ||
+                          app.pioneer?.isConnected ||
+                          (app.events && app.events.readyState === 1);
+        console.log('[Settings] Pioneer connection check:', {
+          status: status,
+          pioneerExists: !!app.pioneer,
+          pioneerIsConnected: app.pioneer?.isConnected,
+          eventsReady: app.events?.readyState
+        });
+        setWssStatus(isConnected ? 'connected' : 'disconnected');
+      } else {
+        console.log('[Settings] No app instance available');
+        setWssStatus('disconnected');
+      }
     } catch (error) {
       console.error('Pioneer Server status check failed:', error);
       setWssStatus('disconnected');
@@ -269,6 +284,16 @@ const Settings = ({ onClose }: SettingsProps) => {
               <Text fontSize="xs" color="gray.500" textAlign="center">
                 View your portfolio on your phone
               </Text>
+            </VStack>
+          </Box>
+
+          {/* Payment Notifications */}
+          <Box bg={theme.cardBg} p={4} borderRadius="xl" borderWidth="1px" borderColor={theme.border}>
+            <VStack gap={3} align="stretch">
+              <Text fontSize="md" fontWeight="bold" color={theme.gold}>
+                Payment Notifications
+              </Text>
+              <NotificationSettings />
             </VStack>
           </Box>
 

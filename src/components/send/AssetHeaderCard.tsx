@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Box,
   Text,
@@ -11,7 +11,7 @@ import {
   IconButton,
   Button,
 } from '@chakra-ui/react'
-import { FaCopy, FaChevronDown, FaChevronUp, FaPlus } from 'react-icons/fa'
+import { FaCopy, FaChevronDown, FaChevronUp, FaPlus, FaCheck } from 'react-icons/fa'
 import { AssetIcon } from '@/components/ui/AssetIcon'
 
 interface Pubkey {
@@ -71,6 +71,20 @@ export const AssetHeaderCard: React.FC<AssetHeaderCardProps> = ({
 }) => {
   const pubkeys = assetContext.pubkeys || []
   const hasPubkeys = pubkeys.length >= 1
+  const [hasCopied, setHasCopied] = useState(false)
+
+  const copyToClipboard = () => {
+    if (selectedPubkey?.address) {
+      navigator.clipboard.writeText(selectedPubkey.address)
+        .then(() => {
+          setHasCopied(true)
+          setTimeout(() => setHasCopied(false), 2000)
+        })
+        .catch(err => {
+          console.error('Error copying address:', err)
+        })
+    }
+  }
 
   return (
     <Box
@@ -280,23 +294,18 @@ export const AssetHeaderCard: React.FC<AssetHeaderCardProps> = ({
                 </Text>
                 <IconButton
                   aria-label="Copy address"
-                  size="xs"
+                  size="sm"
                   variant="ghost"
-                  color={assetColor}
+                  color={hasCopied ? "green.400" : assetColor}
                   flexShrink={0}
-                  onClick={() => {
-                    if (selectedPubkey.address) {
-                      navigator.clipboard.writeText(selectedPubkey.address)
-                        .then(() => {
-                          console.log('📋 Address copied to clipboard');
-                        })
-                        .catch(err => {
-                          console.error('Error copying address:', err);
-                        });
-                    }
+                  onClick={copyToClipboard}
+                  _hover={{
+                    bg: hasCopied ? "green.900" : assetColorLight,
+                    transform: "scale(1.05)"
                   }}
+                  transition="all 0.2s"
                 >
-                  <FaCopy size={10} />
+                  {hasCopied ? <FaCheck /> : <FaCopy />}
                 </IconButton>
               </Flex>
             )}

@@ -1,7 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
+import { paymentEventManager, createBalancesMap } from '@/lib/notifications/PaymentEventManager'
+import { transactionEventManager } from '@/lib/notifications/TransactionEventManager'
 
 type ColorMode = 'light' | 'dark'
 
@@ -63,6 +65,72 @@ export function AppProvider({
     const [isAssetViewActive, setIsAssetViewActive] = useState<boolean>(false);
     // Add refresh counter to force re-renders when balances update
     const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
+
+    // Payment notification system - track balance snapshots for event detection
+    // Using useRef to avoid re-renders and prevent infinite loop
+    const balancesSnapshotRef = useRef<Map<string, any>>(new Map());
+
+    // Listen for DASHBOARD_UPDATE events and detect payment events
+    useEffect(() => {
+        if (!pioneer?.state?.app?.events) {
+            console.log('[PioneerProvider] No events object available yet');
+            return;
+        }
+
+        const handleDashboardUpdate = (data: any) => {
+            console.log('[PioneerProvider] DASHBOARD_UPDATE event received');
+
+            // Get current balances from Pioneer SDK
+            const newBalances = pioneer.state.app.balances || [];
+
+            // Process balance changes to detect payment events
+            paymentEventManager.processBalanceUpdate(balancesSnapshotRef.current, newBalances);
+
+            // Update snapshot for next comparison (doesn't trigger re-render)
+            balancesSnapshotRef.current = createBalancesMap(newBalances);
+        };
+
+        // Subscribe to DASHBOARD_UPDATE events
+        pioneer.state.app.events.on('DASHBOARD_UPDATE', handleDashboardUpdate);
+        console.log('[PioneerProvider] Subscribed to DASHBOARD_UPDATE events');
+
+        // Initialize snapshot with current balances
+        const currentBalances = pioneer.state.app.balances || [];
+        balancesSnapshotRef.current = createBalancesMap(currentBalances);
+
+        // Cleanup subscription on unmount
+        return () => {
+            pioneer.state.app.events.off('DASHBOARD_UPDATE', handleDashboardUpdate);
+            console.log('[PioneerProvider] Unsubscribed from DASHBOARD_UPDATE events');
+        };
+    }, [pioneer?.state?.app?.events]);
+
+    // Listen for pioneer:tx events (actual blockchain transactions)
+    useEffect(() => {
+        if (!pioneer?.state?.app?.events) {
+            return;
+        }
+
+        const handleTransactionEvent = (txData: any) => {
+            console.log('[PioneerProvider] pioneer:tx event received:', {
+                chain: txData.chain,
+                address: txData.address,
+                txid: txData.txid,
+                value: txData.value,
+            });
+
+            // Process actual transaction events (NOT balance updates)
+            transactionEventManager.processTransactionEvent(txData);
+        };
+
+        pioneer.state.app.events.on('pioneer:tx', handleTransactionEvent);
+        console.log('[PioneerProvider] Subscribed to pioneer:tx events');
+
+        return () => {
+            pioneer.state.app.events.off('pioneer:tx', handleTransactionEvent);
+            console.log('[PioneerProvider] Unsubscribed from pioneer:tx events');
+        };
+    }, [pioneer?.state?.app?.events]);
 
     // Create wrapper for pioneer with added asset context
     const pioneerWithAssetContext = {

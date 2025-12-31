@@ -166,6 +166,16 @@ export const usePathManager = ({ assetContext, app }: UsePathManagerProps) => {
         // Don't throw - the path is still added to the current session
       }
 
+      // Trigger balance refresh to subscribe new addresses to chainWatcher
+      console.log('🔄 [usePathManager] Refreshing balances to subscribe new custom path addresses...');
+      try {
+        await app.refresh(true); // Force refresh to fetch balances for new path
+        console.log('✅ [usePathManager] Balances refreshed - new addresses subscribed to chainWatcher');
+      } catch (refreshError: any) {
+        console.warn('⚠️ [usePathManager] Failed to refresh balances:', refreshError);
+        // Don't throw - the path is still added, balance will be fetched on next sync
+      }
+
       // Reset form
       setNote(defaultNote);
       setAccountIndex('0');

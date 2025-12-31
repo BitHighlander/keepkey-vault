@@ -7,11 +7,29 @@ export const THORCHAIN_TRACKER_URL = 'https://track.ninerealms.com';
 
 // Dynamically generate asset mapping from THORChain pools config
 // This ensures we always have the latest pool assets without manual updates
-// Prefer native assets over tokens when there are duplicate symbols
+// Prefer native assets over tokens, and Ethereum mainnet over other chains for tokens
 const THORCHAIN_ASSETS: Record<string, string> = THORCHAIN_POOLS.reduce((acc, pool) => {
-  // If symbol already exists, only override if current pool is native
-  if (acc[pool.symbol] && !pool.isNative) {
-    return acc; // Keep existing (likely native) mapping
+  // If symbol already exists, check priority
+  if (acc[pool.symbol]) {
+    // Always prefer native assets (BTC.BTC, ETH.ETH, etc.)
+    if (!pool.isNative) {
+      // For tokens: prefer Ethereum mainnet (chain === 'ETH') over other chains
+      const existingIsEth = acc[pool.symbol].startsWith('ETH.');
+      const currentIsEth = pool.chain === 'ETH';
+
+      // Keep existing if it's ETH and current isn't, otherwise override with ETH
+      if (existingIsEth && !currentIsEth) {
+        return acc; // Keep Ethereum mainnet
+      }
+      // Otherwise keep existing (it's native or we already have a good match)
+      if (!currentIsEth) {
+        return acc;
+      }
+    } else if (acc[pool.symbol].includes('.')) {
+      // Current is native but existing is token - always prefer native
+      acc[pool.symbol] = pool.asset;
+      return acc;
+    }
   }
   acc[pool.symbol] = pool.asset;
   return acc;

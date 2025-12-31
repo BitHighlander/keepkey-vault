@@ -337,10 +337,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         if (isUtxoNetwork && assetContext.pubkeys && assetContext.pubkeys.length > 0) {
           const assetCaip = assetContext.caip || assetContext.networkId;
 
-          // CRITICAL FIX: If a specific pubkey is selected, only show that pubkey's balance
-          // Otherwise, sum all pubkey balances
-          if (selectedPubkey) {
-            console.log('🔍 [Send] Calculating balance for selected UTXO pubkey:', selectedPubkey);
+          // CRITICAL FIX: Balance display logic for UTXO networks
+          // - When advanced tab is HIDDEN (showAdvanced = false): Show TOTAL balance (sum all paths)
+          // - When advanced tab is SHOWN (showAdvanced = true) AND pubkey selected: Show SELECTED path balance only
+          // This allows users to see total balance by default, but choose specific path when sending
+          if (showAdvanced && selectedPubkey) {
+            console.log('🔍 [Send] Advanced mode: Calculating balance for selected UTXO pubkey:', selectedPubkey);
 
             // Find balance for the selected pubkey only
             const pubkeyBalance = app?.balances?.find((b: any) => {
@@ -367,8 +369,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               newBalance = '0';
             }
           } else {
-            // No specific pubkey selected - sum all pubkey balances
-            console.log('Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
+            // Advanced tab hidden OR no specific pubkey selected - sum all pubkey balances
+            console.log('🔍 [Send] Simple mode: Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
 
             let totalBalance = 0;
 
@@ -401,7 +403,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             }
 
             newBalance = totalBalance.toFixed(8);
-            console.log('Total UTXO balance calculated:', newBalance);
+            console.log('✅ [Send] Total UTXO balance calculated:', newBalance);
           }
         } else {
           // For non-UTXO chains
@@ -542,7 +544,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }, 3000)
       return () => clearTimeout(timer)
     }
-  }, [assetContext, assetLoaded, estimatedFee, selectedPubkey, app?.balances])
+  }, [assetContext, assetLoaded, estimatedFee, selectedPubkey, showAdvanced, app?.balances])
 
   // Initialize selected pubkey when component mounts or assetContext changes
   useEffect(() => {

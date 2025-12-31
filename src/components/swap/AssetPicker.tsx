@@ -33,6 +33,8 @@ interface Asset {
   balance?: string | number;
   balanceUsd?: string | number;
   networkId?: string;
+  isDisabled?: boolean; // Flag to grey out and disable selection
+  hasBalance?: boolean; // Flag to indicate if asset has meaningful balance
 }
 
 interface AssetPickerProps {
@@ -55,10 +57,13 @@ export const AssetPicker = ({
   isFromSelection = false
 }: AssetPickerProps) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAllAssets, setShowAllAssets] = useState(false);
   const [hoveredAsset, setHoveredAsset] = useState<string | null>(null);
 
   const handleSelect = (asset: Asset) => {
+    // Prevent selection of disabled assets
+    if (asset.isDisabled) {
+      return;
+    }
     onSelect(asset);
     onClose();
   };
@@ -81,19 +86,12 @@ export const AssetPicker = ({
     return bUsd - aUsd; // Descending order
   });
 
-  // Filter assets based on search query and balance
+  // Filter assets based on search query only
+  // Always show all assets (including zero balance) - disabled assets will be greyed out
   let filteredAssets = sortedAssets.filter(asset =>
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     asset.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  // For FROM selection, hide zero balance assets unless "show all" is toggled
-  if (isFromSelection && !showAllAssets) {
-    filteredAssets = filteredAssets.filter(asset => {
-      const balance = asset.balance ? parseFloat(asset.balance.toString()) : 0;
-      return balance > 0;
-    });
-  }
 
   // Count assets with balance
   const assetsWithBalance = sortedAssets.filter(asset => {
@@ -165,11 +163,13 @@ export const AssetPicker = ({
 
             {/* Asset Grid */}
             <Grid
-              templateColumns="repeat(auto-fill, minmax(160px, 1fr))"
+              templateColumns="repeat(auto-fit, minmax(160px, 1fr))"
               gap={3}
               maxH="500px"
               overflowY="auto"
               pr={2}
+              justifyContent="center"
+              justifyItems="center"
               css={{
                 '&::-webkit-scrollbar': {
                   width: '8px',
@@ -193,14 +193,15 @@ export const AssetPicker = ({
                 const networkId = asset.networkId || extractNetworkId(asset.caip);
                 const networkColor = getNetworkColor(networkId);
                 const networkName = getNetworkName(networkId);
+                const isDisabled = asset.isDisabled || false;
 
                 return (
                   <Box
                     key={asset.caip}
                     onClick={() => handleSelect(asset)}
-                    onMouseEnter={() => setHoveredAsset(asset.caip)}
+                    onMouseEnter={() => !isDisabled && setHoveredAsset(asset.caip)}
                     onMouseLeave={() => setHoveredAsset(null)}
-                    cursor="pointer"
+                    cursor={isDisabled ? 'not-allowed' : 'pointer'}
                     position="relative"
                     transition="all 0.2s"
                     bg={isSelected ? 'rgba(35, 220, 200, 0.15)' : 'rgba(30, 30, 30, 0.6)'}
@@ -210,7 +211,9 @@ export const AssetPicker = ({
                     borderTopColor={networkColor}
                     borderTopWidth="3px"
                     p={4}
-                    _hover={{
+                    opacity={isDisabled ? 0.4 : 1}
+                    filter={isDisabled ? 'grayscale(50%)' : 'none'}
+                    _hover={isDisabled ? {} : {
                       bg: isSelected ? 'rgba(35, 220, 200, 0.2)' : 'rgba(35, 220, 200, 0.1)',
                       borderColor: '#23DCC8',
                       borderTopColor: networkColor,
@@ -327,45 +330,17 @@ export const AssetPicker = ({
             {filteredAssets.length === 0 && (
               <Box py={8} textAlign="center">
                 <Text color="gray.500" fontSize="sm">
-                  {searchQuery ? `No assets found matching "${searchQuery}"` : 'No assets with balance'}
+                  {searchQuery ? `No assets found matching "${searchQuery}"` : 'No assets available'}
                 </Text>
               </Box>
             )}
 
-            {/* Show All Assets Toggle (only for FROM selection) */}
-            {isFromSelection && assetsWithBalance < sortedAssets.length && (
-              <HStack justify="center" pt={2}>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => setShowAllAssets(!showAllAssets)}
-                  color="gray.400"
-                  _hover={{ color: '#23DCC8', bg: 'rgba(35, 220, 200, 0.1)' }}
-                  fontSize="xs"
-                  height="auto"
-                  py={1}
-                >
-                  {showAllAssets ? (
-                    <HStack gap={1}>
-                      <Text>Hide zero balances</Text>
-                      <Text>▲</Text>
-                    </HStack>
-                  ) : (
-                    <HStack gap={1}>
-                      <Text>Show all {sortedAssets.length} assets</Text>
-                      <Text>▼</Text>
-                    </HStack>
-                  )}
-                </Button>
-              </HStack>
-            )}
-
             {/* Asset count */}
             <Text fontSize="xs" color="gray.500" textAlign="center">
-              {isFromSelection && !showAllAssets
-                ? `${assetsWithBalance} asset${assetsWithBalance !== 1 ? 's' : ''} with balance`
-                : `${filteredAssets.length} asset${filteredAssets.length !== 1 ? 's' : ''} available`
-              }
+              {filteredAssets.length} asset{filteredAssets.length !== 1 ? 's' : ''} available
+              {isFromSelection && assetsWithBalance > 0 && (
+                <> ({assetsWithBalance} with balance)</>
+              )}
             </Text>
           </VStack>
         </DialogBody>

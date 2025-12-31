@@ -1,13 +1,22 @@
 /**
  * THORChain Supported Pools Configuration
  *
+ * ⚠️ DEPRECATED: This static configuration is being migrated to dynamic API-driven configuration
+ * Migration Date: 2025-12-29
+ * New Source: Pioneer server /api/v1/swap/available-assets endpoint
+ *
  * Auto-generated from THORChain Midgard API
  * Generated: 2025-11-13T23:04:57.223Z
  *
  * This file contains all active THORChain pools mapped to CAIP format.
  * DO NOT EDIT MANUALLY - regenerate using: node scripts/fetch-thorchain-pools.js
- * 
+ *
  * NOTE: Icons are NOT stored here. Use Pioneer SDK assetData for icon URLs.
+ *
+ * Migration Status:
+ * - ✅ Swap.tsx: Now fetches from Pioneer API
+ * - ⏳ Asset.tsx: Still uses getPoolByCAIP helper
+ * - Interface and helpers will be kept for backward compatibility
  */
 
 export interface ThorchainPool {

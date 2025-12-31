@@ -11,6 +11,7 @@ import type {
   EventHistory,
   SerializedEventHistory,
 } from '@/types/events'
+import { getSupportedNetworkIds } from './chainMetadata'
 
 const STORAGE_KEY = 'payment_event_history'
 const DEDUP_WINDOW_MS = 5000 // 5 seconds
@@ -43,6 +44,10 @@ export function detectPaymentEvents(
   const events: PaymentEvent[] = []
   const timestamp = Date.now()
 
+  // Get networkIds with WebSocket transaction event support
+  // These chains will be handled by TransactionEventManager
+  const txEventSupportedNetworks = getSupportedNetworkIds()
+
   // Convert oldBalances to Map if it's an array
   const oldMap =
     oldBalances instanceof Map
@@ -51,6 +56,12 @@ export function detectPaymentEvents(
 
   // Check each new balance against old balances
   for (const newBalance of newBalances) {
+    // Skip chains with transaction event support
+    // They will be handled by TransactionEventManager via pioneer:tx events
+    if (txEventSupportedNetworks.has(newBalance.networkId)) {
+      continue
+    }
+
     const oldBalance = oldMap.get(newBalance.caip)
 
     // Case 1: New CAIP (new asset added to portfolio)

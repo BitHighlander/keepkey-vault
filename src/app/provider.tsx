@@ -16,9 +16,11 @@ import { keyframes } from '@emotion/react'
 import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
-import { isZcashEnabled, ZCASH_NETWORK_ID } from '@/config/features'
+import WatchOnlyLanding from '@/components/landing/WatchOnlyLanding'
+import { isZcashEnabled, ZCASH_NETWORK_ID, isPioneerV2Enabled } from '@/config/features'
 import { getCustomPaths } from '@/lib/storage/customPaths'
-import { savePubkeys } from '@/lib/storage/pubkeyStorage'
+import { savePubkeys, getDeviceInfo } from '@/lib/storage/pubkeyStorage'
+import { isMobileApp } from '@/lib/platformDetection'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -50,6 +52,8 @@ export function Provider({ children }: ProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [isVaultUnavailable, setIsVaultUnavailable] = useState(false);
+  const [showWatchOnlyLanding, setShowWatchOnlyLanding] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     // Prevent multiple initializations
@@ -61,6 +65,11 @@ export function Provider({ children }: ProviderProps) {
     const initPioneerSDK = async () => {
       console.log('🔥 Starting direct Pioneer SDK initialization');
       PIONEER_INITIALIZED = true;
+
+      // Detect if mobile app
+      const isOnMobile = isMobileApp();
+      setIsMobile(isOnMobile);
+      console.log('📱 Platform detection:', isOnMobile ? 'Mobile App' : 'Desktop/Web');
 
       try {
         console.log('🏁 [Loading] Setting isLoading to TRUE - starting initialization');
@@ -87,11 +96,40 @@ export function Provider({ children }: ProviderProps) {
 
         // Get supported blockchains like pioneer-react does
         const walletType = WalletOption.KEEPKEY;
-        const allSupported = availableChainsByWallet[walletType];
+        let allSupported = availableChainsByWallet[walletType];
+
+        //remove v2 assets for now (case-insensitive filter)
+        const v2Assets = ['TRX', 'TRON', 'TON', 'SOL', 'SOLANA', 'ZCASH'];
+        console.log('🔧 All supported chains before filter:', allSupported);
+        allSupported = allSupported.filter((chain: string) => {
+          const chainUpper = String(chain).toUpperCase();
+          const shouldFilter = v2Assets.some(v2 => chainUpper.includes(v2.toUpperCase()));
+          if (shouldFilter) {
+            console.log(`🚫 Filtering out v2 chain: ${chain}`);
+          }
+          return !shouldFilter;
+        });
+        console.log('🔧 All supported chains after filter:', allSupported);
+
         let blockchains = allSupported.map(
           // @ts-ignore
           (chainStr: any) => ChainToNetworkId[getChainEnumValue(chainStr)],
         );
+
+        // Also filter out v2 network IDs from the blockchains array (after conversion)
+        const v2NetworkPrefixes = ['tron:', 'ton:', 'solana:', 'sol:'];
+        const originalBlockchainsCount = blockchains.length;
+        blockchains = blockchains.filter((networkId: string) => {
+          if (!networkId) return false;
+          const networkIdLower = networkId.toLowerCase();
+          const shouldFilter = v2NetworkPrefixes.some(prefix => networkIdLower.startsWith(prefix));
+          if (shouldFilter) {
+            console.log(`🚫 Filtering out v2 network ID: ${networkId}`);
+          }
+          return !shouldFilter;
+        });
+        console.log(`🔧 Filtered ${originalBlockchainsCount - blockchains.length} v2 network IDs from blockchains`);
+
         const paths = getPaths(blockchains);
 
         console.log('🔧 Blockchains:', blockchains);
@@ -365,10 +403,38 @@ export function Provider({ children }: ProviderProps) {
           return; // Stop initialization
         }
 
+        // If we have cached pubkeys but no vault, check if we should show watch-only landing
+        if (!detectedKeeperEndpoint && cachedPubkeys && cachedPubkeys.length > 0) {
+          // Check if user already continued in this session (only persists until tab/browser closes)
+          const continuedThisSession = sessionStorage.getItem('keepkey_watch_only_session') === 'true';
+
+          console.log('🔍 [WATCH-ONLY CHECK]', {
+            isOnMobile,
+            cachedPubkeysCount: cachedPubkeys.length,
+            continuedThisSession
+          });
+
+          // Desktop users get a landing page option, mobile users go straight to watch-only
+          if (!isOnMobile && !continuedThisSession) {
+            console.log('💻 [DESKTOP] No vault detected but cached pubkeys found - showing watch-only landing');
+            setShowWatchOnlyLanding(true);
+            setIsLoading(false);
+            PIONEER_INITIALIZED = false; // Reset flag so they can initialize if they continue
+            return; // Stop here and show landing
+          } else {
+            if (continuedThisSession) {
+              console.log('💻 [DESKTOP] User already continued in this session - skipping landing');
+            } else {
+              console.log('📱 [MOBILE] No vault detected but cached pubkeys found - continuing in watch-only mode');
+            }
+          }
+        }
+
         console.log('✅ [VALIDATION] Initialization prerequisites met:', {
           vaultDetected: !!detectedKeeperEndpoint,
           cachedPubkeysCount: cachedPubkeys?.length || 0,
-          mode: detectedKeeperEndpoint ? 'NORMAL' : 'VIEW-ONLY'
+          mode: detectedKeeperEndpoint ? 'NORMAL' : 'VIEW-ONLY',
+          platform: isOnMobile ? 'Mobile' : 'Desktop'
         });
 
         // Build SDK config with conditional view-only mode flags
@@ -415,6 +481,16 @@ export function Provider({ children }: ProviderProps) {
           endpoint: detectedKeeperEndpoint || 'kkapi:// (will fallback to legacy)',
           hasPortfolioAPI: !!detectedKeeperEndpoint
         });
+
+        // DEEP DEBUG: Inspect SDK internals before init
+        console.log('🔍 [DEBUG] SDK internal state before init:', {
+          hasPioneer: !!appInit.pioneer,
+          pioneerType: typeof appInit.pioneer,
+          pioneerKeys: appInit.pioneer ? Object.keys(appInit.pioneer).slice(0, 10) : 'N/A',
+          sdkKeys: Object.keys(appInit).slice(0, 15),
+          specUrl: PIONEER_URL
+        });
+
         console.log('🔧 Calling init...');
         
         // Add network filtering to prevent unsupported networks from being processed
@@ -488,7 +564,24 @@ export function Provider({ children }: ProviderProps) {
         } catch (initError: any) {
           clearInterval(progressInterval);
           console.error('⏱️ SDK init failed:', initError);
-          
+
+          // DEEP DEBUG: Inspect SDK internal state after failure
+          console.log('🔍 [DEBUG] SDK internal state AFTER init failure:', {
+            errorMessage: initError.message,
+            errorStack: initError.stack,
+            hasPioneer: !!appInit.pioneer,
+            pioneerType: typeof appInit.pioneer,
+            pioneerKeys: appInit.pioneer ? Object.keys(appInit.pioneer).slice(0, 15) : 'N/A',
+            hasClient: !!appInit.client,
+            clientType: typeof appInit.client,
+            clientKeys: appInit.client ? Object.keys(appInit.client).slice(0, 15) : 'N/A',
+            hasSpec: !!appInit.spec,
+            specType: typeof appInit.spec,
+            clientSpec: appInit.client?.spec ? 'EXISTS' : 'MISSING',
+            clientSpecPaths: appInit.client?.spec?.paths ? 'EXISTS' : 'MISSING',
+            sdkTopLevelKeys: Object.keys(appInit).slice(0, 20)
+          });
+
           // Check if it's a non-critical error we can handle
           if (initError.message && initError.message.includes('GetPortfolioBalances')) {
             console.warn('⚠️ GetPortfolioBalances failed during init, continuing with limited functionality');
@@ -735,6 +828,9 @@ export function Provider({ children }: ProviderProps) {
           console.log('🌐 Sample blockchain:', appInit.blockchains[0]);
         }
         
+        // Check dashboard data - only warn if v2 APIs are enabled
+        const v2Enabled = isPioneerV2Enabled();
+
         if (appInit.dashboard) {
           console.log('💰 Dashboard data:', appInit.dashboard);
 
@@ -760,11 +856,63 @@ export function Provider({ children }: ProviderProps) {
             });
           }
         } else {
-          console.warn('⚠️ No dashboard data - this indicates sync() was not called!');
-          console.warn('⚠️ KeepKey SDK status:', !!appInit.keepKeySdk);
-          console.warn('⚠️ Vault detected:', !!detectedKeeperEndpoint);
-          console.warn('⚠️ This may cause an empty dashboard to be shown');
+          // Only warn about missing dashboard if v2 APIs are enabled
+          if (v2Enabled) {
+            console.warn('⚠️ No dashboard data - this indicates sync() was not called!');
+            console.warn('⚠️ KeepKey SDK status:', !!appInit.keepKeySdk);
+            console.warn('⚠️ Vault detected:', !!detectedKeeperEndpoint);
+            console.warn('⚠️ This may cause an empty dashboard to be shown');
+          } else {
+            console.log('ℹ️ Dashboard not available - Pioneer v2 APIs are disabled (v1 desktop app mode)');
+            console.log('ℹ️ Using direct balances/pubkeys instead of dashboard aggregation');
+          }
         }
+
+        // Register pioneer event listeners for real-time transaction events
+        // console.log('🔧 Registering pioneer event listeners...');
+        //
+        // appInit.events.on('pioneer:tx', (data: any) => {
+        //   console.log('🔔 [VAULT] Transaction event received:', {
+        //     chain: data.chain,
+        //     address: data.address,
+        //     txid: data.txid,
+        //     value: data.value,
+        //     confirmations: data.confirmations,
+        //     timestamp: data.timestamp
+        //   });
+        // });
+        //
+        // appInit.events.on('pioneer:utxo', (data: any) => {
+        //   console.log('💰 [VAULT] UTXO event received:', {
+        //     chain: data.chain,
+        //     address: data.address
+        //   });
+        // });
+        //
+        // appInit.events.on('pioneer:balance', (data: any) => {
+        //   console.log('💵 [VAULT] Balance event received:', {
+        //     chain: data.chain,
+        //     address: data.address,
+        //     balance: data.balance
+        //   });
+        // });
+        //
+        // appInit.events.on('sync:complete', (data: any) => {
+        //   console.log('✅ [VAULT] Sync complete event received:', data);
+        // });
+        //
+        // appInit.events.on('sync:progress', (data: any) => {
+        //   console.log('🔄 [VAULT] Sync progress event received:', data);
+        // });
+        //
+        // console.log('✅ Pioneer event listeners registered:', {
+        //   'pioneer:tx': appInit.events.listenerCount('pioneer:tx'),
+        //   'pioneer:utxo': appInit.events.listenerCount('pioneer:utxo'),
+        //   'pioneer:balance': appInit.events.listenerCount('pioneer:balance'),
+        //   'sync:complete': appInit.events.listenerCount('sync:complete'),
+        //   'sync:progress': appInit.events.listenerCount('sync:progress')
+        // });
+
         setPioneerSdk(appInit);
       } catch (e) {
         console.error('💥 FATAL: Pioneer SDK initialization failed:', e);
@@ -829,11 +977,37 @@ export function Provider({ children }: ProviderProps) {
     }, 100);
   };
 
-  // Show connection error if vault is unavailable
+  // Handler for continuing in watch-only mode (dismissing the landing)
+  const handleContinueWatchOnly = () => {
+    console.log('👁️ User chose to continue in watch-only mode');
+    // Remember for this browser session only (clears when tab/browser closes)
+    sessionStorage.setItem('keepkey_watch_only_session', 'true');
+    setShowWatchOnlyLanding(false);
+    setIsLoading(true);
+    // Trigger re-initialization in watch-only mode
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
+
+  // Show connection error if vault is unavailable and no cached data
   if (isVaultUnavailable) {
     return (
       <ChakraProvider>
         <ConnectionError onRetry={handleRetry} />
+      </ChakraProvider>
+    );
+  }
+
+  // Show watch-only landing for desktop users (not mobile) with cached data
+  if (showWatchOnlyLanding) {
+    const deviceInfo = getDeviceInfo();
+    return (
+      <ChakraProvider>
+        <WatchOnlyLanding
+          onContinueWatchOnly={handleContinueWatchOnly}
+          deviceInfo={deviceInfo}
+        />
       </ChakraProvider>
     );
   }

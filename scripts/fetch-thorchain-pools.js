@@ -2,11 +2,18 @@
 /**
  * THORChain Pool Fetcher
  *
+ * ⚠️ DEPRECATED: This script is being phased out in favor of Pioneer API
+ * Migration Date: 2025-12-29
+ * New Source: Pioneer server /api/v1/swap/available-assets endpoint
+ *
  * Fetches all active pools from THORChain Midgard API and transforms them into
  * CAIP format with proper networkIds for use in the swap interface.
  *
  * Usage: node scripts/fetch-thorchain-pools.js
  * Output: src/config/thorchain-pools.ts
+ *
+ * NOTE: Kept for reference and emergency fallback purposes only.
+ * Do not use for production configuration.
  */
 
 const https = require('https');

@@ -411,12 +411,43 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       isStale: nativeAssetBalance.isStale
     });
 
+    // DEBUG: Check all app.pubkeys to see which ones match Ethereum
+    console.log('🔍 [DEBUG] All app.pubkeys:', app.pubkeys);
+    console.log('🔍 [DEBUG] Filtering for networkId:', networkId);
+    const filteredPubkeys = (app.pubkeys || []).filter((p: any) => {
+      if (!p.networks || !Array.isArray(p.networks)) {
+        console.log('  - Pubkey:', p.path, '| Networks: INVALID | Matches: false');
+        return false;
+      }
+
+      // Exact match
+      if (p.networks.includes(networkId)) {
+        console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (exact)');
+        return true;
+      }
+
+      // For EVM chains, check if pubkey has eip155:* wildcard
+      if (networkId.startsWith('eip155:') && p.networks.includes('eip155:*')) {
+        console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
+        return true;
+      }
+
+      // For Bitcoin chains, check if pubkey has bip122:* wildcard
+      if (networkId.startsWith('bip122:') && p.networks.includes('bip122:*')) {
+        console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
+        return true;
+      }
+
+      console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: false');
+      return false;
+    });
+
     const assetContextData = {
       ...nativeAssetBalance,
       caip: caip,
       ...(isCacao && { symbol: 'CACAO' }),
       // CRITICAL FIX: Add pubkeys for balance aggregation across all addresses
-      pubkeys: (app.pubkeys || []).filter((p: any) => p.networks.includes(networkId))
+      pubkeys: filteredPubkeys
     };
 
     console.log('✅ [Asset] Native asset data loaded:', assetContextData);
@@ -1193,12 +1224,21 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       {assetContext.symbol}
                     </Text>
                     {assetContext.isToken && (
-                      <Badge 
-                        colorScheme="purple" 
+                      <Badge
+                        colorScheme="purple"
                         variant="subtle"
                         fontSize="xs"
                       >
                         TOKEN
+                      </Badge>
+                    )}
+                    {assetContext.pubkeys && assetContext.pubkeys.length > 1 && (
+                      <Badge
+                        colorScheme="cyan"
+                        variant="subtle"
+                        fontSize="xs"
+                      >
+                        {assetContext.pubkeys.length} accounts
                       </Badge>
                     )}
                   </HStack>
@@ -1258,19 +1298,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     </HStack>
                   )}
 
-                  {/* Show if balance is aggregated from multiple addresses */}
-                  {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
-                    <Badge
-                      colorScheme="blue"
-                      variant="subtle"
-                      fontSize="xs"
-                      px={2}
-                      py={1}
-                    >
-                      Summed from {aggregatedBalance.balances.length} pubkeys
-                    </Badge>
-                  )}
-                  
                   {/* For tokens, show BOTH balances clearly */}
                   {assetContext.isToken ? (
                     <VStack gap={2}>
@@ -2367,12 +2394,34 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
             return false;
           };
 
+          // DEBUG: Log all balances for current network
+          console.log('🔍 [Asset] DEBUG - Current networkId:', assetContext.networkId);
+          console.log('🔍 [Asset] DEBUG - Total balances:', app?.balances?.length || 0);
+          const networkBalances = app?.balances?.filter((b: any) => b.networkId === assetContext.networkId) || [];
+          console.log('🔍 [Asset] DEBUG - Balances for network:', networkBalances.length);
+          console.log('🔍 [Asset] DEBUG - Sample balances:', networkBalances.slice(0, 5).map((b: any) => ({
+            symbol: b.symbol,
+            type: b.type,
+            token: b.token,
+            isToken: b.isToken,
+            contract: b.contract,
+            balance: b.balance,
+            caip: b.caip
+          })));
+
           // Filter tokens for the current network from app.balances
           const networkTokens = app?.balances?.filter((balance: any) =>
             balance.networkId === assetContext.networkId &&
             isTokenBalance(balance) &&
             parseFloat(balance.balance || '0') > 0
           ) || [];
+
+          console.log('🔍 [Asset] DEBUG - Filtered tokens:', networkTokens.length);
+          console.log('🔍 [Asset] DEBUG - First 3 tokens:', networkTokens.slice(0, 3).map((t: any) => ({
+            symbol: t.symbol,
+            balance: t.balance,
+            valueUsd: t.valueUsd
+          })));
 
           // Sort by USD value
           networkTokens.sort((a: any, b: any) => {

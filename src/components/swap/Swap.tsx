@@ -66,21 +66,19 @@ import {
   getChainIdFromCAIP
 } from '@/services/erc20';
 
-// Import THORChain pools configuration
-import { THORCHAIN_POOLS, getNativePools, getPoolBySymbol, getPoolByCAIP } from '@/config/thorchain-pools';
+// Import THORChain pools types and utilities
+import { ThorchainPool, getNativePools, getPoolBySymbol, getPoolByCAIP } from '@/config/thorchain-pools';
+// Import swap API service for dynamic asset fetching
+import { getSwapAssets } from '@/services/swap-api';
 
 interface SwapProps {
   onBackClick?: () => void;
 }
 
 /**
- * All supported assets from THORChain pools
- * This includes both native assets and tokens with active liquidity pools
- *
- * NOTE: Using THORCHAIN_POOLS for complete pool coverage (35 pools as of generation)
- * You can use getNativePools() to get only native assets (9 chains)
+ * Supported swap assets - fetched dynamically from Pioneer server
+ * Replaces static THORCHAIN_POOLS with API-driven configuration
  */
-const SUPPORTED_SWAP_ASSETS = THORCHAIN_POOLS;
 
 // Default CAIP identifiers for fallback pairs
 const DEFAULT_BTC_CAIP = 'bip122:000000000019d6689c085ae165831e93/slip44:0';
@@ -188,6 +186,36 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     }
   }, [app]);
 
+  // Load swap assets from Pioneer server
+  useEffect(() => {
+    async function loadSwapAssets() {
+      try {
+        setIsLoadingSwapAssets(true);
+        setSwapAssetsError('');
+
+        const { assets, source } = await getSwapAssets();
+
+        setSupportedSwapAssets(assets);
+        setSwapAssetsSource(source);
+
+        if (source === 'stale-cache') {
+          setSwapAssetsError('Using cached assets (API temporarily unavailable)');
+        } else if (source === 'emergency-fallback') {
+          setSwapAssetsError('Using fallback assets (unable to connect to server)');
+        }
+
+        console.log(`[Swap] Loaded ${assets.length} swap assets from ${source}`);
+      } catch (error) {
+        console.error('[Swap] Failed to load swap assets:', error);
+        setSwapAssetsError(error instanceof Error ? error.message : 'Failed to load swap assets');
+      } finally {
+        setIsLoadingSwapAssets(false);
+      }
+    }
+
+    loadSwapAssets();
+  }, []); // Run once on mount
+
   // State for swap form
   const [inputAmount, setInputAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState('');
@@ -215,6 +243,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [verificationStep, setVerificationStep] = useState<'destination' | 'vault' | 'swap'>('destination');
   const [vaultVerified, setVaultVerified] = useState(false);
   const [memoValid, setMemoValid] = useState<boolean | null>(null);
+
+  // State for dynamically loaded swap assets
+  const [supportedSwapAssets, setSupportedSwapAssets] = useState<ThorchainPool[]>([]);
+  const [isLoadingSwapAssets, setIsLoadingSwapAssets] = useState(true);
+  const [swapAssetsError, setSwapAssetsError] = useState<string>('');
+  const [swapAssetsSource, setSwapAssetsSource] = useState<'cache' | 'api' | 'stale-cache' | 'emergency-fallback' | ''>('');
 
   // Asset picker state
   const [showAssetPicker, setShowAssetPicker] = useState<'from' | 'to' | null>(null);
@@ -303,7 +337,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
     console.log('🔍 [SWAP] Processing balances:', app.balances.length, 'total balances');
     console.log('🔍 [SWAP] Raw balances:', app.balances);
-    console.log('🔍 [SWAP] Supported swap assets:', SUPPORTED_SWAP_ASSETS.map(a => a.symbol));
+    console.log('🔍 [SWAP] Supported swap assets:', supportedSwapAssets.map(a => a.symbol));
 
     // Keep each balance separate by CAIP - DON'T aggregate by symbol
     const assets = app.balances
@@ -314,14 +348,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           return null;
         }
 
-        // Find matching supported asset from THORChain pools by CAIP (not symbol!)
+        // Find matching supported asset from dynamic swap assets by CAIP (not symbol!)
         // This ensures ETH mainnet and ETH BNB Chain are kept separate
-        let supportedAsset = getPoolByCAIP(balance.caip);
+        let supportedAsset = supportedSwapAssets.find(asset => asset.caip === balance.caip);
 
         // Fallback: if no exact CAIP match, try by symbol but log a warning
         if (!supportedAsset) {
           console.log(`⚠️ [SWAP] No exact CAIP match for ${balance.caip}, trying symbol fallback for ${ticker}`);
-          supportedAsset = SUPPORTED_SWAP_ASSETS.find(asset => asset.symbol === ticker);
+          supportedAsset = supportedSwapAssets.find(asset => asset.symbol === ticker);
         }
 
         if (!supportedAsset) {
@@ -379,16 +413,50 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     console.log('✅ [SWAP] Asset count:', assets.length);
 
     return assets;
-  }, [app?.balances, app?.assets]);
+  }, [app?.balances, app?.assets, supportedSwapAssets]);
 
-  // fromAssets are already filtered and sorted in availableAssets
-  const fromAssets = availableAssets;
+  // fromAssets: Show ALL supported assets (deduplicated by CAIP)
+  // Include zero-balance assets (will be greyed out in UI)
+  // Aggregate balances if user has multiple addresses for same asset
+  const fromAssets = useMemo(() => {
+    // Start with all supported swap assets
+    return supportedSwapAssets.map(poolAsset => {
+      // Group user balances by CAIP and aggregate
+      const userBalances = availableAssets.filter(a => a.caip === poolAsset.caip);
+      const aggregatedBalance = userBalances.reduce((sum, asset) => sum + asset.balance, 0);
+      const aggregatedBalanceUsd = userBalances.reduce((sum, asset) => sum + asset.balanceUsd, 0);
+
+      // Get icon from user's balance or Pioneer SDK assetsMap
+      let icon = userBalances[0]?.icon;
+      if (!icon && app?.assetsMap) {
+        const assetInfo = app.assetsMap.get(poolAsset.caip);
+        if (assetInfo?.icon) {
+          icon = assetInfo.icon;
+        }
+      }
+      if (!icon) {
+        icon = getAssetIconUrl(poolAsset.caip);
+      }
+
+      return {
+        ...poolAsset,
+        icon: icon,
+        balance: aggregatedBalance,
+        balanceUsd: aggregatedBalanceUsd,
+        priceUsd: userBalances[0]?.priceUsd || 0,
+        hasBalance: aggregatedBalanceUsd > 0.01, // Flag for UI to show enabled/disabled state
+        isDisabled: aggregatedBalanceUsd <= 0.01 // Only disable if zero balance (allow clicking current output for auto-swap)
+      };
+    })
+    .sort((a, b) => b.balanceUsd - a.balanceUsd); // Sort by USD value (zero balance assets last)
+  }, [availableAssets, supportedSwapAssets, app?.outboundAssetContext?.caip, app?.assetsMap]);
 
   // All supported assets available for "to" selection (no balance requirement)
+  // Show ALL 3 assets - if user clicks same asset as input, auto-swap logic will handle it
   const toAssets = useMemo(() => {
-    // Get all supported THORChain pool assets except the currently selected "from" asset
+    // Get all supported swap assets (including currently selected "from" asset)
     // This ensures we can swap to any asset with an active pool, even with 0 balance
-    const allSupportedAssets = SUPPORTED_SWAP_ASSETS.map(poolAsset => {
+    const allSupportedAssets = supportedSwapAssets.map(poolAsset => {
       // Match by CAIP, not symbol! This keeps ETH mainnet and ETH BNB separate
       const balance = availableAssets.find(a => a.caip === poolAsset.caip);
 
@@ -416,12 +484,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       };
     });
 
-    // Exclude the currently selected "from" asset by CAIP (not symbol)
-    // This allows swapping ETH mainnet → ETH BNB, for example
-    return allSupportedAssets.filter(asset =>
-      asset.caip !== app?.assetContext?.caip
-    );
-  }, [availableAssets, app?.assetContext?.symbol, app?.assets, app?.assetsMap]);
+    // Return all assets - auto-swap logic will handle clicking same asset as input
+    return allSupportedAssets;
+  }, [availableAssets, app?.assetContext?.symbol, app?.assets, app?.assetsMap, supportedSwapAssets]);
 
   // Initialize assets from URL parameters (runs once on mount)
   useEffect(() => {
@@ -478,7 +543,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   useEffect(() => {
     if (!app?.assetContext?.caip && !app?.outboundAssetContext?.caip) {
       // Try to use user's highest balance asset, fallback to BTC from pools
-      const defaultFrom = availableAssets[0] || SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
+      const defaultFrom = availableAssets[0] || supportedSwapAssets.find(a => a.symbol === 'BTC' && a.isNative);
 
       if (!defaultFrom) {
         console.warn('[Swap] No default FROM asset available');
@@ -490,11 +555,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // If input is Bitcoin, default to Ethereum (native, not wrapped)
       if (defaultFrom?.symbol === 'BTC') {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH' && a.isNative);
+        defaultTo = supportedSwapAssets.find(a => a.symbol === 'ETH' && a.isNative);
       }
       // If input is anything else, default to Bitcoin
       else {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
+        defaultTo = supportedSwapAssets.find(a => a.symbol === 'BTC' && a.isNative);
       }
 
       // If we couldn't find the preferred output, use the second highest value asset or another pool
@@ -504,7 +569,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // If still no output asset, find any other supported asset from pools
       if (!defaultTo) {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(asset =>
+        defaultTo = supportedSwapAssets.find(asset =>
           asset.symbol !== defaultFrom?.symbol && asset.isNative
         );
       }
@@ -554,11 +619,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // If input is Bitcoin, default to Ethereum (native, not wrapped)
       if (app.assetContext.symbol === 'BTC') {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'ETH' && a.isNative);
+        defaultTo = supportedSwapAssets.find(a => a.symbol === 'ETH' && a.isNative);
       }
       // If input is anything else, default to Bitcoin
       else {
-        defaultTo = SUPPORTED_SWAP_ASSETS.find(a => a.symbol === 'BTC' && a.isNative);
+        defaultTo = supportedSwapAssets.find(a => a.symbol === 'BTC' && a.isNative);
       }
 
       if (defaultTo) {
@@ -608,7 +673,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           // If MAX is more than $100, use $100 worth
           const amountFor100Usd = 100 / fromAsset.priceUsd;
           setInputAmount(amountFor100Usd.toFixed(8));
-          setIsMaxAmount(true); // FIXED: Set isMax to true so SDK uses coinSelectSplit for proper fee calculation
+          setIsMaxAmount(false); // CRITICAL FIX: isMax should only be true when MAX button clicked, not for default $100
           setInputUSDValue('100.00');
         }
         
@@ -632,8 +697,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // Find an alternative asset for "to" by CAIP (prefer native assets)
       const alternativeAsset = availableAssets.find(a => a.caip !== app.assetContext.caip) ||
-                               SUPPORTED_SWAP_ASSETS.find(a => a.caip !== app.assetContext.caip && a.isNative) ||
-                               SUPPORTED_SWAP_ASSETS.find(a => a.caip !== app.assetContext.caip);
+                               supportedSwapAssets.find(a => a.caip !== app.assetContext.caip && a.isNative) ||
+                               supportedSwapAssets.find(a => a.caip !== app.assetContext.caip);
       
       if (alternativeAsset) {
         app.setOutboundAssetContext({
@@ -823,13 +888,30 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Handle asset selection
   const handleAssetSelect = async (asset: any, isFrom: boolean) => {
     if (!app?.setAssetContext || !app?.setOutboundAssetContext) return;
-    
+
     // Check if selecting the same asset for both from and to
     if (isFrom) {
       if (asset.caip === app?.outboundAssetContext?.caip) {
-        // If selecting the same asset as "to", swap them
-        await swapAssets();
-        return;
+        // If selecting an asset for "from" that's already "to", auto-swap:
+        // Set this as "from" and pick next available asset as "to"
+        console.log('🔄 [Swap] Selected asset is current output, auto-swapping...');
+
+        // Find next available asset (prefer assets with balance)
+        const nextAsset = toAssets.find(a => a.caip !== asset.caip && a.balanceUsd && a.balanceUsd > 0) ||
+                          toAssets.find(a => a.caip !== asset.caip);
+
+        if (nextAsset) {
+          console.log('✅ [Swap] Auto-selected next asset as output:', nextAsset.symbol);
+          await app.setOutboundAssetContext({
+            caip: nextAsset.caip,
+            networkId: nextAsset.networkId || caipToNetworkId(nextAsset.caip),
+            symbol: nextAsset.symbol,
+            name: nextAsset.name,
+            icon: nextAsset.icon,
+            priceUsd: nextAsset.priceUsd || 0
+          });
+        }
+        // Don't return - continue to set the selected asset as "from" below
       }
 
       // Validate asset has required fields before attempting to set
@@ -866,7 +948,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           // If MAX is more than $100, use $100 worth
           const amountFor100Usd = 100 / asset.priceUsd;
           setInputAmount(amountFor100Usd.toFixed(8));
-          setIsMaxAmount(true); // FIXED: Set isMax to true so SDK uses coinSelectSplit for proper fee calculation
+          setIsMaxAmount(false); // CRITICAL FIX: isMax should only be true when MAX button clicked, not for default $100
           setInputUSDValue('100.00');
         }
         
@@ -880,10 +962,41 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         await fetchQuote(inputAmount, asset.symbol, app.outboundAssetContext.symbol);
       }
     } else {
+      // For output selection, if selecting same asset as input, auto-swap to prevent error
       if (asset.caip === app?.assetContext?.caip) {
-        // If selecting the same asset as "from", swap them
-        await swapAssets();
-        return;
+        console.log('🔄 [Swap] Selected asset is current input, auto-swapping to prevent same-asset error...');
+
+        // Find next available asset with balance (prefer assets with balance)
+        const nextAsset = fromAssets.find(a => a.caip !== asset.caip && !a.isDisabled && a.balanceUsd && a.balanceUsd > 0) ||
+                          fromAssets.find(a => a.caip !== asset.caip && !a.isDisabled);
+
+        if (nextAsset) {
+          console.log('✅ [Swap] Auto-selected next asset as input:', nextAsset.symbol);
+          await app.setAssetContext({
+            caip: nextAsset.caip,
+            networkId: nextAsset.networkId || caipToNetworkId(nextAsset.caip),
+            symbol: nextAsset.symbol,
+            name: nextAsset.name,
+            icon: nextAsset.icon,
+            priceUsd: nextAsset.priceUsd || 0
+          });
+
+          // Set default input amount for auto-selected asset
+          if (nextAsset.balance > 0 && nextAsset.priceUsd > 0) {
+            const maxUsdValue = nextAsset.balance * nextAsset.priceUsd;
+            if (maxUsdValue <= 100) {
+              setInputAmount(nextAsset.balance.toString());
+              setIsMaxAmount(true);
+              setInputUSDValue(maxUsdValue.toFixed(2));
+            } else {
+              const amountFor100Usd = 100 / nextAsset.priceUsd;
+              setInputAmount(amountFor100Usd.toFixed(8));
+              setIsMaxAmount(true);
+              setInputUSDValue('100.00');
+            }
+          }
+        }
+        // Continue to set the selected asset as "to" below
       }
 
       // Validate asset has required fields before attempting to set
@@ -1785,6 +1898,40 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       backgroundPosition="center"
       backgroundRepeat="no-repeat"
     >
+      {/* Loading swap assets from Pioneer */}
+      {isLoadingSwapAssets && (
+        <Container maxW="container.md" py={8}>
+          <Box textAlign="center" py={12}>
+            <Spinner size="xl" color="blue.500" thickness="4px" />
+            <Text mt={4} color="gray.400">Loading swap assets...</Text>
+          </Box>
+        </Container>
+      )}
+
+      {/* Error loading swap assets */}
+      {!isLoadingSwapAssets && supportedSwapAssets.length === 0 && swapAssetsError && (
+        <Container maxW="container.md" py={8}>
+          <Box textAlign="center" py={12}>
+            <FaExclamationTriangle size={48} color="orange" />
+            <Text mt={4} color="red.500" fontWeight="bold">
+              {swapAssetsSource === 'emergency-fallback'
+                ? 'Using fallback swap assets'
+                : 'Failed to load swap assets'}
+            </Text>
+            <Text mt={2} fontSize="sm" color="gray.400">{swapAssetsError}</Text>
+            {swapAssetsSource !== 'emergency-fallback' && (
+              <Button
+                mt={4}
+                colorScheme="blue"
+                onClick={() => window.location.reload()}
+              >
+                Retry
+              </Button>
+            )}
+          </Box>
+        </Container>
+      )}
+
       {/* Device Verification Modal - Using simple overlay approach */}
       {showDeviceVerificationDialog && (
         <>
