@@ -6,7 +6,7 @@ settings:
 
 overrides:
   punycode: 2.1.1
-  '@pioneer-platform/pioneer-client': 9.10.12
+  '@pioneer-platform/pioneer-client': 9.13.0
   elliptic: ^6.6.1
   ws: ^7.5.10
   js-yaml: ^4.1.1
@@ -25,23 +25,23 @@ importers:
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.2.2)(react@19.2.1)
       '@pioneer-platform/pioneer-caip':
-        specifier: ^9.12.0
-        version: 9.12.0
+        specifier: ^9.19.0
+        version: 9.19.0
       '@pioneer-platform/pioneer-coins':
-        specifier: ^9.13.0
-        version: 9.13.0(@types/node@20.19.23)
+        specifier: ^9.18.0
+        version: 9.18.0(@types/node@20.19.23)
       '@pioneer-platform/pioneer-discovery':
-        specifier: ^8.17.0
-        version: 8.17.0
+        specifier: ^8.24.0
+        version: 8.24.0
       '@pioneer-platform/pioneer-sdk':
-        specifier: ^8.17.0
-        version: 8.17.0(@types/node@20.19.23)
+        specifier: ^8.24.1
+        version: 8.24.1(@types/node@20.19.23)
       '@pioneer-platform/pioneer-types':
-        specifier: ^8.13.0
-        version: 8.13.0
+        specifier: ^8.19.0
+        version: 8.19.0
       '@pioneer-platform/thorchain-client':
-        specifier: ^0.9.0
-        version: 0.9.0(@types/node@20.19.23)
+        specifier: ^0.16.0
+        version: 0.16.0(@types/node@20.19.23)
       '@sendgrid/mail':
         specifier: ^8.1.6
         version: 8.1.6
@@ -893,29 +893,29 @@ packages:
   '@pioneer-platform/loggerdog@8.11.0':
     resolution: {integrity: sha512-tX0g/Vmy5bbYqxz1vV1V+l6/jCR2xXWz3iA3JjxUdtErN7CwltJDssrPE4l7eDPEVnMWOPwjmic6jJZQ/7Xxtg==}
 
-  '@pioneer-platform/pioneer-caip@9.12.0':
-    resolution: {integrity: sha512-iL63OYE+RkcOLgXMlxzSiumZr977y3gIX04Y2kgPeoP7Re4bVSG+job2NKB83SwRxfC/bPGyqKgPt0n/7KN7Jg==}
+  '@pioneer-platform/pioneer-caip@9.19.0':
+    resolution: {integrity: sha512-/z/mR+83p6mEZzqvBaylmpiGAaE+I12XtTa5BPTZpJfPdFN/diBAXRLiO8R/OPIA9HRZbhNSemOo2QDp3XmYOA==}
 
-  '@pioneer-platform/pioneer-client@9.10.12':
-    resolution: {integrity: sha512-3shJQ4MFolUgekb80sYs6EDcnIh3jR+QdUSQqzZ3il3If52M0A18fHwEF1sXgvcaj9L/Bt0ToT64S+S0dC1PtQ==}
+  '@pioneer-platform/pioneer-client@9.13.0':
+    resolution: {integrity: sha512-ys8BByFPGiIsvaXC2+cYQ+OpWKdpYKh1ek6zVj4cAQMWIVIaaw8QVsirhVBcPs7Uk/Z6bLN68qfctS/nUA43jQ==}
 
-  '@pioneer-platform/pioneer-coins@9.13.0':
-    resolution: {integrity: sha512-WNKN4tIQuh0XW48ztwi1THSn2/RmzqiJDHyIAZD0yGV3PqLUA3DzTRIeq7t9N3NJmUenAfgarWZa41yWuH4YMQ==}
+  '@pioneer-platform/pioneer-coins@9.18.0':
+    resolution: {integrity: sha512-Jeh1ox6ZeRw10DGZvkOaBaLc3jQlg+LWBQhym3Sp346R3aC0T+oHu8/AvtqdggaYgK1CiMj6FkObtCoj7kLxUg==}
 
-  '@pioneer-platform/pioneer-discovery@8.17.0':
-    resolution: {integrity: sha512-iiu+UQn8YBfooiBUf5+NRj1pbEnDRYIHkPpu832jxZ4hyyLaMd6VLLDNcCCRaTgOIxS5OehL9/8EOoR3TFXWOw==}
+  '@pioneer-platform/pioneer-discovery@8.24.0':
+    resolution: {integrity: sha512-ZbuSnpAHGSDOjKQ4QgtkC3y/MUGucWcakS7mv0RyJyf3Qs0iiW2XWzpI6chd4Ho4Tzczf4oYyvi9G/YHptFU+w==}
 
-  '@pioneer-platform/pioneer-events@8.13.0':
-    resolution: {integrity: sha512-vWJWGsSmJDnzEOKtlDfHgO0w/D7oJi2Xxzzwe6dv176yn2pEMqWCRY2+lFG2WoY5X9VeJVgFvNWibs9XFwBRhA==}
+  '@pioneer-platform/pioneer-events@8.20.1':
+    resolution: {integrity: sha512-NMmj0c2UqQYDOeRwaJld0fukP2rpM9HVZBmn7Kek/1DqjKp3XTdJln6iS4aRfXf2QQzO+hIwho0W+jrrRn2Zgw==}
 
-  '@pioneer-platform/pioneer-sdk@8.17.0':
-    resolution: {integrity: sha512-S8QWXFiRHFXQ/ru1pZGPfV56Z7JfoJgT2SIXDRDvMcnkZJzhDJamx3Evudok86cVLpS4PcI0Uo4ydcRmf4tdPg==}
+  '@pioneer-platform/pioneer-sdk@8.24.1':
+    resolution: {integrity: sha512-QHqvs+hGxn2rkiZbPyrOVDOOfc7S2mmmP0h7E1G4Sl9eJuRMIQxGaO9SzRnimFe3DDJkbTZGMrkDGj3JmwIAMQ==}
 
-  '@pioneer-platform/pioneer-types@8.13.0':
-    resolution: {integrity: sha512-6XsY+ch8aRq9bDbbBapmP6Kvx5nEHZUSgGR7pcdY1VSFatleFyhbpGPBUYGHxwRh2tWXDSR417dydbKIZlU2nw==}
+  '@pioneer-platform/pioneer-types@8.19.0':
+    resolution: {integrity: sha512-12JYw0fDo2FkFyH3Qvl94qjlAoqGQFlYEUqo1QRa0uueaIsaFnUGSb4p5T3jqz93OLiAw+VdooG+Stgm7z16TA==}
 
-  '@pioneer-platform/thorchain-client@0.9.0':
-    resolution: {integrity: sha512-Di9EK6MguWKdh7uacjWXWj76BqNPvTDPQNWkp/IlWpJ1jut/SclM44iR/JR3SLS/OK0gMyjj9eHay7UNllLgfg==}
+  '@pioneer-platform/thorchain-client@0.16.0':
+    resolution: {integrity: sha512-SlYIij4auRHawXwH3H/icsVNwbsLrAt9LXRo7UrczU6tBmwWkAUtomM5j8475r5e8CQvqUp4BvQghc/phmjBDw==}
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
@@ -3158,8 +3158,8 @@ packages:
     resolution: {integrity: sha512-ZZow9HBI5O6EPgSJLUb8n2NKgmVWTwCvHGwFuJlMjvLFqlGG6pjirPhtdsseaLZjSibD8eegzmYpUZwoIlj2cQ==}
     engines: {node: '>=4.0'}
 
-  keepkey-vault-sdk@1.0.2:
-    resolution: {integrity: sha512-h5cV4dwxVypnmq5MZ45ITRs9xV6Z+qLtPemiAFFEeQUJkNOHC90N/JJVewMvKvqZ7FFjne1c1CLhYTkMRjFcsg==}
+  keepkey-vault-sdk@1.2.2:
+    resolution: {integrity: sha512-IEQLeW5CG+qFD6mVbbjihZHyjGnXr8tGIsB5Anmb//a6a1jfXpHRdSI0fH7bypt+2+znBMFmZCwwCVLclSXHKA==}
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
@@ -5422,15 +5422,15 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-caip@9.12.0': {}
+  '@pioneer-platform/pioneer-caip@9.19.0': {}
 
-  '@pioneer-platform/pioneer-client@9.10.12':
+  '@pioneer-platform/pioneer-client@9.13.0':
     dependencies:
       swagger-client: 3.36.0
     transitivePeerDependencies:
       - debug
 
-  '@pioneer-platform/pioneer-coins@9.13.0(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-coins@9.18.0(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
       bignumber.js: 9.3.1
@@ -5440,17 +5440,17 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-discovery@8.17.0':
+  '@pioneer-platform/pioneer-discovery@8.24.0':
     dependencies:
-      '@pioneer-platform/pioneer-caip': 9.12.0
+      '@pioneer-platform/pioneer-caip': 9.19.0
       ethers: 5.7.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-events@8.13.0':
+  '@pioneer-platform/pioneer-events@8.20.1':
     dependencies:
-      '@pioneer-platform/pioneer-types': 8.13.0
+      '@pioneer-platform/pioneer-types': 8.19.0
       '@types/node': 18.19.130
       cookie: 1.1.1
       dotenv: 16.6.1
@@ -5464,16 +5464,16 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-sdk@8.17.0(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-sdk@8.24.1(@types/node@20.19.23)':
     dependencies:
-      '@pioneer-platform/pioneer-caip': 9.12.0
-      '@pioneer-platform/pioneer-client': 9.10.12
-      '@pioneer-platform/pioneer-coins': 9.13.0(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-discovery': 8.17.0
-      '@pioneer-platform/pioneer-events': 8.13.0
+      '@pioneer-platform/pioneer-caip': 9.19.0
+      '@pioneer-platform/pioneer-client': 9.13.0
+      '@pioneer-platform/pioneer-coins': 9.18.0(@types/node@20.19.23)
+      '@pioneer-platform/pioneer-discovery': 8.24.0
+      '@pioneer-platform/pioneer-events': 8.20.1
       coinselect: 3.1.13
       eventemitter3: 5.0.1
-      keepkey-vault-sdk: 1.0.2
+      keepkey-vault-sdk: 1.2.2
       neotraverse: 0.6.18
       socket.io-client: 4.8.1
     transitivePeerDependencies:
@@ -5486,13 +5486,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-types@8.13.0': {}
+  '@pioneer-platform/pioneer-types@8.19.0': {}
 
-  '@pioneer-platform/thorchain-client@0.9.0(@types/node@20.19.23)':
+  '@pioneer-platform/thorchain-client@0.16.0(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-caip': 9.12.0
-      '@pioneer-platform/pioneer-coins': 9.13.0(@types/node@20.19.23)
+      '@pioneer-platform/pioneer-caip': 9.19.0
+      '@pioneer-platform/pioneer-coins': 9.18.0(@types/node@20.19.23)
       axios: 1.13.2
       dotenv: 17.2.3
       rango-sdk: 0.1.71
@@ -8839,7 +8839,7 @@ snapshots:
       object.assign: 4.1.7
       object.values: 1.2.1
 
-  keepkey-vault-sdk@1.0.2:
+  keepkey-vault-sdk@1.2.2:
     dependencies:
       node-fetch: 2.7.0
     transitivePeerDependencies:
