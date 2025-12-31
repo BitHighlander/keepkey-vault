@@ -10,8 +10,6 @@ import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import Dashboard from '@/components/dashboard/Dashboard'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { useState, useEffect } from 'react'
-import { MaintenancePage } from '@/components/maintenance/MaintenancePage'
-import { isMaintenanceMode } from '@/config/maintenance'
 // Background image path
 const splashBg = '/images/backgrounds/splash-bg.png'
 
@@ -44,11 +42,6 @@ import {
 } from '@/components/SEO/StructuredData'
 
 export default function Home() {
-  // Check if maintenance mode is enabled
-  if (isMaintenanceMode()) {
-    return <MaintenancePage />
-  }
-
   const pioneer = usePioneerContext();
   const {
     state = {},
