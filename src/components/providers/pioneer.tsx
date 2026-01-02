@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { paymentEventManager, createBalancesMap } from '@/lib/notifications/PaymentEventManager'
 import { transactionEventManager } from '@/lib/notifications/TransactionEventManager'
 
@@ -31,7 +31,8 @@ export interface AssetContextState {
 // Create Pioneer Context with asset state
 export interface PioneerContextValue {
   state: any;
-  setAssetContext: (assetData: AssetContextState, chatId?: string) => void;
+  setAssetContext: (assetData: AssetContextState, chatId?: string) => Promise<void>;
+  setOutboundAssetContext: (assetData: AssetContextState) => Promise<void>;
   clearAssetContext: (chatId?: string) => void;
   triggerBalanceRefresh: () => void;
   isAssetViewActive: boolean;
@@ -62,9 +63,34 @@ export function AppProvider({
 }: AppProviderProps) {
     // Add state for asset context
     const [assetContext, setAssetContext] = useState<AssetContextState | null>(null);
+    const [outboundAssetContext, setOutboundAssetContext] = useState<AssetContextState | null>(null);
     const [isAssetViewActive, setIsAssetViewActive] = useState<boolean>(false);
     // Add refresh counter to force re-renders when balances update
     const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
+
+    // Memoize setter functions to prevent infinite loops in useEffect dependencies
+    const setAssetContextMemoized = useCallback((assetData: AssetContextState) => {
+        console.log('🔄 [Provider] Setting asset context:', assetData);
+        setAssetContext(assetData);
+        setIsAssetViewActive(true);
+        return Promise.resolve();
+    }, []);
+
+    const setOutboundAssetContextMemoized = useCallback(async (assetData: AssetContextState) => {
+        console.log('🔄 [Provider] Setting outbound asset context:', assetData);
+
+        // Call the actual SDK method to let it populate address from pubkeys
+        if (pioneer?.state?.app && typeof pioneer.state.app.setOutboundAssetContext === 'function') {
+            await pioneer.state.app.setOutboundAssetContext(assetData);
+            console.log('✅ [Provider] SDK populated address:', pioneer.state.app.outboundAssetContext?.address);
+            // SDK has now populated the address - update React state with the result
+            setOutboundAssetContext(pioneer.state.app.outboundAssetContext);
+        } else {
+            console.warn('⚠️ [Provider] SDK setOutboundAssetContext not available, using fallback');
+            // Fallback if SDK not available
+            setOutboundAssetContext(assetData);
+        }
+    }, [pioneer]);
 
     // Payment notification system - track balance snapshots for event detection
     // Using useRef to avoid re-renders and prevent infinite loop
@@ -132,36 +158,44 @@ export function AppProvider({
         };
     }, [pioneer?.state?.app?.events]);
 
+    // Memoize clearAssetContext to prevent recreating on every render
+    const clearAssetContextMemoized = useCallback(() => {
+        console.log('🔄 Clearing asset context');
+        setAssetContext(null);
+        setOutboundAssetContext(null);
+        setIsAssetViewActive(false);
+    }, []);
+
+    // Memoize triggerBalanceRefresh to prevent recreating on every render
+    const triggerBalanceRefreshMemoized = useCallback(() => {
+        console.log('🔄 Triggering balance refresh counter');
+        setBalanceRefreshCounter(prev => prev + 1);
+    }, []);
+
     // Create wrapper for pioneer with added asset context
-    const pioneerWithAssetContext = {
+    // Memoize to prevent unnecessary re-renders
+    const pioneerWithAssetContext = useMemo(() => ({
         ...pioneer,
         state: {
             ...pioneer?.state,
             app: {
                 ...pioneer?.state?.app,
                 assetContext,
+                outboundAssetContext,
+                // Override SDK methods with React state setters (memoized to prevent infinite loops)
+                setAssetContext: setAssetContextMemoized,
+                setOutboundAssetContext: setOutboundAssetContextMemoized,
             },
             balanceRefreshCounter, // Include counter in state
         },
-        // Add methods for asset management
-        setAssetContext: (assetData: AssetContextState) => {
-            console.log('🔄 Setting asset context:', assetData);
-            setAssetContext(assetData);
-            setIsAssetViewActive(true);
-        },
-        clearAssetContext: () => {
-            console.log('🔄 Clearing asset context');
-            setAssetContext(null);
-            setIsAssetViewActive(false);
-        },
-        // Add method to trigger balance refresh (forces re-render)
-        triggerBalanceRefresh: () => {
-            console.log('🔄 Triggering balance refresh counter');
-            setBalanceRefreshCounter(prev => prev + 1);
-        },
+        // Also add methods at top level for backward compatibility
+        setAssetContext: setAssetContextMemoized,
+        setOutboundAssetContext: setOutboundAssetContextMemoized,
+        clearAssetContext: clearAssetContextMemoized,
+        triggerBalanceRefresh: triggerBalanceRefreshMemoized,
         isAssetViewActive,
         setIsAssetViewActive
-    };
+    }), [pioneer, assetContext, outboundAssetContext, balanceRefreshCounter, setAssetContextMemoized, setOutboundAssetContextMemoized, clearAssetContextMemoized, triggerBalanceRefreshMemoized, isAssetViewActive, setIsAssetViewActive]);
 
     return (
         <PioneerContext.Provider value={pioneerWithAssetContext}>

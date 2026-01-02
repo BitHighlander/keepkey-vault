@@ -178,3 +178,116 @@ export function getChainIdFromCAIP(caip: string): number {
   }
   return parseInt(match[1], 10);
 }
+
+/**
+ * Poll for approval transaction confirmation and verify allowance
+ *
+ * @param sdk - Pioneer SDK instance
+ * @param txHash - Transaction hash to monitor
+ * @param tokenAddress - ERC20 token contract address
+ * @param ownerAddress - Token owner's address
+ * @param spenderAddress - Spender address (THORChain router)
+ * @param requiredAmount - Required approval amount
+ * @param networkId - Network ID (e.g., "eip155:1")
+ * @param options - Polling options (timeout, interval)
+ * @returns Promise that resolves when approval is confirmed
+ */
+export async function pollForApprovalConfirmation(
+  sdk: any,
+  txHash: string,
+  tokenAddress: string,
+  ownerAddress: string,
+  spenderAddress: string,
+  requiredAmount: string,
+  networkId: string = 'eip155:1',
+  options: { timeout?: number; interval?: number } = {}
+): Promise<void> {
+  const timeout = options.timeout || 120000; // 2 minutes default
+  const initialInterval = options.interval || 2000; // 2 seconds default
+  const maxInterval = 10000; // Max 10 seconds between polls
+  const startTime = Date.now();
+
+  console.log('⏳ Polling for approval transaction confirmation:', {
+    txHash,
+    timeout: `${timeout / 1000}s`,
+    initialInterval: `${initialInterval / 1000}s`
+  });
+
+  let attempts = 0;
+  let currentInterval = initialInterval;
+
+  while (Date.now() - startTime < timeout) {
+    attempts++;
+
+    try {
+      // Check if transaction is confirmed
+      console.log(`🔍 Polling attempt ${attempts} (interval: ${currentInterval / 1000}s)...`);
+
+      // Use Pioneer SDK to get transaction receipt
+      const receiptResult = await sdk.GetTransactionReceipt({
+        networkId,
+        txHash
+      });
+
+      if (receiptResult.success && receiptResult.data?.receipt) {
+        const receipt = receiptResult.data.receipt;
+        console.log('📝 Receipt found:', {
+          blockNumber: receipt.blockNumber,
+          status: receipt.status,
+          gasUsed: receipt.gasUsed
+        });
+
+        // Check if transaction was successful
+        if (receipt.status === '0x1' || receipt.status === 1 || receipt.status === true) {
+          console.log('✅ Transaction confirmed successfully');
+
+          // Re-check allowance to verify it actually increased
+          console.log('🔍 Verifying allowance increased...');
+          const allowanceCheck = await checkERC20Allowance(
+            sdk,
+            tokenAddress,
+            ownerAddress,
+            spenderAddress,
+            requiredAmount,
+            networkId
+          );
+
+          if (allowanceCheck.hasApproval) {
+            console.log('✅ Allowance confirmed increased:', allowanceCheck.currentAllowance);
+            return; // Success!
+          } else {
+            console.warn('⚠️ Transaction confirmed but allowance not sufficient:', {
+              current: allowanceCheck.currentAllowance,
+              required: requiredAmount
+            });
+            throw new Error('Approval transaction confirmed but allowance not updated');
+          }
+        } else {
+          console.error('❌ Transaction failed on-chain');
+          throw new Error('Approval transaction reverted');
+        }
+      }
+
+      // No receipt yet, wait and try again with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, currentInterval));
+
+      // Increase interval for next attempt (exponential backoff)
+      currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+
+    } catch (error: any) {
+      // If error is a confirmation failure, throw it
+      if (error.message?.includes('reverted') || error.message?.includes('not updated')) {
+        throw error;
+      }
+
+      // Otherwise, it might be a transient error, continue polling
+      console.log(`⚠️ Error during polling (will retry): ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, currentInterval));
+      currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+    }
+  }
+
+  // Timeout reached
+  console.error('❌ Approval confirmation timeout after', (Date.now() - startTime) / 1000, 'seconds');
+  throw new Error(`Approval transaction not confirmed within ${timeout / 1000} seconds. Transaction may still be pending.`);
+}

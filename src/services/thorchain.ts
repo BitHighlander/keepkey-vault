@@ -59,6 +59,7 @@ interface SwapQuote {
   expiry: number;
   warning?: string;
   notes?: string;
+  fetchedAt?: number; // Timestamp when quote was fetched (for expiration checking)
   dust_threshold?: string;
   recommended_gas_rate?: string;
   gas_rate_units?: string;
@@ -231,7 +232,11 @@ export async function getThorchainQuote(
       throw new Error('Invalid quote: zero output amount. Pool may have insufficient liquidity.');
     }
 
-    return data;
+    // Add timestamp for expiration checking
+    return {
+      ...data,
+      fetchedAt: Date.now()
+    };
   } catch (error) {
     console.error('❌ [THORChain] Error fetching quote:', error);
     // Re-throw the error so it can be caught by the caller with proper error message

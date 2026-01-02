@@ -525,16 +525,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         balanceUsd: fromAsset?.balanceUsd || 0
       });
 
-      // Set TO asset - merge pool data with user balance if available
+      // Set TO asset - SDK will populate all fields from caip
       app.setOutboundAssetContext({
-        caip: toPool.caip,
-        networkId: toPool.networkId || caipToNetworkId(toPool.caip),
-        symbol: toPool.symbol,
-        name: toPool.name,
-        icon: toPool.icon,
-        priceUsd: toAsset?.priceUsd || 0,
-        balance: toAsset?.balance || 0,
-        balanceUsd: toAsset?.balanceUsd || 0
+        caip: toPool.caip
       });
     }
   }, [searchParams, availableAssets]); // Re-run when balances load to update prices
@@ -729,12 +722,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       
       if (alternativeAsset) {
         app.setOutboundAssetContext({
-          caip: alternativeAsset.caip,
-          networkId: alternativeAsset.networkId || caipToNetworkId(alternativeAsset.caip),
-          symbol: alternativeAsset.symbol,
-          name: alternativeAsset.name,
-          icon: alternativeAsset.icon,
-          priceUsd: alternativeAsset.priceUsd || 0
+          caip: alternativeAsset.caip
         });
       }
     }
@@ -947,12 +935,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         if (nextAsset) {
           console.log('✅ [Swap] Auto-selected next asset as output:', nextAsset.symbol);
           await app.setOutboundAssetContext({
-            caip: nextAsset.caip,
-            networkId: nextAsset.networkId || caipToNetworkId(nextAsset.caip),
-            symbol: nextAsset.symbol,
-            name: nextAsset.name,
-            icon: nextAsset.icon,
-            priceUsd: nextAsset.priceUsd || 0
+            caip: nextAsset.caip
           });
         }
         // Don't return - continue to set the selected asset as "from" below
@@ -1057,12 +1040,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       try {
         await app.setOutboundAssetContext({
-          caip: asset.caip,
-          networkId: asset.networkId || caipToNetworkId(asset.caip),
-          symbol: asset.symbol,
-          name: asset.name,
-          icon: asset.icon,
-          priceUsd: asset.priceUsd
+          caip: asset.caip
         });
         console.log('✅ Output asset set successfully:', asset.symbol);
       } catch (outboundError) {
@@ -1136,12 +1114,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       });
 
       await app.setOutboundAssetContext({
-        caip: fromSel.caip,
-        networkId: fromSel.networkId || caipToNetworkId(fromSel.caip),
-        symbol: fromSel.symbol,
-        name: fromSel.name,
-        icon: fromSel.icon,
-        priceUsd: fromSel.priceUsd
+        caip: fromSel.caip
       });
       console.log('✅ Swapped assets successfully:', fromSel.symbol, '↔', toSel.symbol);
     } catch (swapError) {
@@ -1260,12 +1233,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Ensure SDK has an outbound address context
       if (app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
         await app.setOutboundAssetContext({
-          caip: app.outboundAssetContext.caip,
-          networkId: app.outboundAssetContext.networkId || caipToNetworkId(app.outboundAssetContext.caip),
-          symbol: app.outboundAssetContext.symbol,
-          name: app.outboundAssetContext.name,
-          icon: app.outboundAssetContext.icon,
-          address: app.outboundAssetContext.address,
+          caip: app.outboundAssetContext.caip
         });
       }
 
@@ -1462,35 +1430,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           console.log('🔄 Using EVM fallback for network:', app.outboundAssetContext.networkId)
         }
 
-        // CRITICAL: Look up pathMaster from pubkeys (SDK stores paths there, not in assetContext)
-        let pathMaster = app.outboundAssetContext.pathMaster;
-        let scriptType = app.outboundAssetContext.scriptType;
+        // SDK automatically populates pathMaster and scriptType in outboundAssetContext
+        const pathMaster = app.outboundAssetContext.pathMaster;
+        const scriptType = app.outboundAssetContext.scriptType;
 
-        if (!pathMaster && app.pubkeys && app.outboundAssetContext.address) {
-          // Find pubkey matching the outbound address
-          const matchingPubkey = app.pubkeys.find((p: any) => {
-            return p.master === app.outboundAssetContext.address ||
-                   p.address === app.outboundAssetContext.address ||
-                   p.pubkey === app.outboundAssetContext.address;
-          });
-
-          if (matchingPubkey) {
-            pathMaster = matchingPubkey.path;
-            scriptType = matchingPubkey.script_type;
-            console.log('✅ Found path from pubkeys:', {
-              path: pathMaster,
-              script_type: scriptType,
-              note: matchingPubkey.note
-            });
-          } else {
-            console.error('❌ No matching pubkey found for address:', app.outboundAssetContext.address);
-            throw new Error(`Cannot verify address on device: no path found for ${app.outboundAssetContext.symbol}`);
-          }
-        }
-
+        // Fail fast if SDK didn't populate path
         if (!pathMaster) {
+          console.error('❌ SDK failed to populate pathMaster in outboundAssetContext');
+          console.error('   outboundAssetContext:', app.outboundAssetContext);
+          console.error('   This means setOutboundAssetContext may not be calling the SDK method correctly');
           throw new Error(`Cannot verify address on device: missing path for ${app.outboundAssetContext.symbol}`);
         }
+
+        console.log('✅ [Device Verification] Path populated by SDK:', {
+          path: pathMaster,
+          scriptType: scriptType || 'N/A',
+          address: app.outboundAssetContext.address
+        });
 
         console.log('🔍 Device verification context:', {
           networkId: app.outboundAssetContext.networkId,

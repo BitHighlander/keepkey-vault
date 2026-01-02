@@ -93,7 +93,7 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
     if (networkId) {
       fetchDapps();
     }
-  }, [networkId, app]);
+  }, [networkId, app?.pioneer]); // Only depend on stable pioneer client, not entire app object
 
   const totalPages = Math.ceil(dapps.length / dappsPerPage);
   const startIndex = currentPage * dappsPerPage;
