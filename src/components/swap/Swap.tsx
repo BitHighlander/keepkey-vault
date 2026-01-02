@@ -614,46 +614,43 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   
   // Auto-select output asset when input asset changes
   useEffect(() => {
-    console.log('🔍 [Swap] Auto-select output asset useEffect triggered:', {
-      hasAssetContext: !!app?.assetContext?.caip,
-      hasOutboundContext: !!app?.outboundAssetContext?.caip,
-      canSetOutbound: !!app?.setOutboundAssetContext,
-      inputSymbol: app?.assetContext?.symbol,
-      supportedSwapAssetsCount: supportedSwapAssets.length
-    });
+    const autoSelectOutput = async () => {
+      console.log('🔍 [Swap] Auto-select output asset useEffect triggered:', {
+        hasAssetContext: !!app?.assetContext?.caip,
+        hasOutboundContext: !!app?.outboundAssetContext?.caip,
+        canSetOutbound: !!app?.setOutboundAssetContext,
+        inputSymbol: app?.assetContext?.symbol,
+        supportedSwapAssetsCount: supportedSwapAssets.length
+      });
 
-    if (app?.assetContext?.caip && !app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
-      let defaultTo = null;
+      if (app?.assetContext?.caip && !app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
+        let defaultTo = null;
 
-      // If input is Bitcoin, default to Ethereum (native, not wrapped)
-      if (app.assetContext.symbol === 'BTC') {
-        defaultTo = supportedSwapAssets.find(a => a.symbol === 'ETH' && a.isNative);
-      }
-      // If input is anything else, default to Bitcoin
-      else {
-        defaultTo = supportedSwapAssets.find(a => a.symbol === 'BTC' && a.isNative);
-      }
+        // If input is Bitcoin, default to Ethereum (native, not wrapped)
+        if (app.assetContext.symbol === 'BTC') {
+          defaultTo = supportedSwapAssets.find(a => a.symbol === 'ETH' && a.isNative);
+        }
+        // If input is anything else, default to Bitcoin
+        else {
+          defaultTo = supportedSwapAssets.find(a => a.symbol === 'BTC' && a.isNative);
+        }
 
-      if (defaultTo) {
-        const balanceData = availableAssets.find(a => a.caip === defaultTo.caip);
-        console.log('✅ [Swap] Auto-selecting output asset:', {
-          symbol: defaultTo.symbol,
-          caip: defaultTo.caip,
-          hasBalance: !!balanceData,
-          balance: balanceData?.balance,
-          priceUsd: balanceData?.priceUsd
-        });
-        app.setOutboundAssetContext({
-          ...defaultTo,
-          balance: balanceData?.balance || 0,
-          balanceUsd: balanceData?.balanceUsd || 0,
-          priceUsd: balanceData?.priceUsd || 0
-        });
-      } else {
-        console.error('❌ [Swap] Could not auto-select output asset for:', app.assetContext.symbol, 'Available swap assets:', supportedSwapAssets.length);
+        if (defaultTo) {
+          console.log('✅ [Swap] Auto-selecting output asset with CAIP only:', {
+            symbol: defaultTo.symbol,
+            caip: defaultTo.caip
+          });
+          // CRITICAL: Only pass caip - SDK will populate address and other fields
+          await app.setOutboundAssetContext({ caip: defaultTo.caip });
+          console.log('✅ [Swap] Output asset context set, address populated:', app.outboundAssetContext?.address);
+        } else {
+          console.error('❌ [Swap] Could not auto-select output asset for:', app.assetContext.symbol, 'Available swap assets:', supportedSwapAssets.length);
+        }
       }
-    }
-  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext, supportedSwapAssets]);
+    };
+
+    autoSelectOutput();
+  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext]);
   
   // Set default input amount when both assets are selected and input is empty
   useEffect(() => {
