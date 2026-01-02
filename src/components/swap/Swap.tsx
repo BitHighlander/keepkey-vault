@@ -643,7 +643,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     };
 
     autoSelectOutput();
-  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext]);
+  }, [app?.assetContext?.caip, availableAssets, app?.setOutboundAssetContext]); // Don't depend on outbound context - creates infinite loop!
   
   // Set default input amount when both assets are selected and input is empty
   useEffect(() => {
