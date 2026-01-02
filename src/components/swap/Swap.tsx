@@ -614,6 +614,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   
   // Auto-select output asset when input asset changes
   useEffect(() => {
+    console.log('🔍 [Swap] Auto-select output asset useEffect triggered:', {
+      hasAssetContext: !!app?.assetContext?.caip,
+      hasOutboundContext: !!app?.outboundAssetContext?.caip,
+      canSetOutbound: !!app?.setOutboundAssetContext,
+      inputSymbol: app?.assetContext?.symbol,
+      supportedSwapAssetsCount: supportedSwapAssets.length
+    });
+
     if (app?.assetContext?.caip && !app?.outboundAssetContext?.caip && app?.setOutboundAssetContext) {
       let defaultTo = null;
 
@@ -628,10 +636,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       if (defaultTo) {
         const balanceData = availableAssets.find(a => a.caip === defaultTo.caip);
-        console.log('🔄 [Swap] Auto-selecting output asset:', {
+        console.log('✅ [Swap] Auto-selecting output asset:', {
           symbol: defaultTo.symbol,
           caip: defaultTo.caip,
-          hasBalance: !!balanceData
+          hasBalance: !!balanceData,
+          balance: balanceData?.balance,
+          priceUsd: balanceData?.priceUsd
         });
         app.setOutboundAssetContext({
           ...defaultTo,
@@ -640,23 +650,32 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           priceUsd: balanceData?.priceUsd || 0
         });
       } else {
-        console.warn('[Swap] Could not auto-select output asset for:', app.assetContext.symbol);
+        console.error('❌ [Swap] Could not auto-select output asset for:', app.assetContext.symbol, 'Available swap assets:', supportedSwapAssets.length);
       }
     }
-  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext]);
+  }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip, availableAssets, app?.setOutboundAssetContext, supportedSwapAssets]);
   
   // Set default input amount when both assets are selected and input is empty
   useEffect(() => {
+    console.log('🔍 [Swap] Default amount useEffect triggered:', {
+      hasAssetContext: !!app?.assetContext?.caip,
+      hasOutboundContext: !!app?.outboundAssetContext?.caip,
+      hasInputAmount: !!inputAmount,
+      availableAssetsCount: availableAssets.length,
+      fromSymbol: app?.assetContext?.symbol,
+      toSymbol: app?.outboundAssetContext?.symbol
+    });
+
     if (app?.assetContext?.caip &&
         app?.outboundAssetContext?.caip &&
         !inputAmount &&
         availableAssets.length > 0) {
 
       const fromAsset = availableAssets.find(a => a.caip === app.assetContext.caip);
-      
+
       if (fromAsset && fromAsset.balance > 0 && fromAsset.priceUsd > 0) {
         const maxUsdValue = fromAsset.balance * fromAsset.priceUsd;
-        
+
         console.log('💰 Setting default input amount:', {
           asset: fromAsset.symbol,
           balance: fromAsset.balance,
@@ -679,8 +698,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         
         // Fetch quote for the default amount
         const amount = maxUsdValue <= 100 ? fromAsset.balance.toString() : (100 / fromAsset.priceUsd).toFixed(8);
-        if (amount) {
+        if (amount && app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
+          console.log('🎯 [Swap] Fetching initial quote with:', {
+            amount,
+            fromSymbol: app.assetContext.symbol,
+            toSymbol: app.outboundAssetContext.symbol
+          });
           fetchQuote(amount, app.assetContext.symbol, app.outboundAssetContext.symbol);
+        } else {
+          console.warn('⚠️ [Swap] Cannot fetch initial quote - missing asset symbols:', {
+            hasAmount: !!amount,
+            hasFromSymbol: !!app?.assetContext?.symbol,
+            hasToSymbol: !!app?.outboundAssetContext?.symbol
+          });
         }
       }
     }
@@ -804,6 +834,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol]);
 
   const handleInputChange = async (value: string) => {
+    console.log('📝 [Swap] Input changed:', {
+      newValue: value,
+      previousValue: inputAmount,
+      fromSymbol: app?.assetContext?.symbol,
+      toSymbol: app?.outboundAssetContext?.symbol
+    });
+
     setInputAmount(value);
     if (isMaxAmount) {
       console.log('🔄 Clearing isMax flag - user manually changed amount from:', inputAmount, 'to:', value);
@@ -817,16 +854,26 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     } else {
       setInputUSDValue('');
     }
-    
+
     // Clear previous output
     setOutputAmount('');
     setOutputUSDValue('');
     setQuote(null);
     setError('');
-    
+
     // Fetch quote if we have valid input
     if (value && parseFloat(value) > 0 && app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
+      console.log('✅ [Swap] Conditions met, fetching quote for custom amount');
       await fetchQuote(value, app.assetContext.symbol, app.outboundAssetContext.symbol);
+    } else {
+      console.warn('⚠️ [Swap] Cannot fetch quote - conditions not met:', {
+        hasValue: !!value,
+        valueGreaterThanZero: value ? parseFloat(value) > 0 : false,
+        hasFromSymbol: !!app?.assetContext?.symbol,
+        hasToSymbol: !!app?.outboundAssetContext?.symbol,
+        fromSymbol: app?.assetContext?.symbol,
+        toSymbol: app?.outboundAssetContext?.symbol
+      });
     }
   };
 
