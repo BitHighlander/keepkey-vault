@@ -68,15 +68,46 @@ export function AppProvider({
     // Add refresh counter to force re-renders when balances update
     const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
     // Track processing state to prevent infinite loops via re-entry detection
+    const isProcessingAssetRef = useRef<boolean>(false);
     const isProcessingOutboundRef = useRef<boolean>(false);
 
     // Memoize setter functions to prevent infinite loops in useEffect dependencies
-    const setAssetContextMemoized = useCallback((assetData: AssetContextState) => {
+    const setAssetContextMemoized = useCallback(async (assetData: AssetContextState) => {
+        // Prevent infinite loops via re-entry detection
+        if (isProcessingAssetRef.current) {
+            console.log('⏭️ [Provider] Skipping - already processing asset context');
+            return;
+        }
+
         console.log('🔄 [Provider] Setting asset context:', assetData);
-        setAssetContext(assetData);
-        setIsAssetViewActive(true);
-        return Promise.resolve();
-    }, []);
+        isProcessingAssetRef.current = true;
+
+        try {
+            // Call the actual SDK method to let it populate address from pubkeys
+            if (pioneer?.state?.app && typeof pioneer.state.app.setAssetContext === 'function') {
+                await pioneer.state.app.setAssetContext(assetData);
+                const sdkResult = pioneer.state.app.assetContext;
+                console.log('✅ [Provider] SDK result for input asset:', {
+                    symbol: sdkResult?.symbol,
+                    address: sdkResult?.address,
+                    pathMaster: sdkResult?.pathMaster,
+                    caip: sdkResult?.caip
+                });
+
+                // Always update React state with SDK's enriched result
+                setAssetContext(sdkResult);
+                setIsAssetViewActive(true);
+            } else {
+                console.warn('⚠️ [Provider] SDK setAssetContext not available, using fallback');
+                // Fallback if SDK not available
+                setAssetContext(assetData);
+                setIsAssetViewActive(true);
+            }
+        } finally {
+            // Reset processing flag
+            isProcessingAssetRef.current = false;
+        }
+    }, [pioneer]);
 
     const setOutboundAssetContextMemoized = useCallback(async (assetData: AssetContextState) => {
         // Prevent infinite loops via re-entry detection
