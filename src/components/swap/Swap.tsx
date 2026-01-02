@@ -1462,18 +1462,49 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           console.log('🔄 Using EVM fallback for network:', app.outboundAssetContext.networkId)
         }
 
+        // CRITICAL: Look up pathMaster from pubkeys (SDK stores paths there, not in assetContext)
+        let pathMaster = app.outboundAssetContext.pathMaster;
+        let scriptType = app.outboundAssetContext.scriptType;
+
+        if (!pathMaster && app.pubkeys && app.outboundAssetContext.address) {
+          // Find pubkey matching the outbound address
+          const matchingPubkey = app.pubkeys.find((p: any) => {
+            return p.master === app.outboundAssetContext.address ||
+                   p.address === app.outboundAssetContext.address ||
+                   p.pubkey === app.outboundAssetContext.address;
+          });
+
+          if (matchingPubkey) {
+            pathMaster = matchingPubkey.path;
+            scriptType = matchingPubkey.script_type;
+            console.log('✅ Found path from pubkeys:', {
+              path: pathMaster,
+              script_type: scriptType,
+              note: matchingPubkey.note
+            });
+          } else {
+            console.error('❌ No matching pubkey found for address:', app.outboundAssetContext.address);
+            throw new Error(`Cannot verify address on device: no path found for ${app.outboundAssetContext.symbol}`);
+          }
+        }
+
+        if (!pathMaster) {
+          throw new Error(`Cannot verify address on device: missing path for ${app.outboundAssetContext.symbol}`);
+        }
+
         console.log('🔍 Device verification context:', {
           networkId: app.outboundAssetContext.networkId,
           networkType,
-          pathMaster: app.outboundAssetContext.pathMaster,
-          scriptType: app.outboundAssetContext.scriptType,
+          pathMaster,
+          scriptType,
+          address: app.outboundAssetContext.address,
           NetworkIdToChain,
           chainFromNetworkId: NetworkIdToChain?.[app.outboundAssetContext.networkId]
         });
 
         // Get the chain name for the coin map
         const chainName = NetworkIdToChain[app.outboundAssetContext.networkId];
-        
+
         if (!chainName) {
           console.error('❌ Chain name not found for network ID:', app.outboundAssetContext.networkId);
           console.error('Available network mappings:', NetworkIdToChain);
@@ -1481,10 +1512,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         }
 
         let addressInfo = {
-          address_n: bip32ToAddressNList(app.outboundAssetContext.pathMaster),
-          script_type:app.outboundAssetContext.scriptType,
+          address_n: bip32ToAddressNList(pathMaster),
+          script_type: scriptType,
           // @ts-ignore
-          coin:COIN_MAP_KEEPKEY_LONG[chainName],
+          coin: COIN_MAP_KEEPKEY_LONG[chainName],
           show_display: true  // This MUST be true to show on device
         }
         console.log('📱 DEVICE VERIFICATION - Address will be shown on KeepKey');
