@@ -67,6 +67,8 @@ export function AppProvider({
     const [isAssetViewActive, setIsAssetViewActive] = useState<boolean>(false);
     // Add refresh counter to force re-renders when balances update
     const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
+    // Track processing state to prevent infinite loops via re-entry detection
+    const isProcessingOutboundRef = useRef<boolean>(false);
 
     // Memoize setter functions to prevent infinite loops in useEffect dependencies
     const setAssetContextMemoized = useCallback((assetData: AssetContextState) => {
@@ -77,33 +79,39 @@ export function AppProvider({
     }, []);
 
     const setOutboundAssetContextMemoized = useCallback(async (assetData: AssetContextState) => {
+        // Prevent infinite loops via re-entry detection
+        if (isProcessingOutboundRef.current) {
+            console.log('⏭️ [Provider] Skipping - already processing outbound asset context');
+            return;
+        }
+
         console.log('🔄 [Provider] Setting outbound asset context:', assetData);
+        isProcessingOutboundRef.current = true;
 
-        // Call the actual SDK method to let it populate address from pubkeys
-        if (pioneer?.state?.app && typeof pioneer.state.app.setOutboundAssetContext === 'function') {
-            await pioneer.state.app.setOutboundAssetContext(assetData);
-            const sdkResult = pioneer.state.app.outboundAssetContext;
-            console.log('✅ [Provider] SDK result:', {
-                symbol: sdkResult?.symbol,
-                address: sdkResult?.address,
-                pathMaster: sdkResult?.pathMaster,
-                caip: sdkResult?.caip
-            });
+        try {
+            // Call the actual SDK method to let it populate address from pubkeys
+            if (pioneer?.state?.app && typeof pioneer.state.app.setOutboundAssetContext === 'function') {
+                await pioneer.state.app.setOutboundAssetContext(assetData);
+                const sdkResult = pioneer.state.app.outboundAssetContext;
+                console.log('✅ [Provider] SDK result:', {
+                    symbol: sdkResult?.symbol,
+                    address: sdkResult?.address,
+                    pathMaster: sdkResult?.pathMaster,
+                    caip: sdkResult?.caip
+                });
 
-            // Only update React state if the CAIP actually changed (prevent infinite loops)
-            if (sdkResult?.caip !== outboundAssetContext?.caip) {
+                // Always update React state with SDK's enriched result
                 setOutboundAssetContext(sdkResult);
             } else {
-                console.log('⏭️ [Provider] Skipping state update - CAIP unchanged');
-            }
-        } else {
-            console.warn('⚠️ [Provider] SDK setOutboundAssetContext not available, using fallback');
-            // Fallback if SDK not available
-            if (assetData?.caip !== outboundAssetContext?.caip) {
+                console.warn('⚠️ [Provider] SDK setOutboundAssetContext not available, using fallback');
+                // Fallback if SDK not available
                 setOutboundAssetContext(assetData);
             }
+        } finally {
+            // Reset processing flag
+            isProcessingOutboundRef.current = false;
         }
-    }, [pioneer, outboundAssetContext]);
+    }, [pioneer]);
 
     // Payment notification system - track balance snapshots for event detection
     // Using useRef to avoid re-renders and prevent infinite loop
