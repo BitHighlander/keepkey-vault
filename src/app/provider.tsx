@@ -21,6 +21,7 @@ import { isZcashEnabled, ZCASH_NETWORK_ID, isPioneerV2Enabled } from '@/config/f
 import { getCustomPaths } from '@/lib/storage/customPaths'
 import { savePubkeys, getDeviceInfo } from '@/lib/storage/pubkeyStorage'
 import { isMobileApp } from '@/lib/platformDetection'
+import { logger } from '@/lib/logger';
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -47,7 +48,7 @@ const PIONEER_WSS = getConfiguredWss()
 let PIONEER_INITIALIZED = false;
 
 export function Provider({ children }: ProviderProps) {
-  console.log('🚀 Direct Pioneer SDK Provider started!');
+  logger.debug('🚀 Direct Pioneer SDK Provider started!');
   const [pioneerSdk, setPioneerSdk] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -58,21 +59,21 @@ export function Provider({ children }: ProviderProps) {
   useEffect(() => {
     // Prevent multiple initializations
     if (PIONEER_INITIALIZED) {
-      console.log('🚫 Pioneer already initialized, skipping');
+      logger.debug('🚫 Pioneer already initialized, skipping');
       return;
     }
 
     const initPioneerSDK = async () => {
-      console.log('🔥 Starting direct Pioneer SDK initialization');
+      logger.debug('🔥 Starting direct Pioneer SDK initialization');
       PIONEER_INITIALIZED = true;
 
       // Detect if mobile app
       const isOnMobile = isMobileApp();
       setIsMobile(isOnMobile);
-      console.log('📱 Platform detection:', isOnMobile ? 'Mobile App' : 'Desktop/Web');
+      logger.debug('📱 Platform detection:', isOnMobile ? 'Mobile App' : 'Desktop/Web');
 
       try {
-        console.log('🏁 [Loading] Setting isLoading to TRUE - starting initialization');
+        logger.debug('🏁 [Loading] Setting isLoading to TRUE - starting initialization');
         setIsLoading(true);
         setError(null);
 
@@ -86,13 +87,13 @@ export function Provider({ children }: ProviderProps) {
         // Load existing KeepKey API key from storage (generated after device pairing)
         let keepkeyApiKey = localStorage.getItem('keepkeyApiKey') || 'keepkey-api-key-default';
         if (localStorage.getItem('keepkeyApiKey')) {
-          console.log('🔐 Using stored keepkeyApiKey from previous pairing session');
+          logger.debug('🔐 Using stored keepkeyApiKey from previous pairing session');
         } else {
-          console.log('🔐 No keepkeyApiKey found - using default, will be replaced after device pairing');
+          logger.debug('🔐 No keepkeyApiKey found - using default, will be replaced after device pairing');
         }
 
-        console.log('🔧 Pioneer credentials:', { username, queryKey, keepkeyApiKey });
-        console.log('🔧 Pioneer URLs:', { PIONEER_URL, PIONEER_WSS });
+        logger.debug('🔧 Pioneer credentials:', { username, queryKey, keepkeyApiKey });
+        logger.debug('🔧 Pioneer URLs:', { PIONEER_URL, PIONEER_WSS });
 
         // Get supported blockchains like pioneer-react does
         const walletType = WalletOption.KEEPKEY;
@@ -100,16 +101,16 @@ export function Provider({ children }: ProviderProps) {
 
         //remove v2 assets for now (case-insensitive filter)
         const v2Assets = ['TRX', 'TRON', 'TON', 'SOL', 'SOLANA', 'ZCASH'];
-        console.log('🔧 All supported chains before filter:', allSupported);
+        logger.debug('🔧 All supported chains before filter:', allSupported);
         allSupported = allSupported.filter((chain: string) => {
           const chainUpper = String(chain).toUpperCase();
           const shouldFilter = v2Assets.some(v2 => chainUpper.includes(v2.toUpperCase()));
           if (shouldFilter) {
-            console.log(`🚫 Filtering out v2 chain: ${chain}`);
+            logger.debug(`🚫 Filtering out v2 chain: ${chain}`);
           }
           return !shouldFilter;
         });
-        console.log('🔧 All supported chains after filter:', allSupported);
+        logger.debug('🔧 All supported chains after filter:', allSupported);
 
         let blockchains = allSupported.map(
           // @ts-ignore
@@ -124,29 +125,29 @@ export function Provider({ children }: ProviderProps) {
           const networkIdLower = networkId.toLowerCase();
           const shouldFilter = v2NetworkPrefixes.some(prefix => networkIdLower.startsWith(prefix));
           if (shouldFilter) {
-            console.log(`🚫 Filtering out v2 network ID: ${networkId}`);
+            logger.debug(`🚫 Filtering out v2 network ID: ${networkId}`);
           }
           return !shouldFilter;
         });
-        console.log(`🔧 Filtered ${originalBlockchainsCount - blockchains.length} v2 network IDs from blockchains`);
+        logger.debug(`🔧 Filtered ${originalBlockchainsCount - blockchains.length} v2 network IDs from blockchains`);
 
         const paths = getPaths(blockchains);
 
-        console.log('🔧 Blockchains:', blockchains);
-        console.log('🔧 Paths length:', paths.length);
+        logger.debug('🔧 Blockchains:', blockchains);
+        logger.debug('🔧 Paths length:', paths.length);
 
         // Load custom paths from localStorage and add them before hardcoded paths
         const customPaths = getCustomPaths();
         if (customPaths.length > 0) {
-          console.log(`📂 [CustomPaths] Loading ${customPaths.length} custom paths from localStorage`);
+          logger.debug(`📂 [CustomPaths] Loading ${customPaths.length} custom paths from localStorage`);
           customPaths.forEach((customPath, index) => {
             // Remove metadata fields that aren't needed for Pioneer SDK
             const { createdAt, id, ...pathConfig } = customPath;
             paths.push(pathConfig);
-            console.log(`📂 [CustomPaths] Added custom path ${index + 1}:`, pathConfig.note);
+            logger.debug(`📂 [CustomPaths] Added custom path ${index + 1}:`, pathConfig.note);
           });
         } else {
-          console.log('📂 [CustomPaths] No custom paths found in localStorage');
+          logger.debug('📂 [CustomPaths] No custom paths found in localStorage');
         }
 
         paths.push({
@@ -297,13 +298,13 @@ export function Provider({ children }: ProviderProps) {
         // Filter ZCash if feature flag is disabled
         if (!isZcashEnabled()) {
           unsupportedNetworks.push(ZCASH_NETWORK_ID);
-          console.log('🚫 ZCash feature flag disabled - filtering out ZCash network');
+          logger.debug('🚫 ZCash feature flag disabled - filtering out ZCash network');
         }
 
         const originalLength = blockchains.length;
         blockchains = blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
 
-        console.log('🔧 Filtered blockchains:', {
+        logger.debug('🔧 Filtered blockchains:', {
           original: originalLength,
           filtered: blockchains.length,
           removed: originalLength - blockchains.length,
@@ -311,10 +312,10 @@ export function Provider({ children }: ProviderProps) {
         });
 
         // Create Pioneer SDK instance directly
-        console.log('🔧 Creating Pioneer SDK instance...');
+        logger.debug('🔧 Creating Pioneer SDK instance...');
         
         // Add debug check for KKAPI availability before SDK init
-        console.log('🔍 [KKAPI DEBUG] Checking if vault endpoints are available...');
+        logger.debug('🔍 [KKAPI DEBUG] Checking if vault endpoints are available...');
         let detectedKeeperEndpoint = undefined;
         
         // Try multiple endpoints to find the vault
@@ -326,7 +327,7 @@ export function Provider({ children }: ProviderProps) {
         ];
         
         for (const endpoint of vaultEndpoints) {
-          console.log(`🔍 [KKAPI DEBUG] Trying ${endpoint}...`);
+          logger.debug(`🔍 [KKAPI DEBUG] Trying ${endpoint}...`);
           try {
             const healthCheck = await fetch(endpoint, { 
               method: 'GET',
@@ -336,7 +337,7 @@ export function Provider({ children }: ProviderProps) {
               }
             });
             
-            console.log(`🔍 [KKAPI DEBUG] Response from ${endpoint}:`, {
+            logger.debug(`🔍 [KKAPI DEBUG] Response from ${endpoint}:`, {
               status: healthCheck.status,
               ok: healthCheck.ok,
               statusText: healthCheck.statusText
@@ -347,56 +348,56 @@ export function Provider({ children }: ProviderProps) {
               // Extract base URL from the endpoint
               const baseUrl = endpoint.replace(/\/(spec\/swagger\.json|auth\/pair|api.*)$/, '');
               detectedKeeperEndpoint = baseUrl;
-              console.log(`✅ [KKAPI DEBUG] Vault detected at: ${detectedKeeperEndpoint}`);
+              logger.debug(`✅ [KKAPI DEBUG] Vault detected at: ${detectedKeeperEndpoint}`);
               break;
             }
           } catch (error: any) {
-            console.log(`❌ [KKAPI DEBUG] Failed to reach ${endpoint}:`, error?.message || error);
+            logger.debug(`❌ [KKAPI DEBUG] Failed to reach ${endpoint}:`, error?.message || error);
           }
         }
         
         if (!detectedKeeperEndpoint) {
-          console.log('⚠️ [KKAPI DEBUG] Vault not detected - continuing in view-only mode');
+          logger.debug('⚠️ [KKAPI DEBUG] Vault not detected - continuing in view-only mode');
           // Don't return - continue with initialization in view-only mode
         }
 
         // Load cached pubkeys from localStorage (always try to load, regardless of vault detection)
         let cachedPubkeys: any[] | null = null;
         if (!detectedKeeperEndpoint) {
-          console.log('📂 [CACHE] Step 1: Attempting to load pubkeys from localStorage...');
+          logger.debug('📂 [CACHE] Step 1: Attempting to load pubkeys from localStorage...');
           const cachedPubkeysRaw = localStorage.getItem('keepkey_vault_pubkeys');
-          console.log('📂 [CACHE] Step 2: Raw value from localStorage:', cachedPubkeysRaw ? `${cachedPubkeysRaw.substring(0, 100)}...` : 'null');
+          logger.debug('📂 [CACHE] Step 2: Raw value from localStorage:', cachedPubkeysRaw ? `${cachedPubkeysRaw.substring(0, 100)}...` : 'null');
 
           if (cachedPubkeysRaw) {
             try {
-              console.log('📂 [CACHE] Step 3: Parsing cached data...');
+              logger.debug('📂 [CACHE] Step 3: Parsing cached data...');
               const cacheData = JSON.parse(cachedPubkeysRaw);
-              console.log('📂 [CACHE] Step 4: ✅ Successfully parsed cache data!');
+              logger.debug('📂 [CACHE] Step 4: ✅ Successfully parsed cache data!');
 
               // Extract the pubkeys array from the cache object
-              console.log('📂 [CACHE] Step 5: Extracting pubkeys array from cache...');
+              logger.debug('📂 [CACHE] Step 5: Extracting pubkeys array from cache...');
               cachedPubkeys = cacheData?.pubkeys || null;
-              console.log('📂 [CACHE] Step 6: Number of pubkeys:', Array.isArray(cachedPubkeys) ? cachedPubkeys.length : 'not an array (missing pubkeys property?)');
+              logger.debug('📂 [CACHE] Step 6: Number of pubkeys:', Array.isArray(cachedPubkeys) ? cachedPubkeys.length : 'not an array (missing pubkeys property?)');
 
               if (Array.isArray(cachedPubkeys) && cachedPubkeys.length > 0) {
-                console.log('📂 [CACHE] Step 7: ✅ Successfully extracted', cachedPubkeys.length, 'pubkeys!');
-                console.log('📂 [CACHE] Step 8: Sample pubkey:', cachedPubkeys[0]);
+                logger.debug('📂 [CACHE] Step 7: ✅ Successfully extracted', cachedPubkeys.length, 'pubkeys!');
+                logger.debug('📂 [CACHE] Step 8: Sample pubkey:', cachedPubkeys[0]);
               } else {
-                console.warn('⚠️ [CACHE] Step 7: Cache data exists but no pubkeys array found');
+                logger.warn('⚠️ [CACHE] Step 7: Cache data exists but no pubkeys array found');
               }
             } catch (parseError) {
-              console.error('❌ [CACHE] Step 3 FAILED: Error parsing cached data:', parseError);
+              logger.error('❌ [CACHE] Step 3 FAILED: Error parsing cached data:', parseError);
               cachedPubkeys = null;
             }
           } else {
-            console.log('📂 [CACHE] Step 2: No cached data found in localStorage');
+            logger.debug('📂 [CACHE] Step 2: No cached data found in localStorage');
           }
         }
 
         // Validate we have either vault connection OR cached pubkeys
         if (!detectedKeeperEndpoint && (!cachedPubkeys || cachedPubkeys.length === 0)) {
-          console.error('❌ [VALIDATION] Cannot start app - no vault detected and no cached pubkeys found');
-          console.error('❌ [VALIDATION] User must open KeepKey Desktop to pair device and cache pubkeys');
+          logger.error('❌ [VALIDATION] Cannot start app - no vault detected and no cached pubkeys found');
+          logger.error('❌ [VALIDATION] User must open KeepKey Desktop to pair device and cache pubkeys');
           setIsVaultUnavailable(true);
           setIsLoading(false);
           PIONEER_INITIALIZED = false; // Reset flag so retry works
@@ -408,7 +409,7 @@ export function Provider({ children }: ProviderProps) {
           // Check if user already continued in this session (only persists until tab/browser closes)
           const continuedThisSession = sessionStorage.getItem('keepkey_watch_only_session') === 'true';
 
-          console.log('🔍 [WATCH-ONLY CHECK]', {
+          logger.debug('🔍 [WATCH-ONLY CHECK]', {
             isOnMobile,
             cachedPubkeysCount: cachedPubkeys.length,
             continuedThisSession
@@ -416,21 +417,21 @@ export function Provider({ children }: ProviderProps) {
 
           // Desktop users get a landing page option, mobile users go straight to watch-only
           if (!isOnMobile && !continuedThisSession) {
-            console.log('💻 [DESKTOP] No vault detected but cached pubkeys found - showing watch-only landing');
+            logger.debug('💻 [DESKTOP] No vault detected but cached pubkeys found - showing watch-only landing');
             setShowWatchOnlyLanding(true);
             setIsLoading(false);
             PIONEER_INITIALIZED = false; // Reset flag so they can initialize if they continue
             return; // Stop here and show landing
           } else {
             if (continuedThisSession) {
-              console.log('💻 [DESKTOP] User already continued in this session - skipping landing');
+              logger.debug('💻 [DESKTOP] User already continued in this session - skipping landing');
             } else {
-              console.log('📱 [MOBILE] No vault detected but cached pubkeys found - continuing in watch-only mode');
+              logger.debug('📱 [MOBILE] No vault detected but cached pubkeys found - continuing in watch-only mode');
             }
           }
         }
 
-        console.log('✅ [VALIDATION] Initialization prerequisites met:', {
+        logger.debug('✅ [VALIDATION] Initialization prerequisites met:', {
           vaultDetected: !!detectedKeeperEndpoint,
           cachedPubkeysCount: cachedPubkeys?.length || 0,
           mode: detectedKeeperEndpoint ? 'NORMAL' : 'VIEW-ONLY',
@@ -457,17 +458,17 @@ export function Provider({ children }: ProviderProps) {
 
         // Add view-only mode flags when no vault detected
         if (!detectedKeeperEndpoint) {
-          console.log('🔧 [CONFIG] Step 9: Enabling view-only mode (no vault detected)');
+          logger.debug('🔧 [CONFIG] Step 9: Enabling view-only mode (no vault detected)');
           sdkConfig.viewOnlyMode = true;
           sdkConfig.skipDevicePairing = true;
           sdkConfig.skipKeeperEndpoint = true;
 
           // Add cached pubkeys to config if available
           if (cachedPubkeys && Array.isArray(cachedPubkeys) && cachedPubkeys.length > 0) {
-            console.log('🔧 [CONFIG] Step 10: ✅ Adding', cachedPubkeys.length, 'cached pubkeys to SDK config');
+            logger.debug('🔧 [CONFIG] Step 10: ✅ Adding', cachedPubkeys.length, 'cached pubkeys to SDK config');
             sdkConfig.pubkeys = cachedPubkeys;
           } else {
-            console.log('⚠️ [CONFIG] Step 10: No cached pubkeys to add to SDK config');
+            logger.debug('⚠️ [CONFIG] Step 10: No cached pubkeys to add to SDK config');
           }
         } else {
           // Pass vault endpoint when available
@@ -476,14 +477,14 @@ export function Provider({ children }: ProviderProps) {
 
         const appInit = new SDK(PIONEER_URL, sdkConfig);
 
-        console.log('🔧 Pioneer SDK instance created with config:', {
+        logger.debug('🔧 Pioneer SDK instance created with config:', {
           mode: detectedKeeperEndpoint ? 'LOCAL DEV (Vault REST)' : 'LEGACY (Desktop REST)',
           endpoint: detectedKeeperEndpoint || 'kkapi:// (will fallback to legacy)',
           hasPortfolioAPI: !!detectedKeeperEndpoint
         });
 
         // DEEP DEBUG: Inspect SDK internals before init
-        console.log('🔍 [DEBUG] SDK internal state before init:', {
+        logger.debug('🔍 [DEBUG] SDK internal state before init:', {
           hasPioneer: !!appInit.pioneer,
           pioneerType: typeof appInit.pioneer,
           pioneerKeys: appInit.pioneer ? Object.keys(appInit.pioneer).slice(0, 10) : 'N/A',
@@ -491,7 +492,7 @@ export function Provider({ children }: ProviderProps) {
           specUrl: PIONEER_URL
         });
 
-        console.log('🔧 Calling init...');
+        logger.debug('🔧 Calling init...');
         
         // Add network filtering to prevent unsupported networks from being processed
         const originalGetBalances = appInit.getBalances?.bind(appInit);
@@ -505,7 +506,7 @@ export function Provider({ children }: ProviderProps) {
                 if (!balance.networkId) return true;
                 const isSupported = blockchains.includes(balance.networkId);
                 if (!isSupported) {
-                  console.warn('🚫 Filtering out unsupported network balance:', {
+                  logger.warn('🚫 Filtering out unsupported network balance:', {
                     networkId: balance.networkId,
                     caip: balance.caip,
                     symbol: balance.symbol || balance.ticker
@@ -514,7 +515,7 @@ export function Provider({ children }: ProviderProps) {
                 return isSupported;
               });
               if (originalLength !== appInit.balances.length) {
-                console.log(`🔧 Filtered ${originalLength - appInit.balances.length} unsupported network balances`);
+                logger.debug(`🔧 Filtered ${originalLength - appInit.balances.length} unsupported network balances`);
               }
             }
             return result;
@@ -523,7 +524,7 @@ export function Provider({ children }: ProviderProps) {
         
         // Add progress tracking
         const progressInterval = setInterval(() => {
-          console.log('⏳ Still initializing...', {
+          logger.debug('⏳ Still initializing...', {
             status: appInit.status,
             pioneer: !!appInit.pioneer,
             keepKeySdk: !!appInit.keepKeySdk,
@@ -541,7 +542,7 @@ export function Provider({ children }: ProviderProps) {
         
                 try {
           // Use normal init flow but make it fast with cache-first
-          console.log("🔧 Calling appInit.init() with cache-first optimization...");
+          logger.debug("🔧 Calling appInit.init() with cache-first optimization...");
           
           const resultInit = await Promise.race([
             appInit.init({}, { skipSync: false }),
@@ -550,23 +551,23 @@ export function Provider({ children }: ProviderProps) {
           
           clearInterval(progressInterval);
           
-          console.log("✅ Pioneer SDK initialized, resultInit:", resultInit);
-          console.log("📊 Wallets:", appInit.wallets.length);
-          console.log("🔑 Pubkeys:", appInit.pubkeys.length);
-          console.log("💰 Balances:", appInit.balances.length);
+          logger.debug("✅ Pioneer SDK initialized, resultInit:", resultInit);
+          logger.debug("📊 Wallets:", appInit.wallets.length);
+          logger.debug("🔑 Pubkeys:", appInit.pubkeys.length);
+          logger.debug("💰 Balances:", appInit.balances.length);
           
           // Explicitly fetch balances (following reference implementation pattern)
-          console.log("📊 Explicitly calling getBalances()...");
+          logger.debug("📊 Explicitly calling getBalances()...");
           await appInit.getBalances();
-          console.log("✅ getBalances() completed");
-          console.log("💰 Balances after getBalances():", appInit.balances?.length || 0);
+          logger.debug("✅ getBalances() completed");
+          logger.debug("💰 Balances after getBalances():", appInit.balances?.length || 0);
           
         } catch (initError: any) {
           clearInterval(progressInterval);
-          console.error('⏱️ SDK init failed:', initError);
+          logger.error('⏱️ SDK init failed:', initError);
 
           // DEEP DEBUG: Inspect SDK internal state after failure
-          console.log('🔍 [DEBUG] SDK internal state AFTER init failure:', {
+          logger.debug('🔍 [DEBUG] SDK internal state AFTER init failure:', {
             errorMessage: initError.message,
             errorStack: initError.stack,
             hasPioneer: !!appInit.pioneer,
@@ -584,124 +585,124 @@ export function Provider({ children }: ProviderProps) {
 
           // Check if it's a non-critical error we can handle
           if (initError.message && initError.message.includes('GetPortfolioBalances')) {
-            console.warn('⚠️ GetPortfolioBalances failed during init, continuing with limited functionality');
-            console.log("📊 Partial initialization - Wallets:", appInit.wallets?.length || 0);
-            console.log("🔑 Partial initialization - Pubkeys:", appInit.pubkeys?.length || 0);
-            console.log("💰 Partial initialization - Balances:", appInit.balances?.length || 0);
+            logger.warn('⚠️ GetPortfolioBalances failed during init, continuing with limited functionality');
+            logger.debug("📊 Partial initialization - Wallets:", appInit.wallets?.length || 0);
+            logger.debug("🔑 Partial initialization - Pubkeys:", appInit.pubkeys?.length || 0);
+            logger.debug("💰 Partial initialization - Balances:", appInit.balances?.length || 0);
           } else {
             // For other critical errors, still try to go online
-            console.log("⚠️ [FALLBACK] Attempting to go online despite init error");
+            logger.debug("⚠️ [FALLBACK] Attempting to go online despite init error");
           }
         }
         
         // Basic validation - allow app to go online with cached data
         if (!appInit.blockchains || !appInit.blockchains[0]) {
-          console.warn('⚠️ No blockchains - using fallback');
+          logger.warn('⚠️ No blockchains - using fallback');
         }
         if (!appInit.pubkeys || !appInit.pubkeys[0]) {
-          console.warn('⚠️ No pubkeys yet - will load on first sync');
+          logger.warn('⚠️ No pubkeys yet - will load on first sync');
         }
         if (!appInit.balances || !appInit.balances[0]) {
-          console.warn('⚠️ No balances found - this is OK if wallet is empty');
+          logger.warn('⚠️ No balances found - this is OK if wallet is empty');
         }
 
         // Skip setting default asset contexts - will be done later when needed
-        console.log('🔧 Skipping default asset contexts - will set later when needed');
+        logger.debug('🔧 Skipping default asset contexts - will set later when needed');
 
         // Try to get some data to verify the SDK is working
         try {
-          console.log('🔍 Testing SDK functionality...');
+          logger.debug('🔍 Testing SDK functionality...');
           
           // Get assets to verify API connection
           const assets = await appInit.getAssets();
-          console.log('✅ Got assets:', assets?.length || 0);
+          logger.debug('✅ Got assets:', assets?.length || 0);
           
           // Start background chart fetching to populate staking positions and other chart data
           try {
             // Only call getCharts if we have pubkeys (addresses) to look up
             if (appInit.pubkeys && appInit.pubkeys.length > 0) {
-              console.log('📊 Starting chart fetching (including staking positions)...');
-              console.log('📊 Balances before getCharts:', appInit.balances.length);
+              logger.debug('📊 Starting chart fetching (including staking positions)...');
+              logger.debug('📊 Balances before getCharts:', appInit.balances.length);
               
               try {
                 await appInit.getCharts();
-                console.log('✅ Chart fetching completed successfully');
-                console.log('📊 Balances after getCharts:', appInit.balances.length);
+                logger.debug('✅ Chart fetching completed successfully');
+                logger.debug('📊 Balances after getCharts:', appInit.balances.length);
                 
                 // Verify tokens were loaded
                 const tokens = appInit.balances.filter((b: any) => b.token === true);
-                console.log('📊 Tokens loaded:', tokens.length);
+                logger.debug('📊 Tokens loaded:', tokens.length);
                 if (tokens.length === 0) {
-                  console.warn('⚠️ getCharts completed but found 0 tokens - this may indicate a problem');
+                  logger.warn('⚠️ getCharts completed but found 0 tokens - this may indicate a problem');
                 }
               } catch (chartError: any) {
                 // DETAILED ERROR LOGGING
-                console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.error('❌ CRITICAL: getCharts failed during initialization');
-                console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.error('Error type:', chartError?.constructor?.name);
-                console.error('Error message:', chartError?.message);
-                console.error('Error stack:', chartError?.stack);
-                console.error('Pioneer client exists:', !!appInit.pioneer);
-                console.error('Pubkeys count:', appInit.pubkeys?.length || 0);
-                console.error('Blockchains count:', appInit.blockchains?.length || 0);
-                console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                logger.error('❌ CRITICAL: getCharts failed during initialization');
+                logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                logger.error('Error type:', chartError?.constructor?.name);
+                logger.error('Error message:', chartError?.message);
+                logger.error('Error stack:', chartError?.stack);
+                logger.error('Pioneer client exists:', !!appInit.pioneer);
+                logger.error('Pubkeys count:', appInit.pubkeys?.length || 0);
+                logger.error('Blockchains count:', appInit.blockchains?.length || 0);
+                logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                 
                 // Check if it's a network support error
                 if (chartError?.message?.includes('network not live in blockchains')) {
                   const match = chartError.message.match(/"([^"]+)"/);
                   const network = match ? match[1] : 'unknown';
-                  console.log(`ℹ️ Network ${network} not supported for charts - skipping`);
+                  logger.debug(`ℹ️ Network ${network} not supported for charts - skipping`);
                   // This is expected - some networks don't have chart support
                 } else {
-                  console.error('❌ Chart fetching error:', chartError);
+                  logger.error('❌ Chart fetching error:', chartError);
                 }
               }
             } else {
-              console.log('⏭️ Skipping chart fetching - no pubkeys available yet (wallet not paired)');
+              logger.debug('⏭️ Skipping chart fetching - no pubkeys available yet (wallet not paired)');
             }
             
             // Debug: Look for staking positions
             const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
-            console.log('📊 Staking positions found:', stakingBalances.length);
+            logger.debug('📊 Staking positions found:', stakingBalances.length);
             if (stakingBalances.length > 0) {
-              console.log('📊 First staking position:', stakingBalances[0]);
+              logger.debug('📊 First staking position:', stakingBalances[0]);
             }
             
             // Debug: Look for cosmos balances
             const cosmosBalances = appInit.balances.filter((b: any) => b.networkId?.includes('cosmos'));
-            console.log('📊 Cosmos balances found:', cosmosBalances.length);
+            logger.debug('📊 Cosmos balances found:', cosmosBalances.length);
             if (cosmosBalances.length > 0) {
-              console.log('📊 First cosmos balance:', cosmosBalances[0]);
+              logger.debug('📊 First cosmos balance:', cosmosBalances[0]);
             }
             
           } catch (chartError) {
-            console.warn('⚠️ Chart fetching failed, continuing anyway:', chartError);
-            console.warn('⚠️ Chart error details:', chartError);
+            logger.warn('⚠️ Chart fetching failed, continuing anyway:', chartError);
+            logger.warn('⚠️ Chart error details:', chartError);
             // Don't throw - this is not critical for basic functionality
           }
 
           // Try to connect to KeepKey if available
           // Skip pairing if no vault detected (view-only mode)
           if (!detectedKeeperEndpoint) {
-            console.log('🔑 ⏭️ Skipping KeepKey pairing - no vault detected (view-only mode)');
-            console.log('👁️ [VIEW-ONLY] App will use cached pubkeys and balances from localStorage');
+            logger.debug('🔑 ⏭️ Skipping KeepKey pairing - no vault detected (view-only mode)');
+            logger.debug('👁️ [VIEW-ONLY] App will use cached pubkeys and balances from localStorage');
           } else {
-            console.log('🔑 Attempting to connect to KeepKey...');
-            console.log('🔑 KeepKey SDK before pairing:', !!appInit.keepKeySdk);
+            logger.debug('🔑 Attempting to connect to KeepKey...');
+            logger.debug('🔑 KeepKey SDK before pairing:', !!appInit.keepKeySdk);
           
           try {
             const keepkeyConnected = await appInit.pairWallet('KEEPKEY');
-            console.log('🔑 KeepKey connection result:', keepkeyConnected);
-            console.log('🔑 KeepKey SDK after pairing:', !!appInit.keepKeySdk);
+            logger.debug('🔑 KeepKey connection result:', keepkeyConnected);
+            logger.debug('🔑 KeepKey SDK after pairing:', !!appInit.keepKeySdk);
             
             // After successful pairing, save the API key generated by the device/SDK
             if (appInit.keepkeyApiKey && appInit.keepkeyApiKey !== keepkeyApiKey) {
               try {
                 localStorage.setItem('keepkeyApiKey', appInit.keepkeyApiKey);
-                console.log('🔐 ✅ Persisted keepkeyApiKey after successful device pairing');
+                logger.debug('🔐 ✅ Persisted keepkeyApiKey after successful device pairing');
               } catch (storageError) {
-                console.warn('⚠️ Failed to persist keepkeyApiKey after pairing:', storageError);
+                logger.warn('⚠️ Failed to persist keepkeyApiKey after pairing:', storageError);
               }
             }
 
@@ -718,19 +719,19 @@ export function Provider({ children }: ProviderProps) {
 
                 const saved = savePubkeys(appInit.pubkeys, deviceInfo);
                 if (saved) {
-                  console.log('📂 ✅ Saved', appInit.pubkeys.length, 'pubkeys to localStorage after pairing');
+                  logger.debug('📂 ✅ Saved', appInit.pubkeys.length, 'pubkeys to localStorage after pairing');
                 } else {
-                  console.warn('⚠️ Failed to save pubkeys to localStorage (cache might be disabled)');
+                  logger.warn('⚠️ Failed to save pubkeys to localStorage (cache might be disabled)');
                 }
               } catch (saveError) {
-                console.error('❌ Error saving pubkeys to localStorage:', saveError);
+                logger.error('❌ Error saving pubkeys to localStorage:', saveError);
               }
             } else {
-              console.warn('⚠️ No pubkeys available to save after pairing');
+              logger.warn('⚠️ No pubkeys available to save after pairing');
             }
 
             if (appInit.keepKeySdk) {
-              console.log('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
+              logger.debug('🔑 ✅ KeepKey SDK is now initialized - calling refresh()');
               
               // Filter unsupported networks from the SDK's blockchains if possible
               if (appInit.blockchains && Array.isArray(appInit.blockchains)) {
@@ -744,7 +745,7 @@ export function Provider({ children }: ProviderProps) {
                 
                 const originalCount = appInit.blockchains.length;
                 appInit.blockchains = appInit.blockchains.filter((chain: string) => !unsupportedNetworks.includes(chain));
-                console.log('🔑 Filtered blockchains after pairing:', {
+                logger.debug('🔑 Filtered blockchains after pairing:', {
                   original: originalCount,
                   filtered: appInit.blockchains.length,
                   removed: originalCount - appInit.blockchains.length
@@ -752,7 +753,7 @@ export function Provider({ children }: ProviderProps) {
               }
               
               //appInit.refresh();
-              console.log('🔑 ✅ refresh() completed - dashboard should now be available');
+              logger.debug('🔑 ✅ refresh() completed - dashboard should now be available');
               
               // Now that we have pubkeys after pairing, fetch chart data including staking positions
               try {
@@ -763,45 +764,45 @@ export function Provider({ children }: ProviderProps) {
                   );
                   
                   if (hasProblematicNetworks) {
-                    console.log('ℹ️ Skipping getCharts after pairing - unsupported networks detected');
+                    logger.debug('ℹ️ Skipping getCharts after pairing - unsupported networks detected');
                   } else {
-                    console.log('📊 Fetching charts after wallet pairing...');
+                    logger.debug('📊 Fetching charts after wallet pairing...');
                     try {
                       await appInit.getCharts();
-                      console.log('✅ Chart data fetched successfully after pairing');
+                      logger.debug('✅ Chart data fetched successfully after pairing');
                     } catch (getChartsError: any) {
                       // Fallback error handling just in case
-                      console.log('ℹ️ Chart fetching skipped:', getChartsError.message);
+                      logger.debug('ℹ️ Chart fetching skipped:', getChartsError.message);
                     }
                   }
                   
                   // Debug: Check for staking positions
                   const stakingBalances = appInit.balances.filter((b: any) => b.chart === 'staking');
-                  console.log('📊 Staking positions after pairing:', stakingBalances.length);
+                  logger.debug('📊 Staking positions after pairing:', stakingBalances.length);
                 } else {
-                  console.log('⚠️ No pubkeys available after pairing - cannot fetch charts');
+                  logger.debug('⚠️ No pubkeys available after pairing - cannot fetch charts');
                 }
               } catch (chartError) {
-                console.warn('⚠️ Chart fetching failed after pairing:', chartError);
+                logger.warn('⚠️ Chart fetching failed after pairing:', chartError);
                 // Don't throw - this is not critical for basic functionality
               }
             } else {
-              console.log('🔑 ⚠️ KeepKey SDK still not initialized after pairing');
+              logger.debug('🔑 ⚠️ KeepKey SDK still not initialized after pairing');
             }
           } catch (pairError) {
-            console.error('🔑 ❌ KeepKey pairing failed:', pairError);
-            console.log('🔑 This is expected if no KeepKey device is connected');
+            logger.error('🔑 ❌ KeepKey pairing failed:', pairError);
+            logger.debug('🔑 This is expected if no KeepKey device is connected');
           }
           } // End else block - pairing when vault is detected
         } catch (testError) {
-          console.log('⚠️ SDK test failed:', testError);
+          logger.debug('⚠️ SDK test failed:', testError);
           // Don't throw - these are optional features
         }
 
 
 
-        console.log('🎯 Pioneer SDK fully initialized!');
-        console.log('🔍 Final SDK state:', {
+        logger.debug('🎯 Pioneer SDK fully initialized!');
+        logger.debug('🔍 Final SDK state:', {
           status: appInit.status,
           pubkeys: appInit.pubkeys?.length || 0,
           balances: appInit.balances?.length || 0,
@@ -810,29 +811,29 @@ export function Provider({ children }: ProviderProps) {
         });
         
         // Debug: Check what data is actually available
-        console.log('🔍 Available data structures:');
-        console.log('📊 Balances:', appInit.balances?.length || 0);
-        console.log('🔑 Pubkeys:', appInit.pubkeys?.length || 0);
-        console.log('🌐 Blockchains:', appInit.blockchains?.length || 0);
-        console.log('💰 Dashboard:', !!appInit.dashboard);
+        logger.debug('🔍 Available data structures:');
+        logger.debug('📊 Balances:', appInit.balances?.length || 0);
+        logger.debug('🔑 Pubkeys:', appInit.pubkeys?.length || 0);
+        logger.debug('🌐 Blockchains:', appInit.blockchains?.length || 0);
+        logger.debug('💰 Dashboard:', !!appInit.dashboard);
         
         if (appInit.balances && appInit.balances.length > 0) {
-          console.log('📊 Sample balance:', appInit.balances[0]);
+          logger.debug('📊 Sample balance:', appInit.balances[0]);
         }
         
         if (appInit.pubkeys && appInit.pubkeys.length > 0) {
-          console.log('🔑 Sample pubkey:', appInit.pubkeys[0]);
+          logger.debug('🔑 Sample pubkey:', appInit.pubkeys[0]);
         }
         
         if (appInit.blockchains && appInit.blockchains.length > 0) {
-          console.log('🌐 Sample blockchain:', appInit.blockchains[0]);
+          logger.debug('🌐 Sample blockchain:', appInit.blockchains[0]);
         }
         
         // Check dashboard data - only warn if v2 APIs are enabled
         const v2Enabled = isPioneerV2Enabled();
 
         if (appInit.dashboard) {
-          console.log('💰 Dashboard data:', appInit.dashboard);
+          logger.debug('💰 Dashboard data:', appInit.dashboard);
 
           // Check if dashboard is empty (no meaningful data)
           const hasNetworks = appInit.dashboard.networks && appInit.dashboard.networks.length > 0;
@@ -840,8 +841,8 @@ export function Provider({ children }: ProviderProps) {
           const hasPubkeys = appInit.pubkeys && appInit.pubkeys.length > 0;
 
           if (!hasNetworks && !hasBalances && !hasPubkeys) {
-            console.warn('⚠️ WARNING: Dashboard exists but appears to be EMPTY!');
-            console.warn('⚠️ Dashboard state:', {
+            logger.warn('⚠️ WARNING: Dashboard exists but appears to be EMPTY!');
+            logger.warn('⚠️ Dashboard state:', {
               networks: appInit.dashboard.networks?.length || 0,
               balances: appInit.balances?.length || 0,
               pubkeys: appInit.pubkeys?.length || 0,
@@ -849,7 +850,7 @@ export function Provider({ children }: ProviderProps) {
               vaultDetected: !!detectedKeeperEndpoint
             });
           } else {
-            console.log('✅ Dashboard has data:', {
+            logger.debug('✅ Dashboard has data:', {
               networks: appInit.dashboard.networks?.length || 0,
               balances: appInit.balances?.length || 0,
               pubkeys: appInit.pubkeys?.length || 0
@@ -858,21 +859,21 @@ export function Provider({ children }: ProviderProps) {
         } else {
           // Only warn about missing dashboard if v2 APIs are enabled
           if (v2Enabled) {
-            console.warn('⚠️ No dashboard data - this indicates sync() was not called!');
-            console.warn('⚠️ KeepKey SDK status:', !!appInit.keepKeySdk);
-            console.warn('⚠️ Vault detected:', !!detectedKeeperEndpoint);
-            console.warn('⚠️ This may cause an empty dashboard to be shown');
+            logger.warn('⚠️ No dashboard data - this indicates sync() was not called!');
+            logger.warn('⚠️ KeepKey SDK status:', !!appInit.keepKeySdk);
+            logger.warn('⚠️ Vault detected:', !!detectedKeeperEndpoint);
+            logger.warn('⚠️ This may cause an empty dashboard to be shown');
           } else {
-            console.log('ℹ️ Dashboard not available - Pioneer v2 APIs are disabled (v1 desktop app mode)');
-            console.log('ℹ️ Using direct balances/pubkeys instead of dashboard aggregation');
+            logger.debug('ℹ️ Dashboard not available - Pioneer v2 APIs are disabled (v1 desktop app mode)');
+            logger.debug('ℹ️ Using direct balances/pubkeys instead of dashboard aggregation');
           }
         }
 
         // Register pioneer event listeners for real-time transaction events
-        // console.log('🔧 Registering pioneer event listeners...');
+        // logger.debug('🔧 Registering pioneer event listeners...');
         //
         // appInit.events.on('pioneer:tx', (data: any) => {
-        //   console.log('🔔 [VAULT] Transaction event received:', {
+        //   logger.debug('🔔 [VAULT] Transaction event received:', {
         //     chain: data.chain,
         //     address: data.address,
         //     txid: data.txid,
@@ -883,14 +884,14 @@ export function Provider({ children }: ProviderProps) {
         // });
         //
         // appInit.events.on('pioneer:utxo', (data: any) => {
-        //   console.log('💰 [VAULT] UTXO event received:', {
+        //   logger.debug('💰 [VAULT] UTXO event received:', {
         //     chain: data.chain,
         //     address: data.address
         //   });
         // });
         //
         // appInit.events.on('pioneer:balance', (data: any) => {
-        //   console.log('💵 [VAULT] Balance event received:', {
+        //   logger.debug('💵 [VAULT] Balance event received:', {
         //     chain: data.chain,
         //     address: data.address,
         //     balance: data.balance
@@ -898,14 +899,14 @@ export function Provider({ children }: ProviderProps) {
         // });
         //
         // appInit.events.on('sync:complete', (data: any) => {
-        //   console.log('✅ [VAULT] Sync complete event received:', data);
+        //   logger.debug('✅ [VAULT] Sync complete event received:', data);
         // });
         //
         // appInit.events.on('sync:progress', (data: any) => {
-        //   console.log('🔄 [VAULT] Sync progress event received:', data);
+        //   logger.debug('🔄 [VAULT] Sync progress event received:', data);
         // });
         //
-        // console.log('✅ Pioneer event listeners registered:', {
+        // logger.debug('✅ Pioneer event listeners registered:', {
         //   'pioneer:tx': appInit.events.listenerCount('pioneer:tx'),
         //   'pioneer:utxo': appInit.events.listenerCount('pioneer:utxo'),
         //   'pioneer:balance': appInit.events.listenerCount('pioneer:balance'),
@@ -915,8 +916,8 @@ export function Provider({ children }: ProviderProps) {
 
         setPioneerSdk(appInit);
       } catch (e) {
-        console.error('💥 FATAL: Pioneer SDK initialization failed:', e);
-        console.error('💥 Error details:', {
+        logger.error('💥 FATAL: Pioneer SDK initialization failed:', e);
+        logger.error('💥 Error details:', {
           message: (e as Error)?.message,
           stack: (e as Error)?.stack,
           name: (e as Error)?.name
@@ -924,7 +925,7 @@ export function Provider({ children }: ProviderProps) {
         PIONEER_INITIALIZED = false; // Reset flag on error
         setError(e as Error);
       } finally {
-        console.log('🏁 [Loading] Setting isLoading to FALSE - initialization complete');
+        logger.debug('🏁 [Loading] Setting isLoading to FALSE - initialization complete');
         setIsLoading(false);
       }
     };
@@ -964,7 +965,7 @@ export function Provider({ children }: ProviderProps) {
 
   // Handler for retry button in ConnectionError
   const handleRetry = () => {
-    console.log('🔄 Retrying vault connection...');
+    logger.debug('🔄 Retrying vault connection...');
     setIsVaultUnavailable(false);
     setIsLoading(true);
     setError(null);
@@ -979,7 +980,7 @@ export function Provider({ children }: ProviderProps) {
 
   // Handler for continuing in watch-only mode (dismissing the landing)
   const handleContinueWatchOnly = () => {
-    console.log('👁️ User chose to continue in watch-only mode');
+    logger.debug('👁️ User chose to continue in watch-only mode');
     // Remember for this browser session only (clears when tab/browser closes)
     sessionStorage.setItem('keepkey_watch_only_session', 'true');
     setShowWatchOnlyLanding(false);
@@ -1044,7 +1045,7 @@ export function Provider({ children }: ProviderProps) {
   }
 
   if (isLoading) {
-    console.log('🔄 [Loading] Rendering loading screen - isLoading is TRUE');
+    logger.debug('🔄 [Loading] Rendering loading screen - isLoading is TRUE');
     return (
       <ChakraProvider>
         <Flex
@@ -1088,7 +1089,16 @@ export function Provider({ children }: ProviderProps) {
     )
   }
 
-  console.log('✅ [Loading] Rendering app - isLoading is FALSE, pioneerSdk:', !!pioneerSdk);
+  logger.debug('✅ [Loading] Rendering app - isLoading is FALSE, pioneerSdk:', !!pioneerSdk);
+
+  // CRITICAL DEBUG: Check if SDK has events property
+  logger.debug('🔍 [CONTEXT-VALUE] SDK events check:', {
+    hasSDK: !!pioneerSdk,
+    hasEvents: !!pioneerSdk?.events,
+    eventsType: typeof pioneerSdk?.events,
+    eventsConstructor: pioneerSdk?.events?.constructor?.name,
+    sdkKeys: pioneerSdk ? Object.keys(pioneerSdk).filter(k => k.includes('event') || k === 'events') : 'N/A',
+  });
 
   // Create a simple context value
   const contextValue = {
@@ -1105,6 +1115,12 @@ export function Provider({ children }: ProviderProps) {
     },
     dispatch: () => {},
   };
+
+  logger.debug('📦 [CONTEXT-VALUE] Created contextValue:', {
+    hasState: !!contextValue.state,
+    hasApp: !!contextValue.state.app,
+    hasAppEvents: !!contextValue.state.app?.events,
+  });
 
   return (
     <ChakraProvider>

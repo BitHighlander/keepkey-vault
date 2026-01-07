@@ -186,10 +186,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     );
     
     // Debug logging to understand structure
-    console.log('📊 Aggregated Balance:', result);
-    console.log('🔑 Network Pubkeys:', networkPubkeys);
-    console.log('💰 Filtered Balances:', filteredBalances);
-    console.log('🔄 Show All Pubkeys:', showAllPubkeys);
+    logger.debug('📊 Aggregated Balance:', result);
+    logger.debug('🔑 Network Pubkeys:', networkPubkeys);
+    logger.debug('💰 Filtered Balances:', filteredBalances);
+    logger.debug('🔄 Show All Pubkeys:', showAllPubkeys);
     
     return result;
   }, [app?.balances, assetContext, priceUsd, showAllPubkeys]);
@@ -207,7 +207,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
   // Fetch asset data based on CAIP prop
   useEffect(() => {
-    console.log('🎯 [Asset] Component mounted with CAIP:', caip);
+    logger.debug('🎯 [Asset] Component mounted with CAIP:', caip);
 
     // Reset state when CAIP changes
     setLoading(true);
@@ -217,16 +217,16 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     // Clear old asset context in Pioneer SDK to prevent stale data
     if (app?.clearAssetContext) {
       app.clearAssetContext();
-      console.log('🗑️ [Asset] Cleared old asset context from Pioneer SDK');
+      logger.debug('🗑️ [Asset] Cleared old asset context from Pioneer SDK');
     }
 
     // Wait for app to be ready
     if (!app || !app.balances || !app.pubkeys) {
-      console.log('⏳ [Asset] Waiting for app to be ready...');
+      logger.debug('⏳ [Asset] Waiting for app to be ready...');
       return;
     }
 
-    console.log('🔍 [Asset] Fetching data for CAIP:', caip);
+    logger.debug('🔍 [Asset] Fetching data for CAIP:', caip);
 
     // Quick check if this is a token
     const isCacaoNative = caip.includes('mayachain') && caip.includes('slip44:931');
@@ -234,11 +234,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
     if (isToken) {
       // Handle token case
-      console.log('🪙 [Asset] Loading token data');
+      logger.debug('🪙 [Asset] Loading token data');
       const tokenBalance = app.balances?.find((balance: any) => balance.caip === caip);
 
       if (!tokenBalance) {
-        console.error('⚠️ [Asset] Token not found:', caip);
+        logger.error('⚠️ [Asset] Token not found:', caip);
         setLoading(false);
         return;
       }
@@ -313,7 +313,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         pubkeys: (app.pubkeys || []).filter((p: any) => p.networks.includes(tokenNetworkId))
       };
 
-      console.log('✅ [Asset] Token data loaded:', tokenAssetContextData);
+      logger.debug('✅ [Asset] Token data loaded:', tokenAssetContextData);
       setAssetContext(tokenAssetContextData);
       setPreviousBalance(tokenAssetContextData.balance);
 
@@ -323,12 +323,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       if (app?.setAssetContext && tokenAssetContextData.pubkeys && tokenAssetContextData.pubkeys.length > 0) {
         const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = tokenAssetContextData;
         app.setAssetContext(sdkContext).then(() => {
-          console.log('✅ [Asset] Token asset context set in Pioneer SDK');
+          logger.debug('✅ [Asset] Token asset context set in Pioneer SDK');
         }).catch((error: any) => {
-          console.error('❌ [Asset] Error setting token asset context:', error);
+          logger.error('❌ [Asset] Error setting token asset context:', error);
         });
       } else if (app?.setAssetContext) {
-        console.warn('⏳ [Asset] Skipping setAssetContext (token) - wallet not paired or no pubkeys loaded yet');
+        logger.warn('⏳ [Asset] Skipping setAssetContext (token) - wallet not paired or no pubkeys loaded yet');
       }
 
       setLoading(false);
@@ -336,7 +336,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     }
 
     // Handle native asset case
-    console.log('💎 [Asset] Loading native asset data');
+    logger.debug('💎 [Asset] Loading native asset data');
 
     // Parse the CAIP
     let networkId: string = caip;
@@ -372,13 +372,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
     // CRITICAL FIX: If no balance found (zero balance case), create placeholder from assetsMap
     if (!nativeAssetBalance) {
-      console.warn('⚠️ [Asset] Native asset not found in balances, creating zero-balance placeholder:', caip);
+      logger.warn('⚠️ [Asset] Native asset not found in balances, creating zero-balance placeholder:', caip);
 
       // Get asset metadata from assetsMap
       const assetInfo = app.assetsMap?.get(caip) || app.assetsMap?.get(caip.toLowerCase());
 
       if (!assetInfo) {
-        console.error('❌ [Asset] Asset metadata not found in assetsMap:', caip);
+        logger.error('❌ [Asset] Asset metadata not found in assetsMap:', caip);
         setLoading(false);
         return;
       }
@@ -399,22 +399,22 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         isStale: false
       };
 
-      console.log('✅ [Asset] Created zero-balance placeholder:', nativeAssetBalance);
+      logger.debug('✅ [Asset] Created zero-balance placeholder:', nativeAssetBalance);
     }
 
     // CRITICAL FIX: For CACAO, override symbol
     const isCacao = caip.includes('mayachain') && caip.includes('slip44:931');
 
-    console.log('🔍 [Asset] nativeAssetBalance source data:', nativeAssetBalance);
-    console.log('⏰ [Asset] Source timestamp fields:', {
+    logger.debug('🔍 [Asset] nativeAssetBalance source data:', nativeAssetBalance);
+    logger.debug('⏰ [Asset] Source timestamp fields:', {
       fetchedAt: nativeAssetBalance.fetchedAt,
       fetchedAtISO: nativeAssetBalance.fetchedAtISO,
       isStale: nativeAssetBalance.isStale
     });
 
     // DEBUG: Check all app.pubkeys to see which ones match Ethereum
-    console.log('🔍 [DEBUG] All app.pubkeys:', app.pubkeys);
-    console.log('🔍 [DEBUG] Filtering for networkId:', networkId);
+    logger.debug('🔍 [DEBUG] All app.pubkeys:', app.pubkeys);
+    logger.debug('🔍 [DEBUG] Filtering for networkId:', networkId);
     const filteredPubkeys = (app.pubkeys || []).filter((p: any) => {
       if (!p.networks || !Array.isArray(p.networks)) {
         console.log('  - Pubkey:', p.path, '| Networks: INVALID | Matches: false');
@@ -451,9 +451,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       pubkeys: filteredPubkeys
     };
 
-    console.log('✅ [Asset] Native asset data loaded:', assetContextData);
-    console.log('🔑 [Asset] Pubkeys for aggregation:', assetContextData.pubkeys?.length || 0);
-    console.log('⏰ [Asset] Timestamp fields:', {
+    logger.debug('✅ [Asset] Native asset data loaded:', assetContextData);
+    logger.debug('🔑 [Asset] Pubkeys for aggregation:', assetContextData.pubkeys?.length || 0);
+    logger.debug('⏰ [Asset] Timestamp fields:', {
       fetchedAt: assetContextData.fetchedAt,
       fetchedAtISO: assetContextData.fetchedAtISO,
       isStale: assetContextData.isStale
@@ -467,12 +467,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     if (app?.setAssetContext && assetContextData.pubkeys && assetContextData.pubkeys.length > 0) {
       const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContextData;
       app.setAssetContext(sdkContext).then(() => {
-        console.log('✅ [Asset] Native asset context set in Pioneer SDK');
+        logger.debug('✅ [Asset] Native asset context set in Pioneer SDK');
       }).catch((error: any) => {
-        console.error('❌ [Asset] Error setting native asset context:', error);
+        logger.error('❌ [Asset] Error setting native asset context:', error);
       });
     } else if (app?.setAssetContext) {
-      console.warn('⏳ [Asset] Skipping setAssetContext (native) - wallet not paired or no pubkeys loaded yet');
+      logger.warn('⏳ [Asset] Skipping setAssetContext (native) - wallet not paired or no pubkeys loaded yet');
     }
 
     setLoading(false);
@@ -497,14 +497,14 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       app
         .syncMarket()
         .then(() => {
-          console.log("📊 [Asset] syncMarket called from Asset component");
+          logger.debug("📊 [Asset] syncMarket called from Asset component");
 
           // Check if balance has increased
           if (app.assetContext?.balance) {
             const currentBalance = app.assetContext.balance;
             const prevBalance = previousBalance;
 
-            console.log("💰 [Asset] Balance comparison:", {
+            logger.debug("💰 [Asset] Balance comparison:", {
               previous: prevBalance,
               current: currentBalance,
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
@@ -524,7 +524,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           setLastSync(Date.now());
         })
         .catch((error: any) => {
-          console.error("❌ [Asset] Error in syncMarket:", error);
+          logger.error("❌ [Asset] Error in syncMarket:", error);
         });
     }, 15000);
 
@@ -539,11 +539,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     setTimeout(() => {
       if (onBackClick) {
         // Use the provided onBackClick handler if available
-        console.log('🔙 [Asset] Using custom back handler');
+        logger.debug('🔙 [Asset] Using custom back handler');
         onBackClick();
       } else {
         // Default behavior - navigate to dashboard
-        console.log('🔙 [Asset] Back button clicked, navigating to dashboard');
+        logger.debug('🔙 [Asset] Back button clicked, navigating to dashboard');
         router.push('/');
       }
     }, 200);
@@ -557,16 +557,16 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
   // Handle Send button click - ensure asset context is set before switching views
   const handleSendClick = async () => {
-    console.log('📤 [Asset] Send button clicked, ensuring asset context is set');
+    logger.debug('📤 [Asset] Send button clicked, ensuring asset context is set');
 
     if (app?.setAssetContext && assetContext) {
       try {
         // Remove custom UI-only fields before passing to SDK
         const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContext;
         await app.setAssetContext(sdkContext);
-        console.log('✅ [Asset] Asset context confirmed set in Pioneer SDK before Send:', assetContext.symbol);
+        logger.debug('✅ [Asset] Asset context confirmed set in Pioneer SDK before Send:', assetContext.symbol);
       } catch (error) {
-        console.error('❌ [Asset] Error setting asset context before Send:', error);
+        logger.error('❌ [Asset] Error setting asset context before Send:', error);
       }
     }
 
@@ -601,25 +601,25 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         console.log(`📋 [Asset] Copied to clipboard: ${key}`);
       })
       .catch(err => {
-        console.error('❌ [Asset] Error copying to clipboard:', err);
+        logger.error('❌ [Asset] Error copying to clipboard:', err);
       });
   };
 
   // Force refresh balances with cache busting
   const handleRefreshCharts = async () => {
     if (!assetContext?.networkId) {
-      console.error('❌ [Asset] No networkId available');
+      logger.error('❌ [Asset] No networkId available');
       return;
     }
 
-    console.log('🔄 [Asset] Force refreshing balances for network:', assetContext.networkId);
+    logger.debug('🔄 [Asset] Force refreshing balances for network:', assetContext.networkId);
     setIsRefreshing(true);
     try {
       if (app && typeof app.getBalances === 'function') {
-        console.log('🔄 [Asset] Calling app.getBalances(true) to force cache bust and refresh balances');
+        logger.debug('🔄 [Asset] Calling app.getBalances(true) to force cache bust and refresh balances');
         // Pass forceRefresh=true to bypass balance cache and get fresh blockchain data
         await app.getBalances(true);
-        console.log('✅ [Asset] Balance refresh completed for', assetContext.networkId);
+        logger.debug('✅ [Asset] Balance refresh completed for', assetContext.networkId);
 
         // Verify balances were updated
         const assetBalance = app.balances?.find((b: any) =>
@@ -629,23 +629,23 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
         // Also refresh charts for token discovery (non-blocking)
         if (typeof app.getCharts === 'function') {
-          console.log('🔄 [Asset] Also refreshing charts for token discovery...');
+          logger.debug('🔄 [Asset] Also refreshing charts for token discovery...');
           app.getCharts([assetContext.networkId]).catch((err: any) => {
-            console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
+            logger.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
           });
         }
       }
     } catch (error: any) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('❌ [Asset] Balance refresh failed:', error);
-      console.error('Error details:', {
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.error('❌ [Asset] Balance refresh failed:', error);
+      logger.error('Error details:', {
         message: error?.message,
         type: error?.constructor?.name,
         networkId: assetContext.networkId,
         pioneer: !!app?.pioneer,
         pubkeys: app?.pubkeys?.length || 0
       });
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } finally {
       setIsRefreshing(false);
     }
@@ -670,7 +670,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       throw new Error('No address selected for signing');
     }
 
-    console.log('🔐 [Asset SignMessage] Signing message with pubkey:', pubkeyToUse);
+    logger.debug('🔐 [Asset SignMessage] Signing message with pubkey:', pubkeyToUse);
 
     // Get the KeepKey wallet from the wallets array (same as Receive component)
     const keepKeyWallet = app.wallets?.find((w: any) => w.wallet?.getVendor?.() === 'KeepKey')?.wallet;
@@ -679,7 +679,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       throw new Error('KeepKey wallet not found in app.wallets');
     }
 
-    console.log('✅ [Asset SignMessage] Found KeepKey wallet');
+    logger.debug('✅ [Asset SignMessage] Found KeepKey wallet');
 
     // Check if wallet supports Bitcoin message signing
     if (typeof keepKeyWallet.btcSignMessage !== 'function') {
@@ -709,11 +709,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         message: message
       };
 
-      console.log('🔑 [Asset SignMessage] Calling btcSignMessage with params:', signMessageParams);
+      logger.debug('🔑 [Asset SignMessage] Calling btcSignMessage with params:', signMessageParams);
 
       const result = await keepKeyWallet.btcSignMessage(signMessageParams);
 
-      console.log('✅ [Asset SignMessage] Message signed successfully:', result);
+      logger.debug('✅ [Asset SignMessage] Message signed successfully:', result);
 
       if (!result || !result.address || !result.signature) {
         throw new Error('Invalid response from device');
@@ -724,7 +724,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         signature: result.signature
       };
     } catch (error: any) {
-      console.error('❌ [Asset SignMessage] Failed to sign message:', error);
+      logger.error('❌ [Asset SignMessage] Failed to sign message:', error);
       throw new Error(error?.message || 'Failed to sign message');
     }
   };
@@ -843,7 +843,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
       if (decimals === undefined || decimals === null) {
         const error = `CRITICAL: Asset ${assetContext.symbol || assetContext.caip || 'unknown'} has NO decimals/precision in assetContext! SDK data is missing.`;
-        console.error('❌', error, assetContext);
+        logger.error('❌', error, assetContext);
         throw new Error(error);
       }
     }
@@ -1012,7 +1012,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   bg: 'rgba(255, 215, 0, 0.1)',
                 }}
                 onClick={async () => {
-                  console.log('🔄 [Asset] Force refresh clicked - using networkId pattern from integration test');
+                  logger.debug('🔄 [Asset] Force refresh clicked - using networkId pattern from integration test');
                   setIsRefreshing(true);
 
                   const startBalance = app?.balances?.find((b: any) =>
@@ -1023,7 +1023,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     if (app && typeof app.getBalances === 'function' && assetContext?.networkId) {
                       console.log(`🔄 [Asset] Calling app.getBalances({ networkId: "${assetContext.networkId}", forceRefresh: true })`);
                       await app.getBalances({ networkId: assetContext.networkId, forceRefresh: true });
-                      console.log('✅ [Asset] Balance refresh completed');
+                      logger.debug('✅ [Asset] Balance refresh completed');
 
                       // Verify balance was updated
                       const assetBalance = app.balances?.find((b: any) =>
@@ -1062,15 +1062,15 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     const shouldRefreshCharts = !isUtxoNetwork && assetContext?.isToken !== true && app && typeof app.getCharts === 'function';
 
                     if (shouldRefreshCharts && assetContext?.networkId) {
-                      console.log('🔄 [Asset] Also refreshing charts for token discovery (EVM/Cosmos only)...');
+                      logger.debug('🔄 [Asset] Also refreshing charts for token discovery (EVM/Cosmos only)...');
                       app.getCharts([assetContext.networkId]).catch((err: any) => {
-                        console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
+                        logger.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
                       });
                     } else if (isUtxoNetwork) {
                       console.log('⏭️  [Asset] Skipping chart refresh - UTXO networks don\'t have tokens');
                     }
                   } catch (error: any) {
-                    console.error('❌ [Asset] Force refresh failed:', error);
+                    logger.error('❌ [Asset] Force refresh failed:', error);
                     toaster.create({
                       title: 'Sync Failed',
                       description: error?.message || 'Failed to refresh balance. Please check your connection and try again.',
@@ -1761,15 +1761,15 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                             onClick={async () => {
                               const addressToSelect = pubkey.address || pubkey.pubkey;
                               setSelectedAddress(addressToSelect);
-                              console.log('🔑 [Asset] Selected pubkey:', addressToSelect, pubkey);
+                              logger.debug('🔑 [Asset] Selected pubkey:', addressToSelect, pubkey);
 
                               // Set pubkey context in Pioneer SDK for transactions
                               if (app?.setPubkeyContext) {
                                 try {
                                   await app.setPubkeyContext(pubkey);
-                                  console.log('✅ [Asset] Pubkey context set in Pioneer SDK:', pubkey);
+                                  logger.debug('✅ [Asset] Pubkey context set in Pioneer SDK:', pubkey);
                                 } catch (error) {
-                                  console.error('❌ [Asset] Error setting pubkey context:', error);
+                                  logger.error('❌ [Asset] Error setting pubkey context:', error);
                                 }
                               }
                             }}
@@ -2169,15 +2169,15 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                           onClick={async () => {
                             const addressToSelect = pubkey.address || pubkey.pubkey;
                             setSelectedAddress(addressToSelect);
-                            console.log('🔑 [Asset] Selected pubkey (mobile):', addressToSelect, pubkey);
+                            logger.debug('🔑 [Asset] Selected pubkey (mobile):', addressToSelect, pubkey);
 
                             // Set pubkey context in Pioneer SDK for transactions
                             if (app?.setPubkeyContext) {
                               try {
                                 await app.setPubkeyContext(pubkey);
-                                console.log('✅ [Asset] Pubkey context set in Pioneer SDK (mobile):', pubkey);
+                                logger.debug('✅ [Asset] Pubkey context set in Pioneer SDK (mobile):', pubkey);
                               } catch (error) {
-                                console.error('❌ [Asset] Error setting pubkey context (mobile):', error);
+                                logger.error('❌ [Asset] Error setting pubkey context (mobile):', error);
                               }
                             }
                           }}
@@ -2396,11 +2396,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           };
 
           // DEBUG: Log all balances for current network
-          console.log('🔍 [Asset] DEBUG - Current networkId:', assetContext.networkId);
-          console.log('🔍 [Asset] DEBUG - Total balances:', app?.balances?.length || 0);
+          logger.debug('🔍 [Asset] DEBUG - Current networkId:', assetContext.networkId);
+          logger.debug('🔍 [Asset] DEBUG - Total balances:', app?.balances?.length || 0);
           const networkBalances = app?.balances?.filter((b: any) => b.networkId === assetContext.networkId) || [];
-          console.log('🔍 [Asset] DEBUG - Balances for network:', networkBalances.length);
-          console.log('🔍 [Asset] DEBUG - Sample balances:', networkBalances.slice(0, 5).map((b: any) => ({
+          logger.debug('🔍 [Asset] DEBUG - Balances for network:', networkBalances.length);
+          logger.debug('🔍 [Asset] DEBUG - Sample balances:', networkBalances.slice(0, 5).map((b: any) => ({
             symbol: b.symbol,
             type: b.type,
             token: b.token,
@@ -2417,8 +2417,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
             parseFloat(balance.balance || '0') > 0
           ) || [];
 
-          console.log('🔍 [Asset] DEBUG - Filtered tokens:', networkTokens.length);
-          console.log('🔍 [Asset] DEBUG - First 3 tokens:', networkTokens.slice(0, 3).map((t: any) => ({
+          logger.debug('🔍 [Asset] DEBUG - Filtered tokens:', networkTokens.length);
+          logger.debug('🔍 [Asset] DEBUG - First 3 tokens:', networkTokens.slice(0, 3).map((t: any) => ({
             symbol: t.symbol,
             balance: t.balance,
             valueUsd: t.valueUsd
@@ -2482,18 +2482,18 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         transition="all 0.2s"
                         cursor="pointer"
                         onClick={() => {
-                          console.log('🪙 [Asset] Navigating to token page:', token);
+                          logger.debug('🪙 [Asset] Navigating to token page:', token);
 
                           // Use the token's CAIP for navigation
                           const caip = token.caip;
 
-                          console.log('🪙 [Asset] Using token CAIP for navigation:', caip);
-                          console.log('🪙 [Asset] Token object:', token);
+                          logger.debug('🪙 [Asset] Using token CAIP for navigation:', caip);
+                          logger.debug('🪙 [Asset] Token object:', token);
 
                           // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
 
-                          console.log('🪙 [Asset] Encoded token parameters:', { encodedCaip });
+                          logger.debug('🪙 [Asset] Encoded token parameters:', { encodedCaip });
 
                           // Navigate using encoded parameters to the simplified route
                           router.push(`/asset/${encodedCaip}`);
@@ -2641,14 +2641,14 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         defaultNetwork={assetContext?.networkId}
         onTokenAdded={(caip: string) => {
           // ✨ AUTO-NAVIGATE: When token metadata is validated, immediately navigate to the token's asset page
-          console.log('🚀 [Asset] Received token added callback, navigating to:', caip);
+          logger.debug('🚀 [Asset] Received token added callback, navigating to:', caip);
 
           // Close the dialog
           setIsCustomTokenDialogOpen(false);
 
           // Navigate to the new token's asset page
           const encodedCaip = btoa(caip);
-          console.log('🔄 [Asset] Navigating to asset page:', encodedCaip);
+          logger.debug('🔄 [Asset] Navigating to asset page:', encodedCaip);
           router.push(`/asset/${encodedCaip}`);
         }}
       />

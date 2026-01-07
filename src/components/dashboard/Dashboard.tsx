@@ -5,6 +5,7 @@ const DEBUG_VERBOSE = false;
 const DEBUG_USD = true; // Keep USD debugging on
 
 import React, { useState, useEffect, useTransition } from 'react';
+import { logger } from '@/lib/logger';
 import {
   Box,
   Flex,
@@ -233,7 +234,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       const smallPart = decimal?.slice(4, 6) || '00';
       return { integer, largePart, smallPart };
     } catch (error) {
-      console.error('Error in formatBalance:', error);
+      logger.error('Error in formatBalance:', error);
       return { integer: '0', largePart: '0000', smallPart: '00' };
     }
   };
@@ -265,7 +266,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
     // Debug: Log all assetsMap keys once
     if (!window.assetsMapLogged) {
-      console.log('🗺️ [Dashboard] assetsMap keys:', Array.from(app.assetsMap.keys()));
+      logger.debug('🗺️ [Dashboard] assetsMap keys:', Array.from(app.assetsMap.keys()));
       window.assetsMapLogged = true;
     }
 
@@ -275,44 +276,44 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
       // Debug logging
       if (assetInfo && DEBUG_VERBOSE) {
-        console.log('🏷️ [Dashboard] Asset lookup:', { caip, name, assetInfo });
+        logger.debug('🏷️ [Dashboard] Asset lookup:', { caip, name, assetInfo });
       }
 
       return name;
     } catch (error) {
-      console.error('❌ [Dashboard] Error getting asset name:', error);
+      logger.error('❌ [Dashboard] Error getting asset name:', error);
       return null;
     }
   };
 
   useEffect(() => {
     if (DEBUG_VERBOSE) {
-      console.log('📊 [Dashboard] Component mounted');
-      console.log('🖼️ [Dashboard] Background image should be: url(/images/backgrounds/splash-bg.png)');
-      console.log('🎨 [Dashboard] Theme background color:', theme.bg);
+      logger.debug('📊 [Dashboard] Component mounted');
+      logger.debug('🖼️ [Dashboard] Background image should be: url(/images/backgrounds/splash-bg.png)');
+      logger.debug('🎨 [Dashboard] Theme background color:', theme.bg);
     }
 
     // Check if the image is actually loading (use native Image, not Chakra's Image component)
     const img = new window.Image();
     img.onload = () => {
-      if (DEBUG_VERBOSE) console.log('✅ [Dashboard] Background image loaded successfully');
+      if (DEBUG_VERBOSE) logger.debug('✅ [Dashboard] Background image loaded successfully');
     };
     img.onerror = (e) => {
-      console.error('❌ [Dashboard] Background image failed to load:', e);
+      logger.error('❌ [Dashboard] Background image failed to load:', e);
     };
     img.src = '/images/backgrounds/splash-bg.png';
 
     fetchDashboard();
     return () => {
-      if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Component unmounting');
+      if (DEBUG_VERBOSE) logger.debug('📊 [Dashboard] Component unmounting');
     };
   }, [app, app?.dashboard]);
 
   // Add new useEffect to reload dashboard when assetContext becomes null
   useEffect(() => {
-    if (DEBUG_VERBOSE) console.log('📊 [Dashboard] AssetContext changed:', app?.assetContext);
+    if (DEBUG_VERBOSE) logger.debug('📊 [Dashboard] AssetContext changed:', app?.assetContext);
     if (!app?.assetContext) {
-      if (DEBUG_VERBOSE) console.log('📊 [Dashboard] AssetContext is null, reloading dashboard');
+      if (DEBUG_VERBOSE) logger.debug('📊 [Dashboard] AssetContext is null, reloading dashboard');
       fetchDashboard();
     }
   }, [app?.assetContext]);
@@ -325,13 +326,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       app
         .syncMarket()
         .then(() => {
-          if (DEBUG_VERBOSE) console.log("📊 [Dashboard] syncMarket called from Dashboard");
+          if (DEBUG_VERBOSE) logger.debug("📊 [Dashboard] syncMarket called from Dashboard");
           // We now track real balance changes instead of artificial adjustments
           setLastSync(Date.now());
           fetchDashboard();
         })
         .catch((error: any) => {
-          console.error("❌ [Dashboard] Error in syncMarket:", error);
+          logger.error("❌ [Dashboard] Error in syncMarket:", error);
         });
     }, 15000);
 
@@ -343,7 +344,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     if (!app?.events) return;
 
     const handleDashboardUpdate = (data: any) => {
-      console.log('🔄 [Dashboard] Real-time update received:', {
+      logger.debug('🔄 [Dashboard] Real-time update received:', {
         trigger: data.trigger,
         affectedAsset: data.affectedAsset,
         valueChange: `$${data.previousTotal.toFixed(2)} → $${data.newTotal.toFixed(2)}`
@@ -354,7 +355,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
       // Check for value increases and play sound if enabled
       if (data.newTotal > data.previousTotal && data.previousTotal > 0) {
-        console.log("💰 [Dashboard] Portfolio value increased!", {
+        logger.debug("💰 [Dashboard] Portfolio value increased!", {
           previous: data.previousTotal,
           current: data.newTotal,
           increase: data.newTotal - data.previousTotal
@@ -366,27 +367,27 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     };
 
     // Subscribe to dashboard update events
-    console.log('📡 [Dashboard] Subscribing to DASHBOARD_UPDATE events');
+    logger.debug('📡 [Dashboard] Subscribing to DASHBOARD_UPDATE events');
     app.events.on('DASHBOARD_UPDATE', handleDashboardUpdate);
 
     // Cleanup on unmount
     return () => {
-      console.log('📡 [Dashboard] Unsubscribing from DASHBOARD_UPDATE events');
+      logger.debug('📡 [Dashboard] Unsubscribing from DASHBOARD_UPDATE events');
       app.events.off('DASHBOARD_UPDATE', handleDashboardUpdate);
     };
   }, [app?.events]);
 
   const fetchDashboard = async () => {
-    if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Fetching dashboard data');
+    if (DEBUG_VERBOSE) logger.debug('📊 [Dashboard] Fetching dashboard data');
     setLoading(true);
     try {
       if(app && app.dashboard) {
         const dashboard = app.dashboard;
-        if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Dashboard data received:', dashboard);
+        if (DEBUG_VERBOSE) logger.debug('📊 [Dashboard] Dashboard data received:', dashboard);
 
         // USD debugging - check if we have balances and prices
         if (DEBUG_USD) {
-          console.log('💰 [USD DEBUG] Dashboard USD info:', {
+          logger.debug('💰 [USD DEBUG] Dashboard USD info:', {
             totalValueUsd: dashboard.totalValueUsd,
             networksCount: dashboard.networks?.length || 0,
             hasBalances: app.balances?.length || 0,
@@ -401,7 +402,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         
         // Check if portfolio value has increased
         if (newTotalValue > prevTotalValue && prevTotalValue > 0) {
-          console.log("💰 [Dashboard] Portfolio value increased!", {
+          logger.debug("💰 [Dashboard] Portfolio value increased!", {
             previous: prevTotalValue,
             current: newTotalValue
           });
@@ -427,19 +428,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               .findIndex((network: Network) => network.networkId === topAsset.networkId);
 
             if (topAssetIndex >= 0) {
-              console.log('📊 [Dashboard] Setting active slice to top asset:', topAsset.gasAssetSymbol);
+              logger.debug('📊 [Dashboard] Setting active slice to top asset:', topAsset.gasAssetSymbol);
               setActiveSliceIndex(topAssetIndex);
             }
           }
         }
       } else {
-        console.log('📊 [Dashboard] No dashboard data available');
+        logger.debug('📊 [Dashboard] No dashboard data available');
       }
     } catch (error) {
-      console.error('📊 [Dashboard] Error fetching dashboard:', error);
+      logger.error('📊 [Dashboard] Error fetching dashboard:', error);
     } finally {
       setLoading(false);
-      console.log('📊 [Dashboard] Fetch complete');
+      logger.debug('📊 [Dashboard] Fetch complete');
     }
   };
 
@@ -527,7 +528,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
   // Handle portfolio refresh
   const handlePortfolioRefresh = async (forceRefresh = false) => {
-    console.log(`🔄 [Dashboard] User clicked to ${forceRefresh ? 'FORCE' : ''} refresh portfolio`);
+    logger.debug(`🔄 [Dashboard] User clicked to ${forceRefresh ? 'FORCE' : ''} refresh portfolio`);
     setIsRefreshing(true);
     try {
       const v2Enabled = isPioneerV2Enabled();
@@ -535,28 +536,28 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       // Only call v2 APIs if they're enabled
       if (v2Enabled) {
         if (app && typeof app.refresh === 'function') {
-          console.log(`🔄 [Dashboard] Calling app.refresh(${forceRefresh})`);
+          logger.debug(`🔄 [Dashboard] Calling app.refresh(${forceRefresh})`);
           await app.refresh(forceRefresh);
         } else if (app && typeof app.sync === 'function') {
-          console.log('🔄 [Dashboard] Calling app.sync()');
+          logger.debug('🔄 [Dashboard] Calling app.sync()');
           await app.sync();
         }
       } else {
-        console.log('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
+        logger.debug('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
         // For v1, we can call getBalances directly
         if (app && typeof app.getBalances === 'function') {
-          console.log('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
+          logger.debug('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
           await app.getBalances();
         }
       }
 
       // Also get charts/tokens (with error handling for staking position bug)
       if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
-        console.log('🔄 [Dashboard] Calling app.getCharts()');
+        logger.debug('🔄 [Dashboard] Calling app.getCharts()');
         try {
           await app.getCharts();
         } catch (chartError) {
-          console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
+          logger.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
           // Don't throw - this is a known issue with the Pioneer SDK
         }
       }
@@ -566,9 +567,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         await fetchDashboard();
       }
 
-      console.log('✅ [Dashboard] Portfolio refresh completed');
+      logger.debug('✅ [Dashboard] Portfolio refresh completed');
     } catch (error) {
-      console.error('❌ [Dashboard] Portfolio refresh failed:', error);
+      logger.error('❌ [Dashboard] Portfolio refresh failed:', error);
     } finally {
       setIsRefreshing(false);
     }
@@ -597,7 +598,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
           zIndex: -1,
         }
       }}
-      onLoad={() => console.log('🖼️ [Dashboard] Container with background rendered')}
+      onLoad={() => logger.debug('🖼️ [Dashboard] Container with background rendered')}
     >
       {/* Header */}
       <Box 
@@ -766,7 +767,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     const ethCaip = 'eip155:1/slip44:60';
                     router.push(`/asset/${btoa(ethCaip)}?view=swap`);
                   } else {
-                    console.warn('🚫 [Dashboard] Swap feature is disabled');
+                    logger.warn('🚫 [Dashboard] Swap feature is disabled');
                   }
                 }}
               >
@@ -993,13 +994,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
-                          console.log('📋 [Dashboard] Navigating to asset page:', network);
+                          logger.debug('📋 [Dashboard] Navigating to asset page:', network);
 
                           // We always use the full CAIP from gasAssetCaip for navigation
                           const caip = network.gasAssetCaip;
 
-                          console.log('📋 [Dashboard] Using CAIP for navigation:', caip);
-                          console.log('📋 [Dashboard] Network object:', network);
+                          logger.debug('📋 [Dashboard] Using CAIP for navigation:', caip);
+                          logger.debug('📋 [Dashboard] Network object:', network);
 
                           // Set loading state immediately for instant feedback
                           setLoadingAssetCaip(caip);
@@ -1007,7 +1008,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
 
-                          console.log('📋 [Dashboard] Encoded parameters:', { encodedCaip });
+                          logger.debug('📋 [Dashboard] Encoded parameters:', { encodedCaip });
 
                           // Navigate using startTransition for better perceived performance
                           startTransition(() => {
@@ -1446,7 +1447,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 
                 // Debug logging for each balance
                 // if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
-                //   console.log('🔍 [Dashboard] Checking balance for token classification:', {
+                //   logger.debug('🔍 [Dashboard] Checking balance for token classification:', {
                 //     caip: balance.caip,
                 //     symbol: balance.symbol,
                 //     balance: balance.balance,
@@ -1468,9 +1469,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               });
 
               // Debug logging for token detection
-              console.log('🪙 [Dashboard] Total balances:', app.balances.length);
-              //console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
-              console.log('🪙 [Dashboard] Token balances found:', tokenBalances.length);
+              logger.debug('🪙 [Dashboard] Total balances:', app.balances.length);
+              //logger.debug('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
+              logger.debug('🪙 [Dashboard] Token balances found:', tokenBalances.length);
             }
 
             return (
@@ -1542,7 +1543,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             color: theme.goldHover
                           }}
                           onClick={async () => {
-                            console.log('🔍 [Dashboard] User clicked refresh tokens');
+                            logger.debug('🔍 [Dashboard] User clicked refresh tokens');
                             setIsRefreshing(true);
                             try {
                               const v2Enabled = isPioneerV2Enabled();
@@ -1550,47 +1551,47 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               // Only call v2 APIs if they're enabled
                               if (v2Enabled) {
                                 if (app && typeof app.refresh === 'function') {
-                                  console.log('🔄 [Dashboard] Calling app.refresh()');
+                                  logger.debug('🔄 [Dashboard] Calling app.refresh()');
                                   await app.refresh();
                                 } else if (app && typeof app.sync === 'function') {
-                                  console.log('🔄 [Dashboard] Calling app.sync()');
+                                  logger.debug('🔄 [Dashboard] Calling app.sync()');
                                   await app.sync();
                                 }
                               } else {
-                                console.log('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
+                                logger.debug('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
                                 // For v1, we can call getBalances directly
                                 if (app && typeof app.getBalances === 'function') {
-                                  console.log('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
+                                  logger.debug('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
                                   await app.getBalances();
                                 }
                               }
 
                               // Also get charts/tokens (with error handling for staking position bug)
                               if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
-                                console.log('🔄 [Dashboard] Calling app.getCharts()');
+                                logger.debug('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
 
                                   // Verify tokens were loaded
                                   const tokens = app.balances?.filter((b: any) => b.token === true) || [];
-                                  console.log('✅ [Dashboard] getCharts returned', tokens.length, 'tokens');
+                                  logger.debug('✅ [Dashboard] getCharts returned', tokens.length, 'tokens');
 
                                   if (tokens.length === 0) {
-                                    console.warn('⚠️ [Dashboard] getCharts completed but returned 0 tokens');
+                                    logger.warn('⚠️ [Dashboard] getCharts completed but returned 0 tokens');
                                   }
                                 } catch (chartError: any) {
-                                  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                                  console.error('❌ [Dashboard] getCharts failed:', chartError);
-                                  console.error('Error details:', {
+                                  logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                                  logger.error('❌ [Dashboard] getCharts failed:', chartError);
+                                  logger.error('Error details:', {
                                     message: chartError?.message,
                                     type: chartError?.constructor?.name,
                                     pioneer: !!app?.pioneer,
                                     pubkeys: app?.pubkeys?.length || 0
                                   });
-                                  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                                  logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                                 }
                               } else if (app && typeof app.getCharts === 'function') {
-                                console.log('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');
+                                logger.debug('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');
                               }
 
                               // Fetch dashboard data after refresh (only if v2 enabled)
@@ -1598,9 +1599,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 await fetchDashboard();
                               }
                               
-                              console.log('✅ [Dashboard] Refresh completed');
+                              logger.debug('✅ [Dashboard] Refresh completed');
                             } catch (error) {
-                              console.error('❌ [Dashboard] Refresh failed:', error);
+                              logger.error('❌ [Dashboard] Refresh failed:', error);
                             } finally {
                               setIsRefreshing(false);
                             }
@@ -1622,7 +1623,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
                      let tokenColor = assetInfo?.color || token.color;
 
-                     // console.log('🔍 [Dashboard] Token info:', {
+                     // logger.debug('🔍 [Dashboard] Token info:', {
                      //   caip: token.caip,
                      //   color: tokenColor
                      // });
@@ -1645,7 +1646,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      }
 
                      // Debug logging for token detection
-                     // console.log('🪙 [Dashboard] Token detected:', {
+                     // logger.debug('🪙 [Dashboard] Token detected:', {
                      //   caip: token.caip,
                      //   symbol: tokenSymbol,
                      //   balance: token.balance,
@@ -1713,13 +1714,13 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
-                          console.log('🪙 [Dashboard] Navigating to token page:', token);
+                          logger.debug('🪙 [Dashboard] Navigating to token page:', token);
 
                           // Use the token's CAIP for navigation
                           const caip = token.caip;
 
-                          console.log('🪙 [Dashboard] Using token CAIP for navigation:', caip);
-                          console.log('🪙 [Dashboard] Token object:', token);
+                          logger.debug('🪙 [Dashboard] Using token CAIP for navigation:', caip);
+                          logger.debug('🪙 [Dashboard] Token object:', token);
 
                           // Set loading state immediately for instant feedback
                           setLoadingAssetCaip(caip);
@@ -1727,7 +1728,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                           // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
 
-                          console.log('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
+                          logger.debug('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
 
                           // Navigate using startTransition for better perceived performance
                           startTransition(() => {
@@ -1897,7 +1898,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
                 // Debug logging
                 if (isStaking) {
-                  console.log('🔍 [Dashboard] Found staking balance:', {
+                  logger.debug('🔍 [Dashboard] Found staking balance:', {
                     caip: balance.caip,
                     chart: balance.chart,
                     balance: balance.balance,
@@ -1917,7 +1918,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 return valueB - valueA; // Descending order
               });
 
-              console.log('🏦 [Dashboard] Staking positions found:', stakingPositions.length);
+              logger.debug('🏦 [Dashboard] Staking positions found:', stakingPositions.length);
             }
 
             return (
@@ -1989,21 +1990,21 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             color: theme.goldHover
                           }}
                           onClick={async () => {
-                            console.log('🔍 [Dashboard] User clicked refresh staking');
+                            logger.debug('🔍 [Dashboard] User clicked refresh staking');
                             setIsRefreshing(true);
                             try {
                               if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
-                                console.log('🔄 [Dashboard] Calling app.getCharts() for staking');
+                                logger.debug('🔄 [Dashboard] Calling app.getCharts() for staking');
                                 try {
                                   await app.getCharts();
-                                  console.log('✅ [Dashboard] getCharts completed for staking');
+                                  logger.debug('✅ [Dashboard] getCharts completed for staking');
                                 } catch (chartError: any) {
-                                  console.error('❌ [Dashboard] getCharts failed:', chartError);
+                                  logger.error('❌ [Dashboard] getCharts failed:', chartError);
                                 }
                               }
                               await fetchDashboard();
                             } catch (error) {
-                              console.error('❌ [Dashboard] Refresh failed:', error);
+                              logger.error('❌ [Dashboard] Refresh failed:', error);
                             } finally {
                               setIsRefreshing(false);
                             }
@@ -2094,12 +2095,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
-                          console.log('🏦 [Dashboard] Navigating to staking asset page:', position);
+                          logger.debug('🏦 [Dashboard] Navigating to staking asset page:', position);
 
                           // Use the position's CAIP for navigation (the native asset CAIP, not a staking-specific one)
                           const caip = position.caip;
 
-                          console.log('🏦 [Dashboard] Using position CAIP for navigation:', caip);
+                          logger.debug('🏦 [Dashboard] Using position CAIP for navigation:', caip);
 
                           // Set loading state
                           setLoadingAssetCaip(caip);

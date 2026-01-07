@@ -5,6 +5,7 @@
 const DEBUG_VERBOSE = false;
 
 import { Box, Flex } from "@chakra-ui/react"
+import { logger } from '@/lib/logger';
 import { keyframes } from '@emotion/react'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import Dashboard from '@/components/dashboard/Dashboard'
@@ -57,15 +58,15 @@ export default function Home() {
 
   // Add debug logging for component mount and state changes
   useEffect(() => {
-    if (DEBUG_VERBOSE) console.log('🏠 [Page] Component mounted');
+    if (DEBUG_VERBOSE) logger.debug('🏠 [Page] Component mounted');
     return () => {
-      if (DEBUG_VERBOSE) console.log('🏠 [Page] Component unmounting');
+      if (DEBUG_VERBOSE) logger.debug('🏠 [Page] Component unmounting');
     };
   }, []);
 
   useEffect(() => {
     if (DEBUG_VERBOSE) {
-      console.log('🔄 [Page] State update:', {
+      logger.debug('🔄 [Page] State update:', {
         hasApp: !!app,
         hasAssetContext: !!app?.assetContext,
         hasDashboard: !!app?.dashboard,
@@ -79,9 +80,9 @@ export default function Home() {
   useEffect(() => {
     if (DEBUG_VERBOSE) {
       if (showLoading) {
-        console.log('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
+        logger.debug('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
       } else {
-        console.log('✅ [LOADING SCREEN] Loading screen hidden');
+        logger.debug('✅ [LOADING SCREEN] Loading screen hidden');
       }
     }
   }, [showLoading]);

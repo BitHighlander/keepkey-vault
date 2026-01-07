@@ -28,7 +28,7 @@ export async function checkERC20Allowance(
   networkId: string = 'eip155:1'
 ): Promise<{ hasApproval: boolean; currentAllowance: string; requiredAmount: string }> {
   try {
-    console.log('🔍 Checking ERC20 allowance via Pioneer SDK:', {
+    logger.debug('🔍 Checking ERC20 allowance via Pioneer SDK:', {
       token: tokenAddress,
       owner: ownerAddress,
       spender: spenderAddress,
@@ -37,9 +37,9 @@ export async function checkERC20Allowance(
     });
 
     // DEBUG: Verify SDK object and methods
-    console.log('🔧 DEBUG - SDK object type:', typeof sdk);
-    console.log('🔧 DEBUG - CheckERC20Allowance exists:', typeof sdk?.CheckERC20Allowance);
-    console.log('🔧 DEBUG - SDK keys sample:', Object.keys(sdk || {}).filter(k => k.includes('ERC20') || k.includes('Check')).slice(0, 10));
+    logger.debug('🔧 DEBUG - SDK object type:', typeof sdk);
+    logger.debug('🔧 DEBUG - CheckERC20Allowance exists:', typeof sdk?.CheckERC20Allowance);
+    logger.debug('🔧 DEBUG - SDK keys sample:', Object.keys(sdk || {}).filter(k => k.includes('ERC20') || k.includes('Check')).slice(0, 10));
 
     // Call Pioneer SDK method (Pascal case)
     const result = await sdk.CheckERC20Allowance({
@@ -58,7 +58,7 @@ export async function checkERC20Allowance(
     // Check if allowance is sufficient
     const hasApproval = BigInt(allowanceString) >= BigInt(requiredAmount);
 
-    console.log('✅ ERC20 Allowance Check Result:', {
+    logger.debug('✅ ERC20 Allowance Check Result:', {
       currentAllowance: allowanceString,
       requiredAmount,
       hasApproval,
@@ -70,7 +70,7 @@ export async function checkERC20Allowance(
       requiredAmount,
     };
   } catch (error) {
-    console.error('❌ Error checking ERC20 allowance:', error);
+    logger.error('❌ Error checking ERC20 allowance:', error);
     throw new Error(`Failed to check token allowance: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -104,7 +104,7 @@ export async function buildERC20ApprovalTx(
   gasPrice: string;
 }> {
   try {
-    console.log('🔨 Building ERC20 approval tx via Pioneer SDK:', {
+    logger.debug('🔨 Building ERC20 approval tx via Pioneer SDK:', {
       token: tokenAddress,
       spender: spenderAddress,
       amount: amount === 'max' ? 'UNLIMITED' : amount,
@@ -125,11 +125,11 @@ export async function buildERC20ApprovalTx(
       throw new Error(result.error || 'Failed to build approval transaction');
     }
 
-    console.log('✅ Approval transaction built successfully');
+    logger.debug('✅ Approval transaction built successfully');
 
     return result.data.tx;
   } catch (error) {
-    console.error('❌ Error building approval transaction:', error);
+    logger.error('❌ Error building approval transaction:', error);
     throw new Error(`Failed to build approval tx: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -207,7 +207,7 @@ export async function pollForApprovalConfirmation(
   const maxInterval = 10000; // Max 10 seconds between polls
   const startTime = Date.now();
 
-  console.log('⏳ Polling for approval transaction confirmation:', {
+  logger.debug('⏳ Polling for approval transaction confirmation:', {
     txHash,
     timeout: `${timeout / 1000}s`,
     initialInterval: `${initialInterval / 1000}s`
@@ -221,7 +221,7 @@ export async function pollForApprovalConfirmation(
 
     try {
       // Check if transaction is confirmed
-      console.log(`🔍 Polling attempt ${attempts} (interval: ${currentInterval / 1000}s)...`);
+      logger.debug(`🔍 Polling attempt ${attempts} (interval: ${currentInterval / 1000}s)...`);
 
       // Use Pioneer SDK to get transaction receipt
       const receiptResult = await sdk.GetTransactionReceipt({
@@ -231,7 +231,7 @@ export async function pollForApprovalConfirmation(
 
       if (receiptResult.success && receiptResult.data?.receipt) {
         const receipt = receiptResult.data.receipt;
-        console.log('📝 Receipt found:', {
+        logger.debug('📝 Receipt found:', {
           blockNumber: receipt.blockNumber,
           status: receipt.status,
           gasUsed: receipt.gasUsed
@@ -239,10 +239,10 @@ export async function pollForApprovalConfirmation(
 
         // Check if transaction was successful
         if (receipt.status === '0x1' || receipt.status === 1 || receipt.status === true) {
-          console.log('✅ Transaction confirmed successfully');
+          logger.debug('✅ Transaction confirmed successfully');
 
           // Re-check allowance to verify it actually increased
-          console.log('🔍 Verifying allowance increased...');
+          logger.debug('🔍 Verifying allowance increased...');
           const allowanceCheck = await checkERC20Allowance(
             sdk,
             tokenAddress,
@@ -253,17 +253,17 @@ export async function pollForApprovalConfirmation(
           );
 
           if (allowanceCheck.hasApproval) {
-            console.log('✅ Allowance confirmed increased:', allowanceCheck.currentAllowance);
+            logger.debug('✅ Allowance confirmed increased:', allowanceCheck.currentAllowance);
             return; // Success!
           } else {
-            console.warn('⚠️ Transaction confirmed but allowance not sufficient:', {
+            logger.warn('⚠️ Transaction confirmed but allowance not sufficient:', {
               current: allowanceCheck.currentAllowance,
               required: requiredAmount
             });
             throw new Error('Approval transaction confirmed but allowance not updated');
           }
         } else {
-          console.error('❌ Transaction failed on-chain');
+          logger.error('❌ Transaction failed on-chain');
           throw new Error('Approval transaction reverted');
         }
       }
@@ -281,13 +281,13 @@ export async function pollForApprovalConfirmation(
       }
 
       // Otherwise, it might be a transient error, continue polling
-      console.log(`⚠️ Error during polling (will retry): ${error.message}`);
+      logger.debug(`⚠️ Error during polling (will retry): ${error.message}`);
       await new Promise(resolve => setTimeout(resolve, currentInterval));
       currentInterval = Math.min(currentInterval * 1.5, maxInterval);
     }
   }
 
   // Timeout reached
-  console.error('❌ Approval confirmation timeout after', (Date.now() - startTime) / 1000, 'seconds');
+  logger.error('❌ Approval confirmation timeout after', (Date.now() - startTime) / 1000, 'seconds');
   throw new Error(`Approval transaction not confirmed within ${timeout / 1000} seconds. Transaction may still be pending.`);
 }

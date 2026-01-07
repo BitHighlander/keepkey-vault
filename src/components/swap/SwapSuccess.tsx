@@ -486,7 +486,7 @@ export const SwapSuccess = ({
             </Button>
           </Link>
           <Text fontSize="xs" color="gray.500" textAlign="center">
-            Note: Tracking will open in a new tab
+            Note: Status will not load until at least 1 confirmation on input transaction
           </Text>
         </VStack>
 

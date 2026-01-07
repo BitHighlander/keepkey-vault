@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { logger } from '@/lib/logger';
 import { useSearchParams } from 'next/navigation';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { usePioneerContext } from '@/components/providers/pioneer';
@@ -28,7 +29,7 @@ import {
   Code,
   Badge
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt, FaHistory } from 'react-icons/fa';
+import { FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt, FaExchangeAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
 import CountUp from 'react-countup';
 import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, validateThorchainSwapMemo } from '@pioneer-platform/pioneer-coins'
@@ -44,7 +45,6 @@ import { SwapQuote } from './SwapQuote';
 import { SwapConfirm } from './SwapConfirm';
 import { AssetPicker } from './AssetPicker';
 import { SwapSuccess } from './SwapSuccess';
-import { SwapHistory } from './SwapHistory';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 
 // Import THORChain services
@@ -106,7 +106,7 @@ function parseAssetPairFromUrl(searchParams: URLSearchParams | null): { from: st
   if (fromParam && toParam) {
     // Both provided - validate they're different
     if (fromParam === toParam) {
-      console.warn('[Swap URL] Input and output CAIPs cannot be the same');
+      logger.warn('[Swap URL] Input and output CAIPs cannot be the same');
       return null;
     }
     return { from: fromParam, to: toParam };
@@ -133,7 +133,7 @@ function parseAssetPairFromUrl(searchParams: URLSearchParams | null): { from: st
 function validateAndGetPoolAsset(caip: string) {
   const pool = getPoolByCAIP(caip);
   if (!pool) {
-    console.warn(`[Swap URL] Asset CAIP not found in THORChain pools: ${caip}`);
+    logger.warn(`[Swap URL] Asset CAIP not found in THORChain pools: ${caip}`);
     return null;
   }
   return pool;
@@ -152,7 +152,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Debug app state
   useEffect(() => {
-    console.log('🔄 [Swap] Component mounted/updated with app state:', {
+    logger.debug('🔄 [Swap] Component mounted/updated with app state:', {
       hasApp: !!app,
       hasBalances: !!app?.balances,
       balanceCount: app?.balances?.length || 0,
@@ -167,21 +167,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
     // DEBUG: Verify ERC20 methods exist on app (the SDK instance)
     if (app) {
-      console.log('🔧 DEBUG [Swap] - SDK instance type:', typeof app);
-      console.log('🔧 DEBUG [Swap] - CheckERC20Allowance:', typeof app.CheckERC20Allowance);
-      console.log('🔧 DEBUG [Swap] - BuildERC20ApprovalTx:', typeof app.BuildERC20ApprovalTx);
+      logger.debug('🔧 DEBUG [Swap] - SDK instance type:', typeof app);
+      logger.debug('🔧 DEBUG [Swap] - CheckERC20Allowance:', typeof app.CheckERC20Allowance);
+      logger.debug('🔧 DEBUG [Swap] - BuildERC20ApprovalTx:', typeof app.BuildERC20ApprovalTx);
       const erc20Methods = Object.keys(app).filter(k => k.includes('ERC20') || k.includes('Check') || k.includes('Build'));
-      console.log('🔧 DEBUG [Swap] - ERC20/Check/Build methods:', erc20Methods);
+      logger.debug('🔧 DEBUG [Swap] - ERC20/Check/Build methods:', erc20Methods);
     } else {
-      console.warn('⚠️  [Swap] app (SDK instance) is not available!');
+      logger.warn('⚠️  [Swap] app (SDK instance) is not available!');
     }
     
     // Log dashboard networks for comparison
     if (app?.dashboard?.networks) {
-      console.log('📊 [SWAP] Dashboard networks:', app.dashboard.networks);
+      logger.debug('📊 [SWAP] Dashboard networks:', app.dashboard.networks);
       const btcNetwork = app.dashboard.networks.find((n: any) => n.name === 'Bitcoin' || n.symbol === 'BTC');
       if (btcNetwork) {
-        console.log('🔍 [SWAP] BTC from dashboard:', btcNetwork);
+        logger.debug('🔍 [SWAP] BTC from dashboard:', btcNetwork);
       }
     }
   }, [app]);
@@ -204,9 +204,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setSwapAssetsError('Using fallback assets (unable to connect to server)');
         }
 
-        console.log(`[Swap] Loaded ${assets.length} swap assets from ${source}`);
+        logger.debug(`[Swap] Loaded ${assets.length} swap assets from ${source}`);
       } catch (error) {
-        console.error('[Swap] Failed to load swap assets:', error);
+        logger.error('[Swap] Failed to load swap assets:', error);
         setSwapAssetsError(error instanceof Error ? error.message : 'Failed to load swap assets');
       } finally {
         setIsLoadingSwapAssets(false);
@@ -243,6 +243,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [verificationStep, setVerificationStep] = useState<'destination' | 'vault' | 'swap'>('destination');
   const [vaultVerified, setVaultVerified] = useState(false);
   const [memoValid, setMemoValid] = useState<boolean | null>(null);
+  const [isExecutingSwap, setIsExecutingSwap] = useState(false);
 
   // State for dynamically loaded swap assets
   const [supportedSwapAssets, setSupportedSwapAssets] = useState<ThorchainPool[]>([]);
@@ -263,21 +264,18 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [isApprovingToken, setIsApprovingToken] = useState(false);
   const [approvalTxHash, setApprovalTxHash] = useState<string | null>(null);
 
-  // Tab state for switching between Swap and History
-  const [activeTab, setActiveTab] = useState<'swap' | 'history'>('swap');
-
   // Helper function to get balance by CAIP
   const getUserBalance = (caip: string | undefined): string => {
     if (!caip) {
-      console.warn('getUserBalance: No CAIP provided');
+      logger.warn('getUserBalance: No CAIP provided');
       return '0';
     }
     if (!app?.balances || app.balances.length === 0) {
-      console.warn('getUserBalance: No balances available');
+      logger.warn('getUserBalance: No balances available');
       return '0';
     }
     if (availableAssets.length === 0) {
-      console.warn('getUserBalance: No available assets yet');
+      logger.warn('getUserBalance: No available assets yet');
       return '0';
     }
 
@@ -286,16 +284,16 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       const asset = availableAssets.find((x: any) => x.caip === caip);
 
       if (!asset) {
-        console.warn(`getUserBalance: No asset found for CAIP ${caip}`, {
+        logger.warn(`getUserBalance: No asset found for CAIP ${caip}`, {
           availableAssets: availableAssets.map(a => ({ caip: a.caip, symbol: a.symbol }))
         });
         return '0';
       }
 
-      console.log(`getUserBalance: Found balance for ${caip}:`, asset.balance);
+      logger.debug(`getUserBalance: Found balance for ${caip}:`, asset.balance);
       return asset.balance?.toString() || '0';
     } catch (e) {
-      console.error('getUserBalance: Error finding balance', e);
+      logger.error('getUserBalance: Error finding balance', e);
       return '0';
     }
   };
@@ -323,7 +321,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       const asset = availableAssets.find((x: any) => x.caip === caip);
       return asset?.balanceUsd?.toString() || '0';
     } catch (e) {
-      console.error('getUserBalanceUSD: Error finding balance', e);
+      logger.error('getUserBalanceUSD: Error finding balance', e);
       return '0';
     }
   };
@@ -331,20 +329,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Get available assets with balances - DON'T aggregate, keep each CAIP separate
   const availableAssets = useMemo(() => {
     if (!app?.balances || app.balances.length === 0) {
-      console.log('🔍 [SWAP] No balances available');
+      logger.debug('🔍 [SWAP] No balances available');
       return [];
     }
 
-    console.log('🔍 [SWAP] Processing balances:', app.balances.length, 'total balances');
-    console.log('🔍 [SWAP] Raw balances:', app.balances);
-    console.log('🔍 [SWAP] Supported swap assets:', supportedSwapAssets.map(a => a.symbol));
+    logger.debug('🔍 [SWAP] Processing balances:', app.balances.length, 'total balances');
+    logger.debug('🔍 [SWAP] Raw balances:', app.balances);
+    logger.debug('🔍 [SWAP] Supported swap assets:', supportedSwapAssets.map(a => a.symbol));
 
     // Keep each balance separate by CAIP - DON'T aggregate by symbol
     const assets = app.balances
       .map((balance: any, index: number) => {
         const ticker = balance.ticker || balance.symbol;
         if (!ticker) {
-          console.log(`⚠️ [SWAP] Balance #${index} missing ticker/symbol:`, balance);
+          logger.debug(`⚠️ [SWAP] Balance #${index} missing ticker/symbol:`, balance);
           return null;
         }
 
@@ -354,19 +352,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
         // Fallback: if no exact CAIP match, try by symbol but log a warning
         if (!supportedAsset) {
-          console.log(`⚠️ [SWAP] No exact CAIP match for ${balance.caip}, trying symbol fallback for ${ticker}`);
+          logger.debug(`⚠️ [SWAP] No exact CAIP match for ${balance.caip}, trying symbol fallback for ${ticker}`);
           supportedAsset = supportedSwapAssets.find(asset => asset.symbol === ticker);
         }
 
         if (!supportedAsset) {
-          console.log(`⚠️ [SWAP] No supported pool found for ticker: ${ticker} (caip: ${balance.caip})`);
+          logger.debug(`⚠️ [SWAP] No supported pool found for ticker: ${ticker} (caip: ${balance.caip})`);
           return null;
         }
 
         const balanceAmount = parseFloat(balance.balance || '0');
         const valueUsd = parseFloat(balance.valueUsd || '0');
 
-        console.log(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}, matched=${supportedAsset.asset}`);
+        logger.debug(`💰 [SWAP] Processing ${ticker} on ${balance.caip}: balance=${balanceAmount}, valueUsd=${valueUsd}, priceUsd=${balance.priceUsd}, matched=${supportedAsset.asset}`);
 
         // Get icon from Pioneer SDK assetsMap FIRST, then fallback to balance.icon
         // DO NOT use hardcoded icons from thorchain-pools
@@ -375,7 +373,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           const assetInfo = app.assetsMap.get(balance.caip);
           if (assetInfo?.icon) {
             icon = assetInfo.icon;
-            console.log(`📍 [SWAP] Using icon from assetsMap for ${ticker}:`, icon);
+            logger.debug(`📍 [SWAP] Using icon from assetsMap for ${ticker}:`, icon);
           }
         }
         // Final fallback: Use CDN with CAIP
@@ -403,14 +401,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         if (!asset) return false;
         const passesFilter = asset.balanceUsd > 0.01;
         if (!passesFilter) {
-          console.log(`❌ [SWAP] Filtered out ${asset.symbol} on ${asset.caip}: USD value ${asset.balanceUsd} below $0.01 threshold`);
+          logger.debug(`❌ [SWAP] Filtered out ${asset.symbol} on ${asset.caip}: USD value ${asset.balanceUsd} below $0.01 threshold`);
         }
         return passesFilter;
       })
       .sort((a: any, b: any) => b.balanceUsd - a.balanceUsd);
 
-    console.log('✅ [SWAP] Final sorted assets (by CAIP, not aggregated):', assets);
-    console.log('✅ [SWAP] Asset count:', assets.length);
+    logger.debug('✅ [SWAP] Final sorted assets (by CAIP, not aggregated):', assets);
+    logger.debug('✅ [SWAP] Asset count:', assets.length);
 
     return assets;
   }, [app?.balances, app?.assets, supportedSwapAssets]);
@@ -493,18 +491,18 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     const urlPair = parseAssetPairFromUrl(searchParams);
 
     if (urlPair && app?.setAssetContext && app?.setOutboundAssetContext) {
-      console.log('🔗 [Swap URL] Parsed asset pair from URL:', urlPair);
+      logger.debug('🔗 [Swap URL] Parsed asset pair from URL:', urlPair);
 
       // Validate both assets exist in THORChain pools
       const fromPool = validateAndGetPoolAsset(urlPair.from);
       const toPool = validateAndGetPoolAsset(urlPair.to);
 
       if (!fromPool || !toPool) {
-        console.error('❌ [Swap URL] Invalid asset pair - one or both assets not found in THORChain pools');
+        logger.error('❌ [Swap URL] Invalid asset pair - one or both assets not found in THORChain pools');
         return;
       }
 
-      console.log('✅ [Swap URL] Setting assets from URL:', {
+      logger.debug('✅ [Swap URL] Setting assets from URL:', {
         from: { caip: fromPool.caip, symbol: fromPool.symbol },
         to: { caip: toPool.caip, symbol: toPool.symbol }
       });
@@ -539,7 +537,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       const defaultFrom = availableAssets[0] || supportedSwapAssets.find(a => a.symbol === 'BTC' && a.isNative);
 
       if (!defaultFrom) {
-        console.warn('[Swap] No default FROM asset available');
+        logger.warn('[Swap] No default FROM asset available');
         return;
       }
 
@@ -568,7 +566,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       }
 
       if (!defaultTo) {
-        console.warn('[Swap] No default TO asset available');
+        logger.warn('[Swap] No default TO asset available');
         return;
       }
 
@@ -593,7 +591,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Set the assets
       if (fromAsset && toAsset && fromAsset.caip !== toAsset.caip) {
         if (app?.setAssetContext && app?.setOutboundAssetContext) {
-          console.log('📍 [Swap] Setting default assets:', {
+          logger.debug('📍 [Swap] Setting default assets:', {
             from: { caip: fromAsset.caip, symbol: fromAsset.symbol },
             to: { caip: toAsset.caip, symbol: toAsset.symbol }
           });
@@ -608,7 +606,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   // Auto-select output asset when input asset changes
   useEffect(() => {
     const autoSelectOutput = async () => {
-      console.log('🔍 [Swap] Auto-select output asset useEffect triggered:', {
+      logger.debug('🔍 [Swap] Auto-select output asset useEffect triggered:', {
         hasAssetContext: !!app?.assetContext?.caip,
         hasOutboundContext: !!app?.outboundAssetContext?.caip,
         canSetOutbound: !!app?.setOutboundAssetContext,
@@ -629,15 +627,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         }
 
         if (defaultTo) {
-          console.log('✅ [Swap] Auto-selecting output asset with CAIP only:', {
+          logger.debug('✅ [Swap] Auto-selecting output asset with CAIP only:', {
             symbol: defaultTo.symbol,
             caip: defaultTo.caip
           });
           // CRITICAL: Only pass caip - SDK will populate address and other fields
           await app.setOutboundAssetContext({ caip: defaultTo.caip });
-          console.log('✅ [Swap] Output asset context set, address populated:', app.outboundAssetContext?.address);
+          logger.debug('✅ [Swap] Output asset context set, address populated:', app.outboundAssetContext?.address);
         } else {
-          console.error('❌ [Swap] Could not auto-select output asset for:', app.assetContext.symbol, 'Available swap assets:', supportedSwapAssets.length);
+          logger.error('❌ [Swap] Could not auto-select output asset for:', app.assetContext.symbol, 'Available swap assets:', supportedSwapAssets.length);
         }
       }
     };
@@ -647,7 +645,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   
   // Set default input amount when both assets are selected and input is empty
   useEffect(() => {
-    console.log('🔍 [Swap] Default amount useEffect triggered:', {
+    logger.debug('🔍 [Swap] Default amount useEffect triggered:', {
       hasAssetContext: !!app?.assetContext?.caip,
       hasOutboundContext: !!app?.outboundAssetContext?.caip,
       hasInputAmount: !!inputAmount,
@@ -666,7 +664,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       if (fromAsset && fromAsset.balance > 0 && fromAsset.priceUsd > 0) {
         const maxUsdValue = fromAsset.balance * fromAsset.priceUsd;
 
-        console.log('💰 Setting default input amount:', {
+        logger.debug('💰 Setting default input amount:', {
           asset: fromAsset.symbol,
           balance: fromAsset.balance,
           priceUsd: fromAsset.priceUsd,
@@ -689,14 +687,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         // Fetch quote for the default amount
         const amount = maxUsdValue <= 100 ? fromAsset.balance.toString() : (100 / fromAsset.priceUsd).toFixed(8);
         if (amount && app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
-          console.log('🎯 [Swap] Fetching initial quote with:', {
+          logger.debug('🎯 [Swap] Fetching initial quote with:', {
             amount,
             fromSymbol: app.assetContext.symbol,
             toSymbol: app.outboundAssetContext.symbol
           });
           fetchQuote(amount, app.assetContext.symbol, app.outboundAssetContext.symbol);
         } else {
-          console.warn('⚠️ [Swap] Cannot fetch initial quote - missing asset symbols:', {
+          logger.warn('⚠️ [Swap] Cannot fetch initial quote - missing asset symbols:', {
             hasAmount: !!amount,
             hasFromSymbol: !!app?.assetContext?.symbol,
             hasToSymbol: !!app?.outboundAssetContext?.symbol
@@ -713,7 +711,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         app.assetContext.caip === app.outboundAssetContext.caip &&
         app?.setOutboundAssetContext &&
         availableAssets.length > 0) {
-      console.warn('⚠️ [Swap] Same CAIP detected for both from and to, fixing...');
+      logger.warn('⚠️ [Swap] Same CAIP detected for both from and to, fixing...');
 
       // Find an alternative asset for "to" by CAIP (prefer native assets)
       const alternativeAsset = availableAssets.find(a => a.caip !== app.assetContext.caip) ||
@@ -737,7 +735,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // Convert to base units using SDK assetContext
       const baseAmount = toBaseUnit(amount, app?.assetContext);
       
-      console.log('🔍 [Swap] Fetching quote:', {
+      logger.debug('🔍 [Swap] Fetching quote:', {
         fromSymbol,
         toSymbol,
         inputAmount: amount,
@@ -756,7 +754,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         // app?.outboundAssetContext?.address
       );
       
-      console.log('📊 [Swap] Quote received:', {
+      logger.debug('📊 [Swap] Quote received:', {
         quote: quoteData,
         expectedOut: quoteData?.expected_amount_out,
         fees: quoteData?.fees
@@ -768,7 +766,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         // Convert output from base units and set it
         // THORChain always returns amounts in 8 decimal format, not native decimals
         const outputInDisplay = fromBaseUnit(quoteData.expected_amount_out, app?.outboundAssetContext, true);
-        console.log('💱 [Swap] Converted output:', {
+        logger.debug('💱 [Swap] Converted output:', {
           baseUnits: quoteData.expected_amount_out,
           displayUnits: outputInDisplay,
           toSymbol,
@@ -787,13 +785,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         const rate = parseFloat(outputInDisplay) / parseFloat(amount);
         setExchangeRate(rate);
       } else {
-        console.error('❌ [Swap] Invalid quote data:', quoteData);
+        logger.error('❌ [Swap] Invalid quote data:', quoteData);
         setError('Unable to fetch valid quote from THORChain');
         setOutputAmount('');
         setOutputUSDValue('');
       }
     } catch (err: any) {
-      console.error('❌ [Swap] Error fetching quote:', err);
+      logger.error('❌ [Swap] Error fetching quote:', err);
       // Extract the error message from the error object
       const errorMessage = err?.message || 'Failed to fetch swap quote';
       setError(errorMessage);
@@ -819,7 +817,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   }, [app?.assetContext?.symbol, app?.outboundAssetContext?.symbol]);
 
   const handleInputChange = async (value: string) => {
-    console.log('📝 [Swap] Input changed:', {
+    logger.debug('📝 [Swap] Input changed:', {
       newValue: value,
       previousValue: inputAmount,
       fromSymbol: app?.assetContext?.symbol,
@@ -828,9 +826,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
     setInputAmount(value);
     if (isMaxAmount) {
-      console.log('🔄 Clearing isMax flag - user manually changed amount from:', inputAmount, 'to:', value);
+      logger.debug('🔄 Clearing isMax flag - user manually changed amount from:', inputAmount, 'to:', value);
       setIsMaxAmount(false); // Clear isMax flag when user manually changes the amount
-      console.log('🔴 isMaxAmount is now FALSE due to manual input change');
+      logger.debug('🔴 isMaxAmount is now FALSE due to manual input change');
     }
     // Automatically calculate and update USD value
     if (app?.assetContext?.priceUsd && value) {
@@ -848,10 +846,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
     // Fetch quote if we have valid input
     if (value && parseFloat(value) > 0 && app?.assetContext?.symbol && app?.outboundAssetContext?.symbol) {
-      console.log('✅ [Swap] Conditions met, fetching quote for custom amount');
+      logger.debug('✅ [Swap] Conditions met, fetching quote for custom amount');
       await fetchQuote(value, app.assetContext.symbol, app.outboundAssetContext.symbol);
     } else {
-      console.warn('⚠️ [Swap] Cannot fetch quote - conditions not met:', {
+      logger.warn('⚠️ [Swap] Cannot fetch quote - conditions not met:', {
         hasValue: !!value,
         valueGreaterThanZero: value ? parseFloat(value) > 0 : false,
         hasFromSymbol: !!app?.assetContext?.symbol,
@@ -863,7 +861,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   };
 
   const handleMaxClick = async () => {
-    console.log('🟡 MAX BUTTON CLICKED - BEFORE STATE CHANGE');
+    logger.debug('🟡 MAX BUTTON CLICKED - BEFORE STATE CHANGE');
     const maxBalance = getUserBalance(app?.assetContext?.caip);
     if (maxBalance && parseFloat(maxBalance) > 0) {
       // Get proper decimal precision for this asset from SDK assetContext
@@ -877,9 +875,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         parseFloat(maxBalance).toFixed(decimals);
       
       setInputAmount(adjustedMax);
-      console.log('💰 MAX button clicked - setting isMax flag to true');
+      logger.debug('💰 MAX button clicked - setting isMax flag to true');
       setIsMaxAmount(true); // Set isMax flag when MAX button is clicked
-      console.log('🟢 MAX BUTTON CLICKED - AFTER STATE CHANGE - isMaxAmount should now be TRUE');
+      logger.debug('🟢 MAX BUTTON CLICKED - AFTER STATE CHANGE - isMaxAmount should now be TRUE');
       // Automatically calculate and update USD value
       if (app?.assetContext?.priceUsd) {
         const usdValue = (parseFloat(adjustedMax) * parseFloat(app.assetContext.priceUsd)).toFixed(2);
@@ -926,14 +924,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       if (asset.caip === app?.outboundAssetContext?.caip) {
         // If selecting an asset for "from" that's already "to", auto-swap:
         // Set this as "from" and pick next available asset as "to"
-        console.log('🔄 [Swap] Selected asset is current output, auto-swapping...');
+        logger.debug('🔄 [Swap] Selected asset is current output, auto-swapping...');
 
         // Find next available asset (prefer assets with balance)
         const nextAsset = toAssets.find(a => a.caip !== asset.caip && a.balanceUsd && a.balanceUsd > 0) ||
                           toAssets.find(a => a.caip !== asset.caip);
 
         if (nextAsset) {
-          console.log('✅ [Swap] Auto-selected next asset as output:', nextAsset.symbol);
+          logger.debug('✅ [Swap] Auto-selected next asset as output:', nextAsset.symbol);
           await app.setOutboundAssetContext({
             caip: nextAsset.caip
           });
@@ -943,12 +941,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // Validate asset has required fields before attempting to set
       if (!asset.caip) {
-        console.error('❌ Cannot set input asset: missing CAIP', asset);
+        logger.error('❌ Cannot set input asset: missing CAIP', asset);
         setError('Invalid asset: missing CAIP identifier');
         return;
       }
       if (!asset.symbol) {
-        console.error('❌ Cannot set input asset: missing symbol', asset);
+        logger.error('❌ Cannot set input asset: missing symbol', asset);
         setError('Invalid asset: missing symbol');
         return;
       }
@@ -991,14 +989,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     } else {
       // For output selection, if selecting same asset as input, auto-swap to prevent error
       if (asset.caip === app?.assetContext?.caip) {
-        console.log('🔄 [Swap] Selected asset is current input, auto-swapping to prevent same-asset error...');
+        logger.debug('🔄 [Swap] Selected asset is current input, auto-swapping to prevent same-asset error...');
 
         // Find next available asset with balance (prefer assets with balance)
         const nextAsset = fromAssets.find(a => a.caip !== asset.caip && !a.isDisabled && a.balanceUsd && a.balanceUsd > 0) ||
                           fromAssets.find(a => a.caip !== asset.caip && !a.isDisabled);
 
         if (nextAsset) {
-          console.log('✅ [Swap] Auto-selected next asset as input:', nextAsset.symbol);
+          logger.debug('✅ [Swap] Auto-selected next asset as input:', nextAsset.symbol);
           await app.setAssetContext({
             caip: nextAsset.caip,
             networkId: nextAsset.networkId || caipToNetworkId(nextAsset.caip),
@@ -1028,12 +1026,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // Validate asset has required fields before attempting to set
       if (!asset.caip) {
-        console.error('❌ Cannot set output asset: missing CAIP', asset);
+        logger.error('❌ Cannot set output asset: missing CAIP', asset);
         setError('Invalid asset: missing CAIP identifier');
         return;
       }
       if (!asset.symbol) {
-        console.error('❌ Cannot set output asset: missing symbol', asset);
+        logger.error('❌ Cannot set output asset: missing symbol', asset);
         setError('Invalid asset: missing symbol');
         return;
       }
@@ -1042,9 +1040,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         await app.setOutboundAssetContext({
           caip: asset.caip
         });
-        console.log('✅ Output asset set successfully:', asset.symbol);
+        logger.debug('✅ Output asset set successfully:', asset.symbol);
       } catch (outboundError) {
-        console.error('❌ Failed to set output asset:', outboundError);
+        logger.error('❌ Failed to set output asset:', outboundError);
         setError(`Failed to set output asset: ${asset.symbol}`);
         return;
       }
@@ -1090,12 +1088,12 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     // Store current values if we're swapping output to input
     // Validate both assets have required fields before attempting swap
     if (!fromSel.caip || !toSel.caip) {
-      console.error('❌ Cannot swap assets: missing CAIP', { fromSel, toSel });
+      logger.error('❌ Cannot swap assets: missing CAIP', { fromSel, toSel });
       setError('Invalid assets: missing CAIP identifiers');
       return;
     }
     if (!fromSel.symbol || !toSel.symbol) {
-      console.error('❌ Cannot swap assets: missing symbol', { fromSel, toSel });
+      logger.error('❌ Cannot swap assets: missing symbol', { fromSel, toSel });
       setError('Invalid assets: missing symbols');
       return;
     }
@@ -1116,9 +1114,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       await app.setOutboundAssetContext({
         caip: fromSel.caip
       });
-      console.log('✅ Swapped assets successfully:', fromSel.symbol, '↔', toSel.symbol);
+      logger.debug('✅ Swapped assets successfully:', fromSel.symbol, '↔', toSel.symbol);
     } catch (swapError) {
-      console.error('❌ Failed to swap assets:', swapError);
+      logger.error('❌ Failed to swap assets:', swapError);
       setError('Failed to swap assets');
       return;
     }
@@ -1145,7 +1143,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     const sel = isFromAsset ? app?.assetContext : app?.outboundAssetContext;
     if (!sel) return null;
 
-    console.log('🔍 getAssetDisplay - asset context:', {
+    logger.debug('🔍 getAssetDisplay - asset context:', {
       symbol: sel.symbol,
       caip: sel.caip,
       networkId: sel.networkId,
@@ -1169,26 +1167,38 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Reset device verification when changing assets
   useEffect(() => {
-    console.log('🔄 ASSET CHANGE DETECTED - Resetting device verification');
+    logger.debug('🔄 ASSET CHANGE DETECTED - Resetting device verification');
     setHasViewedOnDevice(false);
     setDeviceVerificationError(null);
     setVaultVerified(false);
     setMemoValid(null);
+    setIsExecutingSwap(false);
+    setPendingSwap(false);
   }, [app?.assetContext?.caip, app?.outboundAssetContext?.caip]);
 
   // Only reset isMaxAmount when the INPUT asset changes (not output asset)
   useEffect(() => {
-    console.log('🔄 INPUT ASSET CHANGED - Resetting isMax flag');
+    logger.debug('🔄 INPUT ASSET CHANGED - Resetting isMax flag');
     setIsMaxAmount(false);
   }, [app?.assetContext?.caip]);
 
   const executeSwap = () => {
-    console.log('🎯 executeSwap called');
+    logger.debug('🎯 executeSwap called');
+
+    // CRITICAL: Prevent duplicate execution
+    if (isExecutingSwap) {
+      logger.debug('⏭️ Swap already in progress, ignoring duplicate call');
+      return;
+    }
+
     if (!quote || !app) {
       setError('No quote available');
       return;
     }
-    
+
+    // Set execution guard FIRST
+    setIsExecutingSwap(true);
+
     // Just set the states - actual swap will happen in useEffect
     setIsLoading(true);
     setError('');
@@ -1196,33 +1206,34 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setShowDeviceVerificationDialog(true);
     setIsVerifyingOnDevice(true);
     setDeviceVerificationError(null);
-    console.log('✅ States set, dialog should be showing');
+    logger.debug('✅ Execution guard active, states set, dialog should be showing');
   };
 
   // Handle the actual swap in useEffect when pendingSwap is true
   useEffect(() => {
-    console.log('⚡ useEffect triggered!', { pendingSwap, vaultVerified, hasViewedOnDevice });
+    logger.debug('⚡ useEffect triggered!', { pendingSwap, vaultVerified, hasViewedOnDevice, isExecutingSwap });
     if (!pendingSwap) {
-      console.log('⏭️ Skipping - pendingSwap is false');
+      logger.debug('⏭️ Skipping - pendingSwap is false');
       return;
     }
 
+
     const performSwap = async () => {
-      console.log('🚀 Performing swap with device verification...');
-      console.log('   vaultVerified:', vaultVerified);
-      console.log('   hasViewedOnDevice:', hasViewedOnDevice);
+      logger.debug('🚀 Performing swap with device verification...');
+      logger.debug('   vaultVerified:', vaultVerified);
+      logger.debug('   hasViewedOnDevice:', hasViewedOnDevice);
 
       // If device verification hasn't been done yet, do it first
       // If verification is done but user hasn't confirmed vault, wait
       // Only proceed with swap if vaultVerified is true
       if (!hasViewedOnDevice) {
-        console.log('📱 Starting device verification flow...');
+        logger.debug('📱 Starting device verification flow...');
         // Continue with device verification below
       } else if (!vaultVerified) {
-        console.log('⏳ Device verification done, waiting for user to confirm vault...');
+        logger.debug('⏳ Device verification done, waiting for user to confirm vault...');
         return; // Wait for user to click "Proceed with Swap"
       } else {
-        console.log('✅ Device verified and vault confirmed - proceeding with swap execution');
+        logger.debug('✅ Device verified and vault confirmed - proceeding with swap execution');
         // Skip to swap execution (jump to line ~1404)
       }
 
@@ -1240,9 +1251,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // CRITICAL: Check if ERC20 approval is needed for THORChain swap
       const inputCaip = app?.assetContext?.caip;
       if (inputCaip && isERC20Token(inputCaip)) {
-        console.log('🔍 ERC20 token detected - checking approval status...');
-        console.log('   CAIP:', inputCaip);
-        console.log('   assetContext:', app.assetContext);
+        logger.debug('🔍 ERC20 token detected - checking approval status...');
+        logger.debug('   CAIP:', inputCaip);
+        logger.debug('   assetContext:', app.assetContext);
         setIsCheckingApproval(true);
 
         try {
@@ -1257,10 +1268,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           const networkId = inputCaip.split('/')[0];
           const chainId = getChainIdFromCAIP(inputCaip);
 
-          console.log('   Parsed tokenAddress:', tokenAddress);
-          console.log('   Parsed userAddress:', userAddress);
-          console.log('   Parsed networkId:', networkId);
-          console.log('   Parsed chainId:', chainId);
+          logger.debug('   Parsed tokenAddress:', tokenAddress);
+          logger.debug('   Parsed userAddress:', userAddress);
+          logger.debug('   Parsed networkId:', networkId);
+          logger.debug('   Parsed chainId:', chainId);
 
           if (!tokenAddress || !userAddress) {
             throw new Error(`Failed to extract token or user address. CAIP: ${inputCaip}, tokenAddress: ${tokenAddress}, userAddress: ${userAddress}`);
@@ -1282,15 +1293,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setIsCheckingApproval(false);
 
           if (!hasApproval) {
-            console.log('⚠️  Insufficient approval - need to approve router first');
-            console.log(`   Current: ${currentAllowance}, Required: ${requiredAmount}`);
+            logger.debug('⚠️  Insufficient approval - need to approve router first');
+            logger.debug(`   Current: ${currentAllowance}, Required: ${requiredAmount}`);
 
             setNeedsApproval(true);
             setVerificationStep('vault'); // Update UI to show approval step
             setIsApprovingToken(true);
 
             // Build approval transaction
-            console.log('🔨 Building approval transaction...');
+            logger.debug('🔨 Building approval transaction...');
             const approvalTx = await buildERC20ApprovalTx(
               app,  // Pass the SDK instance, not app.pioneer
               tokenAddress,
@@ -1301,8 +1312,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             );
 
             // Debug the approval transaction format
-            console.log('📝 Approval transaction from server:', approvalTx);
-            console.log('📝 Transaction fields:', {
+            logger.debug('📝 Approval transaction from server:', approvalTx);
+            logger.debug('📝 Transaction fields:', {
               to: approvalTx.to,
               from: approvalTx.from,
               value: approvalTx.value,
@@ -1314,7 +1325,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             });
 
             // Sign and broadcast approval transaction
-            console.log('📝 Please sign the approval transaction on your device...');
+            logger.debug('📝 Please sign the approval transaction on your device...');
 
             // Sign the approval transaction using KeepKey
             const signedApprovalTx = await app.keepKeySdk.eth.ethSignTransaction(approvalTx);
@@ -1323,7 +1334,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               throw new Error('Failed to sign approval transaction');
             }
 
-            console.log('📤 Broadcasting approval transaction...');
+            logger.debug('📤 Broadcasting approval transaction...');
 
             // Broadcast the approval transaction
             const approvalPayload = {
@@ -1331,14 +1342,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               serialized: signedApprovalTx.serialized,
             };
 
-            console.log('📝 Approval broadcast payload:', approvalPayload);
+            logger.debug('📝 Approval broadcast payload:', approvalPayload);
 
             const approvalResult = await app.pioneer.Broadcast(approvalPayload);
-            console.log('✅ Approval broadcast result:', approvalResult);
-            console.log('   approvalResult.data:', approvalResult?.data);
-            console.log('   approvalResult.data.txid:', approvalResult?.data?.txid);
-            console.log('   approvalResult.data.results:', approvalResult?.data?.results);
-            console.log('   approvalResult.data.results.txid:', approvalResult?.data?.results?.txid);
+            logger.debug('✅ Approval broadcast result:', approvalResult);
+            logger.debug('   approvalResult.data:', approvalResult?.data);
+            logger.debug('   approvalResult.data.txid:', approvalResult?.data?.txid);
+            logger.debug('   approvalResult.data.results:', approvalResult?.data?.results);
+            logger.debug('   approvalResult.data.results.txid:', approvalResult?.data?.results?.txid);
 
             // Extract txid from broadcast result - try multiple paths
             let approvalTxHash =
@@ -1347,51 +1358,52 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               approvalResult?.data?.data?.txid ||
               approvalResult?.txid;
 
-            console.log('   Extracted approvalTxHash:', approvalTxHash);
+            logger.debug('   Extracted approvalTxHash:', approvalTxHash);
 
             if (!approvalTxHash || typeof approvalTxHash !== 'string') {
               throw new Error(`Approval broadcast failed - invalid txid: ${JSON.stringify(approvalTxHash)}. Full result: ${JSON.stringify(approvalResult)}`);
             }
 
             setApprovalTxHash(approvalTxHash);
-            console.log(`✅ Approval transaction broadcast: ${approvalTxHash}`);
-            console.log(`   View on Etherscan: https://etherscan.io/tx/${approvalTxHash}`);
+            logger.debug(`✅ Approval transaction broadcast: ${approvalTxHash}`);
+            logger.debug(`   View on Etherscan: https://etherscan.io/tx/${approvalTxHash}`);
 
             // Wait for approval confirmation (at least 1 block)
-            console.log('⏳ Waiting for approval confirmation...');
-            console.log(`   Approval TX: https://etherscan.io/tx/${approvalTxHash}`);
+            logger.debug('⏳ Waiting for approval confirmation...');
+            logger.debug(`   Approval TX: https://etherscan.io/tx/${approvalTxHash}`);
             setDeviceVerificationError('Waiting for approval transaction to confirm (15 seconds)...');
 
             // Poll for confirmation (simplified - production should use proper confirmation tracking)
-            console.log('⏱️  Starting 15 second wait...');
+            logger.debug('⏱️  Starting 15 second wait...');
             const waitStart = Date.now();
             await new Promise(resolve => {
-              console.log('⏱️  setTimeout scheduled');
+              logger.debug('⏱️  setTimeout scheduled');
               setTimeout(() => {
-                console.log(`⏱️  setTimeout fired after ${Date.now() - waitStart}ms`);
+                logger.debug(`⏱️  setTimeout fired after ${Date.now() - waitStart}ms`);
                 resolve(true);
               }, 15000);
             });
-            console.log(`⏱️  Promise resolved after ${Date.now() - waitStart}ms`);
+            logger.debug(`⏱️  Promise resolved after ${Date.now() - waitStart}ms`);
 
-            console.log('✅ Approval wait complete - proceeding with swap');
-            console.log('   Note: Actual confirmation not verified - proceeding optimistically');
+            logger.debug('✅ Approval wait complete - proceeding with swap');
+            logger.debug('   Note: Actual confirmation not verified - proceeding optimistically');
             setIsApprovingToken(false);
             setNeedsApproval(false);
             setDeviceVerificationError(null);
 
-            console.log('🔄 Continuing swap flow after approval...');
-            console.log(`   hasViewedOnDevice: ${hasViewedOnDevice}`);
+            logger.debug('🔄 Continuing swap flow after approval...');
+            logger.debug(`   hasViewedOnDevice: ${hasViewedOnDevice}`);
           } else {
-            console.log('✅ Router already approved - sufficient allowance');
+            logger.debug('✅ Router already approved - sufficient allowance');
             setNeedsApproval(false);
           }
         } catch (approvalError: any) {
-          console.error('❌ Approval check/transaction failed:', approvalError);
+          logger.error('❌ Approval check/transaction failed:', approvalError);
           setIsCheckingApproval(false);
           setIsApprovingToken(false);
           setIsVerifyingOnDevice(false);
           setIsLoading(false);
+          setIsExecutingSwap(false);  // Reset guard
           setPendingSwap(false);
           setError(`Approval failed: ${approvalError.message}`);
           setShowDeviceVerificationDialog(false);
@@ -1401,7 +1413,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       // Always verify address on device first (unless already verified)
       if (!hasViewedOnDevice) {
-        console.log('🔐 Starting device verification flow...');
+        logger.debug('🔐 Starting device verification flow...');
         
         try {
           // Prepare address verification on device
@@ -1427,7 +1439,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         // Fallback: if no exact match found, check for eip155:* pattern (all EVM chains)
         if (!networkType && app.outboundAssetContext.networkId?.startsWith('eip155:')) {
           networkType = 'EVM'
-          console.log('🔄 Using EVM fallback for network:', app.outboundAssetContext.networkId)
+          logger.debug('🔄 Using EVM fallback for network:', app.outboundAssetContext.networkId)
         }
 
         // SDK automatically populates pathMaster and scriptType in outboundAssetContext
@@ -1436,19 +1448,19 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
         // Fail fast if SDK didn't populate path
         if (!pathMaster) {
-          console.error('❌ SDK failed to populate pathMaster in outboundAssetContext');
-          console.error('   outboundAssetContext:', app.outboundAssetContext);
-          console.error('   This means setOutboundAssetContext may not be calling the SDK method correctly');
+          logger.error('❌ SDK failed to populate pathMaster in outboundAssetContext');
+          logger.error('   outboundAssetContext:', app.outboundAssetContext);
+          logger.error('   This means setOutboundAssetContext may not be calling the SDK method correctly');
           throw new Error(`Cannot verify address on device: missing path for ${app.outboundAssetContext.symbol}`);
         }
 
-        console.log('✅ [Device Verification] Path populated by SDK:', {
+        logger.debug('✅ [Device Verification] Path populated by SDK:', {
           path: pathMaster,
           scriptType: scriptType || 'N/A',
           address: app.outboundAssetContext.address
         });
 
-        console.log('🔍 Device verification context:', {
+        logger.debug('🔍 Device verification context:', {
           networkId: app.outboundAssetContext.networkId,
           networkType,
           pathMaster,
@@ -1462,8 +1474,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         const chainName = NetworkIdToChain[app.outboundAssetContext.networkId];
 
         if (!chainName) {
-          console.error('❌ Chain name not found for network ID:', app.outboundAssetContext.networkId);
-          console.error('Available network mappings:', NetworkIdToChain);
+          logger.error('❌ Chain name not found for network ID:', app.outboundAssetContext.networkId);
+          logger.error('Available network mappings:', NetworkIdToChain);
           throw new Error(`Chain mapping not found for network: ${app.outboundAssetContext.networkId}`);
         }
 
@@ -1474,18 +1486,18 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           coin: COIN_MAP_KEEPKEY_LONG[chainName],
           show_display: true  // This MUST be true to show on device
         }
-        console.log('📱 DEVICE VERIFICATION - Address will be shown on KeepKey');
-        console.log('addressInfo: ',addressInfo)
-        console.log('⚠️ Please check your KeepKey device to verify the address!');
+        logger.debug('📱 DEVICE VERIFICATION - Address will be shown on KeepKey');
+        logger.debug('addressInfo: ',addressInfo)
+        logger.debug('⚠️ Please check your KeepKey device to verify the address!');
         
         // Verify we have keepKeySdk
         if (!app.keepKeySdk) {
-          console.error('❌ KeepKey SDK not found on app object');
-          console.error('Available app properties:', Object.keys(app));
+          logger.error('❌ KeepKey SDK not found on app object');
+          logger.error('Available app properties:', Object.keys(app));
           throw new Error('KeepKey SDK not initialized - check app structure');
         }
         
-        console.log('🔍 KeepKey SDK verification:', {
+        logger.debug('🔍 KeepKey SDK verification:', {
           hasKeepKeySdk: !!app.keepKeySdk,
           hasAddress: !!app.keepKeySdk.address,
           addressMethods: app.keepKeySdk.address ? Object.keys(app.keepKeySdk.address) : [],
@@ -1494,56 +1506,56 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         });
         
         // Get address from device based on network type (matching updated reference)
-        console.log('📱 Calling device to show address...');
+        logger.debug('📱 Calling device to show address...');
         let address
         try {
           switch (networkType) {
             case 'UTXO':
-              console.log('Calling utxoGetAddress with show_display=true');
+              logger.debug('Calling utxoGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.utxoGetAddress(addressInfo));
               break;
             case 'EVM':
-              console.log('Calling ethereumGetAddress with show_display=true');
+              logger.debug('Calling ethereumGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.ethereumGetAddress(addressInfo));
               break;
             case 'OSMOSIS':
-              console.log('Calling osmosisGetAddress with show_display=true');
+              logger.debug('Calling osmosisGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.osmosisGetAddress(addressInfo));
               break;
             case 'COSMOS':
-              console.log('Calling cosmosGetAddress with show_display=true');
+              logger.debug('Calling cosmosGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.cosmosGetAddress(addressInfo));
               break;
             case 'MAYACHAIN':
-              console.log('Calling mayachainGetAddress with show_display=true');
+              logger.debug('Calling mayachainGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.mayachainGetAddress(addressInfo));
               break;
             case 'THORCHAIN':
-              console.log('Calling thorchainGetAddress with show_display=true');
+              logger.debug('Calling thorchainGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.thorchainGetAddress(addressInfo));
               break;
             case 'XRP':
-              console.log('Calling xrpGetAddress with show_display=true');
+              logger.debug('Calling xrpGetAddress with show_display=true');
               ({ address } = await app.keepKeySdk.address.xrpGetAddress(addressInfo));
               break;
             default:
               throw new Error(`Unsupported network type for networkId: ${app.outboundAssetContext.networkId}`);
           }
-          console.log('✅ Device call completed, address received:', address);
+          logger.debug('✅ Device call completed, address received:', address);
         } catch (deviceError) {
-          console.error('❌ Device call failed:', deviceError);
+          logger.error('❌ Device call failed:', deviceError);
           throw deviceError;
         }
 
-        console.log('deviceProofAddress: ', address);
-        console.log('app.outboundAssetContext.address: ', app.outboundAssetContext.address);
+        logger.debug('deviceProofAddress: ', address);
+        logger.debug('app.outboundAssetContext.address: ', app.outboundAssetContext.address);
         
         if (address !== app.outboundAssetContext.address) {
           throw new Error('Address mismatch! Device shows different address than expected.');
         }
         
         // Address verified successfully
-        console.log('✅ Destination address verified successfully on device!');
+        logger.debug('✅ Destination address verified successfully on device!');
 
         // Mark device verification as complete
         setHasViewedOnDevice(true);
@@ -1572,34 +1584,34 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setVaultAddress(thorchainVault);
         }
         
-        console.log('📱 THORChain vault address:', thorchainVault || vaultAddress);
+        logger.debug('📱 THORChain vault address:', thorchainVault || vaultAddress);
         
         // Validate the memo
         if (quote?.memo) {
           try {
-            console.log('🔍 Validating THORChain memo:', quote.memo);
+            logger.debug('🔍 Validating THORChain memo:', quote.memo);
             const isValid = validateThorchainSwapMemo(quote.memo);
-            console.log('✅ Memo validation result:', isValid);
+            logger.debug('✅ Memo validation result:', isValid);
             setMemoValid(isValid);
             
             if (!isValid) {
               throw new Error('Invalid THORChain swap memo - transaction cancelled for safety');
             }
           } catch (memoError) {
-            console.error('❌ Memo validation failed:', memoError);
+            logger.error('❌ Memo validation failed:', memoError);
             setMemoValid(false);
             throw memoError;
           }
         }
         
         // Wait for user to verify vault and proceed
-        console.log('⏳ Waiting for user to verify vault and proceed...');
+        logger.debug('⏳ Waiting for user to verify vault and proceed...');
         setIsVerifyingOnDevice(false); // Allow user to click "Proceed with Swap"
 
         // Check for dev flag to skip actual swap
         const fakeTxid = process.env.NEXT_PUBLIC_DEV_FAKE_SWAP_TXID;
         if (fakeTxid) {
-          console.log('🚧 DEVELOPMENT MODE: Using fake transaction ID:', fakeTxid);
+          logger.debug('🚧 DEVELOPMENT MODE: Using fake transaction ID:', fakeTxid);
 
           // Close verification dialog
           setHasViewedOnDevice(true);
@@ -1618,10 +1630,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
         // STOP HERE - wait for user to click "Proceed with Swap" button
         // The swap will only execute when vaultVerified becomes true
-        console.log('🛑 Stopping execution - waiting for user confirmation');
+        logger.debug('🛑 Stopping execution - waiting for user confirmation');
         return;
         } catch (verificationError: any) {
-          console.error('❌ Device verification failed:', verificationError);
+          logger.error('❌ Device verification failed:', verificationError);
           setDeviceVerificationError(verificationError.message || 'Device verification failed');
           setIsVerifyingOnDevice(false);
           throw verificationError;
@@ -1633,7 +1645,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       // This code only runs when vaultVerified === true
       if (vaultVerified && typeof app.swap === 'function') {
         try {
-          console.log('🚀 Step 1: Building unsigned swap transaction...');
+          logger.debug('🚀 Step 1: Building unsigned swap transaction...');
           const swapPayload: any = {
             caipIn: app?.assetContext?.caip,
             caipOut: app?.outboundAssetContext?.caip,
@@ -1641,34 +1653,34 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           };
 
           // Set isMax flag if MAX button was used
-          console.log('🔍 Debug swap payload creation:', {
+          logger.debug('🔍 Debug swap payload creation:', {
             isMaxAmount,
             inputAmount,
             swapPayloadBefore: { ...swapPayload }
           });
           if (isMaxAmount) {
-            console.log('🔥 MAX swap detected - setting isMax: true in payload');
+            logger.debug('🔥 MAX swap detected - setting isMax: true in payload');
             swapPayload.isMax = true;
             swapPayload.amount = inputAmount;
           } else {
-            console.log('📊 Regular swap - providing amount in payload');
+            logger.debug('📊 Regular swap - providing amount in payload');
             swapPayload.amount = inputAmount;
           }
 
-          console.log('📦 Swap payload:', swapPayload);
-          console.log('🔍 isMaxAmount state:', isMaxAmount);
+          logger.debug('📦 Swap payload:', swapPayload);
+          logger.debug('🔍 isMaxAmount state:', isMaxAmount);
 
           // STEP 1: Build unsigned transaction
           const unsignedTx = await app.swap(swapPayload);
-          console.log('✅ Step 1 Complete: Unsigned transaction built:', unsignedTx);
+          logger.debug('✅ Step 1 Complete: Unsigned transaction built:', unsignedTx);
 
           if (!unsignedTx) {
             throw new Error('Failed to build unsigned transaction');
           }
 
           // STEP 2: Sign transaction with device
-          console.log('🔐 Step 2: Signing transaction on KeepKey device...');
-          console.log('⚠️  Please confirm the transaction on your KeepKey device!');
+          logger.debug('🔐 Step 2: Signing transaction on KeepKey device...');
+          logger.debug('⚠️  Please confirm the transaction on your KeepKey device!');
 
           let signedTx: any;
           const networkId = app.assetContext.networkId;
@@ -1695,7 +1707,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           };
 
           const networkType = networkIdToType[networkId];
-          console.log('🔍 Network type for signing:', networkType);
+          logger.debug('🔍 Network type for signing:', networkType);
 
           if (networkType === 'UTXO') {
             // Get the chain name for COIN_MAP
@@ -1718,21 +1730,21 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               signPayload.opReturnData = unsignedTx.memo;
             }
 
-            console.log('📝 UTXO sign payload:', signPayload);
+            logger.debug('📝 UTXO sign payload:', signPayload);
             const responseSign = await app.keepKeySdk.utxo.utxoSignTransaction(signPayload);
             signedTx = responseSign.serializedTx;
 
           } else if (networkType === 'EVM') {
-            console.log('📝 EVM sign payload:', unsignedTx);
+            logger.debug('📝 EVM sign payload:', unsignedTx);
             const responseSign = await app.keepKeySdk.eth.ethSignTransaction(unsignedTx);
             signedTx = responseSign.serialized;
 
           } else if (networkType === 'TENDERMINT') {
             // Tendermint chains (Cosmos, Thorchain, etc.)
-            console.log('📝 Tendermint sign payload:', unsignedTx);
+            logger.debug('📝 Tendermint sign payload:', unsignedTx);
 
             const msgType = unsignedTx.signDoc?.msgs?.[0]?.type;
-            console.log('Tendermint message type:', msgType);
+            logger.debug('Tendermint message type:', msgType);
 
             let responseSign: any;
             switch (caip) {
@@ -1757,7 +1769,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             signedTx = responseSign.serialized;
 
           } else if (networkType === 'XRP') {
-            console.log('📝 XRP sign payload:', unsignedTx);
+            logger.debug('📝 XRP sign payload:', unsignedTx);
             const responseSign = await app.keepKeySdk.ripple.rippleSignTransaction(unsignedTx);
             signedTx = responseSign.serialized;
 
@@ -1765,20 +1777,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             throw new Error(`Unsupported network type for signing: ${networkType}`);
           }
 
-          console.log('✅ Step 2 Complete: Transaction signed!');
+          logger.debug('✅ Step 2 Complete: Transaction signed!');
 
           // STEP 3: Broadcast transaction
-          console.log('📡 Step 3: Broadcasting transaction to network...');
+          logger.debug('📡 Step 3: Broadcasting transaction to network...');
 
           const broadcastPayload = {
             networkId: caipToNetworkId(caip),
             serialized: signedTx,
           };
 
-          console.log('📝 Broadcast payload:', broadcastPayload);
+          logger.debug('📝 Broadcast payload:', broadcastPayload);
 
           const broadcastResult = await app.pioneer.Broadcast(broadcastPayload);
-          console.log('✅ Step 3 Complete: Broadcast result:', broadcastResult);
+          logger.debug('✅ Step 3 Complete: Broadcast result:', broadcastResult);
 
           // Extract txid from broadcast result
           let txid = broadcastResult?.data?.txid || broadcastResult?.data?.data?.txid || broadcastResult?.data;
@@ -1792,11 +1804,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             txid = txid.slice(2);
           }
 
-          console.log('🎉 Swap successful! Transaction ID:', txid);
+          logger.debug('🎉 Swap successful! Transaction ID:', txid);
 
           // Save pending swap to database for history tracking
           try {
-            console.log('💾 Saving swap to pending swaps database...');
+            logger.debug('💾 Saving swap to pending swaps database...');
 
             // Get user address - prioritize ETH address for multi-chain swaps
             const userAddress =
@@ -1806,7 +1818,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               '';
 
             if (!userAddress) {
-              console.warn('⚠️ No user address found - swap will not be saved to history');
+              logger.warn('⚠️ No user address found - swap will not be saved to history');
             } else {
               const pendingSwapData = {
                 txHash: String(txid),
@@ -1837,35 +1849,40 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 status: 'pending'
               };
 
-              console.log('💾 Pending swap data:', pendingSwapData);
+              logger.debug('💾 Pending swap data:', pendingSwapData);
 
               if (typeof app.pioneer.CreatePendingSwap === 'function') {
                 const result = await app.pioneer.CreatePendingSwap(pendingSwapData);
-                console.log('✅ Swap saved to database:', result);
+                logger.debug('✅ Swap saved to database:', result);
               } else {
-                console.warn('⚠️ CreatePendingSwap method not available on Pioneer API');
+                logger.warn('⚠️ CreatePendingSwap method not available on Pioneer API');
               }
             }
           } catch (saveError: any) {
             // Don't fail the swap if saving to DB fails - just log it
-            console.error('⚠️ Failed to save swap to database (swap still succeeded):', saveError);
+            logger.error('⚠️ Failed to save swap to database (swap still succeeded):', saveError);
           }
 
-          // Now close everything
-          setHasViewedOnDevice(true);
+          // CRITICAL: Reset execution guard and pendingSwap FIRST
+          // This prevents useEffect from re-triggering
+          logger.debug('✅ Swap successful - atomic state reset');
+          setIsExecutingSwap(false);  // ← FIRST
+          setPendingSwap(false);       // ← SECOND
+
+          // Then reset verification states (won't trigger useEffect now)
+          setHasViewedOnDevice(false);  // Reset for next swap
           setIsVerifyingOnDevice(false);
           setShowDeviceVerificationDialog(false);
-          setVaultVerified(false);
+          setVaultVerified(false);      // ← Safe now
           setMemoValid(null);
+          setVerificationStep('destination');
 
-          // Show success screen with real txid
+          // Finally show success
           setSuccessTxid(String(txid));
           setShowSuccess(true);
           setConfirmMode(false);
-          setPendingSwap(false);
-          setVerificationStep('destination'); // Reset for next swap
         } catch (error: any) {
-          console.error('❌ Swap execution failed:', error);
+          logger.error('❌ Swap execution failed:', error);
 
           // Parse error message for better user feedback
           let errorMessage = 'An error occurred during the swap';
@@ -1892,28 +1909,35 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setDeviceVerificationError(errorMessage);
           setIsVerifyingOnDevice(false);
           setIsLoading(false);
+          setIsExecutingSwap(false);  // Reset guard
           setPendingSwap(false);
 
           // Don't throw - let user see error and close dialog
           return;
         } finally {
           setIsLoading(false);
+          setIsExecutingSwap(false);  // Reset guard
           setPendingSwap(false);
         }
       } // End of if (vaultVerified && typeof app.swap === 'function')
     } catch (error: any) {
-      console.error('❌ Outer swap error:', error);
+      logger.error('❌ Outer swap error:', error);
       setError(error.message || 'An error occurred');
+      setIsExecutingSwap(false);  // Reset guard
       // Only reset pendingSwap on actual error (not when waiting for user)
       setPendingSwap(false);
     } finally {
       setIsLoading(false);
       // DO NOT reset pendingSwap here - it needs to stay true while waiting for user confirmation
+      // But we can safely reset the guard flag in error scenarios
+      // Note: Success path already resets this explicitly
     }
   };
   
   performSwap();
-  }, [pendingSwap, app, quote, inputAmount, vaultVerified, hasViewedOnDevice]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSwap, vaultVerified, hasViewedOnDevice, isExecutingSwap]);
+  // Note: app, quote, inputAmount captured in closure - adding them causes loop
 
   // Check if we're still loading assets - show spinner until we have loaded balances data
   // Note: Don't check availableAssets.length here - that's filtered data (could be 0 if all below threshold)
@@ -1966,7 +1990,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       {/* Device Verification Modal - Using simple overlay approach */}
       {showDeviceVerificationDialog && (
         <>
-          {console.log('🔵 DIALOG RENDERING NOW')}
+          {logger.debug('🔵 DIALOG RENDERING NOW')}
           {/* Backdrop */}
           <Box
             position="fixed"
@@ -1980,6 +2004,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               if (!isVerifyingOnDevice) {
                 setShowDeviceVerificationDialog(false);
                 setDeviceVerificationError(null);
+                setIsExecutingSwap(false);  // Reset guard
                 setPendingSwap(false);
                 setVerificationStep('destination');
                 setVaultVerified(false);
@@ -2193,6 +2218,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       onClick={() => {
                         setShowDeviceVerificationDialog(false);
                         setDeviceVerificationError(null);
+                        setIsExecutingSwap(false);  // Reset guard
                         setPendingSwap(false);
                         setVerificationStep('destination');
                         setVaultVerified(false);
@@ -2209,20 +2235,20 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       _hover={{ bg: 'blue.600' }}
                       _active={{ bg: 'blue.700' }}
                       onClick={() => {
-                        console.log('🖱️ Proceed with Swap clicked!', { memoValid, vaultVerified });
+                        logger.debug('🖱️ Proceed with Swap clicked!', { memoValid, vaultVerified });
                         if (memoValid !== false) {
-                          console.log('✅ Setting vaultVerified = true');
+                          logger.debug('✅ Setting vaultVerified = true');
                           setVaultVerified(true);
                           setVerificationStep('swap');
                           setIsVerifyingOnDevice(true);
                         } else {
-                          console.log('❌ Blocked by memoValid === false');
+                          logger.debug('❌ Blocked by memoValid === false');
                         }
                       }}
                       flex={1}
                       isDisabled={memoValid === false || isVerifyingOnDevice}
                     >
-                      {console.log('🔘 Button rendering:', { memoValid, vaultVerified, isVerifyingOnDevice })}
+                      {logger.debug('🔘 Button rendering:', { memoValid, vaultVerified, isVerifyingOnDevice })}
                       Proceed with Swap
                     </Button>
                   </HStack>
@@ -2259,7 +2285,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             <HStack justify="space-between" width="full">
                               <Text fontSize="xs" color="gray.400">To:</Text>
                               <HStack gap={1}>
-                                <Text fontSize="xs" fontWeight="medium">{outputAmount} {app?.outboundAssetContext?.symbol}</Text>
+                                <Text fontSize="xs" fontFamily="mono" color="gray.300" noOfLines={1}>
+                                  {app?.outboundAssetContext?.address ?
+                                    `${app.outboundAssetContext.address.slice(0, 8)}...${app.outboundAssetContext.address.slice(-6)}` :
+                                    'N/A'}
+                                </Text>
                               </HStack>
                             </HStack>
                             {vaultAddress && (
@@ -2455,6 +2485,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       setShowDeviceVerificationDialog(false);
                       setDeviceVerificationError(null);
                       setIsLoading(false);
+                      setIsExecutingSwap(false);  // Reset guard
                       setPendingSwap(false);
                       setIsVerifyingOnDevice(false);
                       setVerificationStep('destination');
@@ -2508,66 +2539,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               Back
             </Button>
 
-            {/* Tab Selector - Centered */}
-            <HStack gap={2}>
-              <Button
-                size="sm"
-                onClick={() => setActiveTab('swap')}
-                bg={activeTab === 'swap' ? '#23DCC8' : 'gray.800'}
-                color={activeTab === 'swap' ? 'black' : 'gray.400'}
-                _hover={{
-                  bg: activeTab === 'swap' ? '#1FC4B3' : 'gray.700'
-                }}
-                leftIcon={<FaExchangeAlt />}
-              >
-                Swap
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setActiveTab('history')}
-                bg={activeTab === 'history' ? '#23DCC8' : 'gray.800'}
-                color={activeTab === 'history' ? 'black' : 'gray.400'}
-                _hover={{
-                  bg: activeTab === 'history' ? '#1FC4B3' : 'gray.700'
-                }}
-                leftIcon={<FaHistory />}
-                position="relative"
-              >
-                History
-                {pendingSwaps.length > 0 && (
-                  <Badge
-                    position="absolute"
-                    top="-6px"
-                    right="-6px"
-                    colorScheme="blue"
-                    borderRadius="full"
-                    fontSize="xs"
-                    minW="18px"
-                    h="18px"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    {pendingSwaps.length}
-                  </Badge>
-                )}
-              </Button>
-            </HStack>
-
             {/* Empty space for balance */}
             <Box w="80px" />
           </Flex>
         </Container>
       </Box>
 
-      {/* Conditional Content Based on Active Tab */}
-      {activeTab === 'history' ? (
-        /* Full Page History View */
-        <Box pt="80px">
-          <SwapHistory />
-        </Box>
-      ) : (
-      /* Main Swap Content - Centered vertically */
+      {/* Main Swap Content - Centered vertically */}
       <Flex 
         align="center" 
         justify="center" 
@@ -2666,7 +2644,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         asset={getAssetDisplay(true)}
                         balance={(() => {
                           const balance = getUserBalance(app?.assetContext?.caip);
-                          console.log('🔍 AssetSelector balance check:', {
+                          logger.debug('🔍 AssetSelector balance check:', {
                             caip: app?.assetContext?.caip,
                             balance,
                             balanceType: typeof balance,
@@ -2893,7 +2871,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           isFromSelection={false}
         />
       </Flex>
-      )}
     </Box>
   );
 };
