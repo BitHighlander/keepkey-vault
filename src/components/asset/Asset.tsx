@@ -45,6 +45,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
 };
 
 import { usePioneerContext } from '@/components/providers/pioneer';
+import { logger } from '@/lib/logger';
 import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList, FaPen } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
@@ -475,7 +476,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     }
 
     setLoading(false);
-  }, [caip, app]);
+  }, [caip, app?.balances, app?.pubkeys, app?.assetsMap]);
 
   // Set up interval to sync market data every 15 seconds
   // SKIP interval when custom token dialog is open to prevent state refresh from closing the dialog
