@@ -2,6 +2,14 @@
 
 'use client'
 
+// ============================================================================
+// CRITICAL DIAGNOSTIC: Verify console works and file loads
+// ============================================================================
+console.log('========================================');
+console.log('🚀 PROVIDER.TSX LOADED - TIMESTAMP:', new Date().toISOString());
+console.log('========================================');
+// ============================================================================
+
 import React from 'react';
 import { useEffect, useState } from 'react'
 import { SDK } from '@pioneer-platform/pioneer-sdk'
