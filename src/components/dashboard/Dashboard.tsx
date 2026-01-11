@@ -699,7 +699,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 overflow="hidden"
                 bg={!loading && dashboard && hasAnyBalance && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
                 cursor="pointer"
-                onClick={handlePortfolioRefresh}
+                onClick={() => handlePortfolioRefresh(true)}
                 _hover={{
                   transform: 'scale(1.02)',
                   boxShadow: !loading && dashboard && hasAnyBalance && chartData.length > 0
@@ -716,7 +716,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handlePortfolioRefresh();
+                    handlePortfolioRefresh(true);
                   }
                 }}
                 _before={{
