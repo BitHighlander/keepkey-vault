@@ -58,7 +58,7 @@ const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching
 const playSound = (sound: HTMLAudioElement | null) => {
   if (sound) {
     sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => console.error('Error playing sound:', err));
+    sound.play().catch(err => logger.error('Error playing sound:', err));
   }
 };
 
@@ -758,7 +758,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Listen for transaction confirmation events from Pioneer SDK
   useEffect(() => {
-    console.log('🔍 [SEND] Confirmation listener useEffect triggered:', {
+    logger.debug('🔍 [SEND] Confirmation listener useEffect triggered:', {
       hasPioneer: !!pioneer,
       hasEvents: !!pioneer?.state?.app?.events,
       txHash: txHash ? txHash.substring(0, 10) + '...' : 'none',
@@ -767,25 +767,25 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     // Early return if events not available or no transaction hash
     if (!pioneer?.state?.app?.events || !txHash) {
-      console.log('⏭️ [SEND] Skipping listener setup - missing events or txHash');
+      logger.debug('⏭️ [SEND] Skipping listener setup - missing events or txHash');
       return;
     }
 
     const events = pioneer.state.app.events;
-    console.log('✅ [SEND] Setting up event listeners for transaction:', txHash);
+    logger.debug('✅ [SEND] Setting up event listeners for transaction:', txHash);
 
     // Handler: Transaction detected in mempool (0 confirmations)
     const handleTxDetected = (txData: any) => {
-      console.log('🔔 [SEND] TX_DETECTED event received:', txData);
+      logger.debug('🔔 [SEND] TX_DETECTED event received:', txData);
       logger.debug('TX_DETECTED event received:', txData);
 
       // Only process events for our transaction
       if (txData.txid !== txHash) {
-        console.log('⏭️ [SEND] TX_DETECTED ignored - different txid:', txData.txid);
+        logger.debug('⏭️ [SEND] TX_DETECTED ignored - different txid:', txData.txid);
         return;
       }
 
-      console.log('✅ [SEND] TX_DETECTED matched our transaction - updating status');
+      logger.debug('✅ [SEND] TX_DETECTED matched our transaction - updating status');
       setConfirmationStatus(prev => ({
         ...prev,
         detected: true,
@@ -798,16 +798,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     // Handler: First block confirmation received
     const handleTxFirstConfirmed = (txData: any) => {
-      console.log('🎉 [SEND] TX_FIRST_CONFIRMED event received:', txData);
+      logger.debug('🎉 [SEND] TX_FIRST_CONFIRMED event received:', txData);
       logger.debug('TX_FIRST_CONFIRMED event received:', txData);
 
       // Only process events for our transaction
       if (txData.txid !== txHash) {
-        console.log('⏭️ [SEND] TX_FIRST_CONFIRMED ignored - different txid:', txData.txid);
+        logger.debug('⏭️ [SEND] TX_FIRST_CONFIRMED ignored - different txid:', txData.txid);
         return;
       }
 
-      console.log('✅ [SEND] TX_FIRST_CONFIRMED matched - transitioning to success!');
+      logger.debug('✅ [SEND] TX_FIRST_CONFIRMED matched - transitioning to success!');
       setConfirmationStatus(prev => ({
         ...prev,
         firstConfirmed: true,
@@ -821,7 +821,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       playSound(chachingSound);
 
       // Transition to success state on first confirmation
-      console.log('🎊 [SEND] Setting transactionStep to SUCCESS');
+      logger.debug('🎊 [SEND] Setting transactionStep to SUCCESS');
       setTransactionStep('success');
     };
 
@@ -1822,10 +1822,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
       
       logger.debug('Final TX Hash:', finalTxHash);
-      console.log('📡 [SEND] Transaction broadcast successful! TxHash:', finalTxHash);
+      logger.debug('📡 [SEND] Transaction broadcast successful! TxHash:', finalTxHash);
       setTxHash(finalTxHash)
       setTxSuccess(true)
-      console.log('⏳ [SEND] Setting transactionStep to CONFIRMING');
+      logger.debug('⏳ [SEND] Setting transactionStep to CONFIRMING');
       setTransactionStep('confirming') // Wait for confirmation before showing success
 
       // Reset confirmation status for new transaction
@@ -1836,7 +1836,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         confirmations: 0
       });
 
-      console.log('📡 [SEND] Now waiting for confirmation events...', {
+      logger.debug('📡 [SEND] Now waiting for confirmation events...', {
         txHash: finalTxHash,
         hasPioneer: !!pioneer,
         hasEvents: !!pioneer?.state?.app?.events
@@ -2185,7 +2185,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const supportsMemo = TENDERMINT_SUPPORT.includes(assetContext.assetId) || OTHER_SUPPORT.includes(assetContext.assetId);
 
   // Debug: Log current transaction state
-  console.log('🔄 [SEND] Current state:', {
+  logger.debug('🔄 [SEND] Current state:', {
     transactionStep,
     showConfirmation,
     txHash: txHash ? txHash.substring(0, 10) + '...' : null,
@@ -2196,7 +2196,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   if (showConfirmation) {
     // Transaction confirming screen - waiting for blockchain confirmation
     if (transactionStep === 'confirming') {
-      console.log('🎨 [SEND] Rendering CONFIRMING UI with status:', confirmationStatus);
+      logger.debug('🎨 [SEND] Rendering CONFIRMING UI with status:', confirmationStatus);
       return (
         <Box height="100vh" bg={theme.bg}>
           <Box

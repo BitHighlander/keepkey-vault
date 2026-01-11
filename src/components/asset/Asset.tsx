@@ -40,7 +40,7 @@ const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching
 const playSound = (sound: HTMLAudioElement | null) => {
   if (sound) {
     sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => console.error('Error playing sound:', err));
+    sound.play().catch(err => logger.error('Error playing sound:', err));
   }
 };
 
@@ -454,29 +454,24 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     logger.debug('🔍 [DEBUG] Filtering for networkId:', networkId);
     const filteredPubkeys = (app.pubkeys || []).filter((p: any) => {
       if (!p.networks || !Array.isArray(p.networks)) {
-        //console.log('  - Pubkey:', p.path, '| Networks: INVALID | Matches: false');
         return false;
       }
 
       // Exact match
       if (p.networks.includes(networkId)) {
-        //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (exact)');
         return true;
       }
 
       // For EVM chains, check if pubkey has eip155:* wildcard
       if (networkId.startsWith('eip155:') && p.networks.includes('eip155:*')) {
-        //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
         return true;
       }
 
       // For Bitcoin chains, check if pubkey has bip122:* wildcard
       if (networkId.startsWith('bip122:') && p.networks.includes('bip122:*')) {
-        //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
         return true;
       }
 
-      //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: false');
       return false;
     });
 
@@ -526,7 +521,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   // SKIP interval when custom token dialog is open to prevent state refresh from closing the dialog
   useEffect(() => {
     if (!app || isCustomTokenDialogOpen) {
-      console.log("⏸️ [Asset] Skipping syncMarket interval - dialog open or app not ready");
+      logger.debug("⏸️ [Asset] Skipping syncMarket interval - dialog open or app not ready");
       return;
     }
 
@@ -554,12 +549,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
               isInitialLoad
             });
-
-            // Only play sound if this is not the initial load and balance actually increased
-            // if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
-            //   console.log("🎵 [Asset] Balance increased! Playing chaching sound");
-            //   playSound(chachingSound);
-            // }
 
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);
@@ -595,7 +584,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
   const handleClose = () => {
     // Close button always goes to dashboard regardless of back button behavior
-    console.log('❌ [Asset] Close button clicked, navigating to dashboard');
+    logger.debug('❌ [Asset] Close button clicked, navigating to dashboard');
     router.push('/');
   };
 
@@ -642,7 +631,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         setTimeout(() => {
           setCopiedItems(prev => ({ ...prev, [key]: false }));
         }, 2000);
-        console.log(`📋 [Asset] Copied to clipboard: ${key}`);
+        logger.debug(`📋 [Asset] Copied to clipboard: ${key}`);
       })
       .catch(err => {
         logger.error('❌ [Asset] Error copying to clipboard:', err);
@@ -669,7 +658,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         const assetBalance = app.balances?.find((b: any) =>
           b.networkId === assetContext.networkId && b.isNative
         );
-        console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
+        logger.debug(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
 
         // Also refresh charts for token discovery (non-blocking)
         if (typeof app.getCharts === 'function') {
@@ -806,8 +795,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   }
 
   if (!assetContext) {
-    console.log('❌ [Asset] AssetContext is null or undefined');
-    console.log('❌ [Asset] This may indicate an issue with the context provider or URL parameters');
+    logger.debug('❌ [Asset] AssetContext is null or undefined');
+    logger.debug('❌ [Asset] This may indicate an issue with the context provider or URL parameters');
     
     // Show a user-friendly error message with a back button
     return (
@@ -1065,7 +1054,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
                   try {
                     if (app && typeof app.getBalances === 'function' && assetContext?.networkId) {
-                      console.log(`🔄 [Asset] Calling app.getBalances({ networkId: "${assetContext.networkId}", forceRefresh: true })`);
+                      logger.debug(`🔄 [Asset] Calling app.getBalances({ networkId: "${assetContext.networkId}", forceRefresh: true })`);
                       await app.getBalances({ networkId: assetContext.networkId, forceRefresh: true });
                       logger.debug('✅ [Asset] Balance refresh completed');
 
@@ -1074,7 +1063,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         b.networkId === assetContext.networkId && b.isNative
                       );
                       const newBalance = assetBalance?.balance || '0';
-                      console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, newBalance);
+                      logger.debug(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, newBalance);
 
                       // Show success notification with balance info
                       if (newBalance !== startBalance) {
@@ -1111,7 +1100,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         logger.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
                       });
                     } else if (isUtxoNetwork) {
-                      console.log('⏭️  [Asset] Skipping chart refresh - UTXO networks don\'t have tokens');
+                      logger.debug('⏭️  [Asset] Skipping chart refresh - UTXO networks don\'t have tokens');
                     }
                   } catch (error: any) {
                     logger.error('❌ [Asset] Force refresh failed:', error);
@@ -1622,7 +1611,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         onAddressClick={(address) => {
                           // Update selected address when clicked
                           setSelectedAddress(address);
-                          console.log('Address selected:', address);
+                          logger.debug('Address selected:', address);
                         }}
                       />
                     </VStack>
