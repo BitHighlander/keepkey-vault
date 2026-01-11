@@ -15,11 +15,12 @@ import {
   Textarea,
   Spinner,
   CloseButton,
+  Icon,
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
-import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa'
+import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus, FaChevronDown, FaChevronUp, FaCircle } from 'react-icons/fa'
 import Confetti from 'react-confetti'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import { keyframes } from '@emotion/react'
@@ -217,7 +218,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [isMax, setIsMax] = useState<boolean>(false)
   const [unsignedTx, setUnsignedTx] = useState<any>(null)
   const [signedTx, setSignedTx] = useState<any>(null)
-  const [transactionStep, setTransactionStep] = useState<'review' | 'sign' | 'broadcast' | 'success'>('review')
+  const [transactionStep, setTransactionStep] = useState<'review' | 'sign' | 'broadcast' | 'confirming' | 'success'>('review')
+
+  // Track confirmation progress through Pioneer SDK events
+  const [confirmationStatus, setConfirmationStatus] = useState<{
+    detected: boolean;
+    firstConfirmed: boolean;
+    confirmed: boolean;
+    confirmations: number;
+    detectedAt?: number;
+    firstConfirmedAt?: number;
+    confirmedAt?: number;
+  }>({
+    detected: false,
+    firstConfirmed: false,
+    confirmed: false,
+    confirmations: 0
+  })
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001')
   // Add state for fee in USD
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<string>('0.00')
@@ -529,9 +546,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         
         // Also update fee in USD when asset context changes
         updateFeeInUsd(estimatedFee);
-        
+
         // Fetch fee rates for the current blockchain
-        fetchFeeRates();
+        fetchFeeRates().catch(error => {
+          logger.error('Error fetching fee rates:', error);
+          setError(error.message);
+          setShowErrorDialog(true);
+          // Set fees to 0 to prevent transaction submission
+          setFeeOptions({ slow: '0', average: '0', fastest: '0' });
+          setEstimatedFee('0');
+          setEstimatedFeeUsd('0.00');
+        });
       } catch (e) {
         logger.error('Error setting balance:', e)
         setBalance('0')
@@ -550,8 +575,47 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Initialize selected pubkey when component mounts or assetContext changes
   useEffect(() => {
     if (assetContext?.pubkeys && assetContext.pubkeys.length > 0 && !selectedPubkey) {
-      // Sort pubkeys - prioritize Native Segwit for Bitcoin
-      const sortedPubkeys = [...assetContext.pubkeys].sort((a: Pubkey, b: Pubkey) => {
+      const networkId = assetContext.networkId || assetContext.caip;
+
+      logger.debug('🔍 [Send] Looking for compatible pubkeys:', {
+        networkId,
+        totalPubkeys: assetContext.pubkeys.length,
+        pubkeyNetworks: assetContext.pubkeys.map((p: Pubkey) => ({
+          note: p.note,
+          networks: p.networks,
+          address: p.address?.substring(0, 10)
+        }))
+      });
+
+      // Filter pubkeys that are compatible with this network
+      const compatiblePubkeys = assetContext.pubkeys.filter((pubkey: Pubkey) => {
+        if (!pubkey.networks) return false;
+
+        // Check for exact match
+        if (pubkey.networks.includes(networkId)) return true;
+
+        // Check for wildcard patterns
+        // EVM chains: eip155:* matches any eip155:X
+        if (networkId.startsWith('eip155:')) {
+          return pubkey.networks.includes('eip155:*');
+        }
+
+        // Cosmos chains: cosmos:* matches any cosmos:X (if ever needed)
+        if (networkId.startsWith('cosmos:')) {
+          return pubkey.networks.includes('cosmos:*');
+        }
+
+        return false;
+      });
+
+      if (compatiblePubkeys.length === 0) {
+        logger.warn('❌ [Send] No compatible pubkeys found for network:', networkId);
+        logger.warn('Available pubkey networks:', assetContext.pubkeys.map((p: Pubkey) => p.networks));
+        return;
+      }
+
+      // Sort compatible pubkeys - prioritize Native Segwit for Bitcoin
+      const sortedPubkeys = [...compatiblePubkeys].sort((a: Pubkey, b: Pubkey) => {
         // Bitcoin - Native Segwit (bc1...) should come first
         if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
         if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
@@ -567,14 +631,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       if (app?.setPubkeyContext) {
         app.setPubkeyContext(firstPubkey)
           .then(() => {
-            logger.debug('✅ [Send] Initial pubkey context set:', firstPubkey);
+            logger.debug('✅ [Send] Initial pubkey context set:', firstPubkey.note, 'for network:', networkId);
           })
           .catch((error: Error) => {
             logger.error('❌ [Send] Error setting initial pubkey context:', error);
           });
       }
     }
-  }, [assetContext?.pubkeys, selectedPubkey, app])
+  }, [assetContext?.pubkeys, assetContext?.networkId, selectedPubkey, app])
 
   // Update native gas balance (CACAO) when selectedPubkey changes
   useEffect(() => {
@@ -582,25 +646,31 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return;
     }
 
-    logger.debug('🔍 [Send] Looking for native gas balance for selected pubkey:', {
-      address: selectedPubkey.address,
-      master: selectedPubkey.master,
-      nativeSymbol: assetContext.nativeSymbol,
-      networkId: assetContext.networkId
+    // Find native asset balance by pattern matching
+    const tokenNetworkId = assetContext.networkId;
+
+    logger.debug('🔍 [Send] Gas balance lookup starting:', {
+      tokenNetworkId,
+      selectedPubkey: {
+        address: selectedPubkey.address,
+        master: selectedPubkey.master,
+        pubkey: selectedPubkey.pubkey
+      }
     });
 
-    // Find the native asset CAIP for this network
-    // For Maya tokens, native asset is CACAO
-    let nativeAssetCaip = assetContext.networkId;
-
-    // Find the native gas balance for the selected pubkey
+    // Find native asset balance - native assets have format: networkId/slip44:* (no contract)
     const gasBalance = app.balances.find((b: any) => {
-      // Must match the native asset (e.g., CACAO for Maya)
-      const isNativeAsset = b.caip === nativeAssetCaip ||
-                           b.networkId === nativeAssetCaip ||
-                           b.symbol === assetContext.nativeSymbol;
+      // Must be on the same network
+      if (!b.caip?.startsWith(tokenNetworkId)) return false;
 
-      if (!isNativeAsset) {
+      // Native assets don't have contract addresses
+      if (b.caip.includes('/erc20:') || b.caip.includes('/ibc:') || b.caip.includes('/factory:')) {
+        return false; // This is a token, not native
+      }
+
+      // Should have exactly 2 parts (networkId/slip44:*)
+      const parts = b.caip.split('/');
+      if (parts.length !== 2 || !parts[1].startsWith('slip44:')) {
         return false;
       }
 
@@ -615,6 +685,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         logger.debug('✅ [Send] Found native gas balance:', {
           balance: b.balance,
           symbol: b.symbol,
+          caip: b.caip,
           address: b.address || b.pubkey
         });
       }
@@ -624,12 +695,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     if (gasBalance && gasBalance.balance) {
       setNativeGasBalance(gasBalance.balance);
-      logger.debug('✅ [Send] Native gas balance updated:', gasBalance.balance, assetContext.nativeSymbol);
+      logger.debug('✅ [Send] Native gas balance updated:', gasBalance.balance, gasBalance.symbol);
     } else {
       logger.warn('⚠️ [Send] No native gas balance found for selected pubkey');
       setNativeGasBalance('0');
     }
-  }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId, assetContext?.nativeSymbol])
+  }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId])
 
   // Update change script type when selected pubkey changes (for UTXO chains)
   useEffect(() => {
@@ -685,17 +756,165 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     enrichPubkeys();
   }, [assetContext?.symbol, assetContext?.networkId]); // Only re-run when asset changes
 
+  // Listen for transaction confirmation events from Pioneer SDK
+  useEffect(() => {
+    console.log('🔍 [SEND] Confirmation listener useEffect triggered:', {
+      hasPioneer: !!pioneer,
+      hasEvents: !!pioneer?.state?.app?.events,
+      txHash: txHash ? txHash.substring(0, 10) + '...' : 'none',
+      transactionStep
+    });
+
+    // Early return if events not available or no transaction hash
+    if (!pioneer?.state?.app?.events || !txHash) {
+      console.log('⏭️ [SEND] Skipping listener setup - missing events or txHash');
+      return;
+    }
+
+    const events = pioneer.state.app.events;
+    console.log('✅ [SEND] Setting up event listeners for transaction:', txHash);
+
+    // Handler: Transaction detected in mempool (0 confirmations)
+    const handleTxDetected = (txData: any) => {
+      console.log('🔔 [SEND] TX_DETECTED event received:', txData);
+      logger.debug('TX_DETECTED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) {
+        console.log('⏭️ [SEND] TX_DETECTED ignored - different txid:', txData.txid);
+        return;
+      }
+
+      console.log('✅ [SEND] TX_DETECTED matched our transaction - updating status');
+      setConfirmationStatus(prev => ({
+        ...prev,
+        detected: true,
+        confirmations: 0,
+        detectedAt: Date.now()
+      }));
+
+      logger.debug('✅ Transaction detected in mempool');
+    };
+
+    // Handler: First block confirmation received
+    const handleTxFirstConfirmed = (txData: any) => {
+      console.log('🎉 [SEND] TX_FIRST_CONFIRMED event received:', txData);
+      logger.debug('TX_FIRST_CONFIRMED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) {
+        console.log('⏭️ [SEND] TX_FIRST_CONFIRMED ignored - different txid:', txData.txid);
+        return;
+      }
+
+      console.log('✅ [SEND] TX_FIRST_CONFIRMED matched - transitioning to success!');
+      setConfirmationStatus(prev => ({
+        ...prev,
+        firstConfirmed: true,
+        confirmations: txData.confirmations || 1,
+        firstConfirmedAt: Date.now()
+      }));
+
+      logger.debug('✅ Transaction received first confirmation');
+
+      // Play success sound on first confirmation
+      playSound(chachingSound);
+
+      // Transition to success state on first confirmation
+      console.log('🎊 [SEND] Setting transactionStep to SUCCESS');
+      setTransactionStep('success');
+    };
+
+    // Handler: Full confirmation received (chain-specific threshold)
+    const handleTxConfirmed = (txData: any) => {
+      logger.debug('TX_CONFIRMED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) return;
+
+      setConfirmationStatus(prev => ({
+        ...prev,
+        confirmed: true,
+        confirmations: txData.confirmations || 1,
+        confirmedAt: Date.now()
+      }));
+
+      logger.debug('✅ Transaction fully confirmed');
+
+      // If we haven't already transitioned to success (from TX_FIRST_CONFIRMED),
+      // transition now
+      setTransactionStep('success');
+    };
+
+    // Handler: Transaction failed on-chain
+    const handleTxFailed = (txData: any) => {
+      logger.error('TX_FAILED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) return;
+
+      // Show error to user
+      setError('Transaction failed on-chain. Please check block explorer for details.');
+      setShowErrorDialog(true);
+
+      // Reset to review state to allow retry
+      setTransactionStep('review');
+
+      logger.error('❌ Transaction failed on blockchain');
+    };
+
+    // Register event listeners
+    events.on('TX_DETECTED', handleTxDetected);
+    events.on('TX_FIRST_CONFIRMED', handleTxFirstConfirmed);
+    events.on('TX_CONFIRMED', handleTxConfirmed);
+    events.on('TX_FAILED', handleTxFailed);
+
+    logger.debug('📡 Registered transaction confirmation listeners for:', txHash.substring(0, 10) + '...');
+
+    // Cleanup function - remove listeners
+    return () => {
+      events.off('TX_DETECTED', handleTxDetected);
+      events.off('TX_FIRST_CONFIRMED', handleTxFirstConfirmed);
+      events.off('TX_CONFIRMED', handleTxConfirmed);
+      events.off('TX_FAILED', handleTxFailed);
+
+      logger.debug('🧹 Cleaned up transaction confirmation listeners');
+    };
+  }, [pioneer?.state?.app?.events, txHash]); // Re-run when events or txHash changes
+
   // Currency conversion helpers
   const formatUsd = (value: number) => formatUsdValue(value);
   const isPriceAvailable = () => checkPriceAvailable(assetContext);
   const usdToNative = (usdAmount: string) => convertUsdToNative(usdAmount, assetContext?.priceUsd);
   const nativeToUsd = (nativeAmount: string) => convertNativeToUsd(nativeAmount, assetContext?.priceUsd);
 
-  // Calculate fee in USD
-  const updateFeeInUsd = (feeInNative: string) => {
-    const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
-    const feeUsd = calcFeeInUsd(feeInNative, assetContext?.priceUsd, networkType, assetContext?.networkId);
-    setEstimatedFeeUsd(feeUsd);
+  // Calculate fee in USD using NETWORK NATIVE TOKEN price from assetContext
+  const updateFeeInUsd = async (feeInNative: string) => {
+    try {
+      if (!assetContext?.nativeAsset) {
+        logger.warn('[updateFeeInUsd] No nativeAsset in assetContext');
+        setEstimatedFeeUsd('0.00');
+        return;
+      }
+
+      // Use the native asset price from assetContext (set in Asset.tsx)
+      const nativeTokenPrice = parseFloat(assetContext.nativeAsset.priceUsd || '0');
+
+      const networkType = getNetworkType(assetContext.networkId);
+      const feeUsd = calcFeeInUsd(feeInNative, nativeTokenPrice.toString(), networkType, assetContext.networkId);
+      setEstimatedFeeUsd(feeUsd);
+
+      logger.debug('[updateFeeInUsd] Fee calculation:', {
+        feeInNative,
+        nativeTokenPrice,
+        feeUsd,
+        networkType,
+        nativeSymbol: assetContext.nativeAsset.symbol
+      });
+    } catch (error) {
+      logger.error('[updateFeeInUsd] Error calculating fee in USD:', error);
+      setEstimatedFeeUsd('0.00');
+    }
   };
 
   // Add helper function to classify the network type
@@ -757,33 +976,40 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
-    if (!assetContext) {
-      setError('Asset context not available');
-      return;
-    }
+    logger.debug('[fetchFeeRates] Starting, assetContext:', assetContext);
 
-    // Use helper to resolve network ID
+    // FAIL FAST: Validate prerequisites
+    if (!assetContext) throw new Error('Asset context not available');
+    if (!app?.getFees) throw new Error('Pioneer SDK getFees not available');
+
     const networkId = resolveNetworkId(assetContext);
+    logger.debug('[fetchFeeRates] Resolved networkId:', networkId);
 
     if (!networkId) {
-      setError('Cannot determine specific network chain ID');
-      logger.error('Invalid network ID:', networkId, 'Asset context:', assetContext);
-      return;
+      logger.error('[fetchFeeRates] Could not resolve network ID:', {
+        caip: assetContext.caip,
+        networkId: assetContext.networkId,
+        assetId: assetContext.assetId,
+        symbol: assetContext.symbol
+      });
+      throw new Error('Cannot determine specific network chain ID');
     }
 
-    // Store the resolved network ID for use in other components
     setResolvedNetworkId(networkId);
 
     try {
-      if (!app?.getFees) {
-        throw new Error('Pioneer SDK getFees not available');
-      }
-
       logger.debug('Fetching fee rates for network:', networkId);
 
       // Use the new normalized getFees method from SDK
       const normalizedFees = await app.getFees(networkId);
       logger.debug('Normalized fees from SDK:', normalizedFees);
+      logger.debug('Fetched fees for networkId:', networkId, 'Asset context:', {
+        caip: assetContext.caip,
+        networkId: assetContext.networkId,
+        symbol: assetContext.symbol,
+        isToken: assetContext.isToken,
+        type: assetContext.type
+      });
 
       // Store the complete normalized fee data
       setNormalizedFees(normalizedFees);
@@ -796,6 +1022,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       };
 
       logger.debug('Using fees from SDK:', fees);
+
+      // Validate that we got non-zero fees
+      if (fees.slow === '0' && fees.average === '0' && fees.fastest === '0') {
+        logger.error('SDK returned zero fees for all levels. Network:', networkId, 'Fees:', normalizedFees);
+        throw new Error(`Unable to fetch fee rates for ${assetContext.symbol || 'this asset'}. The network may be experiencing issues. Please try again later.`);
+      }
       logger.debug('Fee metadata:', {
         unit: normalizedFees.slow.unit,
         networkType: normalizedFees.networkType,
@@ -868,30 +1100,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       logger.error('Failed to fetch fee rates:', error);
       logger.error('Network ID sent to API:', networkId);
       logger.error('Full asset context:', assetContext);
-      
-      // Extract more detailed error information
+
+      // Extract detailed error information
       let errorDetail = error.message || 'Unknown error';
       if (error.response?.data?.message) {
         errorDetail = error.response.data.message;
       } else if (error.response?.data?.error) {
         errorDetail = JSON.stringify(error.response.data.error);
       }
-      
+
       // Check for the specific server-side routing bug
       if (errorDetail.includes('missing node! for network eip155:*')) {
         errorDetail = `Server routing issue: The Pioneer API server is incorrectly converting "${networkId}" to "eip155:*". This is a known server bug that needs to be fixed in the Pioneer API backend.`;
         logger.error('SERVER BUG DETECTED:', errorDetail);
       }
-      
-      const errorMessage = `Failed to get network fees for ${networkId}: ${errorDetail}`;
-      setError(errorMessage);
-      setShowErrorDialog(true);
 
-      // Don't proceed with fake fees - show the error to the user
-      // Setting to 0 prevents transaction from proceeding
-      setFeeOptions({ slow: '0', average: '0', fastest: '0' });
-      setEstimatedFee('0');
-      setEstimatedFeeUsd('0.00');
+      // FAIL FAST: Re-throw instead of swallowing
+      throw new Error(`Failed to get network fees for ${networkId}: ${errorDetail}`);
     }
   };
   
@@ -950,12 +1175,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           // Custom value is fee rate in sat/byte
           const estimatedTxSize = getEstimatedTxSize();
           const feeRateSatPerByte = parseFloat(value);
-          const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
-          const feeInBTC = feeInSatoshis / 100000000;
-          const feeString = feeInBTC.toFixed(8);
 
-          setEstimatedFee(feeString);
-          updateFeeInUsd(feeString);
+          // Only update if we have a valid number
+          if (!isNaN(feeRateSatPerByte) && feeRateSatPerByte > 0) {
+            const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
+            const feeInBTC = feeInSatoshis / 100000000;
+            const feeString = feeInBTC.toFixed(8);
+
+            setEstimatedFee(feeString);
+            updateFeeInUsd(feeString);
+          }
         } else if (normalizedFees.networkType === 'EVM') {
           // Custom value is gas price in gwei
           // Native ETH transfers: 21000 gas
@@ -963,16 +1192,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           const isToken = assetContext?.isToken || assetContext?.type === 'token';
           const gasLimit = isToken ? 65000 : 21000;
           const gasPriceGwei = parseFloat(value);
-          const feeInGwei = gasPriceGwei * gasLimit;
-          const feeInEth = feeInGwei / 1e9;
-          const feeString = feeInEth.toFixed(9);
 
-          setEstimatedFee(feeString);
-          updateFeeInUsd(feeString);
+          // Only update if we have a valid number
+          if (!isNaN(gasPriceGwei) && gasPriceGwei > 0) {
+            const feeInGwei = gasPriceGwei * gasLimit;
+            const feeInEth = feeInGwei / 1e9;
+            const feeString = feeInEth.toFixed(9);
+
+            setEstimatedFee(feeString);
+            updateFeeInUsd(feeString);
+          }
         } else {
           // For other chains (COSMOS, RIPPLE), use the fee directly
-          setEstimatedFee(value);
-          updateFeeInUsd(value);
+          const numericValue = parseFloat(value);
+          if (!isNaN(numericValue) && numericValue > 0) {
+            setEstimatedFee(value);
+            updateFeeInUsd(value);
+          }
         }
       }
     }
@@ -1102,54 +1338,33 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Handle send transaction
   const handleSend = async () => {
-    if (!amount || !recipient) {
-      logger.error('Missing fields')
-      return
-    }
+    // FAIL FAST: Validate all prerequisites upfront
+    if (!amount || !recipient) throw new Error('Missing required fields: amount and recipient');
+    if (memoError) throw new Error(memoError);
 
-    // Check for memo/destination tag validation errors
-    if (memoError) {
-      logger.error('Memo validation error:', memoError)
-      setError(memoError)
-      setShowErrorDialog(true)
-      return
-    }
-
-    // Check if we have valid fee data before proceeding
+    const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel];
     if (!feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')) {
-      logger.error('No valid fee data available')
-      setError('Unable to proceed: Fee data is not available. Please try again or check your network connection.')
-      setShowErrorDialog(true)
-      return
+      throw new Error('Fee data is not available. Please try again or check your network connection.');
     }
-
-    // Also check if the selected fee is 0 (which shouldn't be allowed)
-    const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel]
     if (!selectedFee || parseFloat(selectedFee) === 0) {
-      logger.error('Invalid fee amount:', selectedFee)
-      setError('Unable to proceed: Invalid fee amount. Please select a valid fee option or enter a custom fee.')
-      setShowErrorDialog(true)
-      return
+      throw new Error('Invalid fee amount. Please select a valid fee option or enter a custom fee.');
     }
 
-    // Show loading spinner while building transaction
-    setIsBuildingTx(true)
-    setLoading(true)
+    setIsBuildingTx(true);
+    setLoading(true);
 
     try {
-      // Build the transaction first
-      setTransactionStep('review')
-      const builtTx = await buildTransaction()
-
-      // Then show confirmation dialog with the built transaction
-      if (builtTx) {
-        openConfirmation()
-      }
+      setTransactionStep('review');
+      const builtTx = await buildTransaction();
+      if (builtTx) openConfirmation();
     } catch (error) {
-      logger.error('Error preparing transaction:', error)
+      logger.error('Transaction build failed:', error);
+      setError(error instanceof Error ? error.message : 'Failed to build transaction');
+      setShowErrorDialog(true);
+      throw error;
     } finally {
-      setIsBuildingTx(false)
-      setLoading(false)
+      setIsBuildingTx(false);
+      setLoading(false);
     }
   }
 
@@ -1215,10 +1430,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         isMax,
       }
 
-      // Add custom fee if specified
+      // Add custom fee if specified - validate it's a valid number
       if (customFeeOption && customFeeAmount) {
-        // @ts-ignore - Adding custom fee property
-        sendPayload.customFee = customFeeAmount;
+        const customFeeNumeric = parseFloat(customFeeAmount);
+        if (!isNaN(customFeeNumeric) && customFeeNumeric > 0) {
+          // @ts-ignore - Adding custom fee property
+          sendPayload.customFee = customFeeAmount;
+        } else {
+          logger.error('Invalid custom fee amount:', customFeeAmount);
+          throw new Error('Invalid custom fee: Please enter a valid fee amount');
+        }
       }
 
       // Add memo for supported chains
@@ -1601,10 +1822,27 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
       
       logger.debug('Final TX Hash:', finalTxHash);
+      console.log('📡 [SEND] Transaction broadcast successful! TxHash:', finalTxHash);
       setTxHash(finalTxHash)
       setTxSuccess(true)
-      setTransactionStep('success')
-      
+      console.log('⏳ [SEND] Setting transactionStep to CONFIRMING');
+      setTransactionStep('confirming') // Wait for confirmation before showing success
+
+      // Reset confirmation status for new transaction
+      setConfirmationStatus({
+        detected: false,
+        firstConfirmed: false,
+        confirmed: false,
+        confirmations: 0
+      });
+
+      console.log('📡 [SEND] Now waiting for confirmation events...', {
+        txHash: finalTxHash,
+        hasPioneer: !!pioneer,
+        hasEvents: !!pioneer?.state?.app?.events
+      });
+      logger.debug('📡 Transaction broadcast, waiting for confirmation:', finalTxHash);
+
       return broadcastResult
     } catch (error: any) {
       logger.error('Transaction broadcast error:', error)
@@ -1946,8 +2184,215 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Network supports memo
   const supportsMemo = TENDERMINT_SUPPORT.includes(assetContext.assetId) || OTHER_SUPPORT.includes(assetContext.assetId);
 
+  // Debug: Log current transaction state
+  console.log('🔄 [SEND] Current state:', {
+    transactionStep,
+    showConfirmation,
+    txHash: txHash ? txHash.substring(0, 10) + '...' : null,
+    confirmationStatus
+  });
+
   // Render confirmation overlay if needed
   if (showConfirmation) {
+    // Transaction confirming screen - waiting for blockchain confirmation
+    if (transactionStep === 'confirming') {
+      console.log('🎨 [SEND] Rendering CONFIRMING UI with status:', confirmationStatus);
+      return (
+        <Box height="100vh" bg={theme.bg}>
+          <Box
+            position="relative"
+            height="100%"
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            p={6}
+          >
+            <VStack gap={6} maxW="400px" w="100%">
+              {/* Loading Spinner */}
+              <Box
+                w="80px"
+                h="80px"
+                borderRadius="full"
+                bg={`${assetColor}22`}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                position="relative"
+              >
+                <Spinner
+                  size="xl"
+                  color={assetColor}
+                  thickness="4px"
+                  speed="0.8s"
+                />
+              </Box>
+
+              {/* Title */}
+              <Text fontSize="2xl" fontWeight="bold" color="white" textAlign="center">
+                {confirmationStatus.detected
+                  ? 'Confirming Transaction...'
+                  : 'Waiting for Confirmation...'}
+              </Text>
+
+              {/* Asset Icon */}
+              <Box
+                borderRadius="full"
+                overflow="hidden"
+                boxSize="60px"
+                bg={theme.cardBg}
+                boxShadow="lg"
+                p={2}
+              >
+                <AssetIcon
+                  src={assetContext.icon || assetContext.image || ''}
+                  symbol={assetContext.symbol}
+                  size="44px"
+                />
+              </Box>
+
+              {/* Amount */}
+              <Text fontSize="lg" color="gray.400" textAlign="center">
+                {amount} {assetContext?.symbol}
+              </Text>
+
+              {/* Progress Steps */}
+              <Box
+                w="100%"
+                p={4}
+                bg={theme.cardBg}
+                borderRadius="lg"
+                border="1px solid"
+                borderColor={theme.border}
+              >
+                <VStack gap={3} alignItems="flex-start">
+                  {/* Step 1: Broadcast Complete */}
+                  <Flex alignItems="center" gap={3} w="100%">
+                    <Box
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      bg="green.500"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="white"
+                      fontSize="sm"
+                    >
+                      <Icon as={FaCheck} />
+                    </Box>
+                    <Text color="white" fontSize="sm">
+                      Broadcast to network
+                    </Text>
+                  </Flex>
+
+                  {/* Step 2: Detected in Mempool */}
+                  <Flex alignItems="center" gap={3} w="100%">
+                    <Box
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      bg={confirmationStatus.detected ? 'green.500' : 'gray.600'}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="white"
+                      fontSize="sm"
+                    >
+                      {confirmationStatus.detected ? <Icon as={FaCheck} /> : <Icon as={FaCircle} boxSize="8px" />}
+                    </Box>
+                    <Text
+                      color={confirmationStatus.detected ? 'white' : 'gray.500'}
+                      fontSize="sm"
+                    >
+                      Detected in mempool
+                    </Text>
+                  </Flex>
+
+                  {/* Step 3: First Confirmation */}
+                  <Flex alignItems="center" gap={3} w="100%">
+                    <Box
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      bg={confirmationStatus.firstConfirmed ? 'green.500' : 'gray.600'}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="white"
+                      fontSize="sm"
+                    >
+                      {confirmationStatus.firstConfirmed ? <Icon as={FaCheck} /> : <Icon as={FaCircle} boxSize="8px" />}
+                    </Box>
+                    <Flex justify="space-between" w="100%" alignItems="center">
+                      <Text
+                        color={confirmationStatus.firstConfirmed ? 'white' : 'gray.500'}
+                        fontSize="sm"
+                      >
+                        First confirmation
+                      </Text>
+                      {confirmationStatus.confirmations > 0 && (
+                        <Text color="gray.400" fontSize="xs">
+                          {confirmationStatus.confirmations} block{confirmationStatus.confirmations > 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </Flex>
+                  </Flex>
+                </VStack>
+              </Box>
+
+              {/* Transaction Hash Display */}
+              <Box
+                w="100%"
+                p={3}
+                bg={theme.cardBg}
+                borderRadius="md"
+                border="1px solid"
+                borderColor={theme.border}
+              >
+                <Text fontSize="xs" color="gray.500" mb={1}>
+                  Transaction ID
+                </Text>
+                <Flex alignItems="flex-start" gap={2}>
+                  <Text
+                    fontSize="xs"
+                    color="white"
+                    fontFamily="monospace"
+                    wordBreak="break-all"
+                    flex={1}
+                    lineHeight="1.4"
+                  >
+                    {txHash}
+                  </Text>
+                  <IconButton
+                    aria-label="Copy transaction hash"
+                    icon={hasCopied ? <Icon as={FaCheck} /> : <Icon as={FaCopy} />}
+                    size="sm"
+                    onClick={copyToClipboard}
+                    variant="ghost"
+                    color={hasCopied ? 'green.400' : 'gray.400'}
+                  />
+                  {assetContext?.explorerTxLink && (
+                    <IconButton
+                      aria-label="View on explorer"
+                      icon={<Icon as={FaExternalLinkAlt} />}
+                      size="sm"
+                      onClick={() => {
+                        const url = `${assetContext.explorerTxLink}${txHash}`;
+                        window.open(url, '_blank');
+                      }}
+                      variant="ghost"
+                      color="gray.400"
+                    />
+                  )}
+                </Flex>
+              </Box>
+            </VStack>
+          </Box>
+        </Box>
+      );
+    }
+
     // Transaction success screen
     if (transactionStep === 'success' && txSuccess) {
       return (
@@ -2160,6 +2605,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         memo={memo}
         estimatedFee={estimatedFee}
         estimatedFeeUsd={estimatedFeeUsd}
+        feeSymbol={assetContext?.nativeAsset?.symbol || 'GAS'}
         balance={balance}
         isMax={isMax}
         isUsdInput={isUsdInput}
@@ -2747,7 +3193,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <Text color="gray.400">Estimated Fee</Text>
                   <Stack gap={0} align="flex-end">
                     <Text color={assetColor} fontWeight="medium">
-                      {estimatedFee} {assetContext.symbol}
+                      {estimatedFee} {assetContext?.nativeAsset?.symbol || 'GAS'}
                     </Text>
                     <Text color="gray.500" fontSize="xs">
                       ≈ ${estimatedFeeUsd} USD

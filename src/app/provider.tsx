@@ -6,7 +6,7 @@
 // CRITICAL DIAGNOSTIC: Verify console works and file loads
 // ============================================================================
 console.log('========================================');
-console.log('🚀 PROVIDER.TSX LOADED - TIMESTAMP:', new Date().toISOString());
+console.log('🚀 PROVIDER.TSX LOADED');
 console.log('========================================');
 // ============================================================================
 
@@ -17,7 +17,6 @@ import { availableChainsByWallet, getChainEnumValue, WalletOption } from '@pione
 // @ts-expect-error
 import { caipToNetworkId, ChainToNetworkId } from '@pioneer-platform/pioneer-caip'
 import { getPaths } from '@pioneer-platform/pioneer-coins'
-import { Provider as ChakraProvider } from "@/components/ui/provider"
 import { AppProvider } from '@/components/providers/pioneer'
 import { LogoIcon } from '@/components/logo'
 import { keyframes } from '@emotion/react'
@@ -33,6 +32,16 @@ import { logger } from '@/lib/logger';
 
 interface ProviderProps {
   children: React.ReactNode;
+}
+
+// Error state types for comprehensive error tracking
+type InitPhase = 'sdk_create' | 'sdk_init' | 'get_balances' | 'get_charts' | 'pair_wallet' | 'event_subscription' | 'complete';
+
+interface InitializationError {
+  phase: InitPhase;
+  error: Error;
+  timestamp: number;
+  recoverable: boolean;
 }
 
 const scale = keyframes`
@@ -64,15 +73,45 @@ export function Provider({ children }: ProviderProps) {
   const [showWatchOnlyLanding, setShowWatchOnlyLanding] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Phase 1: Enhanced error tracking (only fatal errors, warnings stay in logs)
+  const [initError, setInitError] = useState<InitializationError | null>(null);
+  const [initPhase, setInitPhase] = useState<InitPhase>('sdk_create');
+  const [initStartTime] = useState(Date.now());
+
+  // Timeout mechanism - fail if init takes too long
   useEffect(() => {
-    // Prevent multiple initializations
-    if (PIONEER_INITIALIZED) {
-      logger.debug('🚫 Pioneer already initialized, skipping');
-      return;
-    }
+    const INIT_TIMEOUT = 45000; // 45 seconds
+
+    const timeoutId = setTimeout(() => {
+      if (isLoading && !pioneerSdk) {
+        logger.error('[INIT] ❌ Initialization timeout after 45 seconds');
+        setInitError({
+          phase: initPhase,
+          error: new Error('Initialization timeout - Pioneer SDK not responding'),
+          timestamp: Date.now(),
+          recoverable: true
+        });
+        setIsLoading(false);
+      }
+    }, INIT_TIMEOUT);
+
+    return () => clearTimeout(timeoutId);
+  }, [isLoading, pioneerSdk, initPhase]);
+
+  useEffect(() => {
+    logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.debug('🎬 [INIT] useEffect triggered');
+    logger.debug('🔍 [INIT] Current state:', {
+      pioneerSdk: !!pioneerSdk,
+      isLoading,
+      PIONEER_INITIALIZED,
+    });
+    logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const initPioneerSDK = async () => {
-      logger.debug('🔥 Starting direct Pioneer SDK initialization');
+      logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.debug('🔥 [INIT] Starting Pioneer SDK initialization');
+      logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       PIONEER_INITIALIZED = true;
 
       // Detect if mobile app
@@ -446,17 +485,22 @@ export function Provider({ children }: ProviderProps) {
           platform: isOnMobile ? 'Mobile' : 'Desktop'
         });
 
-        // Build SDK config with conditional view-only mode flags
+        // Build SDK config matching the test configuration exactly
         const sdkConfig: any = {
-          spec: PIONEER_URL,
-          wss: PIONEER_WSS,
-          appName: 'KeepKey Portfolio',
-          appIcon: 'https://pioneers.dev/coins/keepkey.png',
-          blockchains,
-          keepkeyApiKey,
           username,
           queryKey,
+          spec: PIONEER_URL,  // Also passed as first param to SDK constructor
+          appName: 'KeepKey Portfolio',
+          appIcon: 'https://pioneers.dev/coins/keepkey.png',
+          wss: PIONEER_WSS,
+          keepkeyApiKey,
           paths,
+          blockchains,
+          // 🚨 CRITICAL: Initialize state arrays like the test does - required for dashboard
+          nodes: [],
+          pubkeys: [],
+          balances: [],
+          transactions: [],
           // Add these to match working projects
           ethplorerApiKey: 'EK-xs8Hj-qG4HbLY-LoAu7',
           covalentApiKey: 'cqt_rQ6333MVWCVJFVX3DbCCGMVqRH4q',
@@ -543,63 +587,120 @@ export function Provider({ children }: ProviderProps) {
           });
         }, 3000);
         
-        // Add timeout to prevent infinite hanging
-        const initTimeout = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('SDK init timeout after 30 seconds')), 30000)
-        );
-        
-                try {
-          // Use normal init flow but make it fast with cache-first
-          logger.debug("🔧 Calling appInit.init() with cache-first optimization...");
-          
-          const resultInit = await Promise.race([
-            appInit.init({}, { skipSync: false }),
-            initTimeout
-          ]);
-          
+        try {
+          // Phase 1: SDK Init
+          logger.info('[INIT] Phase 1: Initializing Pioneer SDK');
+          setInitPhase('sdk_init');
+
+          const resultInit = await appInit.init({}, { skipSync: false });
+
           clearInterval(progressInterval);
-          
-          logger.debug("✅ Pioneer SDK initialized, resultInit:", resultInit);
+
+          logger.info('[INIT] ✅ Phase 1 complete - SDK initialized');
           logger.debug("📊 Wallets:", appInit.wallets.length);
           logger.debug("🔑 Pubkeys:", appInit.pubkeys.length);
           logger.debug("💰 Balances:", appInit.balances.length);
-          
-          // Explicitly fetch balances (following reference implementation pattern)
-          logger.debug("📊 Explicitly calling getBalances()...");
+
+          // 🔍 CRITICAL DEBUG: Check if we have account 1 pubkeys for EVM chains
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🔍 [PUBKEY AUDIT] Checking for account 1 EVM pubkeys after init()');
+          const evmPubkeys = appInit.pubkeys.filter((p: any) =>
+            p.networks?.some((n: string) => n.startsWith('eip155:'))
+          );
+          console.error('🔍 EVM pubkeys found:', evmPubkeys.length);
+          evmPubkeys.forEach((pk: any, idx: number) => {
+            console.error(`🔍 [${idx}] ${pk.note || 'Unnamed'}`, {
+              networks: pk.networks,
+              address: pk.address?.substring(0, 10) + '...',
+              master: pk.master?.substring(0, 10) + '...',
+              path: pk.addressNList
+            });
+          });
+
+          // Check if tokens were loaded during init
+          const tokensAfterInit = appInit.balances.filter((b: any) => b.token === true);
+          console.error('🔍 Tokens loaded after init():', tokensAfterInit.length);
+          if (tokensAfterInit.length > 0) {
+            console.error('✅ Tokens found:', tokensAfterInit.map((t: any) => `${t.symbol} (${t.networkId})`).join(', '));
+          } else {
+            console.error('⚠️ NO TOKENS loaded after init() - this is the problem!');
+          }
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+          // 🚨 CRITICAL: Validate dashboard was created after init
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🚨 [POST-INIT] Checking if dashboard was created...');
+          console.error('🚨 appInit.dashboard:', !!appInit.dashboard);
+          console.error('🚨 dashboard type:', typeof appInit.dashboard);
+          if (!appInit.dashboard) {
+            console.error('🚨🚨🚨 DASHBOARD WAS NOT CREATED BY init()!');
+            console.error('🚨 This is the root cause of yellow logo!');
+            console.error('🚨 SDK state:', {
+              wallets: appInit.wallets?.length,
+              pubkeys: appInit.pubkeys?.length,
+              balances: appInit.balances?.length,
+              status: appInit.status
+            });
+          } else {
+            console.log('✅ Dashboard exists after init()');
+            console.log('✅ Dashboard networks:', appInit.dashboard.networks?.length || 0);
+          }
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+          // Phase 2: Fetch Balances
+          logger.info('[INIT] Phase 2: Fetching balances');
+          setInitPhase('get_balances');
+
           await appInit.getBalances();
-          logger.debug("✅ getBalances() completed");
-          logger.debug("💰 Balances after getBalances():", appInit.balances?.length || 0);
+          logger.info('[INIT] ✅ Phase 2 complete - Balances loaded:', appInit.balances?.length || 0);
           
         } catch (initError: any) {
           clearInterval(progressInterval);
-          logger.error('⏱️ SDK init failed:', initError);
+          logger.error(`[INIT] ❌ Phase ${initPhase} failed:`, initError);
 
           // DEEP DEBUG: Inspect SDK internal state after failure
           logger.debug('🔍 [DEBUG] SDK internal state AFTER init failure:', {
             errorMessage: initError.message,
             errorStack: initError.stack,
+            currentPhase: initPhase,
             hasPioneer: !!appInit.pioneer,
-            pioneerType: typeof appInit.pioneer,
-            pioneerKeys: appInit.pioneer ? Object.keys(appInit.pioneer).slice(0, 15) : 'N/A',
             hasClient: !!appInit.client,
-            clientType: typeof appInit.client,
-            clientKeys: appInit.client ? Object.keys(appInit.client).slice(0, 15) : 'N/A',
             hasSpec: !!appInit.spec,
-            specType: typeof appInit.spec,
-            clientSpec: appInit.client?.spec ? 'EXISTS' : 'MISSING',
-            clientSpecPaths: appInit.client?.spec?.paths ? 'EXISTS' : 'MISSING',
-            sdkTopLevelKeys: Object.keys(appInit).slice(0, 20)
+            walletCount: appInit.wallets?.length || 0,
+            pubkeyCount: appInit.pubkeys?.length || 0,
+            balanceCount: appInit.balances?.length || 0
           });
+
+          // Determine if error is recoverable
+          const isRecoverable = initError.message && (
+            initError.message.includes('GetPortfolioBalances') ||
+            initError.message.includes('timeout') ||
+            initError.message.includes('network')
+          );
 
           // Check if it's a non-critical error we can handle
           if (initError.message && initError.message.includes('GetPortfolioBalances')) {
-            logger.warn('⚠️ GetPortfolioBalances failed during init, continuing with limited functionality');
+            logger.warn('[INIT] ⚠️ GetPortfolioBalances failed - continuing with limited functionality (non-fatal)');
             logger.debug("📊 Partial initialization - Wallets:", appInit.wallets?.length || 0);
             logger.debug("🔑 Partial initialization - Pubkeys:", appInit.pubkeys?.length || 0);
             logger.debug("💰 Partial initialization - Balances:", appInit.balances?.length || 0);
           } else {
-            // For other critical errors, still try to go online
-            logger.debug("⚠️ [FALLBACK] Attempting to go online despite init error");
+            // For critical errors, store in error state
+            logger.error('[INIT] ❌ Critical initialization failure');
+            setInitError({
+              phase: initPhase,
+              error: initError,
+              timestamp: Date.now(),
+              recoverable: isRecoverable
+            });
+
+            // Don't continue if it's a critical error
+            if (!isRecoverable) {
+              setIsLoading(false);
+              return;
+            }
+
+            logger.debug("[INIT] ⚠️ [FALLBACK] Attempting to continue despite error");
           }
         }
         
@@ -629,24 +730,27 @@ export function Provider({ children }: ProviderProps) {
           try {
             // Only call getCharts if we have pubkeys (addresses) to look up
             if (appInit.pubkeys && appInit.pubkeys.length > 0) {
-              logger.debug('📊 Starting chart fetching (including staking positions)...');
+              // Phase 3: Fetch Charts
+              logger.info('[INIT] Phase 3: Fetching charts (staking + tokens)');
+              setInitPhase('get_charts');
               logger.debug('📊 Balances before getCharts:', appInit.balances.length);
-              
+
               try {
                 await appInit.getCharts();
-                logger.debug('✅ Chart fetching completed successfully');
+                logger.info('[INIT] ✅ Phase 3 complete - Charts fetched');
                 logger.debug('📊 Balances after getCharts:', appInit.balances.length);
-                
+
                 // Verify tokens were loaded
                 const tokens = appInit.balances.filter((b: any) => b.token === true);
                 logger.debug('📊 Tokens loaded:', tokens.length);
                 if (tokens.length === 0) {
-                  logger.warn('⚠️ getCharts completed but found 0 tokens - this may indicate a problem');
+                  logger.warn('[INIT] ⚠️ No tokens loaded - token functionality may be limited (non-fatal)');
                 }
               } catch (chartError: any) {
-                // DETAILED ERROR LOGGING
+                // Non-critical error - charts/staking unavailable but app can continue
+                logger.warn('[INIT] ⚠️ Phase 3 failed (non-critical, non-fatal):', chartError.message);
                 logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                logger.error('❌ CRITICAL: getCharts failed during initialization');
+                logger.error('❌ getCharts failed during initialization (NON-CRITICAL)');
                 logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                 logger.error('Error type:', chartError?.constructor?.name);
                 logger.error('Error message:', chartError?.message);
@@ -922,9 +1026,89 @@ export function Provider({ children }: ProviderProps) {
         //   'sync:progress': appInit.events.listenerCount('sync:progress')
         // });
 
+        // Phase 4: Event Subscription Verification
+        logger.info('[INIT] Phase 4: Verifying event subscriptions');
+        setInitPhase('event_subscription');
+
+        // CRITICAL: Events SHOULD exist - if they don't, something went wrong
+        logger.debug('🔍 [EVENTS CHECK] Inspecting SDK events:', {
+          hasEvents: !!appInit.events,
+          eventsType: typeof appInit.events,
+          eventsConstructor: appInit.events?.constructor?.name,
+          hasOn: typeof appInit.events?.on,
+          hasEmit: typeof appInit.events?.emit,
+          sdkKeys: Object.keys(appInit).filter(k => k.includes('event')),
+          hasPioneer: !!appInit.pioneer,
+          pioneerHasEvents: !!appInit.pioneer?.events,
+        });
+
+        if (!appInit.events) {
+          logger.error('[INIT] ❌ CRITICAL: Events not available - this should NOT happen!');
+          logger.error('[INIT] SDK state when events missing:', {
+            status: appInit.status,
+            hasPioneer: !!appInit.pioneer,
+            hasClient: !!appInit.client,
+            hasSpec: !!appInit.spec,
+            pubkeyCount: appInit.pubkeys?.length || 0,
+            balanceCount: appInit.balances?.length || 0,
+          });
+          // This is actually a problem, but let's continue and see what breaks
+        } else {
+          logger.info('[INIT] ✅ Phase 4 complete - Events available');
+          logger.debug('[INIT] Events details:', {
+            constructor: appInit.events.constructor.name,
+            listenerCount: appInit.events.listenerCount ? appInit.events.listenerCount('*') : 'N/A',
+          });
+        }
+
+        // Mark initialization complete
+        logger.info('[INIT] ✅ All phases complete - SDK ready');
+        setInitPhase('complete');
+
+        logger.debug('🔍 [FINAL CHECK] About to call setPioneerSdk with:', {
+          hasEvents: !!appInit.events,
+          hasDashboard: !!appInit.dashboard,
+          hasBalances: !!appInit.balances,
+          balanceCount: appInit.balances?.length || 0,
+          hasPubkeys: !!appInit.pubkeys,
+          pubkeyCount: appInit.pubkeys?.length || 0,
+        });
+
+        // 🚨 CRITICAL DEBUG - Check if dashboard exists RIGHT BEFORE setPioneerSdk
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('🚨 [DASHBOARD CHECK] RIGHT BEFORE setPioneerSdk');
+        console.error('🚨 appInit:', !!appInit);
+        console.error('🚨 appInit.dashboard:', !!appInit.dashboard);
+        console.error('🚨 appInit.dashboard type:', typeof appInit.dashboard);
+        console.error('🚨 appInit.dashboard networks:', appInit.dashboard?.networks?.length || 0);
+        console.error('🚨 appInit.balances:', appInit.balances?.length || 0);
+        console.error('🚨 appInit.pubkeys:', appInit.pubkeys?.length || 0);
+        if (!appInit.dashboard) {
+          console.error('🚨🚨🚨 DASHBOARD IS MISSING FROM appInit BEFORE setPioneerSdk!');
+          console.error('🚨 appInit keys:', Object.keys(appInit).slice(0, 30));
+        } else {
+          console.log('✅ Dashboard IS present in appInit before setPioneerSdk');
+          console.log('✅ Dashboard structure:', Object.keys(appInit.dashboard));
+        }
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logger.debug('✅ [INIT] Calling setPioneerSdk - this will hide loading screen');
+        logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         setPioneerSdk(appInit);
+        logger.debug('✅ [INIT] setPioneerSdk called successfully');
+
+        // 🚨 CRITICAL: Note that state update is async - pioneerSdk won't update until next render
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('⚠️ [STATE UPDATE] setPioneerSdk called');
+        console.error('⚠️ React will schedule a re-render');
+        console.error('⚠️ pioneerSdk state will update on NEXT render cycle');
+        console.error('⚠️ Current pioneerSdk in this closure is still:', !!pioneerSdk);
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       } catch (e) {
-        logger.error('💥 FATAL: Pioneer SDK initialization failed:', e);
+        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logger.error('💥 [INIT] FATAL: Pioneer SDK initialization failed');
+        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         logger.error('💥 Error details:', {
           message: (e as Error)?.message,
           stack: (e as Error)?.stack,
@@ -933,12 +1117,19 @@ export function Provider({ children }: ProviderProps) {
         PIONEER_INITIALIZED = false; // Reset flag on error
         setError(e as Error);
       } finally {
-        logger.debug('🏁 [Loading] Setting isLoading to FALSE - initialization complete');
+        logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logger.debug('🏁 [INIT] Finally block: Setting isLoading to FALSE');
+        logger.debug('🏁 [INIT] This will hide loading screen regardless of success/failure');
+        logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         setIsLoading(false);
+        logger.debug('🏁 [INIT] setIsLoading(false) CALLED - state should update on next render');
+        logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       }
     };
 
+    logger.debug('🚀 [INIT] About to call initPioneerSDK()');
     initPioneerSDK();
+    logger.debug('🚀 [INIT] initPioneerSDK() called (async, will continue in background)');
   }, []);
 
   // Ensure outbound asset context carries a valid address derived from pubkeys
@@ -974,6 +1165,7 @@ export function Provider({ children }: ProviderProps) {
   // Handler for retry button in ConnectionError
   const handleRetry = () => {
     logger.debug('🔄 Retrying vault connection...');
+    console.error('FAILING TO INIT!!!!')
     setIsVaultUnavailable(false);
     setIsLoading(true);
     setError(null);
@@ -1001,99 +1193,174 @@ export function Provider({ children }: ProviderProps) {
 
   // Show connection error if vault is unavailable and no cached data
   if (isVaultUnavailable) {
-    return (
-      <ChakraProvider>
-        <ConnectionError onRetry={handleRetry} />
-      </ChakraProvider>
-    );
+    return <ConnectionError onRetry={handleRetry} />;
   }
+
+  // 🚨 CRITICAL RENDER LOGGING - Track all state before render decisions
+  logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.debug('🎨 [RENDER] Provider render cycle executing');
+  logger.debug('🎨 [RENDER] Current state:', {
+    isLoading,
+    pioneerSdk: !!pioneerSdk,
+    error: !!error,
+    initError: !!initError,
+    showWatchOnlyLanding,
+    isVaultUnavailable,
+    initPhase,
+    PIONEER_INITIALIZED
+  });
+  logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   // Show watch-only landing for desktop users (not mobile) with cached data
   if (showWatchOnlyLanding) {
+    logger.debug('🎨 [RENDER] Showing watch-only landing');
     const deviceInfo = getDeviceInfo();
     return (
-      <ChakraProvider>
-        <WatchOnlyLanding
-          onContinueWatchOnly={handleContinueWatchOnly}
-          deviceInfo={deviceInfo}
-        />
-      </ChakraProvider>
+      <WatchOnlyLanding
+        onContinueWatchOnly={handleContinueWatchOnly}
+        deviceInfo={deviceInfo}
+      />
     );
   }
 
-  if (error) {
+  //Enhanced error UI with phase information and retry
+  if (initError) {
+    logger.debug('🎨 [RENDER] Showing initError UI - phase:', initError.phase);
     return (
-      <ChakraProvider>
-        <Flex 
-          width="100vw" 
-          height="100vh" 
-          justify="center" 
-          align="center"
-          flexDirection="column" 
-          gap={4}
-          bg="gray.800"
-        >
-          <LogoIcon 
-            boxSize="8"
-            opacity="0.5"
-          />
-          <div style={{ color: '#EF4444' }}>Failed to initialize Pioneer SDK!</div>
-          <div style={{ color: '#6B7280', fontSize: '14px', maxWidth: '80%', textAlign: 'center' }}>
-            {error.message}
-          </div>
-          <div 
-            style={{ color: '#60A5FA', fontSize: '14px', cursor: 'pointer', textDecoration: 'underline' }}
-            onClick={() => window.location.reload()}
+      <Flex
+        width="100vw"
+        height="100vh"
+        justify="center"
+        align="center"
+        flexDirection="column"
+        gap={6}
+        bg="gray.800"
+      >
+        <LogoIcon
+          boxSize="8"
+          opacity="0.5"
+        />
+        <div style={{ color: '#EF4444', fontSize: '20px', fontWeight: 'bold' }}>
+          Initialization Failed
+        </div>
+        <div style={{ color: '#9CA3AF', fontSize: '14px' }}>
+          Phase: {initError.phase.replace(/_/g, ' ').toUpperCase()}
+        </div>
+        <div style={{ color: '#6B7280', fontSize: '14px', maxWidth: '500px', textAlign: 'center', padding: '0 20px' }}>
+          {initError.error.message}
+        </div>
+
+        {initError.recoverable && (
+          <div
+            style={{
+              backgroundColor: '#FFD700',
+              color: '#000',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+            onClick={() => {
+              setInitError(null);
+              setIsLoading(true);
+              PIONEER_INITIALIZED = false;
+              window.location.reload();
+            }}
           >
-            Retry Connection
+            Retry Initialization
           </div>
-        </Flex>
-      </ChakraProvider>
+        )}
+
+        <div style={{ color: '#60A5FA', fontSize: '12px', cursor: 'pointer' }}>
+          <a href="/diagnostics" style={{ textDecoration: 'underline' }}>
+            View Diagnostic Logs
+          </a>
+        </div>
+      </Flex>
+    );
+  }
+
+  // Fallback error UI (legacy)
+  if (error) {
+    logger.debug('🎨 [RENDER] Showing legacy error UI');
+    console.error('Error: ',error)
+    return (
+      <Flex
+        width="100vw"
+        height="100vh"
+        justify="center"
+        align="center"
+        flexDirection="column"
+        gap={4}
+        bg="gray.800"
+      >
+        <LogoIcon
+          boxSize="8"
+          opacity="0.5"
+        />
+        <div style={{ color: '#EF4444' }}>Failed to initialize Pioneer SDK!</div>
+        <div style={{ color: '#6B7280', fontSize: '14px', maxWidth: '80%', textAlign: 'center' }}>
+          {error.message}
+        </div>
+        <div
+          style={{ color: '#60A5FA', fontSize: '14px', cursor: 'pointer', textDecoration: 'underline' }}
+          onClick={() => window.location.reload()}
+        >
+          Retry Connection
+        </div>
+      </Flex>
     )
   }
 
   if (isLoading) {
-    logger.debug('🔄 [Loading] Rendering loading screen - isLoading is TRUE');
+    logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.debug('🟡 [YELLOW LOGO] Rendering loading screen - isLoading is TRUE');
+    logger.debug('🟡 [YELLOW LOGO] WHY IS THIS STILL TRUE?', {
+      pioneerSdk: !!pioneerSdk,
+      initPhase,
+      PIONEER_INITIALIZED,
+      errorState: !!error,
+      initErrorState: !!initError
+    });
+    logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     return (
-      <ChakraProvider>
+      <Flex
+        width="100vw"
+        height="100vh"
+        justify="center"
+        align="center"
+        bg="gray.800"
+        backgroundImage="url(/images/backgrounds/splash-bg.png)"
+        backgroundSize="cover"
+        backgroundPosition="center"
+        backgroundRepeat="no-repeat"
+        flexDirection="column"
+        gap={4}
+      >
+        <LogoIcon
+          boxSize="24"
+          animation={`${scale} 2s ease-in-out infinite`}
+          opacity="0.8"
+          border="2px solid"
+          borderColor="gold.500"
+          borderRadius="lg"
+          padding={2}
+        />
         <Flex
-          width="100vw"
-          height="100vh"
-          justify="center"
-          align="center"
-          bg="gray.800"
-          backgroundImage="url(/images/backgrounds/splash-bg.png)"
-          backgroundSize="cover"
-          backgroundPosition="center"
-          backgroundRepeat="no-repeat"
           flexDirection="column"
-          gap={4}
+          align="center"
+          gap={1}
+          color="gray.400"
+          fontSize="sm"
         >
-          <LogoIcon
-            boxSize="24"
-            animation={`${scale} 2s ease-in-out infinite`}
-            opacity="0.8"
-            border="2px solid"
-            borderColor="gold.500"
-            borderRadius="lg"
-            padding={2}
-          />
-          <Flex
-            flexDirection="column"
-            align="center"
-            gap={1}
-            color="gray.400"
-            fontSize="sm"
-          >
-            <div style={{ color: '#D1D5DB' }}>
-              Loading balances on {availableChainsByWallet[WalletOption.KEEPKEY]?.length || 0} networks
-            </div>
-            <div style={{ color: '#9CA3AF', fontSize: '12px' }}>
-              (this may take a bit)
-            </div>
-          </Flex>
+          <div style={{ color: '#D1D5DB' }}>
+            Loading balances on {availableChainsByWallet[WalletOption.KEEPKEY]?.length || 0} networks
+          </div>
+          <div style={{ color: '#9CA3AF', fontSize: '12px' }}>
+            (this may take a bit)
+          </div>
         </Flex>
-      </ChakraProvider>
+      </Flex>
     )
   }
 
@@ -1107,6 +1374,22 @@ export function Provider({ children }: ProviderProps) {
     eventsConstructor: pioneerSdk?.events?.constructor?.name,
     sdkKeys: pioneerSdk ? Object.keys(pioneerSdk).filter(k => k.includes('event') || k === 'events') : 'N/A',
   });
+
+  // 🚨 CRITICAL: Log pioneerSdk state BEFORE creating context value
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.error('🚨 [CONTEXT-VALUE] About to create context value');
+  console.error('🚨 pioneerSdk:', !!pioneerSdk);
+  console.error('🚨 pioneerSdk.dashboard:', !!pioneerSdk?.dashboard);
+  console.error('🚨 pioneerSdk.dashboard type:', typeof pioneerSdk?.dashboard);
+  console.error('🚨 pioneerSdk.dashboard networks:', pioneerSdk?.dashboard?.networks?.length || 0);
+  console.error('🚨 pioneerSdk.balances:', pioneerSdk?.balances?.length || 0);
+  console.error('🚨 pioneerSdk.pubkeys:', pioneerSdk?.pubkeys?.length || 0);
+  if (!pioneerSdk?.dashboard) {
+    console.error('🚨🚨🚨 DASHBOARD IS MISSING FROM pioneerSdk STATE!');
+    console.error('🚨 This means setPioneerSdk was called with an SDK that lacks dashboard');
+    console.error('🚨 OR React state update lost the dashboard property somehow');
+  }
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   // Create a simple context value
   const contextValue = {
@@ -1124,6 +1407,15 @@ export function Provider({ children }: ProviderProps) {
     dispatch: () => {},
   };
 
+  // 🚨 CRITICAL: Log context value AFTER creation
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.error('🚨 [CONTEXT-VALUE] Created context value');
+  console.error('🚨 contextValue.state.app:', !!contextValue.state.app);
+  console.error('🚨 contextValue.state.dashboard:', !!contextValue.state.dashboard);
+  console.error('🚨 contextValue.state.balances:', contextValue.state.balances?.length || 0);
+  console.error('🚨 contextValue.state.pubkeys:', contextValue.state.pubkeys?.length || 0);
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
   logger.debug('📦 [CONTEXT-VALUE] Created contextValue:', {
     hasState: !!contextValue.state,
     hasApp: !!contextValue.state.app,
@@ -1131,10 +1423,8 @@ export function Provider({ children }: ProviderProps) {
   });
 
   return (
-    <ChakraProvider>
-      <AppProvider pioneer={contextValue}>
-        {children}
-      </AppProvider>
-    </ChakraProvider>
+    <AppProvider pioneer={contextValue}>
+      {children}
+    </AppProvider>
   );
 } 

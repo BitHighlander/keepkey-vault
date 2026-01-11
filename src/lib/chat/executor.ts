@@ -165,13 +165,13 @@ export async function executeChatFunctions(
         finalData = { asset: firstAsset };
 
         // Debug logging
-        console.log('🔍 [Executor] Search found asset:', {
-          query: parameters.query,
-          symbol: firstAsset.symbol,
-          name: firstAsset.name,
-          caip: firstAsset.caip,
-          totalResults: searchResult.data.results.length
-        });
+        //console.log('🔍 [Executor] Search found asset:', {
+        //   query: parameters.query,
+        //   symbol: firstAsset.symbol,
+        //   name: firstAsset.name,
+        //   caip: firstAsset.caip,
+        //   totalResults: searchResult.data.results.length
+        // });
 
         // Execute the navigation function
         const navFunction = functions.find(f =>
@@ -179,7 +179,7 @@ export async function executeChatFunctions(
         );
 
         if (navFunction) {
-          console.log('🔍 [Executor] Executing navigation:', navFunction, 'with CAIP:', parameters.caip);
+          //console.log('🔍 [Executor] Executing navigation:', navFunction, 'with CAIP:', parameters.caip);
           const navResult = await executeFunction(navFunction, parameters, app);
           results.push({ function: navFunction, result: navResult });
         }

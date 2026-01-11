@@ -202,7 +202,7 @@ export async function navigateToSend(caip: string | undefined, app: any): Promis
     let targetCaip = caip;
     let asset: any = null;
 
-    console.log('🔍 [navigateToSend] Called with CAIP:', caip);
+    //console.log('🔍 [navigateToSend] Called with CAIP:', caip);
 
     // If no CAIP provided, use current asset context
     if (!targetCaip) {
@@ -214,12 +214,12 @@ export async function navigateToSend(caip: string | undefined, app: any): Promis
         };
       }
       targetCaip = assetContext.caip;
-      console.log('🔍 [navigateToSend] Using context CAIP:', targetCaip);
+      //console.log('🔍 [navigateToSend] Using context CAIP:', targetCaip);
     }
 
     // Find the asset in balances to set context
     asset = app?.balances?.find((b: any) => b.caip === targetCaip);
-    console.log('🔍 [navigateToSend] Found asset:', asset ? `${asset.symbol} (${asset.name})` : 'NOT FOUND');
+    //console.log('🔍 [navigateToSend] Found asset:', asset ? `${asset.symbol} (${asset.name})` : 'NOT FOUND');
 
     if (asset) {
       // Set asset context before navigation

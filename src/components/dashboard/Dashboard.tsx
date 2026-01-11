@@ -32,6 +32,7 @@ import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { ChatPopup } from '@/components/chat/ChatPopup';
+import { PendingSwapsPopup } from '@/components/swap/PendingSwapsPopup';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 
@@ -344,26 +345,30 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     if (!app?.events) return;
 
     const handleDashboardUpdate = (data: any) => {
+      // Defensive checks for undefined values
+      const previousTotal = data.previousTotal ?? 0;
+      const newTotal = data.newTotal ?? 0;
+
       logger.debug('🔄 [Dashboard] Real-time update received:', {
         trigger: data.trigger,
         affectedAsset: data.affectedAsset,
-        valueChange: `$${data.previousTotal.toFixed(2)} → $${data.newTotal.toFixed(2)}`
+        valueChange: `$${previousTotal.toFixed(2)} → $${newTotal.toFixed(2)}`
       });
 
       // Update dashboard with new data
       setDashboard(data.dashboard);
 
       // Check for value increases and play sound if enabled
-      if (data.newTotal > data.previousTotal && data.previousTotal > 0) {
+      if (newTotal > previousTotal && previousTotal > 0) {
         logger.debug("💰 [Dashboard] Portfolio value increased!", {
-          previous: data.previousTotal,
-          current: data.newTotal,
-          increase: data.newTotal - data.previousTotal
+          previous: previousTotal,
+          current: newTotal,
+          increase: newTotal - previousTotal
         });
         // playSound(chachingSound); // Disabled - sound is annoying
       }
 
-      setPreviousTotalValue(data.newTotal);
+      setPreviousTotalValue(newTotal);
     };
 
     // Subscribe to dashboard update events
@@ -738,53 +743,6 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   zIndex: 1,
                 }}
               >
-            {/* Pending Swaps Badge - Top Right Corner (only when swaps feature is enabled) */}
-            {isFeatureEnabled('enableSwaps') && pendingSwaps && pendingSwaps.filter(s => s.status === 'pending' || s.status === 'confirming').length > 0 && (
-              <Box
-                position="absolute"
-                top={4}
-                right={4}
-                zIndex={10}
-                px={3}
-                py={2}
-                borderRadius="lg"
-                bg="blue.900"
-                borderWidth="2px"
-                borderColor="blue.500"
-                boxShadow="0 4px 12px rgba(66, 153, 225, 0.3)"
-                cursor="pointer"
-                _hover={{
-                  bg: "blue.800",
-                  borderColor: "blue.400",
-                  transform: "scale(1.05)",
-                }}
-                transition="all 0.2s"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Check if swap feature is enabled before navigating
-                  if (isFeatureEnabled('enableSwaps')) {
-                    // Navigate to ETH swap view (safe default that always exists)
-                    const ethCaip = 'eip155:1/slip44:60';
-                    router.push(`/asset/${btoa(ethCaip)}?view=swap`);
-                  } else {
-                    logger.warn('🚫 [Dashboard] Swap feature is disabled');
-                  }
-                }}
-              >
-                <VStack gap={1} align="center">
-                  <Text fontSize="xs" color="blue.300" fontWeight="bold">
-                    ⏳ PENDING
-                  </Text>
-                  <Text fontSize="2xl" color="blue.200" fontWeight="bold">
-                    {pendingSwaps.filter(s => s.status === 'pending' || s.status === 'confirming').length}
-                  </Text>
-                  <Text fontSize="2xs" color="blue.400">
-                    swaps
-                  </Text>
-                </VStack>
-              </Box>
-            )}
-
             <Flex
               justify="center"
               align="center"
@@ -1213,15 +1171,15 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 </Box>
                               </Box>
                               <HStack gap={2} align="center">
-                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
+                                <Text fontSize="sm" color="white" fontWeight="medium">
                                   {integer}.{largePart}
-                                  <Text as="span" fontSize="xs" color="gray.300">
+                                  <Text as="span" fontSize="xs" color="white">
                                     {smallPart}
                                   </Text>
                                 </Text>
-                                <Text 
-                                  fontSize="xs" 
-                                  color="gray.400"
+                                <Text
+                                  fontSize="xs"
+                                  color="white"
                                   fontWeight="medium"
                                 >
                                   {network.gasAssetSymbol}
@@ -1330,7 +1288,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             <Stack align="flex-end" gap={0.5}>
                               <Text
                                 fontSize="md"
-                                color={network.color}
+                                color="white"
                                 fontWeight="medium"
                               >
                                 $<CountUp
@@ -1343,7 +1301,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               </Text>
                               <Text
                                 fontSize="xs"
-                                color={`${network.color}80`}
+                                color="white"
                                 fontWeight="medium"
                                 px={1}
                                 py={0.5}
@@ -1357,18 +1315,21 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             <Button
                               size="sm"
                               variant="solid"
-                              bg={network.color}
-                              color="black"
+                              bg="#000000"
+                              color="white"
                               fontWeight="bold"
                               px={4}
                               py={2}
                               borderRadius="lg"
+                              borderWidth="2px"
+                              borderColor={network.color}
                               boxShadow={`0 2px 8px ${network.color}40`}
                               _hover={{
-                                bg: network.color,
+                                bg: `${network.color}15`,
                                 transform: 'translateY(-1px)',
                                 boxShadow: `0 4px 12px ${network.color}60`,
-                                filter: 'brightness(1.1)',
+                                borderColor: network.color,
+                                filter: 'brightness(1.2)',
                               }}
                               _active={{
                                 transform: 'translateY(0px)',
@@ -1435,30 +1396,52 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             // Filter tokens from balances if we have balances
             let tokenBalances: any[] = [];
             if (app?.balances) {
+              // DEBUG: Log total balances available
+              logger.debug('🔍 [Dashboard] STARTING TOKEN FILTER - Total balances:', app.balances.length);
+
+              // DEBUG: Show sample balance structure
+              if (app.balances.length > 0) {
+                logger.debug('🔍 [Dashboard] Sample balance object structure:', {
+                  firstBalance: app.balances[0],
+                  keys: Object.keys(app.balances[0])
+                });
+              }
+
               tokenBalances = app.balances.filter((balance: any) => {
-                // Check explicit type first
-                if (balance.type === 'token') return true;
-                
-                // Check CAIP pattern
+                // CRITICAL FIX: Pioneer SDK uses `.token` field, NOT `.type`
+                // Check explicit token flag first (matches Pioneer SDK test pattern)
+                const hasTokenFlag = balance.token === true;
+
+                // Check CAIP pattern for additional token detection
                 const isToken = isTokenCaip(balance.caip);
-                
+
                 // Only show tokens that have a balance > 0
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
-                
-                // Debug logging for each balance
-                // if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
-                //   logger.debug('🔍 [Dashboard] Checking balance for token classification:', {
-                //     caip: balance.caip,
-                //     symbol: balance.symbol,
-                //     balance: balance.balance,
-                //     type: balance.type,
-                //     isToken: isToken,
-                //     hasBalance: hasBalance,
-                //     willInclude: isToken && hasBalance
-                //   });
-                // }
-                
-                return isToken && hasBalance;
+
+                // DEBUG: Log every potential token
+                if (hasTokenFlag || isToken || balance.caip?.includes('erc20') || balance.caip?.includes('bep20')) {
+                  logger.debug('🪙 [Dashboard] Token candidate:', {
+                    symbol: balance.symbol || balance.ticker,
+                    caip: balance.caip,
+                    balance: balance.balance,
+                    valueUsd: balance.valueUsd,
+                    'balance.token': balance.token,
+                    'balance.type': balance.type,
+                    hasTokenFlag,
+                    isToken,
+                    hasBalance,
+                    willInclude: (hasTokenFlag || isToken) && hasBalance
+                  });
+                }
+
+                return (hasTokenFlag || isToken) && hasBalance;
+              });
+
+              // DEBUG: Log final results
+              logger.debug('🪙 [Dashboard] Token filter complete:', {
+                totalBalances: app.balances.length,
+                tokensFound: tokenBalances.length,
+                tokenSymbols: tokenBalances.map((t: any) => t.symbol || t.ticker)
               });
 
               // Sort tokens by USD value (highest first)
@@ -1469,9 +1452,23 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               });
 
               // Debug logging for token detection
-              logger.debug('🪙 [Dashboard] Total balances:', app.balances.length);
-              //logger.debug('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
-              logger.debug('🪙 [Dashboard] Token balances found:', tokenBalances.length);
+              logger.debug('🪙 [Dashboard] FINAL - Total balances:', app.balances.length);
+              logger.debug('🪙 [Dashboard] FINAL - Token balances found:', tokenBalances.length);
+
+              // DEBUG: Show all balance CAIPs for analysis
+              if (tokenBalances.length === 0 && app.balances.length > 0) {
+                logger.warn('⚠️ [Dashboard] NO TOKENS FOUND! Sample balance CAIPs:',
+                  app.balances.slice(0, 10).map((b: any) => ({
+                    caip: b.caip,
+                    symbol: b.symbol,
+                    token: b.token,
+                    type: b.type,
+                    balance: b.balance
+                  }))
+                );
+              }
+            } else {
+              logger.warn('⚠️ [Dashboard] app.balances is null/undefined');
             }
 
             return (
@@ -2330,6 +2327,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
     {/* Chat Assistant - Global floating chat button */}
     <ChatPopup app={app} />
+
+    {/* Pending Swaps - Global floating swaps button */}
+    {isFeatureEnabled('enableSwaps') && <PendingSwapsPopup app={app} />}
     </>
   );
 };

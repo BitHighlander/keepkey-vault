@@ -158,7 +158,7 @@ export const CustomTokenDialog = ({
     ) {
       // Only auto-lookup if it's a valid contract address format
       if (isValidContractAddress(trimmedQuery)) {
-        console.log('🔍 Auto-detecting contract address lookup:', trimmedQuery);
+        //console.log('🔍 Auto-detecting contract address lookup:', trimmedQuery);
         // Small delay to debounce typing
         const timer = setTimeout(() => {
           handleLookupToken(trimmedQuery);
@@ -184,15 +184,15 @@ export const CustomTokenDialog = ({
   };
 
   const handleToggleToken = async (token: CustomToken) => {
-    console.log('🎯 Token clicked:', token.symbol, token.address, 'on', token.networkId);
+    //console.log('🎯 Token clicked:', token.symbol, token.address, 'on', token.networkId);
     const isAdded = isTokenAdded(token);
-    console.log('Token is already added:', isAdded);
+    //console.log('Token is already added:', isAdded);
 
     if (isAdded) {
-      console.log('Removing token...');
+      //console.log('Removing token...');
       onRemoveToken(token.networkId, token.address);
     } else {
-      console.log('Adding token...');
+      //console.log('Adding token...');
       setProcessingToken(token);
       setProcessingResult(null);
       setIsScanning(true);

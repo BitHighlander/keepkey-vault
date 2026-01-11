@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { usePioneerContext } from '@/components/providers/pioneer'
 import Asset from '@/components/asset/Asset'
 import {
   Box,
@@ -177,9 +178,13 @@ type ViewType = 'asset' | 'send' | 'receive' | 'swap';
 export default function AssetPage() {
   const params = useParams()
   const router = useRouter()
+  const { state } = usePioneerContext()
 
   // Track the current view instead of dialog state
   const [currentView, setCurrentView] = useState<ViewType>('asset')
+
+  // Get asset color from context
+  const assetColor = state?.app?.assetContext?.color || theme.gold
 
   // Decode the CAIP parameter - memoized to avoid recalculation
   const decodedCaip = useMemo(() => {
@@ -191,16 +196,33 @@ export default function AssetPage() {
     try {
       // Attempt to decode from Base64
       caip = atob(encodedCaip)
-      console.log('🔍 [AssetPage] Successfully decoded caip from Base64:', { encodedCaip, caip })
+      //console.log('🔍 [AssetPage] Successfully decoded caip from Base64:', { encodedCaip, caip })
     } catch (error) {
       // If Base64 decoding fails, use the original value
       caip = encodedCaip
-      console.log('🔍 [AssetPage] Using original caip (Base64 decoding failed):', { caip })
+      //console.log('🔍 [AssetPage] Using original caip (Base64 decoding failed):', { caip })
     }
 
-    console.log('🔍 [AssetPage] Final decoded parameter:', { caip })
+    //console.log('🔍 [AssetPage] Final decoded parameter:', { caip })
     return caip
   }, [params.caip])
+
+  // Override html and body background to allow our background image to show
+  useEffect(() => {
+    // Save original backgrounds
+    const originalBodyBackground = document.body.style.cssText;
+    const originalHtmlBackground = document.documentElement.style.cssText;
+
+    // Set both html and body background to transparent with !important
+    document.body.style.cssText = 'background: transparent !important;';
+    document.documentElement.style.cssText = 'background: transparent !important;';
+
+    // Restore original backgrounds on cleanup
+    return () => {
+      document.body.style.cssText = originalBodyBackground;
+      document.documentElement.style.cssText = originalHtmlBackground;
+    };
+  }, []);
 
   // Check for view query parameter and automatically open the appropriate view (ONLY ON INITIAL LOAD)
   useEffect(() => {
@@ -219,7 +241,7 @@ export default function AssetPage() {
 
         // Only update if it's a valid view
         if (['asset', 'send', 'receive', 'swap'].includes(validView)) {
-          console.log('🔍 [AssetPage] Auto-opening view from query parameter:', validView)
+          //console.log('🔍 [AssetPage] Auto-opening view from query parameter:', validView)
           setCurrentView(validView)
         }
       }
@@ -240,7 +262,7 @@ export default function AssetPage() {
       }
     } else {
       // If already in asset view, go back to dashboard
-      console.log('🔙 [AssetPage] Navigating back to dashboard')
+      //console.log('🔙 [AssetPage] Navigating back to dashboard')
       router.push('/')
     }
   }
@@ -248,75 +270,136 @@ export default function AssetPage() {
   // Show loading state if CAIP is not decoded yet
   if (!decodedCaip) {
     return (
-      <Box height="100vh" bg={theme.bg} p={4}>
-        <Flex
-          justify="center"
-          align="center"
-          height="100%"
-          direction="column"
-          gap={6}
+      <>
+        {/* Fixed background layer */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: theme.bg,
+            backgroundImage: 'url(/images/backgrounds/splash-bg.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            zIndex: -1
+          }}
+        />
+        <Box
+          height="100vh"
+          p={{ base: 4, md: 6, lg: 8 }}
+          style={{ background: 'none' }}
         >
-          <Spinner color={theme.gold} size="xl" />
-          <Text color="gray.400">Loading asset...</Text>
-        </Flex>
-      </Box>
+          <Box
+            height={{ base: 'calc(100vh - 32px)', md: 'calc(100vh - 48px)', lg: 'calc(100vh - 64px)' }}
+            maxW={{ base: '100%', md: '768px', lg: '1200px' }}
+            mx="auto"
+            bg="rgba(0, 0, 0, 0.6)"
+            backdropFilter="blur(10px)"
+            borderRadius="2xl"
+            borderWidth="1px"
+            borderColor={`${assetColor}40`}
+            boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
+          >
+            <Flex
+              justify="center"
+              align="center"
+              height="100%"
+              direction="column"
+              gap={6}
+            >
+              <Spinner color={theme.gold} size="xl" />
+              <Text color="gray.400">Loading asset...</Text>
+            </Flex>
+          </Box>
+        </Box>
+      </>
     )
   }
 
   // Render the current view based on state
   return (
-    <Box
-      minH="100vh"
-      bg="black"
-      width="100%"
-    >
+    <>
+      {/* Fixed background layer */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: theme.bg,
+          backgroundImage: 'url(/images/backgrounds/splash-bg.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          zIndex: -1
+        }}
+      />
+
+      {/* Content layer */}
       <Box
-        height="100vh"
-        bg="black"
-        overflow="hidden"
-        position="relative"
-        maxW={{ base: '100%', md: '768px', lg: '1200px' }}
+        minH="100vh"
         width="100%"
-        mx="auto"
+        style={{ background: 'none' }}
+        p={{ base: 4, md: 6, lg: 8 }}
       >
         <Box
-          height="100%"
-          overflowY="auto"
-          overflowX="hidden"
-          {...scrollbarStyles}
+          height={{ base: 'calc(100vh - 32px)', md: 'calc(100vh - 48px)', lg: 'calc(100vh - 64px)' }}
+          overflow="hidden"
+          position="relative"
+          maxW={{ base: '100%', md: '768px', lg: '1200px' }}
+          width="100%"
+          mx="auto"
+          bg="rgba(0, 0, 0, 0.6)"
+          backdropFilter="blur(10px)"
+          borderRadius="2xl"
+          borderWidth="1px"
+          borderColor={`${assetColor}40`}
+          boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
         >
-          {currentView === 'asset' && (
-            <Asset
-              key={decodedCaip}
-              caip={decodedCaip}
-              onBackClick={handleBack}
-              onSendClick={() => setCurrentView('send')}
-              onReceiveClick={() => setCurrentView('receive')}
-              onSwapClick={() => {
-                // Check feature flag before allowing swap navigation
-                if (isFeatureEnabled('enableSwaps')) {
-                  setCurrentView('swap')
-                } else {
-                  console.warn('🚫 [AssetPage] Swap feature is disabled')
-                }
-              }}
-            />
-          )}
+          <Box
+            height="100%"
+            overflowY="auto"
+            overflowX="hidden"
+            style={{ background: 'none' }}
+            {...scrollbarStyles}
+          >
+            {currentView === 'asset' && (
+              <Asset
+                key={decodedCaip}
+                caip={decodedCaip}
+                onBackClick={handleBack}
+                onSendClick={() => setCurrentView('send')}
+                onReceiveClick={() => setCurrentView('receive')}
+                onSwapClick={() => {
+                  // Check feature flag before allowing swap navigation
+                  if (isFeatureEnabled('enableSwaps')) {
+                    setCurrentView('swap')
+                  } else {
+                    console.warn('🚫 [AssetPage] Swap feature is disabled')
+                  }
+                }}
+              />
+            )}
 
-          {currentView === 'send' && (
-            /* @ts-ignore */
-            <Send onBackClick={handleBack} />
-          )}
+            {currentView === 'send' && (
+              /* @ts-ignore */
+              <Send onBackClick={handleBack} />
+            )}
 
-          {currentView === 'receive' && (
-            <Receive onBackClick={handleBack} />
-          )}
+            {currentView === 'receive' && (
+              <Receive onBackClick={handleBack} />
+            )}
 
-          {currentView === 'swap' && isFeatureEnabled('enableSwaps') && (
-            <Swap onBackClick={handleBack} />
-          )}
+            {currentView === 'swap' && isFeatureEnabled('enableSwaps') && (
+              <Swap onBackClick={handleBack} />
+            )}
+          </Box>
         </Box>
       </Box>
-    </Box>
+    </>
   )
 } 

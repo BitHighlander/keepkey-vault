@@ -455,7 +455,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
               </Box>
             )}
 
-            {/* Swap Metadata */}
+            {/* Enhanced Swap Metadata */}
             {tx.swapMetadata && tx.swapMetadata.isSwap && (
               <Box
                 bg={`${assetColor}08`}
@@ -464,13 +464,46 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                 borderColor={`${assetColor}55`}
                 p={5}
               >
-                <HStack mb={4}>
-                  <Text fontSize="xl">💱</Text>
-                  <Text color={assetColor} fontSize="lg" fontWeight="bold">
-                    Swap Details
-                  </Text>
+                <HStack mb={4} justify="space-between">
+                  <HStack>
+                    <Text fontSize="xl">💱</Text>
+                    <Text color={assetColor} fontSize="lg" fontWeight="bold">
+                      Swap Details
+                    </Text>
+                  </HStack>
+                  {/* Swap Status Badge */}
+                  {tx.swapMetadata.status && (
+                    <Badge
+                      colorScheme={
+                        tx.swapMetadata.status === 'completed' ? 'green' :
+                        tx.swapMetadata.status === 'output_confirmed' ? 'green' :
+                        tx.swapMetadata.status === 'output_detected' ? 'blue' :
+                        tx.swapMetadata.status === 'output_confirming' ? 'blue' :
+                        tx.swapMetadata.status === 'confirming' ? 'blue' :
+                        tx.swapMetadata.status === 'pending' ? 'yellow' :
+                        tx.swapMetadata.status === 'failed' ? 'red' :
+                        tx.swapMetadata.status === 'refunded' ? 'orange' :
+                        'gray'
+                      }
+                      fontSize="sm"
+                      px={3}
+                      py={1}
+                    >
+                      {tx.swapMetadata.status === 'output_detected' ? '🎯 OUTPUT DETECTED' :
+                       tx.swapMetadata.status === 'output_confirming' ? '⏳ CONFIRMING OUTPUT' :
+                       tx.swapMetadata.status === 'output_confirmed' ? '✅ OUTPUT CONFIRMED' :
+                       tx.swapMetadata.status === 'completed' ? '✅ COMPLETED' :
+                       tx.swapMetadata.status === 'confirming' ? '⏳ CONFIRMING' :
+                       tx.swapMetadata.status === 'pending' ? '⏳ PENDING' :
+                       tx.swapMetadata.status === 'failed' ? '❌ FAILED' :
+                       tx.swapMetadata.status === 'refunded' ? '🔄 REFUNDED' :
+                       tx.swapMetadata.status?.toUpperCase()}
+                    </Badge>
+                  )}
                 </HStack>
+
                 <VStack gap={4} align="stretch">
+                  {/* Asset Pair */}
                   <Grid templateColumns="1fr 1fr" gap={4}>
                     <Box
                       bg={`${assetColor}05`}
@@ -485,6 +518,11 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                       <Text color="white" fontSize="sm" fontWeight="bold">
                         {tx.swapMetadata.fromAsset || 'N/A'}
                       </Text>
+                      {tx.swapMetadata.fromAmount && (
+                        <Text color={assetColor} fontSize="xs" mt={1}>
+                          {tx.swapMetadata.fromAmount}
+                        </Text>
+                      )}
                     </Box>
                     <Box
                       bg={`${assetColor}05`}
@@ -499,57 +537,276 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                       <Text color="white" fontSize="sm" fontWeight="bold">
                         {tx.swapMetadata.toAsset || 'N/A'}
                       </Text>
+                      {tx.swapMetadata.toAmount && (
+                        <Text color={assetColor} fontSize="xs" mt={1}>
+                          {tx.swapMetadata.toAmount}
+                        </Text>
+                      )}
                     </Box>
                   </Grid>
-                  {tx.swapMetadata.protocol && (
-                    <Box>
+
+                  {/* Protocol Integration */}
+                  {tx.swapMetadata.integration && (
+                    <Box
+                      bg={`${assetColor}05`}
+                      p={3}
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                    >
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
-                        Protocol
+                        Integration
                       </Text>
-                      <Text color="white" fontSize="sm">{tx.swapMetadata.protocol}</Text>
+                      <Text color="white" fontSize="sm">
+                        {tx.swapMetadata.integration === 'thorchain' ? 'THORChain' :
+                         tx.swapMetadata.integration === 'mayachain' ? 'Maya Protocol' :
+                         tx.swapMetadata.integration}
+                      </Text>
                     </Box>
                   )}
-                  {tx.swapMetadata.fromAmount && (
-                    <Box>
+
+                  {/* Confirmation Progress - Input Transaction */}
+                  {tx.swapMetadata.confirmations !== undefined && (
+                    <Box
+                      bg={`${assetColor}05`}
+                      p={3}
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                    >
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
-                        Amount
+                        Input Transaction Confirmations
                       </Text>
-                      <Text color={assetColor} fontSize="md" fontWeight="bold">
-                        {tx.swapMetadata.fromAmount}
+                      <Text color="white" fontSize="sm">
+                        {tx.swapMetadata.confirmations} confirmations
                       </Text>
                     </Box>
                   )}
+
+                  {/* Confirmation Progress - Output Transaction */}
+                  {tx.swapMetadata.outboundConfirmations !== undefined && (
+                    <Box
+                      bg={`${assetColor}05`}
+                      p={3}
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={theme.border}
+                    >
+                      <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
+                        Output Transaction Confirmations
+                      </Text>
+                      <HStack>
+                        <Text color={assetColor} fontSize="lg" fontWeight="bold">
+                          {tx.swapMetadata.outboundConfirmations}
+                        </Text>
+                        {tx.swapMetadata.outboundRequiredConfirmations && (
+                          <Text color="gray.400" fontSize="sm">
+                            / {tx.swapMetadata.outboundRequiredConfirmations} required
+                          </Text>
+                        )}
+                      </HStack>
+                      {tx.swapMetadata.outboundRequiredConfirmations && (
+                        <Box
+                          mt={2}
+                          h="6px"
+                          bg="gray.700"
+                          borderRadius="full"
+                          overflow="hidden"
+                        >
+                          <Box
+                            h="100%"
+                            bg={assetColor}
+                            w={`${Math.min(100, (tx.swapMetadata.outboundConfirmations / tx.swapMetadata.outboundRequiredConfirmations) * 100)}%`}
+                            transition="width 0.3s"
+                          />
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Timing Information */}
+                  {tx.swapMetadata.createdAt && (
+                    <Grid templateColumns="1fr 1fr" gap={4}>
+                      <Box
+                        bg={`${assetColor}05`}
+                        p={3}
+                        borderRadius="md"
+                        borderWidth="1px"
+                        borderColor={theme.border}
+                      >
+                        <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
+                          Created
+                        </Text>
+                        <Text color="white" fontSize="xs">
+                          {new Date(tx.swapMetadata.createdAt).toLocaleString()}
+                        </Text>
+                      </Box>
+                      {tx.swapMetadata.outputDetectedAt && (
+                        <Box
+                          bg={`${assetColor}05`}
+                          p={3}
+                          borderRadius="md"
+                          borderWidth="1px"
+                          borderColor={theme.border}
+                        >
+                          <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
+                            Output Detected
+                          </Text>
+                          <Text color="white" fontSize="xs">
+                            {new Date(tx.swapMetadata.outputDetectedAt).toLocaleString()}
+                          </Text>
+                        </Box>
+                      )}
+                    </Grid>
+                  )}
+
+                  {/* Inbound Transaction */}
                   {tx.swapMetadata.inboundTxHash && (
                     <Box>
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
-                        Inbound TX
+                        Inbound Transaction
                       </Text>
-                      <Code
-                        fontSize="xs"
-                        fontFamily="mono"
-                        color={assetColor}
-                        bg={`${assetColor}11`}
-                        p={2}
-                        borderRadius="md"
-                      >
-                        {tx.swapMetadata.inboundTxHash.substring(0, 32)}...
-                      </Code>
+                      <HStack gap={2}>
+                        <Code
+                          fontSize="xs"
+                          fontFamily="mono"
+                          color={assetColor}
+                          bg={`${assetColor}11`}
+                          p={2}
+                          borderRadius="md"
+                          flex="1"
+                          borderWidth="1px"
+                          borderColor={`${assetColor}22`}
+                        >
+                          {tx.swapMetadata.inboundTxHash}
+                        </Code>
+                        <Box
+                          as="button"
+                          onClick={() => copyToClipboard(tx.swapMetadata.inboundTxHash)}
+                          color={assetColor}
+                          _hover={{ color: assetColorHover, transform: 'scale(1.1)' }}
+                          p={2}
+                          transition="all 0.2s"
+                          bg={`${assetColor}11`}
+                          borderRadius="md"
+                        >
+                          <FaCopy size={14} />
+                        </Box>
+                      </HStack>
                     </Box>
                   )}
+
+                  {/* Outbound Transaction */}
                   {tx.swapMetadata.outboundTxHash && (
                     <Box>
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
-                        Outbound TX
+                        Outbound Transaction
+                      </Text>
+                      <HStack gap={2}>
+                        <Code
+                          fontSize="xs"
+                          fontFamily="mono"
+                          color={assetColor}
+                          bg={`${assetColor}11`}
+                          p={2}
+                          borderRadius="md"
+                          flex="1"
+                          borderWidth="1px"
+                          borderColor={`${assetColor}22`}
+                        >
+                          {tx.swapMetadata.outboundTxHash}
+                        </Code>
+                        <Box
+                          as="button"
+                          onClick={() => copyToClipboard(tx.swapMetadata.outboundTxHash)}
+                          color={assetColor}
+                          _hover={{ color: assetColorHover, transform: 'scale(1.1)' }}
+                          p={2}
+                          transition="all 0.2s"
+                          bg={`${assetColor}11`}
+                          borderRadius="md"
+                        >
+                          <FaCopy size={14} />
+                        </Box>
+                        {tx.swapMetadata.integration === 'thorchain' && (
+                          <Box
+                            as="a"
+                            href={`https://viewblock.io/thorchain/tx/${tx.swapMetadata.outboundTxHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            color={assetColor}
+                            _hover={{ color: assetColorHover, transform: 'scale(1.1)' }}
+                            p={2}
+                            transition="all 0.2s"
+                            bg={`${assetColor}11`}
+                            borderRadius="md"
+                          >
+                            <FaExternalLinkAlt size={14} />
+                          </Box>
+                        )}
+                      </HStack>
+                    </Box>
+                  )}
+
+                  {/* Error Information */}
+                  {tx.swapMetadata.error && (
+                    <Box
+                      bg="red.900"
+                      borderWidth="1px"
+                      borderColor="red.500"
+                      p={4}
+                      borderRadius="md"
+                    >
+                      <HStack mb={2}>
+                        <Text fontSize="lg">⚠️</Text>
+                        <Text color="red.300" fontSize="sm" fontWeight="bold">
+                          {tx.swapMetadata.error.type || 'Error'}
+                        </Text>
+                        {tx.swapMetadata.error.severity && (
+                          <Badge
+                            colorScheme={tx.swapMetadata.error.severity === 'ERROR' ? 'red' : 'yellow'}
+                            fontSize="xs"
+                          >
+                            {tx.swapMetadata.error.severity}
+                          </Badge>
+                        )}
+                      </HStack>
+                      {tx.swapMetadata.error.userMessage && (
+                        <Text color="red.200" fontSize="sm" mb={2}>
+                          {tx.swapMetadata.error.userMessage}
+                        </Text>
+                      )}
+                      {tx.swapMetadata.error.actionable && (
+                        <Text color="orange.300" fontSize="xs" fontStyle="italic">
+                          💡 {tx.swapMetadata.error.actionable}
+                        </Text>
+                      )}
+                      {tx.swapMetadata.error.message && (
+                        <Text color="gray.400" fontSize="xs" mt={2} fontFamily="mono">
+                          Technical: {tx.swapMetadata.error.message}
+                        </Text>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Swap Memo */}
+                  {tx.swapMetadata.memo && (
+                    <Box>
+                      <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
+                        Swap Memo
                       </Text>
                       <Code
                         fontSize="xs"
                         fontFamily="mono"
-                        color={assetColor}
+                        color="white"
                         bg={`${assetColor}11`}
                         p={2}
                         borderRadius="md"
+                        display="block"
+                        borderWidth="1px"
+                        borderColor={`${assetColor}22`}
                       >
-                        {tx.swapMetadata.outboundTxHash.substring(0, 32)}...
+                        {tx.swapMetadata.memo}
                       </Code>
                     </Box>
                   )}

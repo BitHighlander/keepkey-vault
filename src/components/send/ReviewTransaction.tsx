@@ -41,6 +41,7 @@ interface ReviewTransactionProps {
   memo?: string
   estimatedFee: string
   estimatedFeeUsd: string
+  feeSymbol: string
   balance: string
   isMax: boolean
   isUsdInput: boolean
@@ -83,6 +84,7 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
   memo,
   estimatedFee,
   estimatedFeeUsd,
+  feeSymbol,
   balance,
   isMax,
   isUsdInput,
@@ -278,7 +280,7 @@ export const ReviewTransaction: React.FC<ReviewTransactionProps> = ({
                   </Text>
                   <Box textAlign="right">
                     <Text color="white" fontSize="sm">
-                      {estimatedFee} {assetContext.symbol}
+                      {estimatedFee} {feeSymbol}
                     </Text>
                     <Text color="gray.400" fontSize="xs">
                       ≈ ${estimatedFeeUsd} USD

@@ -7,18 +7,37 @@ export interface PendingSwap {
     caip: string;
     symbol: string;
     amount: string;
+    icon?: string;
+    name?: string;
   };
   buyAsset: {
     caip: string;
     symbol: string;
     amount: string;
+    icon?: string;
+    name?: string;
   };
-  status: 'pending' | 'confirming' | 'completed' | 'failed' | 'refunded';
+  status: 'pending' | 'confirming' | 'completed' | 'failed' | 'refunded' | 'output_detected' | 'output_confirming' | 'output_confirmed';
   confirmations: number;
   createdAt: string;
   integration: string;
+  // Enhanced swap metadata from event system
+  outboundConfirmations?: number;
+  outboundRequiredConfirmations?: number;
+  outputDetectedAt?: string;
+  quote?: {
+    memo?: string;
+  };
+  error?: {
+    type?: string;
+    severity?: string;
+    userMessage?: string;
+    actionable?: string;
+    message?: string;
+  };
   thorchainData?: {
     outboundTxHash?: string;
+    swapStatus?: string;
   };
 }
 
@@ -39,23 +58,23 @@ export const usePendingSwaps = () => {
     app?.pubkeys?.find((p: any) => p.address)?.address ||
     '';
   
-  console.log('🔍 [usePendingSwaps] Using address:', userAddress);
+  //console.log('🔍 [usePendingSwaps] Using address:', userAddress);
 
   // Fetch pending swaps - EXACT PATTERN from useCustomTokens
   const fetchPendingSwaps = useCallback(async () => {
     if (!userAddress || !app?.pioneer) {
-      console.log('⏭️ [usePendingSwaps] Skipping fetch:', { userAddress, hasPioneer: !!app?.pioneer });
+      //console.log('⏭️ [usePendingSwaps] Skipping fetch:', { userAddress, hasPioneer: !!app?.pioneer });
       return;
     }
     
-    console.log('🔍 [usePendingSwaps] Fetching for address:', userAddress);
+    //console.log('🔍 [usePendingSwaps] Fetching for address:', userAddress);
 
     try {
       setIsLoading(true);
       setError(null);
 
       if (typeof app.pioneer.GetAddressPendingSwaps !== 'function') {
-        console.log('⚠️ GetAddressPendingSwaps not available');
+        //console.log('⚠️ GetAddressPendingSwaps not available');
         return;
       }
 

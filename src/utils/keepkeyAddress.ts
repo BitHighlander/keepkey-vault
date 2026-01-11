@@ -188,13 +188,13 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
   // UTXO: Bitcoin, Litecoin, Dogecoin, etc.
   const isAccountBased = networkType !== 'UTXO';
 
-  console.log('🔍 [KeepKey] Chain type:', {
-    networkType,
-    isAccountBased,
-    pathMaster,
-    receiveIndex,
-    willModifyPath: !isAccountBased
-  });
+  // console.log('🔍 [KeepKey] Chain type:', {
+  //   networkType,
+  //   isAccountBased,
+  //   pathMaster,
+  //   receiveIndex,
+  //   willModifyPath: !isAccountBased
+  // });
 
   // Build address info for KeepKey SDK
   const addressInfo: any = {
@@ -212,7 +212,7 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
     addressInfo.coin = coin;
   }
 
-  console.log('🔑 [KeepKey] Address info for device:', addressInfo);
+  //console.log('🔑 [KeepKey] Address info for device:', addressInfo);
 
   let address: string;
   
@@ -243,15 +243,15 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
       throw new Error(`Unsupported network type "${networkType}" for networkId: ${networkId}`);
   }
 
-  console.log('✅ [KeepKey] Device provided address:', address);
+  //console.log('✅ [KeepKey] Device provided address:', address);
 
   // Verify address matches if expected address is provided
   if (expectedAddress) {
-    console.log('🔍 [KeepKey] Expected address:', expectedAddress);
+    //console.log('🔍 [KeepKey] Expected address:', expectedAddress);
     if (address !== expectedAddress) {
       throw new Error(`Address verification failed! Device: ${address}, Expected: ${expectedAddress}`);
     }
-    console.log('✅ [KeepKey] Address verification successful!');
+    //console.log('✅ [KeepKey] Address verification successful!');
   }
 
   return address;

@@ -66,7 +66,7 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
   // Clean and validate primary URL
   const cleanUrl = useMemo(() => {
     if (!src || src.trim() === '') {
-      if (debug) console.log('🖼️ [AssetIcon] No primary URL provided');
+      console.log('🖼️ [AssetIcon] No primary URL provided');
       return null;
     }
 

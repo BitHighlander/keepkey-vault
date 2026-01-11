@@ -1,19 +1,21 @@
 /**
  * Payment Notification System - Asset Icon Service
  *
- * Fetches and caches asset icons from Pioneer Discovery API with:
+ * Uses REAL asset data from @pioneer-platform/pioneer-discovery with:
  * - LRU cache (100 entries, 1-hour TTL)
- * - Fallback to letter avatar if icon unavailable
+ * - Direct lookup from pioneer-discovery assetData
  * - Batch preloading for common assets
  * - SSR-safe implementation
+ *
+ * NO MOCKING - All data comes from pioneer-discovery package
  */
 
 import type { IconCache, IconCacheEntry } from '@/types/events'
+import { assetData } from '@pioneer-platform/pioneer-discovery'
 
 const ICON_CACHE_KEY = 'payment_icon_cache'
 const MAX_CACHE_SIZE = 100
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
-const PIONEER_DISCOVERY_API = 'https://pioneers.dev/api/v1'
 
 /**
  * Common assets to preload on initialization
@@ -142,25 +144,30 @@ class AssetIconService {
   }
 
   /**
-   * Fetch icon URL from Pioneer Discovery API
+   * Fetch icon URL from pioneer-discovery assetData (NO API CALL)
+   * Uses REAL data directly from the package - NO MOCKING
    */
   private async fetchIconFromApi(caip: string): Promise<string | null> {
     try {
-      // Encode CAIP for URL (replace / with :)
-      const encodedCaip = encodeURIComponent(caip)
-      const url = `${PIONEER_DISCOVERY_API}/assets/${encodedCaip}/icon`
+      // Look up asset in pioneer-discovery data
+      const asset = (assetData as any)[caip]
 
-      const response = await fetch(url)
-      if (!response.ok) {
-        console.log(`[AssetIconService] Icon not found for ${caip}`)
+      if (!asset) {
+        console.log(`[AssetIconService] Asset not found in pioneer-discovery for ${caip}`)
         return null
       }
 
-      // API returns JSON with icon URL
-      const data = await response.json()
-      return data.icon || data.url || null
+      // Return the icon URL directly from assetData
+      const iconUrl = asset.icon
+      if (!iconUrl) {
+        console.log(`[AssetIconService] No icon URL available for ${caip}`)
+        return null
+      }
+
+      console.log(`[AssetIconService] Found icon for ${caip}: ${iconUrl}`)
+      return iconUrl
     } catch (error) {
-      console.error(`[AssetIconService] API error for ${caip}:`, error)
+      console.error(`[AssetIconService] Error looking up ${caip}:`, error)
       return null
     }
   }

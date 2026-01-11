@@ -82,7 +82,7 @@ export const ReportDialog: React.FC<ReportDialogProps> = ({ isOpen, onClose, ass
       // Generate and download the PDF
       await generator.generatePDF(reportData);
       
-      console.log(`${networkType} report generated successfully`);
+      //console.log(`${networkType} report generated successfully`);
       onClose();
     } catch (error) {
       console.error('Error generating report:', error);

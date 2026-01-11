@@ -48,12 +48,12 @@ const EVM_NETWORKS = [
 export const useFeeRates = (networkId: string, assetId?: string): UseFeeRatesResult => {
   const { app } = usePioneerContext();
 
-  console.log('[useFeeRates] Hook called with:', {
-    networkId,
-    assetId,
-    hasApp: !!app,
-    hasFees: !!app?.getFees
-  });
+  // console.log('[useFeeRates] Hook called with:', {
+  //   networkId,
+  //   assetId,
+  //   hasApp: !!app,
+  //   hasFees: !!app?.getFees
+  // });
 
   const [feeOptions, setFeeOptions] = useState<FeeRatesData>({
     slow: '0',

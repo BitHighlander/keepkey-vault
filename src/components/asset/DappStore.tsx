@@ -53,20 +53,20 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
     const fetchDapps = async () => {
       setLoading(true);
       try {
-        console.log('🔍 [DappStore] Fetching dapps for networkId:', networkId);
+        //console.log('🔍 [DappStore] Fetching dapps for networkId:', networkId);
 
         // Try to fetch from Pioneer API if available
         let apiDapps: Dapp[] = [];
         if (app?.pioneer?.SearchDappsByNetworkId) {
           try {
             const result = await app.pioneer.SearchDappsByNetworkId({ networkId });
-            console.log('✅ [DappStore] Pioneer API response:', result);
+            //console.log('✅ [DappStore] Pioneer API response:', result);
             apiDapps = result?.data || [];
           } catch (error) {
             console.error('❌ [DappStore] Pioneer API error:', error);
           }
         } else {
-          console.log('⚠️ [DappStore] Pioneer API SearchDappsByNetworkId not available');
+          //console.log('⚠️ [DappStore] Pioneer API SearchDappsByNetworkId not available');
         }
 
         // TODO: Add support for local storage dapps when implementing custom dapp addition
@@ -81,7 +81,7 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
           return acc;
         }, []);
 
-        console.log('📊 [DappStore] Total unique dapps:', uniqueDapps.length);
+        //console.log('📊 [DappStore] Total unique dapps:', uniqueDapps.length);
         setDapps(uniqueDapps);
       } catch (error) {
         console.error('❌ [DappStore] Error fetching dapps:', error);
@@ -111,7 +111,7 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
   const handleDappClick = (dapp: Dapp) => {
     const url = dapp.url || dapp.app;
     if (url) {
-      console.log('🚀 [DappStore] Opening dapp:', dapp.name, url);
+      //console.log('🚀 [DappStore] Opening dapp:', dapp.name, url);
       window.open(url, '_blank');
     }
   };

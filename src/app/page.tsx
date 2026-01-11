@@ -53,6 +53,23 @@ export default function Home() {
   // Show loading state only when data is not ready
   const showLoading = !app?.dashboard;
 
+  // 🚨 CRITICAL DEBUG - Why is dashboard missing?
+  useEffect(() => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🟡 [PAGE.TSX] YELLOW LOGO STATUS');
+    console.log('🟡 showLoading:', showLoading);
+    console.log('🟡 pioneer:', !!pioneer);
+    console.log('🟡 state:', !!state);
+    console.log('🟡 app:', !!app);
+    console.log('🟡 app.dashboard:', !!app?.dashboard);
+    console.log('🟡 app.balances:', app?.balances?.length || 0);
+    console.log('🟡 app.pubkeys:', app?.pubkeys?.length || 0);
+    if (!app?.dashboard) {
+      console.error('🚨 [PAGE.TSX] DASHBOARD IS MISSING - THIS IS WHY YELLOW LOGO IS STUCK!');
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }, [showLoading, pioneer, state, app]);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
 

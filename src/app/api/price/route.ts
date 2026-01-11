@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   const pioneerSpec = process.env.NEXT_PUBLIC_PIONEER_URL || 'http://localhost:9001/spec/swagger.json';
   const PIONEER_URL = pioneerSpec.replace('/spec/swagger.json', '');
 
-  console.log(`💰 [Price API] Fetching price for ${caip} from ${PIONEER_URL}`);
+  //console.log(`💰 [Price API] Fetching price for ${caip} from ${PIONEER_URL}`);
 
   try {
     // Call Pioneer server's market info endpoint

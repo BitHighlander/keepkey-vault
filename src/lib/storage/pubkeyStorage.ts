@@ -49,7 +49,7 @@ export function isCacheEnabled(): boolean {
 export function setCacheEnabled(enabled: boolean): boolean {
   try {
     localStorage.setItem(STORAGE_KEYS.CACHE_ENABLED, String(enabled));
-    console.log(`✅ [PubkeyStorage] Cache ${enabled ? 'enabled' : 'disabled'}`);
+    //console.log(`✅ [PubkeyStorage] Cache ${enabled ? 'enabled' : 'disabled'}`);
     return true;
   } catch (error) {
     console.error('❌ [PubkeyStorage] Failed to set cache enabled:', error);
@@ -63,7 +63,7 @@ export function setCacheEnabled(enabled: boolean): boolean {
 export function savePubkeys(pubkeys: any[], deviceInfo: DeviceInfo): boolean {
   // Check if cache is enabled before saving
   if (!isCacheEnabled()) {
-    console.log('ℹ️ [PubkeyStorage] Cache disabled - skipping save');
+    //console.log('ℹ️ [PubkeyStorage] Cache disabled - skipping save');
     return false;
   }
 
@@ -80,11 +80,11 @@ export function savePubkeys(pubkeys: any[], deviceInfo: DeviceInfo): boolean {
     localStorage.setItem(STORAGE_KEYS.LAST_PAIRED, String(Date.now()));
     localStorage.setItem(STORAGE_KEYS.VERSION, STORAGE_VERSION);
 
-    console.log('✅ [PubkeyStorage] Saved pubkeys to localStorage:', {
-      count: pubkeys.length,
-      device: deviceInfo.label || 'Unknown',
-      timestamp: new Date().toISOString(),
-    });
+    // console.log('✅ [PubkeyStorage] Saved pubkeys to localStorage:', {
+    //   count: pubkeys.length,
+    //   device: deviceInfo.label || 'Unknown',
+    //   timestamp: new Date().toISOString(),
+    // });
 
     return true;
   } catch (error) {

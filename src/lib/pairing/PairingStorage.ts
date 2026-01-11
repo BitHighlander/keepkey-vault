@@ -80,9 +80,9 @@ class PairingStorageService {
       used: false,
     });
 
-    console.log(`✅ Created pairing: ${code} (expires in 15 min)`);
-    console.log(`   Device: ${label}`);
-    console.log(`   Pubkeys: ${pubkeys.length}`);
+    //console.log(`✅ Created pairing: ${code} (expires in 15 min)`);
+    //console.log(`   Device: ${label}`);
+    //console.log(`   Pubkeys: ${pubkeys.length}`);
 
     return {
       code,
@@ -118,7 +118,7 @@ class PairingStorageService {
 
     // Mark as used and return data
     pairing.used = true;
-    console.log(`✅ Pairing consumed: ${code}`);
+    //console.log(`✅ Pairing consumed: ${code}`);
 
     // Delete after returning (one-time use)
     this.pairings.delete(code);
@@ -141,7 +141,7 @@ class PairingStorageService {
     }
 
     if (cleaned > 0) {
-      console.log(`🧹 Cleaned up ${cleaned} expired pairings`);
+      //console.log(`🧹 Cleaned up ${cleaned} expired pairings`);
     }
   }
 

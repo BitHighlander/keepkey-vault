@@ -80,15 +80,15 @@ const Settings = ({ onClose }: SettingsProps) => {
         const isConnected = status === 'connected' ||
                           app.pioneer?.isConnected ||
                           (app.events && app.events.readyState === 1);
-        console.log('[Settings] Pioneer connection check:', {
-          status: status,
-          pioneerExists: !!app.pioneer,
-          pioneerIsConnected: app.pioneer?.isConnected,
-          eventsReady: app.events?.readyState
-        });
+        //console.log('[Settings] Pioneer connection check:', {
+        //  status: status,
+        //  pioneerExists: !!app.pioneer,
+        //  pioneerIsConnected: app.pioneer?.isConnected,
+        //  eventsReady: app.events?.readyState
+        //});
         setWssStatus(isConnected ? 'connected' : 'disconnected');
       } else {
-        console.log('[Settings] No app instance available');
+        //console.log('[Settings] No app instance available');
         setWssStatus('disconnected');
       }
     } catch (error) {
@@ -112,7 +112,7 @@ const Settings = ({ onClose }: SettingsProps) => {
     try {
       setLoading(true);
       // TODO: Implement clear storage functionality
-      console.log('Storage cleared');
+      //console.log('Storage cleared');
       onClose();
     } catch (error) {
       console.error('Error clearing storage:', error);
@@ -125,7 +125,7 @@ const Settings = ({ onClose }: SettingsProps) => {
     try {
       setLoading(true);
       // TODO: Implement force reset functionality
-      console.log('App reset');
+      //console.log('App reset');
       onClose();
     } catch (error) {
       console.error('Error resetting app:', error);
@@ -148,7 +148,7 @@ const Settings = ({ onClose }: SettingsProps) => {
         },
         '*'
       );
-      console.log('Provider announced');
+      //console.log('Provider announced');
       onClose();
     } catch (error) {
       console.error('Error announcing provider:', error);
@@ -160,7 +160,7 @@ const Settings = ({ onClose }: SettingsProps) => {
       const newValue = !cacheEnabled;
       setCacheEnabled(newValue);
       setCacheEnabledState(newValue);
-      console.log('View-only mode cache:', newValue ? 'enabled' : 'disabled');
+      //console.log('View-only mode cache:', newValue ? 'enabled' : 'disabled');
     } catch (error) {
       console.error('Error toggling cache:', error);
     }
@@ -172,7 +172,7 @@ const Settings = ({ onClose }: SettingsProps) => {
       if (success) {
         setHasCachedPubkeys(false);
         setCachedDeviceInfo(null);
-        console.log('Cache cleared successfully');
+        //console.log('Cache cleared successfully');
       }
     } catch (error) {
       console.error('Error clearing cache:', error);
@@ -184,7 +184,7 @@ const Settings = ({ onClose }: SettingsProps) => {
       localStorage.setItem('pioneerWss', wssInput);
       setPioneerWss(wssInput);
       setEditingWss(false);
-      console.log('Pioneer Server WSS URL updated:', wssInput);
+      //console.log('Pioneer Server WSS URL updated:', wssInput);
       checkPioneerServerStatus();
     } catch (error) {
       console.error('Error saving WSS URL:', error);
@@ -202,7 +202,7 @@ const Settings = ({ onClose }: SettingsProps) => {
   const handleReInitSdk = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Re-initializing Pioneer SDK with new configuration...');
+      //console.log('🔄 Re-initializing Pioneer SDK with new configuration...');
       // Force page reload to reinitialize with new config
       window.location.reload();
     } catch (error) {

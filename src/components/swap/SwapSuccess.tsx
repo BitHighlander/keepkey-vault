@@ -53,7 +53,7 @@ export const SwapSuccess = ({
         const decoded = Buffer.from(hexData, 'hex').toString('utf8');
         // THORChain memos are ASCII text, so this should work
         setDecodedMemo(decoded);
-        console.log('Decoded memo from tx data:', decoded);
+        //console.log('Decoded memo from tx data:', decoded);
       } catch (err) {
         console.error('Failed to decode memo from tx data:', err);
       }
@@ -78,7 +78,7 @@ export const SwapSuccess = ({
   // Get block explorer link from asset data
   // ALL assets MUST have explorerTxLink from Pioneer Discovery
   const getBlockExplorerLink = (): string | null => {
-    console.log('🔍 getBlockExplorerLink - fromAsset:', fromAsset);
+    //console.log('🔍 getBlockExplorerLink - fromAsset:', fromAsset);
 
     if (!fromAsset?.explorerTxLink) {
       console.error('❌ Missing explorerTxLink in asset data:', {
@@ -97,7 +97,7 @@ export const SwapSuccess = ({
       : `${fromAsset.explorerTxLink}/`;
 
     const explorerUrl = `${baseUrl}${txid}`;
-    console.log('✅ Block explorer URL:', explorerUrl);
+    //console.log('✅ Block explorer URL:', explorerUrl);
     return explorerUrl;
   };
 
@@ -180,7 +180,7 @@ export const SwapSuccess = ({
 
       if (response.ok) {
         setEmailStatus('success');
-        console.log('✅ Email sent successfully to:', userEmail);
+        //console.log('✅ Email sent successfully to:', userEmail);
         // Don't reset status for success - keep it visible
       } else {
         throw new Error('Failed to send email');

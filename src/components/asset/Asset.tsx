@@ -58,6 +58,8 @@ import { ReportDialog } from './ReportDialog';
 import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
+// @ts-expect-error - Pioneer CAIP utilities
+import { networkIdToCaip } from '@pioneer-platform/pioneer-caip';
 import { TransactionHistory } from './TransactionHistory';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
 import { AssetIcon } from '@/components/ui/AssetIcon';
@@ -112,6 +114,32 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   const { customTokens, addCustomToken, removeCustomToken, refreshCustomTokens } = useCustomTokens();
   // Add state for tracking copied addresses/pubkeys
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
+
+  // Helper: Get native asset info for a network
+  const getNativeAssetInfo = (networkId: string, balances?: any[]) => {
+    try {
+      // Get the native CAIP using Pioneer's utility
+      const nativeCaip = networkIdToCaip(networkId);
+
+      // Find the native asset balance (if available)
+      const nativeBalance = balances?.find((b: any) => b.caip === nativeCaip);
+
+      return {
+        caip: nativeCaip,
+        symbol: nativeBalance?.symbol || nativeBalance?.ticker || 'GAS',
+        priceUsd: nativeBalance?.priceUsd || nativeBalance?.price || '0',
+        balance: nativeBalance?.balance || '0'
+      };
+    } catch (error) {
+      logger.error('[getNativeAssetInfo] Error getting native asset info:', { networkId, error });
+      return {
+        caip: networkId,
+        symbol: 'GAS',
+        priceUsd: '0',
+        balance: '0'
+      };
+    }
+  };
   // Add state for refreshing charts
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Track which networks have been scanned to avoid duplicate token discovery
@@ -259,34 +287,41 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         tokenNetworkId = parts[0];
       }
 
-      // Map network to native asset
-      const nativeAssetMap: { [key: string]: { caip: string, symbol: string } } = {
-        'cosmos:mayachain-mainnet-v1': { caip: 'cosmos:mayachain-mainnet-v1/slip44:931', symbol: 'CACAO' },
-        'cosmos:thorchain-mainnet-v1': { caip: 'cosmos:thorchain-mainnet-v1/slip44:931', symbol: 'RUNE' },
-        'cosmos:osmosis-1': { caip: 'cosmos:osmosis-1/slip44:118', symbol: 'OSMO' },
-        'eip155:1': { caip: 'eip155:1/slip44:60', symbol: 'ETH' },
-        'eip155:137': { caip: 'eip155:137/slip44:60', symbol: 'MATIC' },
-        'eip155:43114': { caip: 'eip155:43114/slip44:60', symbol: 'AVAX' },
-        'eip155:56': { caip: 'eip155:56/slip44:60', symbol: 'BNB' },
-        'eip155:8453': { caip: 'eip155:8453/slip44:60', symbol: 'ETH' },
-        'eip155:10': { caip: 'eip155:10/slip44:60', symbol: 'ETH' },
-        'eip155:42161': { caip: 'eip155:42161/slip44:60', symbol: 'ETH' },
-      };
-
-      const nativeAssetInfo = nativeAssetMap[tokenNetworkId];
+      // Find native asset by looking for balances that start with the network ID
+      // Native assets don't have contract addresses, just networkId/slip44:*
       let nativeBalance = '0';
-      let nativeSymbol = nativeAssetInfo?.symbol || 'GAS';
+      let nativeSymbol = 'GAS';
 
-      if (nativeAssetInfo) {
-        const nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === nativeAssetInfo.caip);
-        if (nativeAssetBalance) {
-          nativeBalance = nativeAssetBalance.balance;
+      // Find native asset balance - it's the one with CAIP starting with tokenNetworkId and no contract
+      const nativeAssetBalance = app.balances?.find((balance: any) => {
+        // Must be on the same network
+        if (!balance.caip?.startsWith(tokenNetworkId)) return false;
+
+        // Native assets have format: networkId/slip44:* (no contract address after)
+        // Tokens have format: networkId/slip44:*/erc20:0x... or networkId/erc20:0x...
+        const parts = balance.caip.split('/');
+
+        // For EVM: native is "eip155:X/slip44:60", token is "eip155:X/erc20:0x..." or "eip155:X/slip44:60/erc20:0x..."
+        // For Cosmos: native is "cosmos:X/slip44:Y", token is "cosmos:X/slip44:Y/ibc:..." or similar
+        if (balance.caip.includes('/erc20:') || balance.caip.includes('/ibc:') || balance.caip.includes('/factory:')) {
+          return false; // This is a token, not native
         }
+
+        // Should have exactly 2 parts (networkId/slip44:*)
+        return parts.length === 2 && parts[1].startsWith('slip44:');
+      });
+
+      if (nativeAssetBalance) {
+        nativeBalance = nativeAssetBalance.balance || '0';
+        nativeSymbol = nativeAssetBalance.symbol || 'GAS';
       }
 
       // Get explorer info from assetsMap or fallback to network-specific defaults
       const assetInfo = app.assetsMap?.get(caip);
       const networkAssetInfo = app.assetsMap?.get(tokenNetworkId);
+
+      // Get native asset info for fees
+      const nativeAsset = getNativeAssetInfo(tokenNetworkId, app.balances);
 
       // Set token asset context
       const tokenAssetContextData = {
@@ -307,6 +342,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         type: 'token',
         nativeBalance: nativeBalance,
         nativeSymbol: nativeSymbol,
+        // CRITICAL: Native asset info for fee calculations
+        nativeAsset: nativeAsset,
         explorer: assetInfo?.explorer || networkAssetInfo?.explorer,
         explorerAddressLink: assetInfo?.explorerAddressLink || networkAssetInfo?.explorerAddressLink,
         explorerTxLink: assetInfo?.explorerTxLink || networkAssetInfo?.explorerTxLink,
@@ -443,6 +480,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       return false;
     });
 
+    // Get native asset info (for native assets, it's itself!)
+    const nativeAsset = getNativeAssetInfo(networkId, app.balances);
+
     const assetContextData = {
       ...nativeAssetBalance,
       caip: caip,
@@ -450,7 +490,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       color: nativeAssetBalance.color || app.assetsMap?.get(caip)?.color || app.assetsMap?.get(caip.toLowerCase())?.color || '#FFD700',
       ...(isCacao && { symbol: 'CACAO' }),
       // CRITICAL FIX: Add pubkeys for balance aggregation across all addresses
-      pubkeys: filteredPubkeys
+      pubkeys: filteredPubkeys,
+      // CRITICAL: Native asset info for fee calculations (itself for native assets)
+      nativeAsset: nativeAsset
     };
 
     logger.debug('✅ [Asset] Native asset data loaded:', assetContextData);
