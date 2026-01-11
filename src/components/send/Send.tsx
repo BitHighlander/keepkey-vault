@@ -1527,7 +1527,22 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('  - amountIsNaN:', isNaN(parseFloat(sendPayload.amount)));
       console.log('  - feeLevel:', sendPayload.feeLevel);
       console.log('  - customFee:', sendPayload.customFee);
+      console.log('  - isMax:', sendPayload.isMax);
+      console.log('  - assetContext.balance:', assetContext?.balance);
       console.log('  - Full payload:', JSON.stringify(sendPayload, null, 2));
+
+      // CRITICAL: When isMax is true, the SDK MUST have access to the balance
+      // The SDK will calculate: maxAmount = balance - estimatedFee
+      // If balance is undefined, the calculation becomes NaN
+      if (sendPayload.isMax) {
+        console.log('⚠️  isMax is TRUE - SDK will need balance to calculate max amount');
+        console.log('   Current assetContext:', {
+          symbol: assetContext?.symbol,
+          balance: assetContext?.balance,
+          caip: assetContext?.caip,
+          hasBalance: !!assetContext?.balance
+        });
+      }
 
       // Validate amount is a valid string number
       if (!sendPayload.amount || typeof sendPayload.amount !== 'string') {
