@@ -1519,18 +1519,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       });
 
       // CRITICAL: Validate the payload before sending to SDK to prevent NaN errors
-      logger.debug('🔍 [VALIDATION] Checking sendPayload before SDK call:', {
-        caip: sendPayload.caip,
-        to: sendPayload.to,
-        amount: sendPayload.amount,
-        amountType: typeof sendPayload.amount,
-        amountIsNaN: isNaN(parseFloat(sendPayload.amount)),
-        feeLevel: sendPayload.feeLevel,
-        customFee: sendPayload.customFee,
-        memo: sendPayload.memo,
-        changeScriptType: sendPayload.changeScriptType,
-        isMax: sendPayload.isMax
-      });
+      console.log('🔍 [VALIDATION] Checking sendPayload before SDK call:');
+      console.log('  - caip:', sendPayload.caip);
+      console.log('  - to:', sendPayload.to);
+      console.log('  - amount:', sendPayload.amount);
+      console.log('  - amountType:', typeof sendPayload.amount);
+      console.log('  - amountIsNaN:', isNaN(parseFloat(sendPayload.amount)));
+      console.log('  - feeLevel:', sendPayload.feeLevel);
+      console.log('  - customFee:', sendPayload.customFee);
+      console.log('  - Full payload:', JSON.stringify(sendPayload, null, 2));
 
       // Validate amount is a valid string number
       if (!sendPayload.amount || typeof sendPayload.amount !== 'string') {
@@ -1545,9 +1542,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Call the SDK's buildTx method
       let unsignedTxResult;
       try {
-        logger.debug('📤 [SDK CALL] Calling app.buildTx with payload:', JSON.stringify(sendPayload, null, 2));
+        console.log('📤 [SDK CALL] About to call app.buildTx with sendPayload...');
         unsignedTxResult = await app.buildTx(sendPayload);
-        logger.debug('✅ [SDK RESPONSE] Unsigned TX Result:', unsignedTxResult);
+        console.log('✅ [SDK RESPONSE] Successfully received unsigned TX result:', unsignedTxResult);
       } catch (buildError: any) {
         logger.error('❌ [SDK ERROR] Transaction build error:', buildError);
         logger.error('❌ [SDK ERROR] Failed payload was:', sendPayload);
