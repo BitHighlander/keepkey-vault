@@ -869,17 +869,69 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const usdToNative = (usdAmount: string) => convertUsdToNative(usdAmount, assetContext?.priceUsd);
   const nativeToUsd = (nativeAmount: string) => convertNativeToUsd(nativeAmount, assetContext?.priceUsd);
 
+  // Helper: Get native asset info for a network (similar to Asset.tsx)
+  const getNativeAssetInfo = (networkId: string, balances?: any[]) => {
+    try {
+      // @ts-expect-error - Pioneer CAIP utilities
+      const { networkIdToCaip } = require('@pioneer-platform/pioneer-caip');
+      // Get the native CAIP using Pioneer's utility
+      const nativeCaip = networkIdToCaip(networkId);
+
+      // Find the native asset balance (if available)
+      const nativeBalance = balances?.find((b: any) => b.caip === nativeCaip);
+
+      return {
+        caip: nativeCaip,
+        symbol: nativeBalance?.symbol || nativeBalance?.ticker || 'GAS',
+        priceUsd: nativeBalance?.priceUsd || nativeBalance?.price || '0',
+        balance: nativeBalance?.balance || '0'
+      };
+    } catch (error) {
+      logger.error('[getNativeAssetInfo] Error getting native asset info:', { networkId, error });
+      return {
+        caip: networkId,
+        symbol: 'GAS',
+        priceUsd: '0',
+        balance: '0'
+      };
+    }
+  };
+
   // Calculate fee in USD using NETWORK NATIVE TOKEN price from assetContext
   const updateFeeInUsd = async (feeInNative: string) => {
     try {
-      if (!assetContext?.nativeAsset) {
-        logger.warn('[updateFeeInUsd] No nativeAsset in assetContext');
+      // Validate feeInNative is a valid number to prevent NaN issues
+      const feeAsNumber = parseFloat(feeInNative);
+      if (isNaN(feeAsNumber) || feeAsNumber < 0) {
+        logger.warn('[updateFeeInUsd] Invalid fee value:', feeInNative);
+        setEstimatedFeeUsd('0.00');
+        return;
+      }
+
+      // Get nativeAsset from context, or fetch it if missing
+      let nativeAsset = assetContext?.nativeAsset;
+
+      if (!nativeAsset && assetContext?.networkId && app?.balances) {
+        logger.warn('[updateFeeInUsd] nativeAsset missing, fetching from balances');
+        nativeAsset = getNativeAssetInfo(assetContext.networkId, app.balances);
+        logger.debug('[updateFeeInUsd] Fetched nativeAsset:', nativeAsset);
+      }
+
+      if (!nativeAsset) {
+        logger.warn('[updateFeeInUsd] No nativeAsset available, cannot calculate fee in USD');
         setEstimatedFeeUsd('0.00');
         return;
       }
 
       // Use the native asset price from assetContext (set in Asset.tsx)
-      const nativeTokenPrice = parseFloat(assetContext.nativeAsset.priceUsd || '0');
+      const nativeTokenPrice = parseFloat(nativeAsset.priceUsd || '0');
+
+      // If native token has no price, we can't calculate USD fee
+      if (nativeTokenPrice === 0) {
+        logger.debug('[updateFeeInUsd] Native token price is 0, cannot calculate USD fee');
+        setEstimatedFeeUsd('0.00');
+        return;
+      }
 
       const networkType = getNetworkType(assetContext.networkId);
       const feeUsd = calcFeeInUsd(feeInNative, nativeTokenPrice.toString(), networkType, assetContext.networkId);
@@ -890,7 +942,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         nativeTokenPrice,
         feeUsd,
         networkType,
-        nativeSymbol: assetContext.nativeAsset.symbol
+        nativeSymbol: nativeAsset.symbol
       });
     } catch (error) {
       logger.error('[updateFeeInUsd] Error calculating fee in USD:', error);
@@ -1391,8 +1443,24 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
       // Verify we have valid fee data before building the transaction
       const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel];
-      if (!selectedFee || parseFloat(selectedFee) === 0) {
+      const selectedFeeNumber = parseFloat(selectedFee || '0');
+
+      if (!selectedFee || selectedFeeNumber === 0 || isNaN(selectedFeeNumber)) {
+        logger.error('Invalid fee data:', {
+          selectedFee,
+          selectedFeeNumber,
+          customFeeOption,
+          customFeeAmount,
+          feeOptions,
+          selectedFeeLevel
+        });
         throw new Error('Cannot build transaction without valid fee data. Please wait for fee rates to load.');
+      }
+
+      // Additional validation: ensure amount is valid number
+      const amountNumber = parseFloat(nativeAmount);
+      if (isNaN(amountNumber) || amountNumber <= 0) {
+        throw new Error('Invalid transaction amount. Please enter a valid amount.');
       }
 
       // Map fee levels to SDK fee level values (valid range: 1-5)
