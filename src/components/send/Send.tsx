@@ -1517,14 +1517,40 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         feeOptions,
         normalizedFees
       });
-      
+
+      // CRITICAL: Validate the payload before sending to SDK to prevent NaN errors
+      logger.debug('🔍 [VALIDATION] Checking sendPayload before SDK call:', {
+        caip: sendPayload.caip,
+        to: sendPayload.to,
+        amount: sendPayload.amount,
+        amountType: typeof sendPayload.amount,
+        amountIsNaN: isNaN(parseFloat(sendPayload.amount)),
+        feeLevel: sendPayload.feeLevel,
+        customFee: sendPayload.customFee,
+        memo: sendPayload.memo,
+        changeScriptType: sendPayload.changeScriptType,
+        isMax: sendPayload.isMax
+      });
+
+      // Validate amount is a valid string number
+      if (!sendPayload.amount || typeof sendPayload.amount !== 'string') {
+        throw new Error(`Invalid amount format: ${sendPayload.amount} (type: ${typeof sendPayload.amount})`);
+      }
+
+      const amountCheck = parseFloat(sendPayload.amount);
+      if (isNaN(amountCheck) || amountCheck <= 0) {
+        throw new Error(`Amount is NaN or invalid: ${sendPayload.amount}`);
+      }
+
       // Call the SDK's buildTx method
       let unsignedTxResult;
       try {
+        logger.debug('📤 [SDK CALL] Calling app.buildTx with payload:', JSON.stringify(sendPayload, null, 2));
         unsignedTxResult = await app.buildTx(sendPayload);
-        logger.debug('Unsigned TX Result:', unsignedTxResult);
+        logger.debug('✅ [SDK RESPONSE] Unsigned TX Result:', unsignedTxResult);
       } catch (buildError: any) {
-        logger.error('Transaction build error:', buildError);
+        logger.error('❌ [SDK ERROR] Transaction build error:', buildError);
+        logger.error('❌ [SDK ERROR] Failed payload was:', sendPayload);
         const errorMessage = `Failed to build transaction: ${buildError.message || 'Unknown error'}`;
         setError(errorMessage);
         setShowErrorDialog(true);
