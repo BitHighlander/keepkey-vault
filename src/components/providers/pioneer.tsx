@@ -192,27 +192,13 @@ export function AppProvider({
     // Only shows toasts for confirmed transactions with txids (reliable, proven)
     // Dashboard-based balance change notifications are DISABLED (see above)
     useEffect(() => {
-        console.log('🔍 [PIONEER-TX-LISTENER] useEffect triggered:', {
-            hasPioneer: !!pioneer,
-            hasState: !!pioneer?.state,
-            hasApp: !!pioneer?.state?.app,
-            hasEvents: !!pioneer?.state?.app?.events,
-            eventsType: typeof pioneer?.state?.app?.events,
-            appKeys: pioneer?.state?.app ? Object.keys(pioneer.state.app).slice(0, 10) : 'N/A',
-        });
-
         if (!pioneer?.state?.app?.events) {
-            console.warn('⚠️ [PIONEER-TX-LISTENER] Cannot subscribe - pioneer.state.app.events is missing!', {
-                pioneer: !!pioneer,
-                state: !!pioneer?.state,
-                app: !!pioneer?.state?.app,
-                events: !!pioneer?.state?.app?.events,
-            });
+            logger.debug('Cannot subscribe to pioneer:tx - events not available');
             return;
         }
 
         const handleTransactionEvent = (txData: any) => {
-            console.log('[PioneerProvider] pioneer:tx event received:', {
+            logger.debug('Pioneer transaction event received:', {
                 chain: txData.chain,
                 address: txData.address,
                 txid: txData.txid,
@@ -224,11 +210,11 @@ export function AppProvider({
         };
 
         pioneer.state.app.events.on('pioneer:tx', handleTransactionEvent);
-        //console.log('✅ [PIONEER-TX-LISTENER] Subscribed to pioneer:tx events successfully!');
+        logger.debug('Subscribed to pioneer:tx events');
 
         return () => {
             pioneer.state.app.events.off('pioneer:tx', handleTransactionEvent);
-            //console.log('[PioneerProvider] Unsubscribed from pioneer:tx events');
+            logger.debug('Unsubscribed from pioneer:tx events');
         };
     }, [pioneer?.state?.app?.events]);
 
@@ -249,31 +235,18 @@ export function AppProvider({
     // Create wrapper for pioneer with added asset context
     // Memoize to prevent unnecessary re-renders
     const pioneerWithAssetContext = useMemo(() => {
-        // 🚨 CRITICAL DEBUG - Log what we're spreading
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('🚨 [APPPROVIDER] Creating pioneerWithAssetContext');
-        console.error('🚨 Input pioneer:', !!pioneer);
-        console.error('🚨 Input pioneer.state:', !!pioneer?.state);
-        console.error('🚨 Input pioneer.state.app:', !!pioneer?.state?.app);
-        console.error('🚨 Input pioneer.state.app.dashboard:', !!pioneer?.state?.app?.dashboard);
-        console.error('🚨 Input pioneer.state.app.balances:', pioneer?.state?.app?.balances?.length || 0);
-        console.error('🚨 Input pioneer.state.app.pubkeys:', pioneer?.state?.app?.pubkeys?.length || 0);
-        if (pioneer?.state?.app) {
-            console.error('🚨 pioneer.state.app keys:', Object.keys(pioneer.state.app).slice(0, 20));
-        }
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
         const result = {
             ...pioneer,
             state: {
                 ...pioneer?.state,
                 app: {
                     ...pioneer?.state?.app,
-                    // ✅ CRITICAL FIX: Explicitly copy dashboard and balances
-                    // These are non-enumerable properties on the SDK object, so spread doesn't copy them
-                    dashboard: pioneer?.state?.dashboard,
-                    balances: pioneer?.state?.balances,
-                    pubkeys: pioneer?.state?.pubkeys,
+                    // ✅ CRITICAL FIX: Explicitly copy dashboard, balances, pubkeys, transactions
+                    // These are non-enumerable properties (getters) on the SDK object, so spread doesn't copy them
+                    dashboard: pioneer?.state?.app?.dashboard,
+                    balances: pioneer?.state?.app?.balances,
+                    pubkeys: pioneer?.state?.app?.pubkeys,
+                    transactions: pioneer?.state?.app?.transactions, // 🔍 Added for transaction history
                     assetContext,
                     outboundAssetContext,
                     // Override SDK methods with React state setters (memoized to prevent infinite loops)
@@ -290,18 +263,6 @@ export function AppProvider({
             isAssetViewActive,
             setIsAssetViewActive
         };
-
-        // 🚨 CRITICAL DEBUG - Log the result
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.error('🚨 [APPPROVIDER] Result of spreading:');
-        console.error('🚨 result.state.app:', !!result.state.app);
-        console.error('🚨 result.state.app.dashboard:', !!result.state.app.dashboard);
-        console.error('🚨 result.state.app.balances:', result.state.app.balances?.length || 0);
-        console.error('🚨 result.state.app.pubkeys:', result.state.app.pubkeys?.length || 0);
-        if (result.state.app) {
-            console.error('🚨 result.state.app keys:', Object.keys(result.state.app).slice(0, 20));
-        }
-        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         return result;
     }, [pioneer, assetContext, outboundAssetContext, balanceRefreshCounter, setAssetContextMemoized, setOutboundAssetContextMemoized, clearAssetContextMemoized, triggerBalanceRefreshMemoized, isAssetViewActive, setIsAssetViewActive]);

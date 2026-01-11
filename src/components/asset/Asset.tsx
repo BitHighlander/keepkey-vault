@@ -58,7 +58,7 @@ import { ReportDialog } from './ReportDialog';
 import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
-import { DappStore } from './DappStore';
+import { TransactionHistory } from './TransactionHistory';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { isFeatureEnabled } from '@/config/features';
@@ -417,35 +417,37 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     logger.debug('🔍 [DEBUG] Filtering for networkId:', networkId);
     const filteredPubkeys = (app.pubkeys || []).filter((p: any) => {
       if (!p.networks || !Array.isArray(p.networks)) {
-        console.log('  - Pubkey:', p.path, '| Networks: INVALID | Matches: false');
+        //console.log('  - Pubkey:', p.path, '| Networks: INVALID | Matches: false');
         return false;
       }
 
       // Exact match
       if (p.networks.includes(networkId)) {
-        console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (exact)');
+        //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (exact)');
         return true;
       }
 
       // For EVM chains, check if pubkey has eip155:* wildcard
       if (networkId.startsWith('eip155:') && p.networks.includes('eip155:*')) {
-        console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
+        //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
         return true;
       }
 
       // For Bitcoin chains, check if pubkey has bip122:* wildcard
       if (networkId.startsWith('bip122:') && p.networks.includes('bip122:*')) {
-        console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
+        //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: true (wildcard)');
         return true;
       }
 
-      console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: false');
+      //console.log('  - Pubkey:', p.path, '| Networks:', p.networks, '| Matches: false');
       return false;
     });
 
     const assetContextData = {
       ...nativeAssetBalance,
       caip: caip,
+      // Add color from balance, assetsMap, or fallback to gold
+      color: nativeAssetBalance.color || app.assetsMap?.get(caip)?.color || app.assetsMap?.get(caip.toLowerCase())?.color || '#FFD700',
       ...(isCacao && { symbol: 'CACAO' }),
       // CRITICAL FIX: Add pubkeys for balance aggregation across all addresses
       pubkeys: filteredPubkeys
@@ -2598,9 +2600,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           );
         })()}
 
-        {/* Dapps Section - Show for all networks that support dapps */}
-        {assetContext.networkId && (
-          <DappStore networkId={assetContext.networkId} />
+        {/* Transaction History Section */}
+        {assetContext.caip && (
+          <TransactionHistory
+            caip={assetContext.caip}
+            networkId={assetContext.networkId}
+            assetContext={assetContext}
+          />
         )}
       </Box>
 
