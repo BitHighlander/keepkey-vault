@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { logger } from '@/lib/logger';
+import { theme } from '@/lib/theme';
+import { wooshSound, chachingSound, playSound } from '@/lib/audio';
 import {
   Box,
   Button,
@@ -49,27 +51,6 @@ import {
   isPriceAvailable as checkPriceAvailable,
   calculateFeeInUsd as calcFeeInUsd
 } from '@/utils/currencyConverter'
-
-// Add sound effect imports
-const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
-const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
-
-// Play sound utility function
-const playSound = (sound: HTMLAudioElement | null) => {
-  if (sound) {
-    sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => logger.error('Error playing sound:', err));
-  }
-};
-
-// Theme colors - matching our dashboard theme
-const theme = {
-  bg: '#000000',
-  cardBg: '#111111',
-  border: '#3A4A5C',
-  formPadding: '16px', // Added for consistent form padding
-  borderRadius: '12px', // Added for consistent border radius
-}
 
 // Define animation keyframes
 const scale = keyframes`
@@ -2263,7 +2244,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 bg={theme.cardBg}
                 borderRadius="lg"
                 border="1px solid"
-                borderColor={theme.border}
+                borderColor={theme.borderAlt}
               >
                 <VStack gap={3} alignItems="flex-start">
                   {/* Step 1: Broadcast Complete */}
@@ -2348,7 +2329,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 bg={theme.cardBg}
                 borderRadius="md"
                 border="1px solid"
-                borderColor={theme.border}
+                borderColor={theme.borderAlt}
               >
                 <Text fontSize="xs" color="gray.500" mb={1}>
                   Transaction ID
@@ -2409,7 +2390,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           
           <Box 
             bg={theme.cardBg}
-            borderColor={theme.border}
+            borderColor={theme.borderAlt}
             borderWidth="1px"
             borderRadius="md"
             width="100%"
@@ -2421,7 +2402,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             {/* Header */}
             <Box 
               borderBottom="1px" 
-              borderColor={theme.border}
+              borderColor={theme.borderAlt}
               p={5}
               bg={theme.cardBg}
             >
@@ -2478,7 +2459,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   boxShadow="lg"
                   p={2}
                   borderWidth="1px"
-                  borderColor={assetContext.color || theme.border}
+                  borderColor={assetContext.color || theme.borderAlt}
                 >
                   <AssetIcon
                     src={assetContext.icon}
@@ -2509,7 +2490,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     bg={theme.bg}
                     borderRadius="md"
                     borderWidth="1px"
-                    borderColor={theme.border}
+                    borderColor={theme.borderAlt}
                   >
                     <Flex align="center">
                       <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" flex="1">
@@ -2549,7 +2530,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             {/* Footer with Action Buttons */}
             <Box 
               borderTop="1px" 
-              borderColor={theme.border}
+              borderColor={theme.borderAlt}
               p={5}
             >
               <Stack gap={4}>
@@ -2573,7 +2554,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   width="100%"
                   variant="outline"
                   color={assetColor}
-                  borderColor={theme.border}
+                  borderColor={theme.borderAlt}
                   _hover={{
                     bg: assetColorLight,
                     borderColor: assetColor,
@@ -2830,7 +2811,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     
       <Box
         borderBottom="1px"
-        borderColor={theme.border}
+        borderColor={theme.borderAlt}
         p={4}
         bg={theme.cardBg}
         position="sticky"
@@ -2889,10 +2870,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Box 
             width="100%" 
             bg={theme.cardBg} 
-            borderRadius={theme.borderRadius} 
+            borderRadius={theme.borderAltRadius} 
             p={theme.formPadding}
             borderWidth="1px"
-            borderColor={theme.border}
+            borderColor={theme.borderAlt}
           >
             <Stack gap={3}>
               <Flex justify="space-between" align="center">
@@ -2901,7 +2882,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   size="sm"
                   bg={theme.cardBg}
                   color={assetColor}
-                  borderColor={theme.border}
+                  borderColor={theme.borderAlt}
                   borderWidth="1px"
                   height="30px"
                   px={3}
@@ -2936,11 +2917,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     onChange={isUsdInput ? handleAmountChange : undefined}
                     placeholder="0.00"
                     color={isUsdInput ? "white" : "gray.400"}
-                    borderColor={isUsdInput ? assetColor : theme.border}
+                    borderColor={isUsdInput ? assetColor : theme.borderAlt}
                     borderWidth={isUsdInput ? "2px" : "1px"}
                     bg={isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
-                    _hover={{ borderColor: isUsdInput ? assetColorHover : theme.border }}
-                    _focus={{ borderColor: isUsdInput ? assetColor : theme.border }}
+                    _hover={{ borderColor: isUsdInput ? assetColorHover : theme.borderAlt }}
+                    _focus={{ borderColor: isUsdInput ? assetColor : theme.borderAlt }}
                     p={3}
                     pl="35px"
                     pr="60px"
@@ -2958,13 +2939,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
               {/* Divider with Switch Icon */}
               <Flex align="center" justify="center" position="relative" my={1}>
-                <Box position="absolute" width="100%" height="1px" bg={theme.border} />
+                <Box position="absolute" width="100%" height="1px" bg={theme.borderAlt} />
                 <Box 
                   position="relative"
                   bg={theme.cardBg}
                   borderRadius="full"
                   border="1px solid"
-                  borderColor={theme.border}
+                  borderColor={theme.borderAlt}
                   p={2}
                   cursor="pointer"
                   onClick={toggleInputMode}
@@ -2998,11 +2979,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     onChange={!isUsdInput ? handleAmountChange : undefined}
                     placeholder="0.00000000"
                     color={!isUsdInput ? "white" : "gray.400"}
-                    borderColor={!isUsdInput ? assetColor : theme.border}
+                    borderColor={!isUsdInput ? assetColor : theme.borderAlt}
                     borderWidth={!isUsdInput ? "2px" : "1px"}
                     bg={!isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
-                    _hover={{ borderColor: !isUsdInput ? assetColorHover : theme.border }}
-                    _focus={{ borderColor: !isUsdInput ? assetColor : theme.border }}
+                    _hover={{ borderColor: !isUsdInput ? assetColorHover : theme.borderAlt }}
+                    _focus={{ borderColor: !isUsdInput ? assetColor : theme.borderAlt }}
                     p={3}
                     pl="12px"
                     pr="80px"
@@ -3035,10 +3016,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Box
               width="100%"
               bg={theme.cardBg}
-              borderRadius={theme.borderRadius}
+              borderRadius={theme.borderAltRadius}
               p={theme.formPadding}
               borderWidth="2px"
-              borderColor={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.500" : theme.border}
+              borderColor={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.500" : theme.borderAlt}
             >
               <Stack gap={2}>
                 <Text color="white" fontWeight="medium" fontSize="sm">Gas Balance Required</Text>
@@ -3080,10 +3061,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Box 
             width="100%" 
             bg={theme.cardBg} 
-            borderRadius={theme.borderRadius} 
+            borderRadius={theme.borderAltRadius} 
             p={theme.formPadding}
             borderWidth="1px"
-            borderColor={theme.border}
+            borderColor={theme.borderAlt}
           >
             <Stack gap={3}>
               <Text color="white" fontWeight="medium">Recipient</Text>
@@ -3092,7 +3073,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder={`${assetContext.symbol} Address`}
                 color="white"
-                borderColor={theme.border}
+                borderColor={theme.borderAlt}
                 _hover={{ borderColor: assetColorHover }}
                 _focus={{ borderColor: assetColor }}
                 p={3}
@@ -3107,10 +3088,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Box 
               width="100%" 
               bg={theme.cardBg} 
-              borderRadius={theme.borderRadius} 
+              borderRadius={theme.borderAltRadius} 
               p={theme.formPadding}
               borderWidth="1px"
-              borderColor={memoError ? 'red.500' : theme.border}
+              borderColor={memoError ? 'red.500' : theme.borderAlt}
             >
               <Stack gap={3}>
                 <Text color="white" fontWeight="medium">
@@ -3121,7 +3102,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   onChange={(e) => handleMemoChange(e.target.value)}
                   placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
                   color="white"
-                  borderColor={memoError ? 'red.500' : theme.border}
+                  borderColor={memoError ? 'red.500' : theme.borderAlt}
                   _hover={{ borderColor: memoError ? 'red.600' : assetColorHover }}
                   _focus={{ borderColor: memoError ? 'red.500' : assetColor }}
                   p={3}
@@ -3151,7 +3132,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box 
                 width="100%" 
                 bg={assetColorLight} 
-                borderRadius={theme.borderRadius} 
+                borderRadius={theme.borderAltRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
                 borderColor={`${assetColor}33`}
@@ -3175,7 +3156,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   theme={{
                     gold: assetColor,
                     goldHover: assetColorHover,
-                    border: theme.border
+                    border: theme.borderAlt
                   }}
                 />
               </Box>
@@ -3184,7 +3165,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box 
                 width="100%" 
                 bg={assetColorLight} 
-                borderRadius={theme.borderRadius} 
+                borderRadius={theme.borderAltRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
                 borderColor={`${assetColor}33`}
@@ -3241,7 +3222,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           maxW="600px"
           p={8}
         >
-          <DialogHeader borderBottom={`1px solid ${theme.border}`} pb={6} mb={6}>
+          <DialogHeader borderBottom={`1px solid ${theme.borderAlt}`} pb={6} mb={6}>
             <DialogTitle color={assetColor} fontSize="2xl" fontWeight="bold">
               Add New Path for {assetContext?.symbol}
             </DialogTitle>
@@ -3264,7 +3245,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             />
           </DialogBody>
 
-          <DialogFooter borderTop={`1px solid ${theme.border}`} pt={6}>
+          <DialogFooter borderTop={`1px solid ${theme.borderAlt}`} pt={6}>
             <Flex gap={4} width="100%">
               <Button
                 flex={1}
@@ -3273,7 +3254,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 variant="ghost"
                 onClick={closeAddPathDialog}
                 color="gray.400"
-                _hover={{ bg: theme.border }}
+                _hover={{ bg: theme.borderAlt }}
                 borderRadius="lg"
                 disabled={pathManager.loading}
               >

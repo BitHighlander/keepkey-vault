@@ -20,6 +20,10 @@ import { keyframes } from '@emotion/react';
 import { motion } from 'framer-motion';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 import { toaster } from '@/components/ui/toaster';
+import { usePioneerContext } from '@/components/providers/pioneer';
+import { logger } from '@/lib/logger';
+import { theme } from '@/lib/theme';
+import { chachingSound, playSound } from '@/lib/audio';
 
 // Animated KeepKey logo pulse effect
 const pulseAnimation = keyframes`
@@ -32,20 +36,6 @@ const pulseAnimation = keyframes`
     opacity: 1;
   }
 `;
-
-// Add sound effect imports
-const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
-
-// Play sound utility function
-const playSound = (sound: HTMLAudioElement | null) => {
-  if (sound) {
-    sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => logger.error('Error playing sound:', err));
-  }
-};
-
-import { usePioneerContext } from '@/components/providers/pioneer';
-import { logger } from '@/lib/logger';
 import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList, FaPen } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
@@ -64,15 +54,6 @@ import { TransactionHistory } from './TransactionHistory';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { isFeatureEnabled } from '@/config/features';
-
-// Theme colors - matching our dashboard theme
-const theme = {
-  bg: '#000000',
-  cardBg: '#111111',
-  gold: '#FFD700',
-  goldHover: '#FFE135',
-  border: '#222222',
-};
 
 // Create motion wrapper for Chakra components
 const MotionBox = motion(Box);
