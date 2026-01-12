@@ -35,6 +35,7 @@ import { ChatPopup } from '@/components/chat/ChatPopup';
 import { PendingSwapsPopup } from '@/components/swap/PendingSwapsPopup';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
+import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -45,6 +46,58 @@ const playSound = (sound: HTMLAudioElement | null) => {
     sound.currentTime = 0; // Reset to start
     sound.play().catch(err => console.error('Error playing sound:', err));
   }
+};
+
+// Scam Detection Utility
+const KNOWN_STABLECOINS = [
+  'USDT', 'USDC', 'DAI', 'BUSD', 'UST', 'TUSD', 'USDD', 'USDP', 'GUSD', 'PYUSD',
+  'FRAX', 'LUSD', 'sUSD', 'alUSD', 'FEI', 'MIM', 'DOLA', 'agEUR', 'EURT', 'EURS'
+];
+
+interface ScamDetectionResult {
+  isScam: boolean;
+  scamType: 'possible' | 'confirmed' | null;
+  reason: string;
+}
+
+const detectScamToken = (token: any): ScamDetectionResult => {
+  const symbol = (token.symbol || token.ticker || '').toUpperCase();
+  const valueUsd = parseFloat(token.valueUsd || 0);
+
+  console.log('🔍 Scam detection for:', {
+    symbol,
+    valueUsd,
+    rawValueUsd: token.valueUsd,
+    valueUsdType: typeof token.valueUsd
+  });
+
+  // FIRST: If token has USD value, it's NOT a scam (even if symbol matches)
+  if (valueUsd > 0) {
+    console.log('✅ NOT a scam - has value:', valueUsd);
+    return {
+      isScam: false,
+      scamType: null,
+      reason: ''
+    };
+  }
+
+  // SECOND: No value + stablecoin symbol = CONFIRMED SCAM
+  if (KNOWN_STABLECOINS.includes(symbol)) {
+    console.log('🚨 CONFIRMED SCAM - fake stablecoin:', symbol);
+    return {
+      isScam: true,
+      scamType: 'confirmed',
+      reason: `Fake ${symbol} token with no value. Real ${symbol} has ~$1.00 value.`
+    };
+  }
+
+  // THIRD: No value = POSSIBLE SCAM
+  console.log('⚠️ POSSIBLE SCAM - zero value:', symbol);
+  return {
+    isScam: true,
+    scamType: 'possible',
+    reason: 'Zero-value tokens are commonly used in phishing attacks.'
+  };
 };
 
 // Custom scrollbar styles
@@ -217,11 +270,18 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingAssetCaip, setLoadingAssetCaip] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Scam detection and zero-value token states
+  const [showZeroValueTokens, setShowZeroValueTokens] = useState(false);
+  const [showScamTokens, setShowScamTokens] = useState(false);
+  const [scamWarningToken, setScamWarningToken] = useState<any | null>(null);
+  const [pendingTokenAction, setPendingTokenAction] = useState<(() => void) | null>(null);
+
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
   const router = useRouter();
-  
+
   // Pending swaps - using same pattern as other working hooks
   const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
 
@@ -1395,6 +1455,11 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
             // Filter tokens from balances if we have balances
             let tokenBalances: any[] = [];
+            let tokensWithValue: any[] = [];
+            let tokensWithZeroValue: any[] = [];
+            let scamTokens: any[] = [];
+            let displayedTokens: any[] = [];
+
             if (app?.balances) {
               // DEBUG: Log total balances available
               logger.debug('🔍 [Dashboard] STARTING TOKEN FILTER - Total balances:', app.balances.length);
@@ -1451,6 +1516,30 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 return valueB - valueA; // Descending order (highest first)
               });
 
+              // Separate clean tokens from scam tokens
+              const cleanTokens = tokenBalances.filter((t: any) => !detectScamToken(t).isScam);
+              scamTokens = tokenBalances.filter((t: any) => detectScamToken(t).isScam);
+
+              console.log('📊 Token categorization:', {
+                total: tokenBalances.length,
+                clean: cleanTokens.length,
+                scam: scamTokens.length,
+                scamSymbols: scamTokens.map((t: any) => t.symbol || t.ticker)
+              });
+
+              // Split clean tokens by value
+              tokensWithValue = cleanTokens.filter((t: any) => parseFloat(t.valueUsd || 0) > 0);
+              tokensWithZeroValue = cleanTokens.filter((t: any) => parseFloat(t.valueUsd || 0) === 0);
+
+              // Display tokens based on user preferences
+              displayedTokens = tokensWithValue;
+              if (showZeroValueTokens) {
+                displayedTokens = [...displayedTokens, ...tokensWithZeroValue];
+              }
+              if (showScamTokens) {
+                displayedTokens = [...displayedTokens, ...scamTokens];
+              }
+
               // Debug logging for token detection
               logger.debug('🪙 [Dashboard] FINAL - Total balances:', app.balances.length);
               logger.debug('🪙 [Dashboard] FINAL - Token balances found:', tokenBalances.length);
@@ -1477,26 +1566,96 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   <HStack gap={2}>
                     <Text fontSize="md" color="gray.400">Tokens</Text>
                     <Text fontSize="xs" color="gray.600">
-                      ({tokenBalances.length})
+                      ({displayedTokens.length}{!showZeroValueTokens && tokensWithZeroValue.length > 0 ? ` of ${tokenBalances.length}` : ''})
                     </Text>
-                    {tokenBalances.length > 0 && (
+                    {displayedTokens.length > 0 && (
                       <Text fontSize="xs" color="gray.500" fontStyle="italic">
                         • sorted by value
                       </Text>
                     )}
                   </HStack>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    color={theme.gold}
-                    _hover={{ color: theme.goldHover }}
-                  >
-                    View All
-                  </Button>
+                  <HStack gap={2}>
+                    {tokensWithZeroValue.length > 0 && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        color={showZeroValueTokens ? 'orange.400' : theme.gold}
+                        _hover={{ color: showZeroValueTokens ? 'orange.300' : theme.goldHover }}
+                        onClick={() => setShowZeroValueTokens(!showZeroValueTokens)}
+                        rightIcon={
+                          <Text fontSize="xs">
+                            {showZeroValueTokens ? '▲' : '▼'}
+                          </Text>
+                        }
+                      >
+                        {showZeroValueTokens ? 'Hide' : 'Show'} $0 Tokens ({tokensWithZeroValue.length})
+                      </Button>
+                    )}
+                    {scamTokens.length > 0 && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        color={showScamTokens ? 'red.400' : 'gray.500'}
+                        _hover={{ color: showScamTokens ? 'red.300' : 'red.600' }}
+                        onClick={() => setShowScamTokens(!showScamTokens)}
+                        rightIcon={
+                          <Text fontSize="xs">
+                            {showScamTokens ? '▲' : '▼'}
+                          </Text>
+                        }
+                      >
+                        {showScamTokens ? 'Hide' : 'Show'} Scam Tokens ({scamTokens.length})
+                      </Button>
+                    )}
+                  </HStack>
                 </HStack>
                 
                 <VStack gap={4}>
-                  {tokenBalances.length === 0 ? (
+                  {showScamTokens && scamTokens.length > 0 && (
+                    <Box
+                      w="100%"
+                      p={4}
+                      borderRadius="xl"
+                      bg="red.950"
+                      border="2px solid"
+                      borderColor="red.600"
+                    >
+                      <Text fontSize="sm" fontWeight="bold" color="red.300">
+                        🚨 WARNING: These tokens are likely scams. Interacting may drain your wallet.
+                      </Text>
+                    </Box>
+                  )}
+                  {displayedTokens.length === 0 && !showZeroValueTokens && tokensWithZeroValue.length > 0 ? (
+                    // Empty state when hiding zero-value tokens
+                    <Box
+                      w="100%"
+                      p={6}
+                      borderRadius="2xl"
+                      borderWidth="2px"
+                      borderStyle="dashed"
+                      borderColor="orange.600"
+                      bg="orange.950"
+                      position="relative"
+                      transition="all 0.2s"
+                    >
+                      <VStack gap={3} py={4}>
+                        <Box
+                          borderRadius="full"
+                          p={3}
+                          bg="orange.900"
+                          color="orange.400"
+                        >
+                          <Text fontSize="2xl">⚠️</Text>
+                        </Box>
+                        <Text fontSize="md" color="orange.400" fontWeight="medium">
+                          {tokensWithZeroValue.length} Hidden $0 Token{tokensWithZeroValue.length !== 1 ? 's' : ''}
+                        </Text>
+                        <Text fontSize="sm" color="gray.400" textAlign="center" maxW="320px">
+                          Zero-value tokens are commonly used in scam attempts. Click "Show $0 Tokens" above to view them with caution.
+                        </Text>
+                      </VStack>
+                    </Box>
+                  ) : tokenBalances.length === 0 ? (
                     // Empty state when no tokens found
                     <Box
                       w="100%"
@@ -1612,9 +1771,12 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     </Box>
                   ) : (
                     // Show actual tokens when found
-                    tokenBalances.map((token: any, index: number) => {
+                    displayedTokens.map((token: any, index: number) => {
                     const { integer, largePart, smallPart } = formatBalance(token.balance);
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
+
+                    // Detect if token is a scam
+                    const scamDetection = detectScamToken(token);
 
                      // Get token color with better fallbacks
                      const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
@@ -1658,11 +1820,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         w="100%"
                         p={5}
                         borderRadius="2xl"
-                        borderWidth="1px"
-                        borderColor={`${tokenColor}40`}
-                        boxShadow={`0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
+                        borderWidth="2px"
+                        borderColor={scamDetection.isScam
+                          ? (scamDetection.scamType === 'confirmed' ? 'red.500' : 'orange.500')
+                          : `${tokenColor}40`}
+                        boxShadow={scamDetection.isScam
+                          ? (scamDetection.scamType === 'confirmed'
+                              ? `0 4px 20px rgba(255, 0, 0, 0.3), inset 0 0 20px rgba(255, 0, 0, 0.1)`
+                              : `0 4px 20px rgba(255, 165, 0, 0.3), inset 0 0 20px rgba(255, 165, 0, 0.1)`)
+                          : `0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
                         position="relative"
-                        bg={`${tokenColor}15`}
+                        bg={scamDetection.isScam
+                          ? (scamDetection.scamType === 'confirmed' ? 'red.950' : 'orange.950')
+                          : `${tokenColor}15`}
                         _before={{
                           content: '""',
                           position: "absolute",
@@ -1711,23 +1881,35 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
+                          logger.debug('🪙 [Dashboard] Token clicked:', token);
+
+                          // Check if token is a scam
+                          if (scamDetection.isScam) {
+                            logger.warn('🚨 [Dashboard] Scam token detected, showing warning:', {
+                              symbol: tokenSymbol,
+                              scamType: scamDetection.scamType,
+                              reason: scamDetection.reason
+                            });
+
+                            // Show scam warning modal
+                            setScamWarningToken(token);
+                            setPendingTokenAction(() => () => {
+                              // This will be executed after user confirms
+                              const caip = token.caip;
+                              setLoadingAssetCaip(caip);
+                              const encodedCaip = btoa(caip);
+                              startTransition(() => {
+                                router.push(`/asset/${encodedCaip}`);
+                              });
+                            });
+                            return;
+                          }
+
+                          // Normal navigation for non-scam tokens
                           logger.debug('🪙 [Dashboard] Navigating to token page:', token);
-
-                          // Use the token's CAIP for navigation
                           const caip = token.caip;
-
-                          logger.debug('🪙 [Dashboard] Using token CAIP for navigation:', caip);
-                          logger.debug('🪙 [Dashboard] Token object:', token);
-
-                          // Set loading state immediately for instant feedback
                           setLoadingAssetCaip(caip);
-
-                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
-
-                          logger.debug('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
-
-                          // Navigate using startTransition for better perceived performance
                           startTransition(() => {
                             router.push(`/asset/${encodedCaip}`);
                           });
@@ -1796,9 +1978,24 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               />
                             </Box>
                             <Stack gap={0.5}>
-                              <Text fontSize="md" fontWeight="bold" color={tokenColor}>
-                                {tokenSymbol}
-                              </Text>
+                              <HStack gap={2} align="center">
+                                <Text fontSize="md" fontWeight="bold" color={tokenColor}>
+                                  {tokenSymbol}
+                                </Text>
+                                {scamDetection.isScam && (
+                                  <Badge
+                                    colorScheme={scamDetection.scamType === 'confirmed' ? 'red' : 'orange'}
+                                    variant="solid"
+                                    fontSize="xs"
+                                    px={2}
+                                    py={0.5}
+                                    textTransform="uppercase"
+                                    fontWeight="bold"
+                                  >
+                                    {scamDetection.scamType === 'confirmed' ? '⚠️ SCAM' : '⚠️ POSSIBLE SCAM'}
+                                  </Badge>
+                                )}
+                              </HStack>
                               <Box
                                 fontSize="xs" 
                                 color="gray.400" 
@@ -2330,6 +2527,25 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
     {/* Pending Swaps - Global floating swaps button */}
     {isFeatureEnabled('enableSwaps') && <PendingSwapsPopup app={app} />}
+
+    {/* Scam Warning Modal */}
+    <ScamWarningModal
+      isOpen={scamWarningToken !== null}
+      onClose={() => {
+        setScamWarningToken(null);
+        setPendingTokenAction(null);
+      }}
+      onConfirm={() => {
+        if (pendingTokenAction) {
+          pendingTokenAction();
+        }
+        setScamWarningToken(null);
+        setPendingTokenAction(null);
+      }}
+      tokenSymbol={scamWarningToken?.symbol || scamWarningToken?.ticker || 'UNKNOWN'}
+      scamType={scamWarningToken ? detectScamToken(scamWarningToken).scamType || 'possible' : 'possible'}
+      reason={scamWarningToken ? detectScamToken(scamWarningToken).reason : ''}
+    />
     </>
   );
 };
