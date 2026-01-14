@@ -1,4 +1,3 @@
-import { logger } from '@/lib/logger';
 
 /**
  * Audio utility functions for playing sound effects in the app
@@ -15,6 +14,6 @@ export const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/c
 export const playSound = (sound: HTMLAudioElement | null): void => {
   if (sound) {
     sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => logger.error('Error playing sound:', err));
+    sound.play().catch(err => console.error('Error playing sound:', err));
   }
 };

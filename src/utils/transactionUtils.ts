@@ -145,6 +145,128 @@ export function formatTransactionDate(timestamp: number): string {
 }
 
 /**
+ * Formats timestamp to human-readable relative time using native Intl.RelativeTimeFormat
+ * Examples: "2 minutes ago", "1 day ago", "3 weeks ago"
+ * For more detailed formatting (e.g., "1 day and 4 hours ago"), use formatDetailedRelativeTime
+ */
+export function formatRelativeTime(timestamp: number | string): string {
+  try {
+    let timestampMs: number;
+
+    // Handle string timestamps (like ISO dates from createdAt)
+    if (typeof timestamp === 'string') {
+      timestampMs = new Date(timestamp).getTime();
+    } else {
+      // Detect if timestamp is in seconds or milliseconds
+      timestampMs = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    }
+
+    // Check if date is valid
+    if (isNaN(timestampMs)) {
+      return 'Unknown time';
+    }
+
+    const now = Date.now();
+    const diffMs = now - timestampMs;
+    const diffSeconds = Math.floor(diffMs / 1000);
+
+    // If in the future, return "just now"
+    if (diffSeconds < 0) {
+      return 'Just now';
+    }
+
+    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+    // Seconds
+    if (diffSeconds < 60) {
+      return rtf.format(-diffSeconds, 'second');
+    }
+
+    // Minutes
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) {
+      return rtf.format(-diffMinutes, 'minute');
+    }
+
+    // Hours
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+      return rtf.format(-diffHours, 'hour');
+    }
+
+    // Days
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) {
+      return rtf.format(-diffDays, 'day');
+    }
+
+    // Weeks
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks < 4) {
+      return rtf.format(-diffWeeks, 'week');
+    }
+
+    // Months
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) {
+      return rtf.format(-diffMonths, 'month');
+    }
+
+    // Years
+    const diffYears = Math.floor(diffDays / 365);
+    return rtf.format(-diffYears, 'year');
+  } catch (error) {
+    return 'Unknown time';
+  }
+}
+
+/**
+ * Formats timestamp with detailed relative time (e.g., "1 day and 4 hours ago")
+ * For simpler formatting, use formatRelativeTime
+ */
+export function formatDetailedRelativeTime(timestamp: number | string): string {
+  try {
+    let timestampMs: number;
+
+    if (typeof timestamp === 'string') {
+      timestampMs = new Date(timestamp).getTime();
+    } else {
+      timestampMs = timestamp < 10000000000 ? timestamp * 1000 : timestamp;
+    }
+
+    if (isNaN(timestampMs)) {
+      return 'Unknown time';
+    }
+
+    const now = Date.now();
+    const diffMs = now - timestampMs;
+    const diffSeconds = Math.floor(diffMs / 1000);
+
+    if (diffSeconds < 0) {
+      return 'Just now';
+    }
+
+    const minutes = Math.floor(diffSeconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    // Less than 7 days - show "X days and Y hours ago"
+    if (days > 0 && days < 7) {
+      const remainingHours = hours % 24;
+      if (remainingHours > 0) {
+        return `${days} ${days === 1 ? 'day' : 'days'} and ${remainingHours} ${remainingHours === 1 ? 'hour' : 'hours'} ago`;
+      }
+      return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+    }
+
+    // For other cases, use simple relative time
+    return formatRelativeTime(timestamp);
+  } catch (error) {
+    return 'Unknown time';
+  }
+}
+
+/**
  * Returns color scheme for transaction type badges
  */
 export function getTypeColorScheme(type: string): string {

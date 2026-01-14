@@ -40,7 +40,7 @@ export interface ThorchainPool {
 
 /**
  * All supported THORChain pools
- * Total: 30 pools
+ * Total: 35 pools (updated with DASH, BASE, ARB, OP, MATIC + fixed DOGE/LTC CAIPs)
  */
 export const THORCHAIN_POOLS: ThorchainPool[] = [
   {
@@ -174,8 +174,8 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "DOGE",
     "symbol": "DOGE",
     "name": "Dogecoin",
-    "caip": "bip122:000000000000000000000000000000001/slip44:3",
-    "networkId": "bip122:000000000000000000000000000000001",
+    "caip": "bip122:00000000001a91e3dace36e2be3bf030/slip44:3",
+    "networkId": "bip122:00000000001a91e3dace36e2be3bf030",
     "isNative": true
   },
   {
@@ -288,6 +288,15 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "contract": "0X2260FAC5E5542A773AA44FBCFEDF7C193BC2C599"
   },
   {
+    "asset": "DASH.DASH",
+    "chain": "DASH",
+    "symbol": "DASH",
+    "name": "Dash",
+    "caip": "bip122:000007d91d1254d60e2dd1ae58038307/slip44:5",
+    "networkId": "bip122:000007d91d1254d60e2dd1ae58038307",
+    "isNative": true
+  },
+  {
     "asset": "GAIA.ATOM",
     "chain": "GAIA",
     "symbol": "ATOM",
@@ -301,8 +310,44 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "LTC",
     "symbol": "LTC",
     "name": "Litecoin",
-    "caip": "bip122:00000000000000000000000000000000/slip44:2",
-    "networkId": "bip122:00000000000000000000000000000000",
+    "caip": "bip122:12a765e31ffd4059bada1e25190f6e98/slip44:2",
+    "networkId": "bip122:12a765e31ffd4059bada1e25190f6e98",
+    "isNative": true
+  },
+  {
+    "asset": "BASE.ETH",
+    "chain": "BASE",
+    "symbol": "ETH",
+    "name": "Base",
+    "caip": "eip155:8453/slip44:60",
+    "networkId": "eip155:8453",
+    "isNative": true
+  },
+  {
+    "asset": "ARB.ETH",
+    "chain": "ARB",
+    "symbol": "ETH",
+    "name": "Arbitrum",
+    "caip": "eip155:42161/slip44:60",
+    "networkId": "eip155:42161",
+    "isNative": true
+  },
+  {
+    "asset": "OP.ETH",
+    "chain": "OP",
+    "symbol": "ETH",
+    "name": "Optimism",
+    "caip": "eip155:10/slip44:60",
+    "networkId": "eip155:10",
+    "isNative": true
+  },
+  {
+    "asset": "MATIC.MATIC",
+    "chain": "MATIC",
+    "symbol": "MATIC",
+    "name": "Polygon",
+    "caip": "eip155:137/slip44:60",
+    "networkId": "eip155:137",
     "isNative": true
   },
   {

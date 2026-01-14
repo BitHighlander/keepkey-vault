@@ -7,7 +7,7 @@ import { keyframes } from '@emotion/react';
 import { FaCheckCircle, FaExternalLinkAlt, FaEnvelope } from 'react-icons/fa';
 import Confetti from 'react-confetti';
 import { AssetIcon } from '@/components/ui/AssetIcon';
-import { MIDGARD_URL, THORCHAIN_TRACKER_URL } from '@/services/thorchain';
+import { MIDGARD_URL, THORCHAIN_TRACKER_URL } from '@/config/external-trackers';
 interface SwapSuccessProps {
   txid: string;
   fromAsset: any;

@@ -4,7 +4,6 @@ import * as React from 'react'
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { paymentEventManager, createBalancesMap } from '@/lib/notifications/PaymentEventManager'
 import { transactionEventManager } from '@/lib/notifications/TransactionEventManager'
-import { logger } from '@/lib/logger'
 
 type ColorMode = 'light' | 'dark'
 
@@ -76,11 +75,9 @@ export function AppProvider({
     const setAssetContextMemoized = useCallback(async (assetData: AssetContextState) => {
         // Prevent infinite loops via re-entry detection
         if (isProcessingAssetRef.current) {
-            logger.debug('⏭️ [Provider] Skipping - already processing asset context');
             return;
         }
 
-        logger.debug('🔄 [Provider] Setting asset context:', assetData);
         isProcessingAssetRef.current = true;
 
         try {
@@ -88,18 +85,11 @@ export function AppProvider({
             if (pioneer?.state?.app && typeof pioneer.state.app.setAssetContext === 'function') {
                 await pioneer.state.app.setAssetContext(assetData);
                 const sdkResult = pioneer.state.app.assetContext;
-                logger.debug('✅ [Provider] SDK result for input asset:', {
-                    symbol: sdkResult?.symbol,
-                    address: sdkResult?.address,
-                    pathMaster: sdkResult?.pathMaster,
-                    caip: sdkResult?.caip
-                });
 
                 // Always update React state with SDK's enriched result
                 setAssetContext(sdkResult);
                 setIsAssetViewActive(true);
             } else {
-                logger.warn('⚠️ [Provider] SDK setAssetContext not available, using fallback');
                 // Fallback if SDK not available
                 setAssetContext(assetData);
                 setIsAssetViewActive(true);
@@ -113,11 +103,9 @@ export function AppProvider({
     const setOutboundAssetContextMemoized = useCallback(async (assetData: AssetContextState) => {
         // Prevent infinite loops via re-entry detection
         if (isProcessingOutboundRef.current) {
-            logger.debug('⏭️ [Provider] Skipping - already processing outbound asset context');
             return;
         }
 
-        logger.debug('🔄 [Provider] Setting outbound asset context:', assetData);
         isProcessingOutboundRef.current = true;
 
         try {
@@ -125,17 +113,10 @@ export function AppProvider({
             if (pioneer?.state?.app && typeof pioneer.state.app.setOutboundAssetContext === 'function') {
                 await pioneer.state.app.setOutboundAssetContext(assetData);
                 const sdkResult = pioneer.state.app.outboundAssetContext;
-                logger.debug('✅ [Provider] SDK result:', {
-                    symbol: sdkResult?.symbol,
-                    address: sdkResult?.address,
-                    pathMaster: sdkResult?.pathMaster,
-                    caip: sdkResult?.caip
-                });
 
                 // Always update React state with SDK's enriched result
                 setOutboundAssetContext(sdkResult);
             } else {
-                logger.warn('⚠️ [Provider] SDK setOutboundAssetContext not available, using fallback');
                 // Fallback if SDK not available
                 setOutboundAssetContext(assetData);
             }
@@ -193,34 +174,24 @@ export function AppProvider({
     // Dashboard-based balance change notifications are DISABLED (see above)
     useEffect(() => {
         if (!pioneer?.state?.app?.events) {
-            logger.debug('Cannot subscribe to pioneer:tx - events not available');
             return;
         }
 
         const handleTransactionEvent = (txData: any) => {
-            logger.debug('Pioneer transaction event received:', {
-                chain: txData.chain,
-                address: txData.address,
-                txid: txData.txid,
-                value: txData.value,
-            });
 
             // Process actual transaction events with txids (ONLY active notification system)
             transactionEventManager.processTransactionEvent(txData);
         };
 
         pioneer.state.app.events.on('pioneer:tx', handleTransactionEvent);
-        logger.debug('Subscribed to pioneer:tx events');
 
         return () => {
             pioneer.state.app.events.off('pioneer:tx', handleTransactionEvent);
-            logger.debug('Unsubscribed from pioneer:tx events');
         };
     }, [pioneer?.state?.app?.events]);
 
     // Memoize clearAssetContext to prevent recreating on every render
     const clearAssetContextMemoized = useCallback(() => {
-        logger.debug('🔄 Clearing asset context');
         setAssetContext(null);
         setOutboundAssetContext(null);
         setIsAssetViewActive(false);
@@ -228,7 +199,6 @@ export function AppProvider({
 
     // Memoize triggerBalanceRefresh to prevent recreating on every render
     const triggerBalanceRefreshMemoized = useCallback(() => {
-        logger.debug('🔄 Triggering balance refresh counter');
         setBalanceRefreshCounter(prev => prev + 1);
     }, []);
 

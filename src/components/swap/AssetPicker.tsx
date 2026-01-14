@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   VStack,
   HStack,
@@ -10,6 +10,8 @@ import {
   Grid,
   Input,
   Button,
+  IconButton,
+  Flex,
 } from '@chakra-ui/react';
 import {
   DialogRoot,
@@ -21,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { InputGroup } from '@/components/ui/input-group';
 import { AssetIcon } from '@/components/ui/AssetIcon';
-import { FaSearch } from 'react-icons/fa';
+import { FaSearch, FaTimes } from 'react-icons/fa';
 import { middleEllipsis } from '@/utils/strings';
 import { extractNetworkId, getNetworkColor, getNetworkName, getNetworkSortOrder } from '@/lib/utils/networkIcons';
 
@@ -58,6 +60,23 @@ export const AssetPicker = ({
 }: AssetPickerProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredAsset, setHoveredAsset] = useState<string | null>(null);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when search expands
+  useEffect(() => {
+    if (isSearchExpanded && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isSearchExpanded]);
+
+  // Reset search when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery('');
+      setIsSearchExpanded(false);
+    }
+  }, [isOpen]);
 
   const handleSelect = (asset: Asset) => {
     // Prevent selection of disabled assets
@@ -133,33 +152,124 @@ export const AssetPicker = ({
         transform="translate(-50%, -50%)"
         margin="0"
       >
-        <DialogHeader borderBottom="1px solid rgba(255, 255, 255, 0.1)" pb={4} pt={2} px={6}>
-          <DialogTitle color="white" fontSize="lg" fontWeight="600">{title}</DialogTitle>
-          <DialogCloseTrigger />
+        <DialogHeader
+          borderBottom="1px solid rgba(255, 255, 255, 0.1)"
+          pb={3}
+          pt={3}
+          px={6}
+        >
+          <Flex
+            align="center"
+            justify="space-between"
+            gap={3}
+            width="full"
+          >
+            {/* Title - shrinks when search is expanded */}
+            <DialogTitle
+              color="white"
+              fontSize="xl"
+              fontWeight="700"
+              letterSpacing="-0.02em"
+              flex={isSearchExpanded ? "0 0 auto" : "1"}
+              transition="all 0.3s ease"
+              whiteSpace="nowrap"
+            >
+              {title}
+            </DialogTitle>
+
+            {/* Search Section */}
+            <Flex
+              align="center"
+              gap={2}
+              flex={isSearchExpanded ? "1" : "0 0 auto"}
+              transition="all 0.3s ease"
+            >
+              {/* Collapsible Search Input */}
+              {isSearchExpanded && (
+                <Box
+                  flex="1"
+                  animation="fadeIn 0.3s ease"
+                  sx={{
+                    '@keyframes fadeIn': {
+                      from: { opacity: 0, transform: 'translateX(10px)' },
+                      to: { opacity: 1, transform: 'translateX(0)' },
+                    },
+                  }}
+                >
+                  <InputGroup
+                    startElement={
+                      <Box pl={3}>
+                        <FaSearch color="#23DCC8" size={14} />
+                      </Box>
+                    }
+                  >
+                    <Input
+                      ref={searchInputRef}
+                      placeholder="Search assets..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      bg="rgba(30, 30, 30, 0.8)"
+                      borderColor="rgba(35, 220, 200, 0.3)"
+                      _hover={{ borderColor: 'rgba(35, 220, 200, 0.5)' }}
+                      _focus={{
+                        borderColor: '#23DCC8',
+                        boxShadow: '0 0 0 1px #23DCC8',
+                        bg: 'rgba(30, 30, 30, 0.95)'
+                      }}
+                      color="white"
+                      size="sm"
+                      pl={10}
+                      height="36px"
+                    />
+                  </InputGroup>
+                </Box>
+              )}
+
+              {/* Search Toggle Button */}
+              <IconButton
+                aria-label={isSearchExpanded ? "Close search" : "Open search"}
+                onClick={() => {
+                  if (isSearchExpanded && searchQuery) {
+                    setSearchQuery('');
+                  } else {
+                    setIsSearchExpanded(!isSearchExpanded);
+                  }
+                }}
+                size="sm"
+                variant="ghost"
+                bg={isSearchExpanded ? 'rgba(35, 220, 200, 0.1)' : 'transparent'}
+                color={isSearchExpanded ? '#23DCC8' : 'gray.400'}
+                _hover={{
+                  bg: 'rgba(35, 220, 200, 0.2)',
+                  color: '#23DCC8',
+                  transform: 'scale(1.05)'
+                }}
+                _active={{
+                  bg: 'rgba(35, 220, 200, 0.3)',
+                  transform: 'scale(0.95)'
+                }}
+                transition="all 0.2s ease"
+                borderRadius="md"
+                height="36px"
+                width="36px"
+              >
+                {isSearchExpanded && searchQuery ? (
+                  <FaTimes size={14} />
+                ) : (
+                  <FaSearch size={14} />
+                )}
+              </IconButton>
+            </Flex>
+
+            <DialogCloseTrigger
+              position="relative"
+              top="unset"
+              right="unset"
+            />
+          </Flex>
         </DialogHeader>
         <DialogBody pb={6} pt={4} px={6}>
           <VStack align="stretch" gap={4}>
-            {/* Search Input */}
-            <InputGroup
-              startElement={
-                <Box pl={3}>
-                  <FaSearch color="gray" size={14} />
-                </Box>
-              }
-            >
-              <Input
-                placeholder="Search assets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                bg="rgba(30, 30, 30, 0.6)"
-                borderColor="rgba(255, 255, 255, 0.1)"
-                _hover={{ borderColor: 'rgba(35, 220, 200, 0.3)' }}
-                _focus={{ borderColor: '#23DCC8', boxShadow: '0 0 0 1px #23DCC8' }}
-                color="white"
-                size="md"
-                pl={10}
-              />
-            </InputGroup>
 
             {/* Asset Grid */}
             <Grid

@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { logger } from '@/lib/logger';
 import { theme } from '@/lib/theme';
 import { wooshSound, chachingSound, playSound } from '@/lib/audio';
 import {
@@ -250,7 +249,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           setTimeout(() => setHasCopied(false), 2000)
         })
         .catch(err => {
-          logger.error('Error copying to clipboard:', err)
+          console.error('Error copying to clipboard:', err)
         })
     }
   }
@@ -308,7 +307,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Calculate total balance - sum all pubkey balances for UTXO chains
   useEffect(() => {
-    logger.debug('🔄 [Send useEffect] Balance calculation triggered', {
+    console.log('🔄 [Send useEffect] Balance calculation triggered', {
       hasAssetContext: !!assetContext,
       hasSelectedPubkey: !!selectedPubkey,
       selectedPubkeyAddress: selectedPubkey?.address,
@@ -341,7 +340,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           // - When advanced tab is SHOWN (showAdvanced = true) AND pubkey selected: Show SELECTED path balance only
           // This allows users to see total balance by default, but choose specific path when sending
           if (showAdvanced && selectedPubkey) {
-            logger.debug('🔍 [Send] Advanced mode: Calculating balance for selected UTXO pubkey:', selectedPubkey);
+            console.log('🔍 [Send] Advanced mode: Calculating balance for selected UTXO pubkey:', selectedPubkey);
 
             // Find balance for the selected pubkey only
             const pubkeyBalance = app?.balances?.find((b: any) => {
@@ -362,14 +361,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
             if (pubkeyBalance && pubkeyBalance.balance) {
               newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
-              logger.debug('✅ [Send] Found balance for selected UTXO pubkey:', newBalance);
+              console.log('✅ [Send] Found balance for selected UTXO pubkey:', newBalance);
             } else {
-              logger.warn('⚠️ [Send] No balance found for selected UTXO pubkey, defaulting to 0');
+              console.warn('⚠️ [Send] No balance found for selected UTXO pubkey, defaulting to 0');
               newBalance = '0';
             }
           } else {
             // Advanced tab hidden OR no specific pubkey selected - sum all pubkey balances
-            logger.debug('🔍 [Send] Simple mode: Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
+            console.log('🔍 [Send] Simple mode: Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
 
             let totalBalance = 0;
 
@@ -396,13 +395,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 const balanceValue = parseFloat(pubkeyBalance.balance);
                 if (!isNaN(balanceValue)) {
                   totalBalance += balanceValue;
-                  logger.debug(`Added balance for ${pubkey.addressType || 'address'}: ${balanceValue}`);
+                  console.log(`Added balance for ${pubkey.addressType || 'address'}: ${balanceValue}`);
                 }
               }
             }
 
             newBalance = totalBalance.toFixed(8);
-            logger.debug('✅ [Send] Total UTXO balance calculated:', newBalance);
+            console.log('✅ [Send] Total UTXO balance calculated:', newBalance);
           }
         } else {
           // For non-UTXO chains
@@ -410,7 +409,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           // This is critical for native assets like MAYA that may be classified as tokens
           if (selectedPubkey) {
             // For native assets, use the selected pubkey's balance
-            logger.debug('🔍 [Send] Looking for balance for selected pubkey:', {
+            console.log('🔍 [Send] Looking for balance for selected pubkey:', {
               address: selectedPubkey.address,
               master: selectedPubkey.master,
               pubkey: selectedPubkey.pubkey,
@@ -421,7 +420,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
             // Log all available balances for debugging
             if (app?.balances && app.balances.length > 0) {
-              logger.debug('🔍 [Send] Available balances:', app.balances.map((b: any) => ({
+              console.log('🔍 [Send] Available balances:', app.balances.map((b: any) => ({
                 address: b.address,
                 pubkey: b.pubkey,
                 master: b.master,
@@ -446,17 +445,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               // Now check if this balance is for the selected pubkey
               // Match by exact pubkey
               if (b.pubkey === selectedPubkey.pubkey) {
-                logger.debug('✅ [Send] Matched by pubkey:', b.pubkey, 'for asset:', assetCaip);
+                console.log('✅ [Send] Matched by pubkey:', b.pubkey, 'for asset:', assetCaip);
                 return true;
               }
               // Match by address
               if (b.pubkey === selectedPubkey.address || b.address === selectedPubkey.address) {
-                logger.debug('✅ [Send] Matched by address:', selectedPubkey.address, 'for asset:', assetCaip);
+                console.log('✅ [Send] Matched by address:', selectedPubkey.address, 'for asset:', assetCaip);
                 return true;
               }
               // Match by master
               if (b.master === selectedPubkey.master || b.address === selectedPubkey.master) {
-                logger.debug('✅ [Send] Matched by master:', selectedPubkey.master, 'for asset:', assetCaip);
+                console.log('✅ [Send] Matched by master:', selectedPubkey.master, 'for asset:', assetCaip);
                 return true;
               }
               return false;
@@ -464,13 +463,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
             if (pubkeyBalance && pubkeyBalance.balance) {
               newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
-              logger.debug('✅ [Send] Found balance for selected pubkey:', {
+              console.log('✅ [Send] Found balance for selected pubkey:', {
                 balance: newBalance,
                 matchedBy: pubkeyBalance.address || pubkeyBalance.pubkey || pubkeyBalance.master,
                 pubkeyNote: selectedPubkey.note
               });
             } else {
-              logger.warn('⚠️ [Send] No balance found for selected pubkey, defaulting to 0', {
+              console.warn('⚠️ [Send] No balance found for selected pubkey, defaulting to 0', {
                 selectedPubkey,
                 balancesCount: app?.balances?.length || 0
               });
@@ -502,14 +501,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
               if (pubkeyBalance && pubkeyBalance.balance) {
                 newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
-                logger.debug('✅ [Send] Using first pubkey balance for non-UTXO chain:', newBalance);
+                console.log('✅ [Send] Using first pubkey balance for non-UTXO chain:', newBalance);
               } else {
                 newBalance = assetContext.balance || '0';
-                logger.debug('ℹ️ [Send] Using assetContext balance:', newBalance);
+                console.log('ℹ️ [Send] Using assetContext balance:', newBalance);
               }
             } else {
               newBalance = assetContext.balance || '0';
-              logger.debug('ℹ️ [Send] Using assetContext balance (no pubkeys):', newBalance);
+              console.log('ℹ️ [Send] Using assetContext balance (no pubkeys):', newBalance);
             }
           }
         }
@@ -522,7 +521,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // Play chaching sound if balance increased
         if (prevBalance && newBalance && parseFloat(newBalance) > parseFloat(prevBalance)) {
           // playSound(chachingSound); // Disabled - sound is annoying
-          logger.debug('Balance increased! 💰', { previous: prevBalance, new: newBalance });
+          console.log('Balance increased! 💰', { previous: prevBalance, new: newBalance });
         }
         
         // Also update fee in USD when asset context changes
@@ -530,7 +529,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
         // Fetch fee rates for the current blockchain
         fetchFeeRates().catch(error => {
-          logger.error('Error fetching fee rates:', error);
+          console.error('Error fetching fee rates:', error);
           setError(error.message);
           setShowErrorDialog(true);
           // Set fees to 0 to prevent transaction submission
@@ -539,7 +538,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           setEstimatedFeeUsd('0.00');
         });
       } catch (e) {
-        logger.error('Error setting balance:', e)
+        console.error('Error setting balance:', e)
         setBalance('0')
         setTotalBalanceUsd(0)
         setLoading(false)
@@ -558,7 +557,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     if (assetContext?.pubkeys && assetContext.pubkeys.length > 0 && !selectedPubkey) {
       const networkId = assetContext.networkId || assetContext.caip;
 
-      logger.debug('🔍 [Send] Looking for compatible pubkeys:', {
+      console.log('🔍 [Send] Looking for compatible pubkeys:', {
         networkId,
         totalPubkeys: assetContext.pubkeys.length,
         pubkeyNetworks: assetContext.pubkeys.map((p: Pubkey) => ({
@@ -590,8 +589,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       });
 
       if (compatiblePubkeys.length === 0) {
-        logger.warn('❌ [Send] No compatible pubkeys found for network:', networkId);
-        logger.warn('Available pubkey networks:', assetContext.pubkeys.map((p: Pubkey) => p.networks));
+        console.warn('❌ [Send] No compatible pubkeys found for network:', networkId);
+        console.warn('Available pubkey networks:', assetContext.pubkeys.map((p: Pubkey) => p.networks));
         return;
       }
 
@@ -612,10 +611,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       if (app?.setPubkeyContext) {
         app.setPubkeyContext(firstPubkey)
           .then(() => {
-            logger.debug('✅ [Send] Initial pubkey context set:', firstPubkey.note, 'for network:', networkId);
+            console.log('✅ [Send] Initial pubkey context set:', firstPubkey.note, 'for network:', networkId);
           })
           .catch((error: Error) => {
-            logger.error('❌ [Send] Error setting initial pubkey context:', error);
+            console.error('❌ [Send] Error setting initial pubkey context:', error);
           });
       }
     }
@@ -630,7 +629,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Find native asset balance by pattern matching
     const tokenNetworkId = assetContext.networkId;
 
-    logger.debug('🔍 [Send] Gas balance lookup starting:', {
+    console.log('🔍 [Send] Gas balance lookup starting:', {
       tokenNetworkId,
       selectedPubkey: {
         address: selectedPubkey.address,
@@ -663,7 +662,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                               b.address === selectedPubkey.master;
 
       if (isMatchingPubkey) {
-        logger.debug('✅ [Send] Found native gas balance:', {
+        console.log('✅ [Send] Found native gas balance:', {
           balance: b.balance,
           symbol: b.symbol,
           caip: b.caip,
@@ -676,9 +675,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     if (gasBalance && gasBalance.balance) {
       setNativeGasBalance(gasBalance.balance);
-      logger.debug('✅ [Send] Native gas balance updated:', gasBalance.balance, gasBalance.symbol);
+      console.log('✅ [Send] Native gas balance updated:', gasBalance.balance, gasBalance.symbol);
     } else {
-      logger.warn('⚠️ [Send] No native gas balance found for selected pubkey');
+      console.warn('⚠️ [Send] No native gas balance found for selected pubkey');
       setNativeGasBalance('0');
     }
   }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId])
@@ -692,11 +691,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     // Use the selected pubkey's script type as the default for change addresses
     // This ensures change addresses match the input address type
     if (selectedPubkey.scriptType) {
-      logger.debug('🔄 [Send] Setting change script type to match selected pubkey:', selectedPubkey.scriptType);
+      console.log('🔄 [Send] Setting change script type to match selected pubkey:', selectedPubkey.scriptType);
       setChangeScriptType(selectedPubkey.scriptType);
     } else {
       // Fallback to p2wpkh if no script type is set
-      logger.debug('🔄 [Send] No script type on pubkey, defaulting to p2wpkh for change');
+      console.log('🔄 [Send] No script type on pubkey, defaulting to p2wpkh for change');
       setChangeScriptType('p2wpkh');
     }
   }, [selectedPubkey, assetContext?.networkId])
@@ -714,7 +713,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         return;
       }
 
-      logger.debug('🔄 [Send] Fetching UTXO address usage info for pubkeys...');
+      console.log('🔄 [Send] Fetching UTXO address usage info for pubkeys...');
 
       try {
         const enrichedPubkeys = await enrichPubkeysWithUsageInfo(
@@ -730,7 +729,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           });
         }
       } catch (error) {
-        logger.error('❌ [Send] Error enriching pubkeys:', error);
+        console.error('❌ [Send] Error enriching pubkeys:', error);
       }
     };
 
@@ -739,7 +738,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Listen for transaction confirmation events from Pioneer SDK
   useEffect(() => {
-    logger.debug('🔍 [SEND] Confirmation listener useEffect triggered:', {
+    console.log('🔍 [SEND] Confirmation listener useEffect triggered:', {
       hasPioneer: !!pioneer,
       hasEvents: !!pioneer?.state?.app?.events,
       txHash: txHash ? txHash.substring(0, 10) + '...' : 'none',
@@ -748,25 +747,25 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     // Early return if events not available or no transaction hash
     if (!pioneer?.state?.app?.events || !txHash) {
-      logger.debug('⏭️ [SEND] Skipping listener setup - missing events or txHash');
+      console.log('⏭️ [SEND] Skipping listener setup - missing events or txHash');
       return;
     }
 
     const events = pioneer.state.app.events;
-    logger.debug('✅ [SEND] Setting up event listeners for transaction:', txHash);
+    console.log('✅ [SEND] Setting up event listeners for transaction:', txHash);
 
     // Handler: Transaction detected in mempool (0 confirmations)
     const handleTxDetected = (txData: any) => {
-      logger.debug('🔔 [SEND] TX_DETECTED event received:', txData);
-      logger.debug('TX_DETECTED event received:', txData);
+      console.log('🔔 [SEND] TX_DETECTED event received:', txData);
+      console.log('TX_DETECTED event received:', txData);
 
       // Only process events for our transaction
       if (txData.txid !== txHash) {
-        logger.debug('⏭️ [SEND] TX_DETECTED ignored - different txid:', txData.txid);
+        console.log('⏭️ [SEND] TX_DETECTED ignored - different txid:', txData.txid);
         return;
       }
 
-      logger.debug('✅ [SEND] TX_DETECTED matched our transaction - updating status');
+      console.log('✅ [SEND] TX_DETECTED matched our transaction - updating status');
       setConfirmationStatus(prev => ({
         ...prev,
         detected: true,
@@ -774,21 +773,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         detectedAt: Date.now()
       }));
 
-      logger.debug('✅ Transaction detected in mempool');
+      console.log('✅ Transaction detected in mempool');
     };
 
     // Handler: First block confirmation received
     const handleTxFirstConfirmed = (txData: any) => {
-      logger.debug('🎉 [SEND] TX_FIRST_CONFIRMED event received:', txData);
-      logger.debug('TX_FIRST_CONFIRMED event received:', txData);
+      console.log('🎉 [SEND] TX_FIRST_CONFIRMED event received:', txData);
+      console.log('TX_FIRST_CONFIRMED event received:', txData);
 
       // Only process events for our transaction
       if (txData.txid !== txHash) {
-        logger.debug('⏭️ [SEND] TX_FIRST_CONFIRMED ignored - different txid:', txData.txid);
+        console.log('⏭️ [SEND] TX_FIRST_CONFIRMED ignored - different txid:', txData.txid);
         return;
       }
 
-      logger.debug('✅ [SEND] TX_FIRST_CONFIRMED matched - transitioning to success!');
+      console.log('✅ [SEND] TX_FIRST_CONFIRMED matched - transitioning to success!');
       setConfirmationStatus(prev => ({
         ...prev,
         firstConfirmed: true,
@@ -796,19 +795,19 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         firstConfirmedAt: Date.now()
       }));
 
-      logger.debug('✅ Transaction received first confirmation');
+      console.log('✅ Transaction received first confirmation');
 
       // Play success sound on first confirmation
       playSound(chachingSound);
 
       // Transition to success state on first confirmation
-      logger.debug('🎊 [SEND] Setting transactionStep to SUCCESS');
+      console.log('🎊 [SEND] Setting transactionStep to SUCCESS');
       setTransactionStep('success');
     };
 
     // Handler: Full confirmation received (chain-specific threshold)
     const handleTxConfirmed = (txData: any) => {
-      logger.debug('TX_CONFIRMED event received:', txData);
+      console.log('TX_CONFIRMED event received:', txData);
 
       // Only process events for our transaction
       if (txData.txid !== txHash) return;
@@ -820,7 +819,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         confirmedAt: Date.now()
       }));
 
-      logger.debug('✅ Transaction fully confirmed');
+      console.log('✅ Transaction fully confirmed');
 
       // If we haven't already transitioned to success (from TX_FIRST_CONFIRMED),
       // transition now
@@ -829,7 +828,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     // Handler: Transaction failed on-chain
     const handleTxFailed = (txData: any) => {
-      logger.error('TX_FAILED event received:', txData);
+      console.error('TX_FAILED event received:', txData);
 
       // Only process events for our transaction
       if (txData.txid !== txHash) return;
@@ -841,7 +840,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Reset to review state to allow retry
       setTransactionStep('review');
 
-      logger.error('❌ Transaction failed on blockchain');
+      console.error('❌ Transaction failed on blockchain');
     };
 
     // Register event listeners
@@ -850,7 +849,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     events.on('TX_CONFIRMED', handleTxConfirmed);
     events.on('TX_FAILED', handleTxFailed);
 
-    logger.debug('📡 Registered transaction confirmation listeners for:', txHash.substring(0, 10) + '...');
+    console.log('📡 Registered transaction confirmation listeners for:', txHash.substring(0, 10) + '...');
 
     // Cleanup function - remove listeners
     return () => {
@@ -859,7 +858,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       events.off('TX_CONFIRMED', handleTxConfirmed);
       events.off('TX_FAILED', handleTxFailed);
 
-      logger.debug('🧹 Cleaned up transaction confirmation listeners');
+      console.log('🧹 Cleaned up transaction confirmation listeners');
     };
   }, [pioneer?.state?.app?.events, txHash]); // Re-run when events or txHash changes
 
@@ -887,7 +886,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         balance: nativeBalance?.balance || '0'
       };
     } catch (error) {
-      logger.error('[getNativeAssetInfo] Error getting native asset info:', { networkId, error });
+      console.error('[getNativeAssetInfo] Error getting native asset info:', { networkId, error });
       return {
         caip: networkId,
         symbol: 'GAS',
@@ -903,7 +902,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Validate feeInNative is a valid number to prevent NaN issues
       const feeAsNumber = parseFloat(feeInNative);
       if (isNaN(feeAsNumber) || feeAsNumber < 0) {
-        logger.warn('[updateFeeInUsd] Invalid fee value:', feeInNative);
+        console.warn('[updateFeeInUsd] Invalid fee value:', feeInNative);
         setEstimatedFeeUsd('0.00');
         return;
       }
@@ -912,13 +911,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       let nativeAsset = assetContext?.nativeAsset;
 
       if (!nativeAsset && assetContext?.networkId && app?.balances) {
-        logger.warn('[updateFeeInUsd] nativeAsset missing, fetching from balances');
+        console.warn('[updateFeeInUsd] nativeAsset missing, fetching from balances');
         nativeAsset = getNativeAssetInfo(assetContext.networkId, app.balances);
-        logger.debug('[updateFeeInUsd] Fetched nativeAsset:', nativeAsset);
+        console.log('[updateFeeInUsd] Fetched nativeAsset:', nativeAsset);
       }
 
       if (!nativeAsset) {
-        logger.warn('[updateFeeInUsd] No nativeAsset available, cannot calculate fee in USD');
+        console.warn('[updateFeeInUsd] No nativeAsset available, cannot calculate fee in USD');
         setEstimatedFeeUsd('0.00');
         return;
       }
@@ -928,7 +927,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
       // If native token has no price, we can't calculate USD fee
       if (nativeTokenPrice === 0) {
-        logger.debug('[updateFeeInUsd] Native token price is 0, cannot calculate USD fee');
+        console.log('[updateFeeInUsd] Native token price is 0, cannot calculate USD fee');
         setEstimatedFeeUsd('0.00');
         return;
       }
@@ -937,7 +936,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const feeUsd = calcFeeInUsd(feeInNative, nativeTokenPrice.toString(), networkType, assetContext.networkId);
       setEstimatedFeeUsd(feeUsd);
 
-      logger.debug('[updateFeeInUsd] Fee calculation:', {
+      console.log('[updateFeeInUsd] Fee calculation:', {
         feeInNative,
         nativeTokenPrice,
         feeUsd,
@@ -945,7 +944,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         nativeSymbol: nativeAsset.symbol
       });
     } catch (error) {
-      logger.error('[updateFeeInUsd] Error calculating fee in USD:', error);
+      console.error('[updateFeeInUsd] Error calculating fee in USD:', error);
       setEstimatedFeeUsd('0.00');
     }
   };
@@ -1009,17 +1008,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
-    logger.debug('[fetchFeeRates] Starting, assetContext:', assetContext);
+    console.log('[fetchFeeRates] Starting, assetContext:', assetContext);
 
     // FAIL FAST: Validate prerequisites
     if (!assetContext) throw new Error('Asset context not available');
     if (!app?.getFees) throw new Error('Pioneer SDK getFees not available');
 
     const networkId = resolveNetworkId(assetContext);
-    logger.debug('[fetchFeeRates] Resolved networkId:', networkId);
+    console.log('[fetchFeeRates] Resolved networkId:', networkId);
 
     if (!networkId) {
-      logger.error('[fetchFeeRates] Could not resolve network ID:', {
+      console.error('[fetchFeeRates] Could not resolve network ID:', {
         caip: assetContext.caip,
         networkId: assetContext.networkId,
         assetId: assetContext.assetId,
@@ -1031,12 +1030,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     setResolvedNetworkId(networkId);
 
     try {
-      logger.debug('Fetching fee rates for network:', networkId);
+      console.log('Fetching fee rates for network:', networkId);
 
       // Use the new normalized getFees method from SDK
       const normalizedFees = await app.getFees(networkId);
-      logger.debug('Normalized fees from SDK:', normalizedFees);
-      logger.debug('Fetched fees for networkId:', networkId, 'Asset context:', {
+      console.log('Normalized fees from SDK:', normalizedFees);
+      console.log('Fetched fees for networkId:', networkId, 'Asset context:', {
         caip: assetContext.caip,
         networkId: assetContext.networkId,
         symbol: assetContext.symbol,
@@ -1054,14 +1053,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         fastest: normalizedFees.fastest.value
       };
 
-      logger.debug('Using fees from SDK:', fees);
+      console.log('Using fees from SDK:', fees);
 
       // Validate that we got non-zero fees
       if (fees.slow === '0' && fees.average === '0' && fees.fastest === '0') {
-        logger.error('SDK returned zero fees for all levels. Network:', networkId, 'Fees:', normalizedFees);
+        console.error('SDK returned zero fees for all levels. Network:', networkId, 'Fees:', normalizedFees);
         throw new Error(`Unable to fetch fee rates for ${assetContext.symbol || 'this asset'}. The network may be experiencing issues. Please try again later.`);
       }
-      logger.debug('Fee metadata:', {
+      console.log('Fee metadata:', {
         unit: normalizedFees.slow.unit,
         networkType: normalizedFees.networkType,
         labels: {
@@ -1093,7 +1092,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         const feeInEth = feeInGwei / 1e9; // Convert Gwei to ETH
         const feeString = feeInEth.toFixed(9);
 
-        logger.debug('Calculated EVM fee:', {
+        console.log('Calculated EVM fee:', {
           isToken,
           gasPriceGwei,
           gasLimit,
@@ -1112,7 +1111,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         const feeInBTC = feeInSatoshis / 100000000; // Convert satoshis to BTC
         const feeString = feeInBTC.toFixed(8);
 
-        logger.debug('Estimated UTXO fee:', {
+        console.log('Estimated UTXO fee:', {
           feeRateSatPerByte,
           estimatedTxSize,
           feeInSatoshis,
@@ -1124,15 +1123,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         updateFeeInUsd(feeString);
       } else {
         // For other chains (COSMOS, RIPPLE), use the fee value directly
-        logger.debug(`Using fee directly for ${normalizedFees.networkType}:`, selectedFee.value, selectedFee.unit);
+        console.log(`Using fee directly for ${normalizedFees.networkType}:`, selectedFee.value, selectedFee.unit);
         setEstimatedFee(selectedFee.value);
         updateFeeInUsd(selectedFee.value);
       }
       
     } catch (error: any) {
-      logger.error('Failed to fetch fee rates:', error);
-      logger.error('Network ID sent to API:', networkId);
-      logger.error('Full asset context:', assetContext);
+      console.error('Failed to fetch fee rates:', error);
+      console.error('Network ID sent to API:', networkId);
+      console.error('Full asset context:', assetContext);
 
       // Extract detailed error information
       let errorDetail = error.message || 'Unknown error';
@@ -1145,7 +1144,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Check for the specific server-side routing bug
       if (errorDetail.includes('missing node! for network eip155:*')) {
         errorDetail = `Server routing issue: The Pioneer API server is incorrectly converting "${networkId}" to "eip155:*". This is a known server bug that needs to be fixed in the Pioneer API backend.`;
-        logger.error('SERVER BUG DETECTED:', errorDetail);
+        console.error('SERVER BUG DETECTED:', errorDetail);
       }
 
       // FAIL FAST: Re-throw instead of swallowing
@@ -1188,7 +1187,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         updateFeeInUsd(feeString);
       } else {
         // For other chains (COSMOS, RIPPLE), use the fee value directly
-        logger.debug('Using fee directly for', feeLevel, ':', selectedFee.value, selectedFee.unit);
+        console.log('Using fee directly for', feeLevel, ':', selectedFee.value, selectedFee.unit);
         setEstimatedFee(selectedFee.value);
         updateFeeInUsd(selectedFee.value);
       }
@@ -1251,7 +1250,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const toggleInputMode = () => {
     // Prevent switching to USD mode when price is not available
     if (!isUsdInput && !isPriceAvailable()) {
-      logger.warn('Cannot switch to USD input mode: Price data is not available');
+      console.warn('Cannot switch to USD input mode: Price data is not available');
       return;
     }
 
@@ -1294,7 +1293,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const handlePubkeyChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
     const pubkeyPath = event.target.value;
 
-    logger.debug('🔄 [Send] Changing pubkey context to path:', pubkeyPath);
+    console.log('🔄 [Send] Changing pubkey context to path:', pubkeyPath);
 
     // Find the pubkey that matches the selected path
     if (assetContext?.pubkeys) {
@@ -1303,7 +1302,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       );
 
       if (result) {
-        logger.debug('📍 [Send] Selected pubkey details:', {
+        console.log('📍 [Send] Selected pubkey details:', {
           address: result.address,
           master: result.master,
           pubkey: result.pubkey,
@@ -1321,14 +1320,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             // setAssetContext has auto-set logic that can overwrite pubkeyContext
             // So we must set asset first, then override with our desired pubkey
             if (app?.setAssetContext && assetContext) {
-              logger.debug('🔄 [Send] Setting asset context first...');
+              console.log('🔄 [Send] Setting asset context first...');
               await app.setAssetContext(assetContext);
-              logger.debug('✅ [Send] Asset context set');
+              console.log('✅ [Send] Asset context set');
             }
 
             // Now set the specific pubkey context we want (this overrides any auto-set)
             await app.setPubkeyContext(result);
-            logger.debug('✅ [Send] Pubkey context set to desired address:', {
+            console.log('✅ [Send] Pubkey context set to desired address:', {
               address: result.address,
               note: result.note,
               addressNList: result.addressNList || result.addressNListMaster
@@ -1336,15 +1335,15 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
             // Force balance recalculation by updating the useEffect dependency
             // The useEffect will handle finding and setting the correct balance
-            logger.debug('💰 [Send] Balance will be updated by useEffect');
+            console.log('💰 [Send] Balance will be updated by useEffect');
           } catch (error) {
-            logger.error('❌ [Send] Error setting pubkey context:', error);
+            console.error('❌ [Send] Error setting pubkey context:', error);
           }
         }
 
-        logger.debug('✅ [Send] Pubkey change complete');
+        console.log('✅ [Send] Pubkey change complete');
       } else {
-        logger.warn('⚠️ [Send] Could not find pubkey matching path:', pubkeyPath);
+        console.warn('⚠️ [Send] Could not find pubkey matching path:', pubkeyPath);
       }
     }
   };
@@ -1356,16 +1355,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
       // Refresh asset context to get the new pubkey
       if (app?.setAssetContext && assetContext) {
-        logger.debug('🔄 [Send] Refreshing asset context after adding path...');
+        console.log('🔄 [Send] Refreshing asset context after adding path...');
         await app.setAssetContext(assetContext);
-        logger.debug('✅ [Send] Asset context refreshed with new path');
+        console.log('✅ [Send] Asset context refreshed with new path');
       }
 
       // Close dialog on success
       closeAddPathDialog();
     } catch (err: any) {
       // Error is already handled in the hook
-      logger.error('❌ [Send] Error adding path:', err);
+      console.error('❌ [Send] Error adding path:', err);
     }
   };
 
@@ -1391,7 +1390,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const builtTx = await buildTransaction();
       if (builtTx) openConfirmation();
     } catch (error) {
-      logger.error('Transaction build failed:', error);
+      console.error('Transaction build failed:', error);
       setError(error instanceof Error ? error.message : 'Failed to build transaction');
       setShowErrorDialog(true);
       throw error;
@@ -1413,7 +1412,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
 
       // Log the asset context to debug network ID issues
-      logger.debug('Building transaction with asset context:', {
+      console.log('Building transaction with asset context:', {
         caip,
         networkId: assetContext?.networkId,
         assetId: assetContext?.assetId,
@@ -1425,7 +1424,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
       // Validate the amount is not NaN or empty
       if (!nativeAmount || nativeAmount === '0' || isNaN(parseFloat(nativeAmount))) {
-        logger.error('Invalid amount for transaction:', {
+        console.error('Invalid amount for transaction:', {
           amount,
           nativeAmount,
           isUsdInput,
@@ -1434,7 +1433,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('Invalid amount: Please enter a valid amount');
       }
 
-      logger.debug('Transaction amount validation:', {
+      console.log('Transaction amount validation:', {
         originalAmount: amount,
         nativeAmount,
         isUsdInput,
@@ -1446,7 +1445,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const selectedFeeNumber = parseFloat(selectedFee || '0');
 
       if (!selectedFee || selectedFeeNumber === 0 || isNaN(selectedFeeNumber)) {
-        logger.error('Invalid fee data:', {
+        console.error('Invalid fee data:', {
           selectedFee,
           selectedFeeNumber,
           customFeeOption,
@@ -1486,7 +1485,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           // @ts-ignore - Adding custom fee property
           sendPayload.customFee = customFeeAmount;
         } else {
-          logger.error('Invalid custom fee amount:', customFeeAmount);
+          console.error('Invalid custom fee amount:', customFeeAmount);
           throw new Error('Invalid custom fee: Please enter a valid fee amount');
         }
       }
@@ -1505,11 +1504,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const scriptTypeToUse = overrideScriptType || changeScriptType;
       if (scriptTypeToUse) {
         sendPayload.changeScriptType = scriptTypeToUse;
-        logger.debug('🔄 [Send] Using custom change script type:', scriptTypeToUse);
+        console.log('🔄 [Send] Using custom change script type:', scriptTypeToUse);
       }
 
-      logger.debug('Build TX Payload:', sendPayload);
-      logger.debug('Fee details:', {
+      console.log('Build TX Payload:', sendPayload);
+      console.log('Fee details:', {
         selectedFeeLevel,
         feeLevel: sendPayload.feeLevel,
         customFeeOption,
@@ -1561,8 +1560,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         unsignedTxResult = await app.buildTx(sendPayload);
         console.log('✅ [SDK RESPONSE] Successfully received unsigned TX result:', unsignedTxResult);
       } catch (buildError: any) {
-        logger.error('❌ [SDK ERROR] Transaction build error:', buildError);
-        logger.error('❌ [SDK ERROR] Failed payload was:', sendPayload);
+        console.error('❌ [SDK ERROR] Transaction build error:', buildError);
+        console.error('❌ [SDK ERROR] Failed payload was:', sendPayload);
         const errorMessage = `Failed to build transaction: ${buildError.message || 'Unknown error'}`;
         setError(errorMessage);
         setShowErrorDialog(true);
@@ -1578,10 +1577,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         let feeValue = null;
         
         // Log the entire unsigned transaction for debugging
-        logger.debug('Full unsigned transaction result:', JSON.stringify(unsignedTxResult, null, 2));
+        console.log('Full unsigned transaction result:', JSON.stringify(unsignedTxResult, null, 2));
 
         // Debug fee extraction to understand object structure
-        logger.debug('Debug fee extraction:', {
+        console.log('Debug fee extraction:', {
           hasTopLevelFee: !!unsignedTxResult.fee,
           topLevelFeeType: typeof unsignedTxResult.fee,
           topLevelFeeValue: unsignedTxResult.fee,
@@ -1597,8 +1596,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           
           if (isUtxoNetwork && unsignedTxResult.inputs && unsignedTxResult.outputs) {
             // For UTXO chains, calculate fee as: total_inputs - total_outputs
-            logger.debug('Calculating UTXO fee from inputs and outputs');
-            logger.debug('Transaction structure:', {
+            console.log('Calculating UTXO fee from inputs and outputs');
+            console.log('Transaction structure:', {
               inputs: unsignedTxResult.inputs,
               outputs: unsignedTxResult.outputs
             });
@@ -1608,7 +1607,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               // The amount field is in satoshis as a string
               const value = input.amount || input.value || '0';
               const satoshis = typeof value === 'string' ? parseInt(value, 10) : value;
-              logger.debug(`Input ${input.txid}:${input.vout} = ${satoshis} sats`);
+              console.log(`Input ${input.txid}:${input.vout} = ${satoshis} sats`);
               return sum + satoshis;
             }, 0);
             
@@ -1617,7 +1616,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               // The amount field is in satoshis as a string
               const value = output.amount || output.value || '0';
               const satoshis = typeof value === 'string' ? parseInt(value, 10) : value;
-              logger.debug(`Output to ${output.address || 'change'} = ${satoshis} sats`);
+              console.log(`Output to ${output.address || 'change'} = ${satoshis} sats`);
               return sum + satoshis;
             }, 0);
             
@@ -1627,7 +1626,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             // Convert satoshis to BTC for display
             feeValue = (feeInSatoshis / 100000000).toFixed(8);
             
-            logger.debug('UTXO fee calculation:', {
+            console.log('UTXO fee calculation:', {
               totalInputs,
               totalOutputs,
               feeInSatoshis,
@@ -1644,7 +1643,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               // Fee is in satoshis, convert to BTC
               const feeInSatoshis = parseInt(feeStr);
               feeValue = (feeInSatoshis / 100000000).toFixed(8);
-              logger.debug('UTXO fee from direct field:', feeInSatoshis, 'sats =', feeValue, 'BTC');
+              console.log('UTXO fee from direct field:', feeInSatoshis, 'sats =', feeValue, 'BTC');
             } else {
               // For other chains, use the fee as-is
               feeValue = feeStr;
@@ -1670,7 +1669,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 // Default: use as-is
                 feeValue = feeAmount;
               }
-              logger.debug('Extracted fee from signDoc tx:', feeValue, feeDenom);
+              console.log('Extracted fee from signDoc tx:', feeValue, feeDenom);
             }
           } else if (unsignedTxResult.tx && unsignedTxResult.tx.value && unsignedTxResult.tx.value.fee) {
             // Cosmos-style transactions (including XRP wrapped in Cosmos format)
@@ -1678,7 +1677,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             if (cosmosStyleFee.amount && cosmosStyleFee.amount.length > 0) {
               // Fee is in the amount array
               feeValue = cosmosStyleFee.amount[0].amount;
-              logger.debug('Extracted fee from Cosmos-style tx:', feeValue);
+              console.log('Extracted fee from Cosmos-style tx:', feeValue);
             }
           } else if (unsignedTxResult.payment && unsignedTxResult.payment.amount) {
             // XRP/Ripple transactions - use a default fee if not specified
@@ -1690,11 +1689,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 ? parseInt(unsignedTxResult.Fee) 
                 : unsignedTxResult.Fee;
               feeValue = (feeInDrops / 1000000).toString();
-              logger.debug('Extracted XRP fee from Fee field:', feeInDrops, 'drops =', feeValue, 'XRP');
+              console.log('Extracted XRP fee from Fee field:', feeInDrops, 'drops =', feeValue, 'XRP');
             } else {
               // Use default fee if not specified
               feeValue = '0.000012'; // 12 drops in XRP
-              logger.debug('Using default XRP fee:', feeValue, 'XRP (12 drops)');
+              console.log('Using default XRP fee:', feeValue, 'XRP (12 drops)');
             }
           } else if (unsignedTxResult.gasPrice && (unsignedTxResult.gas || unsignedTxResult.gasLimit)) {
             // EVM chains provide gasPrice and gas limit - calculate the fee
@@ -1717,7 +1716,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             const feeInEth = Number(feeInWei) / 1e18;
             feeValue = feeInEth.toFixed(9);
             
-            logger.debug('Gas calculation:', {
+            console.log('Gas calculation:', {
               gasPrice: gasPriceHex,
               gasPriceDecimal: gasPrice.toString(),
               gasPriceGwei: Number(gasPrice) / 1e9,
@@ -1728,12 +1727,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             });
           } else {
             // Try to find fee-related fields in any nested structure
-            logger.debug('Could not find fee in standard locations, checking nested structures...');
+            console.log('Could not find fee in standard locations, checking nested structures...');
             
             // Check if the result has a tx or transaction property
             const nestedTx = unsignedTxResult.tx || unsignedTxResult.transaction || unsignedTxResult.unsignedTx;
             if (nestedTx) {
-              logger.debug('Found nested transaction:', nestedTx);
+              console.log('Found nested transaction:', nestedTx);
               
               // Try to extract fee from nested structure
               if (nestedTx.gasPrice && (nestedTx.gas || nestedTx.gasLimit)) {
@@ -1753,14 +1752,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 const feeInEth = Number(feeInWei) / 1e18;
                 feeValue = feeInEth.toFixed(9);
                 
-                logger.debug('Calculated fee from nested transaction:', feeValue);
+                console.log('Calculated fee from nested transaction:', feeValue);
               }
             }
           }
         }
         
         // The fee from the API should already be in the correct units
-        logger.debug('Fee from transaction:', feeValue);
+        console.log('Fee from transaction:', feeValue);
 
         // For MayaChain and ThorChain, allow empty fees (backend will apply default)
         const caipId = assetContext?.caip || assetContext?.assetId;
@@ -1775,7 +1774,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // If Cosmos SDK chain has no fee, set a placeholder for display
         if (isCosmosSdkChain && (!feeValue || feeValue === null)) {
           feeValue = '0'; // Backend will apply actual fee
-          logger.debug('MayaChain/ThorChain: Using backend default fee');
+          console.log('MayaChain/ThorChain: Using backend default fee');
         }
 
         // Check for suspiciously high fees (like 1 BTC)
@@ -1787,7 +1786,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // For Bitcoin/UTXO chains, if fee is greater than 0.01 BTC (1,000,000 satoshis), it's likely wrong
         const isUtxoNetwork = UTXO_NETWORKS.some(id => caipId?.includes(id));
         if (isUtxoNetwork && feeAsNumber > 0.01) {
-          logger.error('Suspiciously high fee detected:', feeValue, 'BTC');
+          console.error('Suspiciously high fee detected:', feeValue, 'BTC');
           throw new Error(`Fee appears incorrect: ${feeValue} BTC is unusually high. Please check fee rates and try again.`);
         }
 
@@ -1795,7 +1794,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         updateFeeInUsd(feeValue);
 
       } catch (feeError: any) {
-        logger.error('Error extracting fee from transaction:', feeError);
+        console.error('Error extracting fee from transaction:', feeError);
         const errorMessage = `Failed to calculate transaction fee: ${feeError.message}`;
         setError(errorMessage);
         setShowErrorDialog(true);
@@ -1817,7 +1816,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       
       return transactionState
     } catch (error) {
-      logger.error('Transaction build error:', error)
+      console.error('Transaction build error:', error)
       throw error
     } finally {
       setLoading(false)
@@ -1839,7 +1838,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('No unsigned transaction to sign')
       }
       
-      logger.debug('Signing TX:', txState.unsignedTx)
+      console.log('Signing TX:', txState.unsignedTx)
 
       // Call the SDK's signTx method with TWO separate parameters (not an object)
       // See: pioneer-sdk/src/index.ts signTx(caip: string, unsignedTx: any)
@@ -1848,7 +1847,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         txState.unsignedTx
       )
       
-      logger.debug('Signed TX Result:', signedTxResult)
+      console.log('Signed TX Result:', signedTxResult)
       setSignedTx(signedTxResult)
       setTransactionStep('broadcast')
       
@@ -1857,7 +1856,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       
       return signedTxResult
     } catch (error: any) {
-      logger.error('Transaction signing error:', error)
+      console.error('Transaction signing error:', error)
       // Set error message and show error dialog
       setError(error.message || 'Failed to sign transaction')
       setShowErrorDialog(true)
@@ -1879,12 +1878,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('No signed transaction to broadcast')
       }
       
-      logger.debug('Broadcasting TX:', signedTxData)
+      console.log('Broadcasting TX:', signedTxData)
       
       // Call the SDK's broadcastTx method
       const broadcastResult = await app.broadcastTx(caip, signedTxData)
       
-      logger.debug('Broadcast Result:', broadcastResult)
+      console.log('Broadcast Result:', broadcastResult)
       
       // Extract the transaction hash from the result - handle different result formats
       let finalTxHash = '';
@@ -1908,11 +1907,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         throw new Error('No transaction hash returned from broadcast');
       }
       
-      logger.debug('Final TX Hash:', finalTxHash);
-      logger.debug('📡 [SEND] Transaction broadcast successful! TxHash:', finalTxHash);
+      console.log('Final TX Hash:', finalTxHash);
+      console.log('📡 [SEND] Transaction broadcast successful! TxHash:', finalTxHash);
       setTxHash(finalTxHash)
       setTxSuccess(true)
-      logger.debug('⏳ [SEND] Setting transactionStep to CONFIRMING');
+      console.log('⏳ [SEND] Setting transactionStep to CONFIRMING');
       setTransactionStep('confirming') // Wait for confirmation before showing success
 
       // Reset confirmation status for new transaction
@@ -1923,16 +1922,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         confirmations: 0
       });
 
-      logger.debug('📡 [SEND] Now waiting for confirmation events...', {
+      console.log('📡 [SEND] Now waiting for confirmation events...', {
         txHash: finalTxHash,
         hasPioneer: !!pioneer,
         hasEvents: !!pioneer?.state?.app?.events
       });
-      logger.debug('📡 Transaction broadcast, waiting for confirmation:', finalTxHash);
+      console.log('📡 Transaction broadcast, waiting for confirmation:', finalTxHash);
 
       return broadcastResult
     } catch (error: any) {
-      logger.error('Transaction broadcast error:', error)
+      console.error('Transaction broadcast error:', error)
       // Set error message and show error dialog
       setError(error.message || 'Failed to broadcast transaction')
       setShowErrorDialog(true)
@@ -1955,9 +1954,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       // Step 2: Broadcast the transaction
       await broadcastTransaction(signedTxData)
 
-      logger.debug('Transaction sent successfully')
+      console.log('Transaction sent successfully')
     } catch (error) {
-      logger.error('Transaction error:', error)
+      console.error('Transaction error:', error)
       // Error is already handled in the respective functions
     } finally {
       setLoading(false)
@@ -1967,14 +1966,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // View change address on device
   const handleViewChangeOnDevice = async (output: any) => {
     if (!app?.keepKeySdk) {
-      logger.error('KeepKey SDK not available')
+      console.error('KeepKey SDK not available')
       return
     }
 
     try {
       setLoading(true)
-      logger.debug('👁️ [Send] Viewing change address on device...')
-      logger.debug('🔑 [Send] Change output:', output)
+      console.log('👁️ [Send] Viewing change address on device...')
+      console.log('🔑 [Send] Change output:', output)
 
       if (!output.addressNList && !output.address_n) {
         throw new Error('No address path available')
@@ -1983,9 +1982,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       const addressNList = output.addressNList || output.address_n
       const scriptType = output.scriptType || 'p2wpkh'
 
-      logger.debug('🔐 [Send] Network ID:', assetContext.networkId)
-      logger.debug('📝 [Send] Script Type:', scriptType)
-      logger.debug('🛣️ [Send] Address Path:', addressNList)
+      console.log('🔐 [Send] Network ID:', assetContext.networkId)
+      console.log('📝 [Send] Script Type:', scriptType)
+      console.log('🛣️ [Send] Address Path:', addressNList)
 
       // Call KeepKey SDK directly with the exact path from the change output
       // Don't use getAndVerifyAddress because it modifies the path indices
@@ -1996,13 +1995,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         coin: 'Bitcoin' // For Bitcoin mainnet
       }
 
-      logger.debug('🔑 [Send] Calling utxoGetAddress with:', addressInfo)
+      console.log('🔑 [Send] Calling utxoGetAddress with:', addressInfo)
 
       const { address: deviceAddress } = await app.keepKeySdk.address.utxoGetAddress(addressInfo)
 
-      logger.debug('✅ [Send] Change address displayed on device:', deviceAddress)
+      console.log('✅ [Send] Change address displayed on device:', deviceAddress)
     } catch (error: any) {
-      logger.error('❌ [Send] Error displaying address on device:', error)
+      console.error('❌ [Send] Error displaying address on device:', error)
       setError(error.message || 'Failed to display address on device')
       setShowErrorDialog(true)
     } finally {
@@ -2012,28 +2011,28 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Handle change address type update
   const handleChangeAddressUpdate = async (outputIndex: number, newScriptType: string) => {
-    logger.debug('🔄 [Send] Changing address type for output', outputIndex, 'to', newScriptType)
+    console.log('🔄 [Send] Changing address type for output', outputIndex, 'to', newScriptType)
 
     try {
       setLoading(true)
 
       // Update the change script type state
       setChangeScriptType(newScriptType)
-      logger.debug('📝 [Send] Set change script type to:', newScriptType)
+      console.log('📝 [Send] Set change script type to:', newScriptType)
 
       // Rebuild the transaction with the new script type
       // We need to pass the newScriptType directly since state updates are async
-      logger.debug('🔨 [Send] Rebuilding transaction with new change address type...')
+      console.log('🔨 [Send] Rebuilding transaction with new change address type...')
       const rebuiltTx = await buildTransactionWithScriptType(newScriptType)
 
       if (rebuiltTx) {
-        logger.debug('✅ [Send] Transaction rebuilt successfully with new change address type')
+        console.log('✅ [Send] Transaction rebuilt successfully with new change address type')
         setUnsignedTx(rebuiltTx)
       } else {
         throw new Error('Failed to rebuild transaction')
       }
     } catch (error: any) {
-      logger.error('❌ [Send] Error changing address type:', error)
+      console.error('❌ [Send] Error changing address type:', error)
       setError(error.message || 'Failed to change address type')
       setShowErrorDialog(true)
       // Reset to previous state on error
@@ -2077,7 +2076,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       setShowRawTxDialog(false);
       // Show a success message or toast here
     } catch (error) {
-      logger.error('Invalid JSON format:', error);
+      console.error('Invalid JSON format:', error);
       // Show an error message or toast here
     }
   };
@@ -2090,11 +2089,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Function to handle viewing transaction on explorer
   const viewOnExplorer = () => {
     if (!txHash) {
-      logger.error('No transaction hash available');
+      console.error('No transaction hash available');
       return;
     }
     
-    logger.debug('Viewing transaction on explorer:', {
+    console.log('Viewing transaction on explorer:', {
       txHash,
       networkId: assetContext?.networkId,
       explorerTxLink: assetContext?.explorerTxLink,
@@ -2113,14 +2112,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         : `${assetContext.explorerTxLink}/`;
       
       explorerUrl = `${baseUrl}${txHash}`;
-      logger.debug('Using explorer from assetContext.explorerTxLink:', explorerUrl);
+      console.log('Using explorer from assetContext.explorerTxLink:', explorerUrl);
     } 
     // Fallback for different network types
     else if (assetContext?.networkId) {
       const networkId = assetContext.networkId;
       const networkType = getNetworkType(networkId);
       
-      logger.debug('Determining explorer from networkId:', {
+      console.log('Determining explorer from networkId:', {
         networkId,
         networkType,
         isEVM: networkId.startsWith('eip155:'),
@@ -2141,7 +2140,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           } else if (networkId.includes('bip122:4da631f2ac1bed857bd968c67c913978')) {
             explorerUrl = `https://chainz.cryptoid.info/dgb/tx.dws?${txHash}.htm`;
           } else {
-            logger.error(`Unsupported UTXO network: ${networkId}`);
+            console.error(`Unsupported UTXO network: ${networkId}`);
             alert(`Error: No explorer configured for UTXO network: ${networkId}`);
             return;
           }
@@ -2174,7 +2173,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           if (evmExplorers[chainId]) {
             explorerUrl = `${evmExplorers[chainId]}${txHash}`;
           } else {
-            logger.error(`Unsupported EVM chain: ${networkId} (chainId: ${chainId})`);
+            console.error(`Unsupported EVM chain: ${networkId} (chainId: ${chainId})`);
             alert(`Error: No explorer configured for EVM chain: ${networkId}. Please contact support to add explorer for chain ID ${chainId}.`);
             return;
           }
@@ -2194,7 +2193,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             explorerUrl = `https://www.mintscan.io/kujira/tx/${txHash}`;
           } else {
             const chainName = networkId.split(':')[1].split('/')[0];
-            logger.warn(`Using generic Mintscan for Cosmos chain: ${chainName}`);
+            console.warn(`Using generic Mintscan for Cosmos chain: ${chainName}`);
             explorerUrl = `https://www.mintscan.io/${chainName}/tx/${txHash}`;
           }
           break;
@@ -2204,7 +2203,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           if (networkId.includes('ripple')) {
             explorerUrl = `https://xrpscan.com/tx/${txHash}`;
           } else {
-            logger.error(`Unsupported network type for networkId: ${networkId}`);
+            console.error(`Unsupported network type for networkId: ${networkId}`);
             alert(`Error: No explorer configured for network: ${networkId}. Please contact support.`);
             return;
           }
@@ -2212,20 +2211,20 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         }
         
         default:
-          logger.error(`Unknown network type: ${networkType} for networkId: ${networkId}`);
+          console.error(`Unknown network type: ${networkType} for networkId: ${networkId}`);
           alert(`Error: Unable to determine explorer for network: ${networkId}. Please contact support.`);
           return;
       }
     } else {
       // No network information available
-      logger.error('No network information available in assetContext');
+      console.error('No network information available in assetContext');
       alert('Error: Cannot determine blockchain explorer - no network information available. Please contact support.');
       return;
     }
     
     // Open the explorer in a new tab
     if (explorerUrl) {
-      logger.debug('Opening explorer URL:', explorerUrl);
+      console.log('Opening explorer URL:', explorerUrl);
       window.open(explorerUrl, '_blank');
     }
   }
@@ -2272,7 +2271,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const supportsMemo = TENDERMINT_SUPPORT.includes(assetContext.assetId) || OTHER_SUPPORT.includes(assetContext.assetId);
 
   // Debug: Log current transaction state
-  logger.debug('🔄 [SEND] Current state:', {
+  console.log('🔄 [SEND] Current state:', {
     transactionStep,
     showConfirmation,
     txHash: txHash ? txHash.substring(0, 10) + '...' : null,
@@ -2283,7 +2282,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   if (showConfirmation) {
     // Transaction confirming screen - waiting for blockchain confirmation
     if (transactionStep === 'confirming') {
-      logger.debug('🎨 [SEND] Rendering CONFIRMING UI with status:', confirmationStatus);
+      console.log('🎨 [SEND] Rendering CONFIRMING UI with status:', confirmationStatus);
       return (
         <Box height="100vh" bg={theme.bg}>
           <Box
@@ -2889,7 +2888,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     fontSize="xs" 
                     cursor="pointer"
                     _hover={{ color: 'gray.300' }}
-                    onClick={() => logger.error('Full error:', error)}
+                    onClick={() => console.error('Full error:', error)}
                   >
                     Technical details (click to log to console)
                   </Text>

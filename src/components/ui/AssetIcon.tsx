@@ -157,10 +157,31 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
         justifyContent="center"
         fontSize="lg"
         color={color}
-        bg="rgba(255, 255, 255, 0.05)"
-        borderRadius="md"
+        bg="rgba(255, 255, 255, 0.12)"
+        borderRadius="full"
+        boxShadow="0 0 0 2.5px rgba(255, 255, 255, 0.4), 0 0 12px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4)"
+        backdropFilter="blur(8px)"
+        position="relative"
+        _before={{
+          content: '""',
+          position: 'absolute',
+          inset: '2.5px',
+          borderRadius: 'full',
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.15) 100%)',
+          pointerEvents: 'none',
+        }}
+        _after={{
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 'full',
+          background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%)',
+          pointerEvents: 'none',
+        }}
       >
-        <FaCoins />
+        <Box position="relative" zIndex={1} filter="drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5))">
+          <FaCoins />
+        </Box>
       </Box>
     );
   }
@@ -172,11 +193,28 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
       display="flex"
       alignItems="center"
       justifyContent="center"
-      bg="rgba(255, 255, 255, 0.1)"
-      borderRadius="md"
+      bg="rgba(255, 255, 255, 0.12)"
+      borderRadius="full"
       p="3px"
       position="relative"
-      boxShadow="0 0 0 1px rgba(255, 255, 255, 0.15)"
+      boxShadow="0 0 0 2.5px rgba(255, 255, 255, 0.4), 0 0 12px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4)"
+      backdropFilter="blur(8px)"
+      _before={{
+        content: '""',
+        position: 'absolute',
+        inset: '2.5px',
+        borderRadius: 'full',
+        background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.15) 100%)',
+        pointerEvents: 'none',
+      }}
+      _after={{
+        content: '""',
+        position: 'absolute',
+        inset: 0,
+        borderRadius: 'full',
+        background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%)',
+        pointerEvents: 'none',
+      }}
     >
       <Image
         key={imageKey}
@@ -186,6 +224,10 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
         objectFit="contain"
         onError={handleError}
         onLoad={handleLoad}
+        borderRadius="full"
+        position="relative"
+        zIndex={1}
+        filter="drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5))"
         fallback={
           <Box
             boxSize="100%"
@@ -193,6 +235,8 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
             alignItems="center"
             justifyContent="center"
             color={color}
+            position="relative"
+            zIndex={1}
           >
             <FaCoins />
           </Box>

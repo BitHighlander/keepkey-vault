@@ -1,11 +1,7 @@
 'use client'
 // @ts-nocheck
 
-// Debug flag - set to false to reduce console noise
-const DEBUG_VERBOSE = false;
-
 import { Box, Flex } from "@chakra-ui/react"
-import { logger } from '@/lib/logger';
 import { keyframes } from '@emotion/react'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import Dashboard from '@/components/dashboard/Dashboard'
@@ -74,35 +70,12 @@ export default function Home() {
   const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
 
   // Add debug logging for component mount and state changes
-  useEffect(() => {
-    if (DEBUG_VERBOSE) logger.debug('🏠 [Page] Component mounted');
-    return () => {
-      if (DEBUG_VERBOSE) logger.debug('🏠 [Page] Component unmounting');
-    };
-  }, []);
+  
 
-  useEffect(() => {
-    if (DEBUG_VERBOSE) {
-      logger.debug('🔄 [Page] State update:', {
-        hasApp: !!app,
-        hasAssetContext: !!app?.assetContext,
-        hasDashboard: !!app?.dashboard,
-        hasPioneer: !!pioneer,
-        splashBgPath: splashBg // Debug: check if image imported correctly
-      });
-    }
-  }, [app, pioneer]);
+  
 
   // Debug loading screen state
-  useEffect(() => {
-    if (DEBUG_VERBOSE) {
-      if (showLoading) {
-        logger.debug('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
-      } else {
-        logger.debug('✅ [LOADING SCREEN] Loading screen hidden');
-      }
-    }
-  }, [showLoading]);
+  
 
   // Handle settings dialog open state
   const handleSettingsOpenChange = (details: { open: boolean }) => {

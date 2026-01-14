@@ -7,6 +7,8 @@ import { TransactionDetailDialog } from './TransactionDetailDialog';
 import { TransactionGroup, TransactionTableHeader } from './TransactionGroup';
 import { TransactionRow } from './TransactionRow';
 import { SwapTransactionRow } from './SwapTransactionRow';
+import { SwapProgress } from '@/components/swap/SwapProgress';
+import { DialogRoot, DialogContent, DialogBody } from '@/components/ui/dialog';
 import { networkIdToSymbol, getSwapStatusColorScheme } from '@/utils/transactionUtils';
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 
@@ -27,6 +29,7 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
   const [loading, setLoading] = useState(true);
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showSwapProgress, setShowSwapProgress] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const pioneer = usePioneerContext();
@@ -34,12 +37,24 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
   const { app } = state;
 
   const handleTransactionClick = (tx: any) => {
-    setSelectedTransaction(tx);
-    setIsDialogOpen(true);
+    // If it's a swap transaction, show SwapProgress directly
+    if (tx.swapMetadata?.isSwap) {
+      setSelectedTransaction(tx);
+      setShowSwapProgress(true);
+    } else {
+      // For regular transactions, show the detail dialog
+      setSelectedTransaction(tx);
+      setIsDialogOpen(true);
+    }
   };
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
+    setSelectedTransaction(null);
+  };
+
+  const handleCloseSwapProgress = () => {
+    setShowSwapProgress(false);
     setSelectedTransaction(null);
   };
 
@@ -62,14 +77,29 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
     let txs = app.transactions;
 
     if (networkId) {
-      txs = txs.filter((tx: any) => tx.networkId === networkId);
+      txs = txs.filter((tx: any) =>
+        tx.networkId === networkId ||
+        // Also include swaps where this asset is the source or destination
+        (tx.swapMetadata?.fromAsset && tx.swapMetadata.fromAsset.includes(networkId)) ||
+        (tx.swapMetadata?.toAsset && tx.swapMetadata.toAsset.includes(networkId))
+      );
     } else if (caip) {
-      let filtered = txs.filter((tx: any) => tx.caip === caip);
+      let filtered = txs.filter((tx: any) =>
+        tx.caip === caip ||
+        // Also include swaps where this asset is the source or destination
+        tx.swapMetadata?.fromAsset === caip ||
+        tx.swapMetadata?.toAsset === caip
+      );
 
       if (filtered.length === 0 && caip.includes('/')) {
         const networkPart = caip.split('/')[0];
         filtered = txs.filter(
-          (tx: any) => tx.networkId === networkPart || tx.caip?.startsWith(networkPart)
+          (tx: any) =>
+            tx.networkId === networkPart ||
+            tx.caip?.startsWith(networkPart) ||
+            // Also check if fromAsset or toAsset matches this network
+            (tx.swapMetadata?.fromAsset && tx.swapMetadata.fromAsset.startsWith(networkPart)) ||
+            (tx.swapMetadata?.toAsset && tx.swapMetadata.toAsset.startsWith(networkPart))
         );
       }
 
@@ -270,8 +300,8 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
 
                 <Box p={4}>
                   <TransactionTableHeader
-                    columns={['From Asset', 'To Asset', 'Protocol', 'Status', 'Amount', 'Inbound TxID', 'Outbound TxID']}
-                    templateColumns="1.5fr 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr"
+                    columns={['From Asset', 'To Asset', 'Protocol', 'Status', 'Amount', 'Inbound TxID', 'Outbound TxID', 'Date']}
+                    templateColumns="1.5fr 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr"
                   />
 
                   <VStack gap={1} align="stretch">
@@ -312,6 +342,42 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
           })}
         </TransactionGroup>
       )}
+
+      {/* Show SwapProgress for swap transactions */}
+      <DialogRoot
+        open={showSwapProgress && !!selectedTransaction?.swapMetadata}
+        onOpenChange={(e) => {
+          if (!e.open) {
+            handleCloseSwapProgress();
+          }
+        }}
+        size="xl"
+      >
+        <DialogContent
+          bg="#000000"
+          borderRadius="2xl"
+          borderWidth="2px"
+          borderColor="#1A1D23"
+          maxW="900px"
+          p={0}
+        >
+          <DialogBody p={0}>
+            {selectedTransaction?.swapMetadata && (
+              <SwapProgress
+                txid={selectedTransaction.swapMetadata.inboundTxHash || selectedTransaction.txid}
+                fromAsset={selectedTransaction.swapMetadata.fromAsset}
+                toAsset={selectedTransaction.swapMetadata.toAsset}
+                inputAmount={selectedTransaction.swapMetadata.inputAmount || '0'}
+                outputAmount={selectedTransaction.swapMetadata.outputAmount || '0'}
+                integration={selectedTransaction.swapMetadata.protocol === 'thorchain' ? 'thorchain' : 'mayaprotocol'}
+                memo={selectedTransaction.swapMetadata.memo}
+                onClose={handleCloseSwapProgress}
+                onComplete={handleCloseSwapProgress}
+              />
+            )}
+          </DialogBody>
+        </DialogContent>
+      </DialogRoot>
 
       <TransactionDetailDialog
         isOpen={isDialogOpen}

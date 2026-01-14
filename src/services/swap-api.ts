@@ -112,12 +112,6 @@ export function getCachedSwapAssets(): ThorchainPool[] | null {
     const age = Date.now() - entry.timestamp;
     const isExpired = age > CACHE_TTL;
 
-    if (isExpired) {
-      console.log(`[swap-api] Cache expired (age: ${Math.round(age / 1000 / 60)}min), but returning for fallback use`);
-    } else {
-      console.log(`[swap-api] Cache hit (age: ${Math.round(age / 1000 / 60)}min)`);
-    }
-
     return entry.assets;
   } catch (error) {
     console.error('[swap-api] Error reading cache:', error);
@@ -253,7 +247,6 @@ export async function getSwapAssets(): Promise<{
   if (isCacheFresh()) {
     const cached = getCachedSwapAssets();
     if (cached && cached.length > 0) {
-      console.log('[swap-api] Using fresh cache');
       return { assets: cached, source: 'cache' };
     }
   }

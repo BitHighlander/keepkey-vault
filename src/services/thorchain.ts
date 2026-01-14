@@ -1,6 +1,5 @@
 // THORChain quote service for native asset swaps
 import { THORCHAIN_POOLS } from '../config/thorchain-pools';
-import { logger } from '@/lib/logger';
 
 export const THORNODE_URL = 'https://thornode.ninerealms.com';
 export const MIDGARD_URL = 'https://midgard.ninerealms.com';
@@ -101,22 +100,22 @@ export function caipToThorchainAsset(caip: string, symbol: string): string | nul
 export async function getThorchainInboundAddress(chain: string): Promise<{ address: string; chain: string; gas_rate?: string } | null> {
   try {
     const url = `${THORNODE_URL}/thorchain/inbound_addresses`;
-    logger.debug('🔍 [THORChain] Fetching inbound addresses from:', url);
+    console.log('🔍 [THORChain] Fetching inbound addresses from:', url);
     
     const response = await fetch(url);
     if (!response.ok) {
-      logger.error('Failed to fetch inbound addresses:', response.status);
+      console.error('Failed to fetch inbound addresses:', response.status);
       return null;
     }
     
     const data = await response.json();
-    logger.debug('✅ [THORChain] Inbound addresses received:', data);
+    console.log('✅ [THORChain] Inbound addresses received:', data);
     
     // Find the inbound address for the specified chain
     const inboundInfo = data.find((item: any) => item.chain === chain);
     
     if (inboundInfo) {
-      logger.debug(`✅ [THORChain] Found inbound address for ${chain}:`, inboundInfo.address);
+      console.log(`✅ [THORChain] Found inbound address for ${chain}:`, inboundInfo.address);
       return {
         address: inboundInfo.address,
         chain: inboundInfo.chain,
@@ -124,10 +123,10 @@ export async function getThorchainInboundAddress(chain: string): Promise<{ addre
       };
     }
     
-    logger.error(`❌ [THORChain] No inbound address found for chain: ${chain}`);
+    console.error(`❌ [THORChain] No inbound address found for chain: ${chain}`);
     return null;
   } catch (error) {
-    logger.error('Error fetching THORChain inbound address:', error);
+    console.error('Error fetching THORChain inbound address:', error);
     return null;
   }
 }
@@ -146,11 +145,11 @@ export async function getThorchainQuote(
     const toThorAsset = THORCHAIN_ASSETS[toAsset];
     
     if (!fromThorAsset || !toThorAsset) {
-      logger.error('Asset not supported on THORChain:', { fromAsset, toAsset });
+      console.error('Asset not supported on THORChain:', { fromAsset, toAsset });
       return null;
     }
 
-    logger.debug('🔍 [THORChain] Preparing quote request:', {
+    console.log('🔍 [THORChain] Preparing quote request:', {
       fromAsset,
       toAsset,
       fromThorAsset,
@@ -171,13 +170,13 @@ export async function getThorchainQuote(
     });
 
     const url = `${THORNODE_URL}/thorchain/quote/swap?${params.toString()}`;
-    logger.debug('📡 [THORChain] Fetching quote from:', url);
+    console.log('📡 [THORChain] Fetching quote from:', url);
 
     const response = await fetch(url);
     
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error('❌ [THORChain] Failed to fetch quote:', {
+      console.error('❌ [THORChain] Failed to fetch quote:', {
         status: response.status,
         statusText: response.statusText,
         error: errorText
@@ -187,7 +186,7 @@ export async function getThorchainQuote(
       let errorMessage = 'Failed to fetch swap quote';
       try {
         const errorData = JSON.parse(errorText);
-        logger.error('❌ [THORChain] Error details:', errorData);
+        console.error('❌ [THORChain] Error details:', errorData);
 
         // Extract the most relevant error message
         if (errorData.message) {
@@ -217,7 +216,7 @@ export async function getThorchainQuote(
     }
 
     const data = await response.json();
-    logger.debug('✅ [THORChain] Quote response:', {
+    console.log('✅ [THORChain] Quote response:', {
       expectedAmountOut: data.expected_amount_out,
       fees: data.fees,
       memo: data.memo,
@@ -229,7 +228,7 @@ export async function getThorchainQuote(
     
     // Validate the response has required fields
     if (!data.expected_amount_out || data.expected_amount_out === "0") {
-      logger.error('⚠️ [THORChain] Invalid quote - zero or missing expected_amount_out:', data);
+      console.error('⚠️ [THORChain] Invalid quote - zero or missing expected_amount_out:', data);
       throw new Error('Invalid quote: zero output amount. Pool may have insufficient liquidity.');
     }
 
@@ -239,7 +238,7 @@ export async function getThorchainQuote(
       fetchedAt: Date.now()
     };
   } catch (error) {
-    logger.error('❌ [THORChain] Error fetching quote:', error);
+    console.error('❌ [THORChain] Error fetching quote:', error);
     // Re-throw the error so it can be caught by the caller with proper error message
     throw error;
   }
@@ -250,7 +249,7 @@ export async function getPool(asset: string): Promise<PoolData | null> {
   try {
     const thorAsset = THORCHAIN_ASSETS[asset];
     if (!thorAsset) {
-      logger.error('Asset not supported on THORChain:', asset);
+      console.error('Asset not supported on THORChain:', asset);
       return null;
     }
 
@@ -258,14 +257,14 @@ export async function getPool(asset: string): Promise<PoolData | null> {
     const response = await fetch(url);
     
     if (!response.ok) {
-      logger.error('Failed to fetch pool:', response.status);
+      console.error('Failed to fetch pool:', response.status);
       return null;
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    logger.error('Error fetching pool:', error);
+    console.error('Error fetching pool:', error);
     return null;
   }
 }
@@ -307,7 +306,7 @@ export async function getExchangeRate(fromAsset: string, toAsset: string): Promi
     
     return fromToRune * runeToTo;
   } catch (error) {
-    logger.error('Error calculating exchange rate:', error);
+    console.error('Error calculating exchange rate:', error);
     return null;
   }
 }
@@ -325,7 +324,7 @@ export async function getExchangeRate(fromAsset: string, toAsset: string): Promi
 export function getAssetDecimals(assetContext: any): number {
   // CRITICAL: Always use SDK assetContext data, NEVER hardcoded fallbacks
   if (!assetContext) {
-    logger.error('❌ CRITICAL: getAssetDecimals called without assetContext!');
+    console.error('❌ CRITICAL: getAssetDecimals called without assetContext!');
     throw new Error('getAssetDecimals requires assetContext from Pioneer SDK');
   }
 
@@ -333,7 +332,7 @@ export function getAssetDecimals(assetContext: any): number {
   const decimals = assetContext.precision ?? assetContext.decimals;
 
   if (decimals === undefined || decimals === null) {
-    logger.error('❌ CRITICAL: assetContext missing decimals/precision:', assetContext);
+    console.error('❌ CRITICAL: assetContext missing decimals/precision:', assetContext);
     throw new Error(`Asset ${assetContext.symbol || 'unknown'} has no decimals/precision in assetContext`);
   }
 
@@ -347,7 +346,7 @@ export function toBaseUnit(amount: string, assetContext: any): number {
   const decimal = 8; // THORChain always uses 8 decimals internally
   const result = Math.floor(value * Math.pow(10, decimal));
 
-  logger.debug('🔢 [THORChain] Converting to base units:', {
+  console.log('🔢 [THORChain] Converting to base units:', {
     symbol: assetContext?.symbol || 'unknown',
     inputAmount: amount,
     value,
@@ -369,7 +368,7 @@ export function fromBaseUnit(amount: string, assetContext: any, isThorchainRespo
   const decimal = isThorchainResponse ? 8 : getAssetDecimals(assetContext);
   const result = value / Math.pow(10, decimal);
 
-  logger.debug('💱 [THORChain] Converting from base units:', {
+  console.log('💱 [THORChain] Converting from base units:', {
     symbol: assetContext?.symbol || 'unknown',
     baseAmount: amount,
     value,

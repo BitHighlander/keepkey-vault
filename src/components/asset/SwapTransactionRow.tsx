@@ -10,6 +10,7 @@ import {
   getSwapStatusColorScheme,
   formatTxIdMiddleEllipsis,
   getBlockExplorerUrl,
+  formatDetailedRelativeTime,
 } from '@/utils/transactionUtils';
 
 interface SwapTransactionRowProps {
@@ -45,9 +46,13 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
   const fromNetworkId = isFromAssetCAIP ? extractNetworkIdFromCAIP(rawFromAsset) : null;
   const toNetworkId = isToAssetCAIP ? extractNetworkIdFromCAIP(rawToAsset) : null;
 
+  // Get timestamp - prefer transaction.timestamp, fallback to swapMetadata.createdAt
+  const timestamp = transaction.timestamp || meta.createdAt;
+  const relativeTime = timestamp ? formatDetailedRelativeTime(timestamp) : 'Unknown';
+
   return (
     <Grid
-      templateColumns="1.5fr 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr"
+      templateColumns="1.5fr 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr"
       gap={3}
       p={3}
       bg="rgba(17, 17, 17, 0.6)"
@@ -171,6 +176,11 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
           </Text>
         );
       })()}
+
+      {/* Date */}
+      <Text color="gray.400" fontSize="xs">
+        {relativeTime}
+      </Text>
     </Grid>
   );
 };

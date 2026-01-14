@@ -66,11 +66,6 @@ class SoundManager {
 
     // Initialize last played timestamps
     this.lastPlayed = this.loadLastPlayed()
-
-    console.log('[SoundManager] Initialized:', {
-      browser: this.isBrowser,
-      muted: this.preferences.muted,
-    })
   }
 
   /**
@@ -90,12 +85,10 @@ class SoundManager {
    */
   public async init(): Promise<void> {
     if (!this.isBrowser) {
-      console.log('[SoundManager] Not in browser environment, skipping init')
       return
     }
 
     if (this.isInitialized) {
-      console.log('[SoundManager] Already initialized')
       return
     }
 
@@ -115,7 +108,6 @@ class SoundManager {
       }
 
       this.isInitialized = true
-      console.log('[SoundManager] Sounds preloaded:', this.audioCache.size)
     } catch (error) {
       console.error('[SoundManager] Error initializing sounds:', error)
     }
@@ -133,15 +125,11 @@ class SoundManager {
 
     // Check if muted
     if (this.preferences.muted) {
-      console.log(`[SoundManager] Sound muted: ${type}`)
       return
     }
 
     // Check frequency limit
     if (!this.canPlaySound(type)) {
-      console.log(
-        `[SoundManager] Frequency limit reached for: ${type}`
-      )
       return
     }
 
@@ -194,9 +182,6 @@ class SoundManager {
       // Play sound
       audio
         .play()
-        .then(() => {
-          console.log(`[SoundManager] Played: ${type}`)
-        })
         .catch((error) => {
           console.error(`[SoundManager] Error playing ${type}:`, error)
         })
@@ -221,7 +206,6 @@ class SoundManager {
   public toggleMute(): boolean {
     this.preferences.muted = !this.preferences.muted
     this.savePreferences()
-    console.log('[SoundManager] Muted:', this.preferences.muted)
     return this.preferences.muted
   }
 
@@ -233,7 +217,6 @@ class SoundManager {
   public setMuted(muted: boolean): void {
     this.preferences.muted = muted
     this.savePreferences()
-    console.log('[SoundManager] Muted set to:', muted)
   }
 
   /**
@@ -256,8 +239,6 @@ class SoundManager {
     this.audioCache.forEach((audio) => {
       audio.volume = this.preferences.volume
     })
-
-    console.log('[SoundManager] Volume set to:', this.preferences.volume)
   }
 
   /**

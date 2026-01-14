@@ -25,6 +25,8 @@ interface TransactionEventData {
   confirmations?: number // Block confirmations
   blockHeight?: number // Block height
   timestamp: number // Event timestamp (ms)
+  from?: string // Sender address
+  to?: string // Recipient address
 }
 
 /**
@@ -136,11 +138,20 @@ class TransactionEventManager {
       Math.min(8, metadata.decimals)
     )} ${metadata.symbol}`
 
-    // Determine event type
-    // Note: We can't reliably determine incoming vs outgoing from pioneer:tx
-    // so we default to 'payment_received' for now
-    // Future: Add direction field to pioneer:tx event
-    const eventType: PaymentEvent['type'] = 'payment_received'
+    // Determine event type based on transaction direction
+    // Compare the address field with from/to to determine if incoming or outgoing
+    let eventType: PaymentEvent['type'] = 'payment_received' // Default to received
+
+    if (txData.from && txData.to) {
+      // If address matches the 'from' field (case-insensitive), it's an outbound payment
+      if (txData.address.toLowerCase() === txData.from.toLowerCase()) {
+        eventType = 'balance_updated' // Outbound payment (balance decreased)
+      }
+      // If address matches the 'to' field (case-insensitive), it's an inbound payment
+      else if (txData.address.toLowerCase() === txData.to.toLowerCase()) {
+        eventType = 'payment_received' // Inbound payment (balance increased)
+      }
+    }
 
     return {
       type: eventType,
@@ -211,15 +222,18 @@ class TransactionEventManager {
         `txid: ${event.txid?.substring(0, 8)}...`
       )
 
-      // Play sound based on event type
+      // Play sounds for both incoming and outgoing transactions
       if (event.type === 'payment_received') {
-        soundManager.play('payment_received')
+        soundManager.play('payment_received') // Chaching sound
       } else if (event.type === 'balance_updated') {
-        soundManager.play('payment_sent')
+        soundManager.play('payment_sent') // Swoosh sound
       }
 
-      // Show toast notification
-      paymentToastManager.showPaymentToast(event)
+      // ONLY show toast for INCOMING payments (payment_received)
+      // Outbound payments just play sound and log - no toast notification
+      if (event.type === 'payment_received') {
+        paymentToastManager.showPaymentToast(event)
+      }
 
       // Emit to all registered listeners
       this.emitEvent(event)

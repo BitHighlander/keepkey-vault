@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react';
-import { logger } from '@/lib/logger';
 import { Box, Stack, HStack, VStack, Text, Button } from '@chakra-ui/react';
 import { FaArrowDown, FaShieldAlt } from 'react-icons/fa';
 import { usePioneerContext } from '@/components/providers/pioneer';
@@ -129,7 +128,6 @@ export const SwapConfirm = ({
           _hover={{ bg: '#1FC4B3' }}
           _active={{ bg: '#1AAB9B' }}
           onClick={() => {
-            logger.debug('🔴 CONFIRM BUTTON CLICKED!');
             onConfirm();
           }}
           width="full"

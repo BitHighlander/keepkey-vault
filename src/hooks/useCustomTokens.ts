@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePioneerContext } from '@/components/providers/pioneer';
-import { logger } from '@/lib/logger';
 
 export interface CustomToken {
   symbol: string;
@@ -35,8 +34,6 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      logger.debug('🔍 Fetching custom tokens via Pioneer SDK for:', userAddress);
-      logger.debug('🔍 Checking if GetCustomTokens method exists:', typeof app.pioneer.GetCustomTokens);
 
       // The Pioneer SDK auto-generates methods from swagger spec
       // If this fails, the SDK was initialized with wrong spec URL
@@ -48,15 +45,13 @@ export const useCustomTokens = () => {
         userAddress
       });
 
-      logger.debug('📦 Custom tokens response:', response);
 
       // Handle nested response structure: response.data.data.tokens
       const tokens = response?.data?.data?.tokens || response?.data?.tokens || response?.tokens || [];
       setCustomTokens(tokens);
 
-      logger.debug(`✅ Loaded ${tokens.length} custom tokens from server`);
     } catch (err: any) {
-      logger.error('Error fetching custom tokens:', err);
+      console.error('Error fetching custom tokens:', err);
       setError(err.message || 'Failed to fetch custom tokens');
       setCustomTokens([]);
     } finally {
@@ -70,12 +65,10 @@ export const useCustomTokens = () => {
     hasBalance: boolean;
     balance?: string;
   }> => {
-    logger.debug('📝 addCustomToken called with:', token);
-    logger.debug('User address:', userAddress);
 
     if (!userAddress || !app?.pioneer) {
       const errorMsg = 'No user address or Pioneer SDK available';
-      logger.error('❌', errorMsg);
+      console.error('❌', errorMsg);
       setError(errorMsg);
       return { success: false, hasBalance: false };
     }
@@ -84,8 +77,6 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      logger.debug('🌐 Adding custom token via Pioneer SDK');
-      logger.debug('🔍 Checking if AddCustomToken method exists:', typeof app.pioneer.AddCustomToken);
 
       // The Pioneer SDK auto-generates methods from swagger spec
       // If this fails, the SDK was initialized with wrong spec URL
@@ -107,20 +98,16 @@ export const useCustomTokens = () => {
         }
       });
 
-      logger.debug('✅ AddCustomToken response:', response);
 
       // Handle nested response structure: response.data.success or response.success
       const isSuccess = response?.success || response?.data?.success;
-      logger.debug('✅ AddCustomToken success status:', isSuccess);
 
       if (response && isSuccess) {
         // Refresh the token list from the server
         await fetchCustomTokens();
 
-        logger.debug('✅ Token added successfully!');
 
         // Check token balance using the dedicated endpoint with retry logic
-        logger.debug('💰 Checking custom token balance for:', token.caip);
 
         // Helper function to check balance with retry
         const checkBalanceWithRetry = async (retries = 3, delay = 800): Promise<{
@@ -130,7 +117,6 @@ export const useCustomTokens = () => {
         }> => {
           for (let attempt = 1; attempt <= retries; attempt++) {
             try {
-              logger.debug(`💰 Balance check attempt ${attempt}/${retries}`);
 
               // Add delay before retry attempts (but not the first attempt)
               if (attempt > 1) {
@@ -143,7 +129,6 @@ export const useCustomTokens = () => {
                 address: userAddress
               });
 
-              logger.debug('💰 Custom token balance result:', balanceResult);
 
               // Handle nested response structure
               const balanceTokens = balanceResult?.data?.data?.tokens || balanceResult?.data?.tokens || balanceResult?.tokens || [];
@@ -166,7 +151,6 @@ export const useCustomTokens = () => {
 
               if (tokenBalance) {
                 const balance = tokenBalance.token?.balance || tokenBalance.balance || '0';
-                logger.debug(`✅ Token has balance (attempt ${attempt}):`, balance);
 
                 return {
                   success: true,
@@ -174,16 +158,14 @@ export const useCustomTokens = () => {
                   balance
                 };
               } else if (attempt < retries) {
-                logger.debug(`⚠️ No balance found on attempt ${attempt}, retrying...`);
               } else {
-                logger.debug('⚠️ Token added but no balance found after all retries');
                 return {
                   success: true,
                   hasBalance: false
                 };
               }
             } catch (err: any) {
-              logger.error(`❌ Error checking balance (attempt ${attempt}):`, err);
+              console.error(`❌ Error checking balance (attempt ${attempt}):`, err);
               if (attempt === retries) {
                 // Still return success since the token was added
                 return {
@@ -203,10 +185,9 @@ export const useCustomTokens = () => {
         return await checkBalanceWithRetry();
       }
 
-      logger.warn('⚠️ API call succeeded but unexpected response format');
       return { success: false, hasBalance: false };
     } catch (err: any) {
-      logger.error('❌ Error adding custom token:', err);
+      console.error('❌ Error adding custom token:', err);
       setError(err.message || 'Failed to add custom token');
       return { success: false, hasBalance: false };
     } finally {
@@ -225,7 +206,6 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      logger.debug('🗑️ Removing custom token:', networkId, tokenAddress);
 
       // Call the server API to remove the token
       const response = await app.pioneer.RemoveCustomToken({
@@ -234,18 +214,16 @@ export const useCustomTokens = () => {
         tokenAddress,
       });
 
-      logger.debug('✅ RemoveCustomToken response:', response);
 
       if (response && (response.success || response?.data?.success)) {
         // Refresh the token list from the server
         await fetchCustomTokens();
-        logger.debug('✅ Token removed successfully!');
         return true;
       }
 
       return false;
     } catch (err: any) {
-      logger.error('Error removing custom token:', err);
+      console.error('Error removing custom token:', err);
       setError(err.message || 'Failed to remove custom token');
       return false;
     } finally {

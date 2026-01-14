@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Text,
@@ -9,6 +9,7 @@ import {
   Badge,
   Grid,
   Code,
+  Button,
 } from '@chakra-ui/react';
 import {
   DialogRoot,
@@ -18,7 +19,8 @@ import {
   DialogBody,
   DialogCloseTrigger,
 } from '@/components/ui/dialog';
-import { FaExternalLinkAlt, FaCopy } from 'react-icons/fa';
+import { FaExternalLinkAlt, FaCopy, FaChartLine } from 'react-icons/fa';
+import { SwapProgress } from '@/components/swap/SwapProgress';
 
 // Theme colors - matching the asset page theme
 const theme = {
@@ -87,6 +89,8 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
   transaction: tx,
   assetContext,
 }) => {
+  const [showSwapProgress, setShowSwapProgress] = useState(false);
+
   if (!tx) return null;
 
   const date = formatTransactionDate(tx.timestamp);
@@ -107,6 +111,37 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
     tx.status === 'confirmed' ? 'green' :
     tx.status === 'pending' ? 'yellow' :
     'red';
+
+  // If showing swap progress, render SwapProgress instead
+  if (showSwapProgress && tx.swapMetadata?.isSwap) {
+    const meta = tx.swapMetadata;
+    return (
+      <SwapProgress
+        txid={meta.inboundTxHash || tx.txid}
+        fromAsset={{
+          caip: meta.fromAsset || '',
+          symbol: meta.fromAsset || 'UNKNOWN',
+          amount: meta.fromAmount || '0'
+        }}
+        toAsset={{
+          caip: meta.toAsset || '',
+          symbol: meta.toAsset || 'UNKNOWN',
+          amount: meta.toAmount || '0'
+        }}
+        inputAmount={meta.fromAmount || '0'}
+        outputAmount={meta.toAmount || '0'}
+        integration={meta.integration || 'thorchain'}
+        memo={meta.memo}
+        onComplete={() => {
+          // Swap completed
+          setShowSwapProgress(false);
+        }}
+        onClose={() => {
+          setShowSwapProgress(false);
+        }}
+      />
+    );
+  }
 
   return (
     <DialogRoot open={isOpen} onOpenChange={(e) => !e.open && onClose()} size="xl">
@@ -464,46 +499,60 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                 borderColor={`${assetColor}55`}
                 p={5}
               >
-                <HStack mb={4} justify="space-between">
-                  <HStack>
-                    <Text fontSize="xl">💱</Text>
-                    <Text color={assetColor} fontSize="lg" fontWeight="bold">
-                      Swap Details
-                    </Text>
-                  </HStack>
-                  {/* Swap Status Badge */}
-                  {tx.swapMetadata.status && (
-                    <Badge
-                      colorScheme={
-                        tx.swapMetadata.status === 'completed' ? 'green' :
-                        tx.swapMetadata.status === 'output_confirmed' ? 'green' :
-                        tx.swapMetadata.status === 'output_detected' ? 'blue' :
-                        tx.swapMetadata.status === 'output_confirming' ? 'blue' :
-                        tx.swapMetadata.status === 'confirming' ? 'blue' :
-                        tx.swapMetadata.status === 'pending' ? 'yellow' :
-                        tx.swapMetadata.status === 'failed' ? 'red' :
-                        tx.swapMetadata.status === 'refunded' ? 'orange' :
-                        'gray'
-                      }
-                      fontSize="sm"
-                      px={3}
-                      py={1}
-                    >
-                      {tx.swapMetadata.status === 'output_detected' ? '🎯 OUTPUT DETECTED' :
-                       tx.swapMetadata.status === 'output_confirming' ? '⏳ CONFIRMING OUTPUT' :
-                       tx.swapMetadata.status === 'output_confirmed' ? '✅ OUTPUT CONFIRMED' :
-                       tx.swapMetadata.status === 'completed' ? '✅ COMPLETED' :
-                       tx.swapMetadata.status === 'confirming' ? '⏳ CONFIRMING' :
-                       tx.swapMetadata.status === 'pending' ? '⏳ PENDING' :
-                       tx.swapMetadata.status === 'failed' ? '❌ FAILED' :
-                       tx.swapMetadata.status === 'refunded' ? '🔄 REFUNDED' :
-                       tx.swapMetadata.status?.toUpperCase()}
-                    </Badge>
-                  )}
-                </HStack>
-
                 <VStack gap={4} align="stretch">
-                  {/* Asset Pair */}
+                  {/* Header with title, status, and monitor button */}
+                  <HStack justify="space-between">
+                    <HStack>
+                      <Text fontSize="xl">💱</Text>
+                      <Text color={assetColor} fontSize="lg" fontWeight="bold">
+                        Swap Details
+                      </Text>
+                    </HStack>
+                    <HStack gap={2}>
+                      {/* Swap Status Badge */}
+                      {tx.swapMetadata.status && (
+                        <Badge
+                          colorScheme={
+                            tx.swapMetadata.status === 'completed' ? 'green' :
+                            tx.swapMetadata.status === 'output_confirmed' ? 'green' :
+                            tx.swapMetadata.status === 'output_detected' ? 'blue' :
+                            tx.swapMetadata.status === 'output_confirming' ? 'blue' :
+                            tx.swapMetadata.status === 'confirming' ? 'blue' :
+                            tx.swapMetadata.status === 'pending' ? 'yellow' :
+                            tx.swapMetadata.status === 'failed' ? 'red' :
+                            tx.swapMetadata.status === 'refunded' ? 'orange' :
+                            'gray'
+                          }
+                          fontSize="sm"
+                          px={3}
+                          py={1}
+                        >
+                          {tx.swapMetadata.status === 'output_detected' ? '🎯 OUTPUT DETECTED' :
+                           tx.swapMetadata.status === 'output_confirming' ? '⏳ CONFIRMING OUTPUT' :
+                           tx.swapMetadata.status === 'output_confirmed' ? '✅ OUTPUT CONFIRMED' :
+                           tx.swapMetadata.status === 'completed' ? '✅ COMPLETED' :
+                           tx.swapMetadata.status === 'confirming' ? '⏳ CONFIRMING' :
+                           tx.swapMetadata.status === 'pending' ? '⏳ PENDING' :
+                           tx.swapMetadata.status === 'failed' ? '❌ FAILED' :
+                           tx.swapMetadata.status === 'refunded' ? '🔄 REFUNDED' :
+                           tx.swapMetadata.status?.toUpperCase()}
+                        </Badge>
+                      )}
+                      {/* Monitor Swap Button */}
+                      <Button
+                        size="sm"
+                        colorPalette="purple"
+                        onClick={() => setShowSwapProgress(true)}
+                        leftIcon={<FaChartLine />}
+                      >
+                        Monitor Swap
+                      </Button>
+                    </HStack>
+                  </HStack>
+                </VStack>
+
+                {/* Asset Pair */}
+                <VStack gap={4} align="stretch">
                   <Grid templateColumns="1fr 1fr" gap={4}>
                     <Box
                       bg={`${assetColor}05`}
