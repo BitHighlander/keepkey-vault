@@ -31,10 +31,11 @@ import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { ChatPopup } from '@/components/chat/ChatPopup';
-import { PendingSwapsPopup } from '@/components/swap/PendingSwapsPopup';
+import { SwapProgress } from '@/components/swap/SwapProgress';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
+import { detectScamToken, type ScamDetectionResult } from '@/utils/scamDetection';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -47,57 +48,7 @@ const playSound = (sound: HTMLAudioElement | null) => {
   }
 };
 
-// Scam Detection Utility
-const KNOWN_STABLECOINS = [
-  'USDT', 'USDC', 'DAI', 'BUSD', 'UST', 'TUSD', 'USDD', 'USDP', 'GUSD', 'PYUSD',
-  'FRAX', 'LUSD', 'sUSD', 'alUSD', 'FEI', 'MIM', 'DOLA', 'agEUR', 'EURT', 'EURS'
-];
-
-interface ScamDetectionResult {
-  isScam: boolean;
-  scamType: 'possible' | 'confirmed' | null;
-  reason: string;
-}
-
-const detectScamToken = (token: any): ScamDetectionResult => {
-  const symbol = (token.symbol || token.ticker || '').toUpperCase();
-  const valueUsd = parseFloat(token.valueUsd || 0);
-
-  console.log('🔍 Scam detection for:', {
-    symbol,
-    valueUsd,
-    rawValueUsd: token.valueUsd,
-    valueUsdType: typeof token.valueUsd
-  });
-
-  // FIRST: If token has USD value, it's NOT a scam (even if symbol matches)
-  if (valueUsd > 0) {
-    console.log('✅ NOT a scam - has value:', valueUsd);
-    return {
-      isScam: false,
-      scamType: null,
-      reason: ''
-    };
-  }
-
-  // SECOND: No value + stablecoin symbol = CONFIRMED SCAM
-  if (KNOWN_STABLECOINS.includes(symbol)) {
-    console.log('🚨 CONFIRMED SCAM - fake stablecoin:', symbol);
-    return {
-      isScam: true,
-      scamType: 'confirmed',
-      reason: `Fake ${symbol} token with no value. Real ${symbol} has ~$1.00 value.`
-    };
-  }
-
-  // THIRD: No value = POSSIBLE SCAM
-  console.log('⚠️ POSSIBLE SCAM - zero value:', symbol);
-  return {
-    isScam: true,
-    scamType: 'possible',
-    reason: 'Zero-value tokens are commonly used in phishing attacks.'
-  };
-};
+// Scam detection is now imported from @/utils/scamDetection
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -164,7 +115,8 @@ interface Dashboard {
 
 interface DashboardProps {
   onSettingsClick: () => void;
-  onAddNetworkClick: () => void;
+  // TODO: Re-enable for custom networks feature
+  // onAddNetworkClick: () => void;
 }
 
 // Animated KeepKey logo pulse effect
@@ -177,6 +129,12 @@ const pulseAnimation = keyframes`
     transform: scale(1.1);
     opacity: 1;
   }
+`;
+
+// Spin animation for pending swap indicator
+const spinAnimation = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 `;
 
 const LoadingScreen = () => (
@@ -260,7 +218,7 @@ const sortNetworks = (a: Network, b: Network) => {
   return 0;
 };
 
-const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
+const Dashboard = ({ onSettingsClick }: DashboardProps) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSliceIndex, setActiveSliceIndex] = useState<number>(0);
@@ -276,6 +234,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [scamWarningToken, setScamWarningToken] = useState<any | null>(null);
   const [pendingTokenAction, setPendingTokenAction] = useState<(() => void) | null>(null);
 
+  // Global SwapProgress dialog state
+  const [showSwapProgress, setShowSwapProgress] = useState(false);
+  const [swapProgressData, setSwapProgressData] = useState<any>(null);
+
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
@@ -283,6 +245,32 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
   // Pending swaps - using same pattern as other working hooks
   const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
+
+  // Listen for swap broadcast events to open global SwapProgress dialog
+  useEffect(() => {
+    const handleSwapBroadcast = (event: CustomEvent) => {
+      console.log('🎯 Dashboard received swap:broadcast:', event.detail);
+
+      // Open SwapProgress dialog with the swap data
+      setSwapProgressData(event.detail);
+      setShowSwapProgress(true);
+    };
+
+    const handleSwapReopen = (event: CustomEvent) => {
+      console.log('🔄 Dashboard received swap:reopen:', event.detail);
+
+      // Reopen SwapProgress dialog with the swap data
+      setSwapProgressData(event.detail);
+      setShowSwapProgress(true);
+    };
+
+    window.addEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
+    window.addEventListener('swap:reopen', handleSwapReopen as EventListener);
+    return () => {
+      window.removeEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
+      window.removeEventListener('swap:reopen', handleSwapReopen as EventListener);
+    };
+  }, []);
 
   // Format balance for display
   const formatBalance = (balance: string) => {
@@ -513,7 +501,17 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const networksWithBalance = dashboard?.networks
     ?.filter((network: Network) =>
       parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0
-    ) || [];
+    )
+    .map((network: Network) => {
+      // Check if this network has any pending swaps
+      const networkBalances = app?.balances?.filter((b: any) =>
+        b.networkId === network.networkId
+      ) || [];
+
+      const hasPendingSwaps = networkBalances.some((b: any) => b.pending?.isPending);
+
+      return { ...network, hasPendingSwaps };
+    }) || [];
 
   // Get staking positions from app.balances with chart === 'staking'
   // NOTE: Don't filter by valueUsd - prices may not be calculated yet
@@ -1097,13 +1095,22 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             </Box>
                             <Stack gap={0.5} flex="1">
                               <HStack gap={2} align="center">
-                                <Text 
-                                  fontSize="md" 
-                                  fontWeight="bold" 
+                                <Text
+                                  fontSize="md"
+                                  fontWeight="bold"
                                   color={network.gasAssetSymbol === 'XRP' ? 'white' : network.color}
                                 >
                                   {network.gasAssetSymbol}
                                 </Text>
+                                {(network as any).hasPendingSwaps && (
+                                  <Box
+                                    as="span"
+                                    fontSize="sm"
+                                    css={`animation: ${spinAnimation} 2s linear infinite;`}
+                                  >
+                                    🔄
+                                  </Box>
+                                )}
                                 {(() => {
                                   // Check if this network has tokens but no native gas
                                   const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;
@@ -2471,8 +2478,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             );
           })()}
 
+          {/* TODO: Re-enable for custom networks feature */}
           {/* Add Network Button - Full Width */}
-          <Box
+          {/* <Box
             w="100%"
             p={6}
             borderRadius="2xl"
@@ -2512,7 +2520,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 Add Network
               </Button>
             </Flex>
-          </Box>
+          </Box> */}
 
             {/* Add some padding at the bottom for better scrolling */}
             <Box height="20px" />
@@ -2524,8 +2532,28 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
     {/* Chat Assistant - Global floating chat button */}
     <ChatPopup app={app} />
 
-    {/* Pending Swaps - Global floating swaps button */}
-    {isFeatureEnabled('enableSwaps') && <PendingSwapsPopup app={app} />}
+    {/* Global SwapProgress Dialog */}
+    {showSwapProgress && swapProgressData && (
+      <SwapProgress
+        txid={swapProgressData.txHash}
+        fromAsset={swapProgressData.fromAsset}
+        toAsset={swapProgressData.toAsset}
+        inputAmount={swapProgressData.inputAmount}
+        outputAmount={swapProgressData.outputAmount}
+        integration="thorchain"
+        memo={swapProgressData.memo}
+        onComplete={() => {
+          console.log('✅ Swap completed');
+          setShowSwapProgress(false);
+          setSwapProgressData(null);
+        }}
+        onClose={() => {
+          console.log('ℹ️ User closed global SwapProgress dialog');
+          setShowSwapProgress(false);
+          setSwapProgressData(null);
+        }}
+      />
+    )}
 
     {/* Scam Warning Modal */}
     <ScamWarningModal

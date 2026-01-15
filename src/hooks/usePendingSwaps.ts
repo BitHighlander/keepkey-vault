@@ -17,7 +17,7 @@ export interface PendingSwap {
     icon?: string;
     name?: string;
   };
-  status: 'pending' | 'confirming' | 'completed' | 'failed' | 'refunded' | 'output_detected' | 'output_confirming' | 'output_confirmed';
+  status: 'signing' | 'pending' | 'confirming' | 'completed' | 'failed' | 'refunded' | 'output_detected' | 'output_confirming' | 'output_confirmed';
   confirmations: number;
   createdAt: string;
   integration: string;

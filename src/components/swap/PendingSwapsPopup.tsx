@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Flex,
@@ -11,6 +11,8 @@ import {
   Badge,
   Spinner,
   Link,
+  Grid,
+  Code,
 } from '@chakra-ui/react';
 import {
   DialogRoot,
@@ -21,16 +23,19 @@ import {
   DialogCloseTrigger,
 } from '@/components/ui/dialog';
 import { keyframes } from '@emotion/react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Confetti from 'react-confetti';
+import { FaCopy, FaExternalLinkAlt } from 'react-icons/fa';
 import { usePendingSwaps, PendingSwap } from '@/hooks/usePendingSwaps';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 
-// Theme colors - Purple theme for swaps
+// Theme colors - THORChain teal theme for swaps
 const theme = {
   bg: '#000000',           // Black background
   cardBg: '#111111',       // Dark card background
-  purple: '#9333EA',       // Purple-600 (primary)
-  purpleHover: '#A855F7', // Purple-500 (hover)
-  purpleBright: '#C084FC', // Purple-400 (accents)
+  teal: '#00dc82',         // THORChain teal (primary)
+  tealHover: '#00f094',    // Lighter teal (hover)
+  tealBright: '#33e9a6',   // Bright teal (accents)
   border: '#222222',       // Dark border
 };
 
@@ -38,15 +43,22 @@ const theme = {
 const pulseAnimation = keyframes`
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(147, 51, 234, 0.7);
+    box-shadow: 0 0 0 0 rgba(0, 220, 130, 0.7);
   }
   50% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 10px rgba(147, 51, 234, 0);
+    box-shadow: 0 0 0 10px rgba(0, 220, 130, 0);
   }
 `;
 
 // Utility Functions
+
+/**
+ * Copy text to clipboard
+ */
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text);
+};
 
 // Format elapsed time (e.g., "5 min ago", "2 hours ago")
 const getElapsedTime = (timestamp: string): string => {
@@ -112,6 +124,7 @@ const getExplorerLink = (txHash: string, caip: string): string => {
 // Enhanced Status Badge Component with Event System States
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const config: Record<string, { color: string; label: string; emoji: string }> = {
+    signing: { color: 'purple', label: 'Signing...', emoji: '✍️' },
     pending: { color: 'yellow', label: 'Pending', emoji: '⏳' },
     confirming: { color: 'blue', label: 'Confirming', emoji: '⏳' },
     output_detected: { color: 'cyan', label: 'Output Detected', emoji: '🎯' },
@@ -131,393 +144,6 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   );
 };
 
-// Enhanced Swap Details Modal Component with Event System Integration
-const SwapDetailsModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  swap: PendingSwap | null;
-}> = ({ isOpen, onClose, swap }) => {
-  if (!swap) return null;
-
-  // Enhanced status badge configuration
-  const getStatusConfig = (status: string) => {
-    const configs: Record<string, { color: string; label: string; emoji: string }> = {
-      pending: { color: 'yellow', label: 'Pending', emoji: '⏳' },
-      confirming: { color: 'blue', label: 'Confirming Input', emoji: '⏳' },
-      output_detected: { color: 'cyan', label: 'Output Detected', emoji: '🎯' },
-      output_confirming: { color: 'blue', label: 'Confirming Output', emoji: '⏳' },
-      output_confirmed: { color: 'green', label: 'Output Confirmed', emoji: '✅' },
-      completed: { color: 'green', label: 'Completed', emoji: '✅' },
-      failed: { color: 'red', label: 'Failed', emoji: '❌' },
-      refunded: { color: 'orange', label: 'Refunded', emoji: '🔄' },
-    };
-    return configs[status] || configs.pending;
-  };
-
-  const statusConfig = getStatusConfig(swap.status);
-
-  return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => !e.open && onClose()} size="xl" placement="center">
-      <DialogContent
-        bg={theme.cardBg}
-        borderColor={theme.purple}
-        borderWidth="2px"
-        maxW="800px"
-        my="auto"
-      >
-        <DialogHeader
-          borderBottom="2px solid"
-          borderColor={theme.border}
-          pb={5}
-          pt={6}
-          px={6}
-          bg={`linear-gradient(135deg, ${theme.purple}11 0%, ${theme.cardBg} 100%)`}
-        >
-          <VStack align="stretch" spacing={3}>
-            <HStack justify="space-between" align="center">
-              <Text fontSize="2xl" fontWeight="bold" color="white">
-                Swap Transaction
-              </Text>
-              <DialogCloseTrigger />
-            </HStack>
-            <HStack>
-              <Box
-                px={4}
-                py={2}
-                bg={`${statusConfig.color === 'yellow' ? 'yellow.900' :
-                      statusConfig.color === 'blue' ? 'blue.900' :
-                      statusConfig.color === 'cyan' ? 'cyan.900' :
-                      statusConfig.color === 'green' ? 'green.900' :
-                      statusConfig.color === 'red' ? 'red.900' :
-                      statusConfig.color === 'orange' ? 'orange.900' :
-                      'gray.900'}`}
-                borderRadius="lg"
-                borderWidth="1px"
-                borderColor={`${statusConfig.color === 'yellow' ? 'yellow.500' :
-                              statusConfig.color === 'blue' ? 'blue.500' :
-                              statusConfig.color === 'cyan' ? 'cyan.500' :
-                              statusConfig.color === 'green' ? 'green.500' :
-                              statusConfig.color === 'red' ? 'red.500' :
-                              statusConfig.color === 'orange' ? 'orange.500' :
-                              'gray.500'}`}
-              >
-                <HStack spacing={2}>
-                  <Text fontSize="lg">{statusConfig.emoji}</Text>
-                  <Text
-                    fontSize="sm"
-                    fontWeight="bold"
-                    color={`${statusConfig.color === 'yellow' ? 'yellow.300' :
-                            statusConfig.color === 'blue' ? 'blue.300' :
-                            statusConfig.color === 'cyan' ? 'cyan.300' :
-                            statusConfig.color === 'green' ? 'green.300' :
-                            statusConfig.color === 'red' ? 'red.300' :
-                            statusConfig.color === 'orange' ? 'orange.300' :
-                            'gray.300'}`}
-                    textTransform="uppercase"
-                    letterSpacing="wide"
-                  >
-                    {statusConfig.label}
-                  </Text>
-                </HStack>
-              </Box>
-            </HStack>
-          </VStack>
-        </DialogHeader>
-
-        <DialogBody py={6} px={6}>
-          <VStack spacing={6} align="stretch">
-            {/* Asset Pair with Amounts */}
-            <Box
-              bg={`${theme.purple}08`}
-              borderRadius="lg"
-              borderWidth="2px"
-              borderColor={`${theme.purple}44`}
-              p={5}
-            >
-              <Text fontSize="sm" color="gray.400" mb={4} fontWeight="medium">Asset Pair</Text>
-              <HStack spacing={4} justify="space-between">
-                <HStack spacing={3} flex={1}>
-                  <AssetIcon
-                    src={swap.sellAsset.icon}
-                    caip={swap.sellAsset.caip}
-                    symbol={swap.sellAsset.symbol}
-                    alt={swap.sellAsset.name || swap.sellAsset.symbol}
-                    boxSize="48px"
-                  />
-                  <VStack align="start" spacing={0}>
-                    <Text fontWeight="bold" fontSize="md" color="white">{swap.sellAsset.symbol}</Text>
-                    <Text color={theme.purple} fontSize="lg" fontWeight="semibold">{formatAmount(swap.sellAsset.amount)}</Text>
-                  </VStack>
-                </HStack>
-
-                <Text color={theme.purple} fontSize="3xl" fontWeight="bold">→</Text>
-
-                <HStack spacing={3} flex={1}>
-                  <AssetIcon
-                    src={swap.buyAsset.icon}
-                    caip={swap.buyAsset.caip}
-                    symbol={swap.buyAsset.symbol}
-                    alt={swap.buyAsset.name || swap.buyAsset.symbol}
-                    boxSize="48px"
-                  />
-                  <VStack align="start" spacing={0}>
-                    <Text fontWeight="bold" fontSize="md" color="white">{swap.buyAsset.symbol}</Text>
-                    <Text color={theme.purpleBright} fontSize="lg" fontWeight="semibold">{formatAmount(swap.buyAsset.amount)}</Text>
-                  </VStack>
-                </HStack>
-              </HStack>
-            </Box>
-
-            {/* Integration Info */}
-            <Box
-              bg={`${theme.purple}05`}
-              borderRadius="lg"
-              borderWidth="1px"
-              borderColor={theme.border}
-              p={4}
-            >
-              <Text fontSize="sm" color="gray.400" mb={2} fontWeight="medium">Integration Protocol</Text>
-              <Text fontSize="md" fontWeight="semibold" color="white">
-                {swap.integration === 'thorchain' ? 'THORChain' :
-                 swap.integration === 'mayachain' ? 'Maya Protocol' :
-                 swap.integration}
-              </Text>
-            </Box>
-
-            {/* Input Transaction Confirmations */}
-            {swap.confirmations !== undefined && (
-              <Box
-                bg={`${theme.purple}05`}
-                borderRadius="lg"
-                borderWidth="1px"
-                borderColor={theme.border}
-                p={4}
-              >
-                <Text fontSize="sm" color="gray.400" mb={2} fontWeight="medium">Input Transaction Confirmations</Text>
-                <Text fontSize="lg" fontWeight="bold" color={theme.purple}>{swap.confirmations} confirmations</Text>
-              </Box>
-            )}
-
-            {/* Output Transaction Confirmations Progress */}
-            {swap.outboundConfirmations !== undefined && (
-              <Box
-                bg={`${theme.purple}05`}
-                borderRadius="lg"
-                borderWidth="1px"
-                borderColor={theme.border}
-                p={4}
-              >
-                <Text fontSize="sm" color="gray.400" mb={2}>Output Transaction Confirmations</Text>
-                <HStack mb={2}>
-                  <Text color={theme.purple} fontSize="2xl" fontWeight="bold">
-                    {swap.outboundConfirmations}
-                  </Text>
-                  {swap.outboundRequiredConfirmations && (
-                    <Text color="gray.400" fontSize="lg">
-                      / {swap.outboundRequiredConfirmations} required
-                    </Text>
-                  )}
-                </HStack>
-                {swap.outboundRequiredConfirmations && (
-                  <Box
-                    h="8px"
-                    bg="gray.700"
-                    borderRadius="full"
-                    overflow="hidden"
-                  >
-                    <Box
-                      h="100%"
-                      bg={theme.purple}
-                      w={`${Math.min(100, (swap.outboundConfirmations / swap.outboundRequiredConfirmations) * 100)}%`}
-                      transition="width 0.3s"
-                    />
-                  </Box>
-                )}
-              </Box>
-            )}
-
-            {/* Timing Information */}
-            <Box
-              bg={`${theme.purple}05`}
-              borderRadius="lg"
-              borderWidth="1px"
-              borderColor={theme.border}
-              p={4}
-            >
-              <Text fontSize="sm" color="gray.400" mb={3} fontWeight="medium">Timeline</Text>
-              <VStack align="start" spacing={2}>
-                <HStack>
-                  <Text fontSize="sm" color="gray.500" fontWeight="medium">Created:</Text>
-                  <Text fontSize="sm" color="white">{formatTimestamp(swap.createdAt)}</Text>
-                  <Badge colorScheme="gray" fontSize="xs">{getElapsedTime(swap.createdAt)}</Badge>
-                </HStack>
-                {swap.outputDetectedAt && (
-                  <HStack>
-                    <Text fontSize="sm" color="gray.500" fontWeight="medium">🎯 Output Detected:</Text>
-                    <Text fontSize="sm" color="white">{formatTimestamp(swap.outputDetectedAt)}</Text>
-                  </HStack>
-                )}
-              </VStack>
-            </Box>
-
-            {/* Inbound Transaction Hash */}
-            <Box
-              bg={`${theme.purple}05`}
-              borderRadius="lg"
-              borderWidth="1px"
-              borderColor={theme.border}
-              p={4}
-            >
-              <Text fontSize="sm" color="gray.400" mb={2} fontWeight="medium">Inbound Transaction</Text>
-              <Link
-                href={getExplorerLink(swap.txHash, swap.sellAsset.caip)}
-                target="_blank"
-                rel="noopener noreferrer"
-                color={theme.purple}
-                fontSize="xs"
-                fontFamily="mono"
-                _hover={{ color: theme.purpleHover, textDecoration: 'underline' }}
-                display="block"
-                wordBreak="break-all"
-              >
-                {swap.txHash}
-              </Link>
-            </Box>
-
-            {/* Outbound Transaction Hash */}
-            {swap.thorchainData?.outboundTxHash && (
-              <Box
-                bg={`${theme.purple}05`}
-                borderRadius="lg"
-                borderWidth="1px"
-                borderColor={theme.border}
-                p={4}
-              >
-                <Text fontSize="sm" color="gray.400" mb={2} fontWeight="medium">Outbound Transaction</Text>
-                <Link
-                  href={
-                    swap.integration === 'thorchain'
-                      ? `https://viewblock.io/thorchain/tx/${swap.thorchainData.outboundTxHash}`
-                      : swap.integration === 'mayachain'
-                      ? `https://www.mayascan.org/tx/${swap.thorchainData.outboundTxHash}`
-                      : getExplorerLink(swap.thorchainData.outboundTxHash, swap.buyAsset.caip)
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  color={theme.purple}
-                  fontSize="xs"
-                  fontFamily="mono"
-                  _hover={{ color: theme.purpleHover, textDecoration: 'underline' }}
-                  display="block"
-                  wordBreak="break-all"
-                >
-                  {swap.thorchainData.outboundTxHash}
-                </Link>
-              </Box>
-            )}
-
-            {/* THORChain/Maya Swap Status */}
-            {swap.thorchainData?.swapStatus && (
-              <Box
-                bg={`${theme.purple}05`}
-                borderRadius="lg"
-                borderWidth="1px"
-                borderColor={theme.border}
-                p={4}
-              >
-                <Text fontSize="sm" color="gray.400" mb={2} fontWeight="medium">Protocol Status</Text>
-                <Text fontSize="md" color="white" fontWeight="medium">{swap.thorchainData.swapStatus}</Text>
-              </Box>
-            )}
-
-            {/* Error Information */}
-            {swap.error && (
-              <Box
-                bg="red.900"
-                borderWidth="2px"
-                borderColor="red.500"
-                p={4}
-                borderRadius="lg"
-              >
-                <HStack mb={3}>
-                  <Text fontSize="xl">⚠️</Text>
-                  <Text color="red.300" fontSize="md" fontWeight="bold">
-                    {swap.error.type || 'Error'}
-                  </Text>
-                  {swap.error.severity && (
-                    <Badge
-                      colorScheme={swap.error.severity === 'ERROR' ? 'red' : 'yellow'}
-                      fontSize="xs"
-                    >
-                      {swap.error.severity}
-                    </Badge>
-                  )}
-                </HStack>
-                {swap.error.userMessage && (
-                  <Text color="red.200" fontSize="sm" mb={3}>
-                    {swap.error.userMessage}
-                  </Text>
-                )}
-                {swap.error.actionable && (
-                  <Box
-                    bg="orange.900"
-                    borderWidth="1px"
-                    borderColor="orange.500"
-                    p={3}
-                    borderRadius="md"
-                    mb={2}
-                  >
-                    <Text color="orange.300" fontSize="sm">
-                      <Text as="span" fontWeight="bold">💡 Action Required:</Text>
-                      <br />
-                      {swap.error.actionable}
-                    </Text>
-                  </Box>
-                )}
-                {swap.error.message && (
-                  <Text color="gray.500" fontSize="xs" fontFamily="mono" mt={2}>
-                    Technical Details: {swap.error.message}
-                  </Text>
-                )}
-              </Box>
-            )}
-
-            {/* Swap Memo */}
-            {swap.quote?.memo && (
-              <Box>
-                <Text fontSize="sm" color="gray.400" mb={2} fontWeight="medium">Swap Memo</Text>
-                <Box
-                  bg={`${theme.purple}11`}
-                  p={4}
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor={`${theme.purple}33`}
-                >
-                  <Text fontSize="xs" fontFamily="mono" color={theme.purple} wordBreak="break-all">
-                    {swap.quote.memo}
-                  </Text>
-                </Box>
-              </Box>
-            )}
-          </VStack>
-        </DialogBody>
-
-        <DialogFooter borderTop="2px solid" borderColor={theme.border} pt={4} px={6}>
-          <Button
-            variant="ghost"
-            onClick={onClose}
-            _hover={{ bg: `${theme.purple}22`, color: theme.purple }}
-            size="md"
-            px={6}
-          >
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </DialogRoot>
-  );
-};
-
 // Enhanced Compact Swap Card Component with Confirmation Progress
 const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({ swap, onClick }) => {
   // Determine if showing output confirmation progress
@@ -533,7 +159,7 @@ const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({
       p={3}
       cursor="pointer"
       onClick={onClick}
-      _hover={{ borderColor: theme.purple, transform: 'translateY(-2px)' }}
+      _hover={{ borderColor: theme.teal, transform: 'translateY(-2px)' }}
       transition="all 0.2s"
     >
       {/* Asset Pair Header */}
@@ -578,7 +204,7 @@ const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({
             <Text fontSize="xs" color="gray.400">
               Output Confirmations
             </Text>
-            <Text fontSize="xs" color={theme.purple} fontWeight="bold">
+            <Text fontSize="xs" color={theme.teal} fontWeight="bold">
               {swap.outboundConfirmations} / {swap.outboundRequiredConfirmations}
             </Text>
           </HStack>
@@ -590,21 +216,21 @@ const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({
           >
             <Box
               h="100%"
-              bg={theme.purple}
+              bg={theme.teal}
               w={`${Math.min(100, (swap.outboundConfirmations / swap.outboundRequiredConfirmations) * 100)}%`}
               transition="width 0.3s"
             />
           </Box>
         </Box>
       ) : swap.status === 'confirming' && swap.confirmations !== undefined ? (
-        <Text fontSize="xs" color={theme.purple} mt={1}>
+        <Text fontSize="xs" color={theme.teal} mt={1}>
           ⏳ {swap.confirmations} confirmations
         </Text>
       ) : null}
 
       {/* Output Detected Indicator */}
       {swap.status === 'output_detected' && !showOutputProgress && (
-        <Text fontSize="xs" color={theme.purpleBright} mt={1}>
+        <Text fontSize="xs" color={theme.tealBright} mt={1}>
           🎯 Output transaction detected!
         </Text>
       )}
@@ -620,16 +246,31 @@ interface PendingSwapsPopupProps {
 export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hasNewSwaps, setHasNewSwaps] = useState(false);
-  const [selectedSwap, setSelectedSwap] = useState<PendingSwap | null>(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [signingSwaps, setSigningSwaps] = useState<PendingSwap[]>([]);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [completedSwaps, setCompletedSwaps] = useState<Map<string, number>>(new Map());
+  const confettiRef = useRef<HTMLDivElement>(null);
 
   const { pendingSwaps, isLoading, refreshPendingSwaps } = usePendingSwaps();
 
-  // Filter active swaps only
-  const activeSwaps = pendingSwaps.filter(
-    s => s.status === 'pending' || s.status === 'confirming'
-  );
+  // Filter active swaps (including signing state and recent completed swaps)
+  const now = Date.now();
+  const activeSwaps = [
+    ...signingSwaps,
+    ...pendingSwaps.filter(s => {
+      // Always show pending/confirming
+      if (s.status === 'pending' || s.status === 'confirming') return true;
+
+      // Show completed swaps for 60 seconds
+      if (s.status === 'completed') {
+        const completedAt = completedSwaps.get(s.txHash);
+        if (completedAt && (now - completedAt) < 60000) return true;
+      }
+
+      return false;
+    })
+  ];
 
   // Auto-refresh logic
   useEffect(() => {
@@ -652,6 +293,48 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     }
   }, [activeSwaps.length, isOpen]);
 
+  // Detect completed swaps and trigger confetti
+  useEffect(() => {
+    pendingSwaps.forEach(swap => {
+      if (swap.status === 'completed' && !completedSwaps.has(swap.txHash)) {
+        console.log('🎉 Swap completed! Triggering confetti:', swap.txHash);
+
+        // Record completion time
+        setCompletedSwaps(prev => new Map(prev).set(swap.txHash, Date.now()));
+
+        // Trigger confetti
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 5000); // 5 seconds of confetti
+
+        // Auto-open bubble to show completion
+        setIsOpen(true);
+        setHasNewSwaps(true);
+      }
+    });
+  }, [pendingSwaps, completedSwaps]);
+
+  // Auto-dismiss completed swaps after 60s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const updatedMap = new Map(completedSwaps);
+      let changed = false;
+
+      updatedMap.forEach((completedAt, txHash) => {
+        if (now - completedAt >= 60000) {
+          updatedMap.delete(txHash);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        setCompletedSwaps(updatedMap);
+      }
+    }, 1000); // Check every second
+
+    return () => clearInterval(interval);
+  }, [completedSwaps]);
+
   // Clear new swap badge when opened
   const handleOpen = () => {
     setIsOpen(true);
@@ -660,6 +343,74 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     localStorage.setItem('lastViewedSwapsTimestamp', Date.now().toString());
   };
 
+  // Listen for swap signing events (show bubble immediately)
+  useEffect(() => {
+    const handleSwapSigning = (event: CustomEvent) => {
+      console.log('✍️ Swap signing started:', event.detail);
+
+      const signingData = event.detail;
+
+      // Create temporary swap entry with signing status
+      const tempSwap: PendingSwap = {
+        txHash: `signing-${Date.now()}`, // Temporary ID
+        sellAsset: {
+          caip: signingData.fromAsset.caip,
+          symbol: signingData.fromAsset.symbol,
+          amount: signingData.fromAmount,
+          icon: signingData.fromAsset.icon,
+          name: signingData.fromAsset.name,
+        },
+        buyAsset: {
+          caip: signingData.toAsset.caip,
+          symbol: signingData.toAsset.symbol,
+          amount: signingData.toAmount,
+          icon: signingData.toAsset.icon,
+          name: signingData.toAsset.name,
+        },
+        status: 'signing',
+        confirmations: 0,
+        createdAt: signingData.createdAt || new Date().toISOString(),
+        integration: 'thorchain', // Default, will be updated
+      };
+
+      // Add to signing swaps
+      setSigningSwaps([tempSwap]);
+
+      // Auto-open popup
+      setIsOpen(true);
+
+      // Trigger pulse animation
+      setHasNewSwaps(true);
+    };
+
+    window.addEventListener('swap:signing', handleSwapSigning as EventListener);
+    return () => window.removeEventListener('swap:signing', handleSwapSigning as EventListener);
+  }, []);
+
+  // Listen for swap broadcast events
+  useEffect(() => {
+    const handleSwapBroadcast = (event: CustomEvent) => {
+      console.log('🎯 New swap broadcast detected:', event.detail);
+
+      // Clear signing swaps (transition to real pending swap)
+      setSigningSwaps([]);
+
+      // Auto-open popup
+      setIsOpen(true);
+
+      // Trigger pulse animation
+      setHasNewSwaps(true);
+
+      // Refresh pending swaps after 1s delay
+      setTimeout(() => {
+        refreshPendingSwaps();
+      }, 1000);
+    };
+
+    window.addEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
+    return () => window.removeEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
+  }, [refreshPendingSwaps]);
+
   // Handle refresh button click
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -667,10 +418,39 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     setIsRefreshing(false);
   };
 
-  // Handle swap card click - open details modal
+  // Handle swap card click - reopen global SwapProgress dialog
   const handleSwapClick = (swap: PendingSwap) => {
-    setSelectedSwap(swap);
-    setIsDetailsModalOpen(true);
+    console.log('🔄 Reopening SwapProgress for swap:', swap.txHash);
+
+    // Skip opening SwapProgress for signing swaps (no txid yet)
+    if (swap.status === 'signing') {
+      console.log('⏭️ Skipping - swap is still signing (no txid yet)');
+      return;
+    }
+
+    // Dispatch event to reopen global SwapProgress dialog
+    window.dispatchEvent(new CustomEvent('swap:reopen', {
+      detail: {
+        txHash: swap.txHash,
+        fromAsset: {
+          caip: swap.sellAsset.caip,
+          symbol: swap.sellAsset.symbol,
+          name: swap.sellAsset.name,
+          icon: swap.sellAsset.icon
+        },
+        toAsset: {
+          caip: swap.buyAsset.caip,
+          symbol: swap.buyAsset.symbol,
+          name: swap.buyAsset.name,
+          icon: swap.buyAsset.icon
+        },
+        inputAmount: swap.sellAsset.amount,
+        outputAmount: swap.buyAsset.amount,
+        memo: swap.quote?.memo
+      }
+    }));
+
+    // Don't open detail modal - let Dashboard handle showing SwapProgress
   };
 
   // Don't render if no active swaps
@@ -678,19 +458,31 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
 
   return (
     <>
+      {/* Confetti Effect on Completion */}
+      {showConfetti && (
+        <Confetti
+          width={window.innerWidth}
+          height={window.innerHeight}
+          recycle={false}
+          numberOfPieces={500}
+          gravity={0.3}
+          colors={[theme.teal, theme.tealBright, theme.tealHover, '#00ff00', '#ffff00']}
+        />
+      )}
+
       {/* Floating Button - Bottom Left */}
       {!isOpen && (
         <Box position="fixed" bottom="24px" left="24px" zIndex={1000}>
           <Box position="relative">
             <Button
               onClick={handleOpen}
-              bg={theme.purple}
+              bg={theme.teal}
               color="white"
               size="lg"
               borderRadius="full"
               boxSize="60px"
               p={0}
-              _hover={{ bg: theme.purpleHover, transform: 'scale(1.05)' }}
+              _hover={{ bg: theme.tealHover, transform: 'scale(1.05)' }}
               _active={{ transform: 'scale(0.95)' }}
               animation={hasNewSwaps ? `${pulseAnimation} 2s ease-in-out infinite` : undefined}
               boxShadow="0 4px 20px rgba(147, 51, 234, 0.4)"
@@ -704,7 +496,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
               position="absolute"
               top="-8px"
               right="-8px"
-              bg={theme.purpleBright}
+              bg={theme.tealBright}
               color="white"
               borderRadius="full"
               fontSize="xs"
@@ -730,8 +522,8 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
           bg={theme.cardBg}
           borderRadius="2xl"
           border="1px solid"
-          borderColor={theme.purple}
-          boxShadow={`0 8px 32px ${theme.purple}40`}
+          borderColor={theme.teal}
+          boxShadow={`0 8px 32px ${theme.teal}40`}
           zIndex={1000}
           display="flex"
           flexDirection="column"
@@ -747,10 +539,10 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
             bg={theme.bg}
           >
             <HStack>
-              <Text fontSize="lg" fontWeight="bold" color={theme.purple}>
-                Pending Swaps
+              <Text fontSize="lg" fontWeight="bold" color={theme.teal}>
+                Swaps
               </Text>
-              <Badge colorScheme="purple">{activeSwaps.length}</Badge>
+              <Badge colorScheme="teal">{activeSwaps.length}</Badge>
             </HStack>
             <HStack spacing={2}>
               <Button
@@ -758,7 +550,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
                 variant="ghost"
                 onClick={handleRefresh}
                 isLoading={isRefreshing}
-                _hover={{ color: theme.purple }}
+                _hover={{ color: theme.teal }}
               >
                 🔄
               </Button>
@@ -766,7 +558,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
                 size="sm"
                 variant="ghost"
                 onClick={() => setIsOpen(false)}
-                _hover={{ color: theme.purple }}
+                _hover={{ color: theme.teal }}
               >
                 ✕
               </Button>
@@ -788,17 +580,17 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
                 background: theme.bg,
               },
               '&::-webkit-scrollbar-thumb': {
-                background: theme.purple,
+                background: theme.teal,
                 borderRadius: '4px',
               },
               '&::-webkit-scrollbar-thumb:hover': {
-                background: theme.purpleHover,
+                background: theme.tealHover,
               },
             }}
           >
             {isLoading ? (
               <Flex justify="center" align="center" py={8}>
-                <Spinner color={theme.purple} />
+                <Spinner color={theme.teal} />
               </Flex>
             ) : activeSwaps.length > 0 ? (
               activeSwaps.map(swap => (
@@ -821,26 +613,19 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
             <Button
               size="sm"
               variant="link"
-              color={theme.purple}
+              color={theme.teal}
               onClick={() => {
                 // TODO: Navigate to full SwapHistory view
                 // This would use router.push('/swap-history') or similar
                 console.log('Navigate to full swap history');
               }}
-              _hover={{ color: theme.purpleHover }}
+              _hover={{ color: theme.tealHover }}
             >
               View Full History →
             </Button>
           </Flex>
         </Box>
       )}
-
-      {/* Swap Details Modal */}
-      <SwapDetailsModal
-        isOpen={isDetailsModalOpen}
-        onClose={() => setIsDetailsModalOpen(false)}
-        swap={selectedSwap}
-      />
     </>
   );
 };

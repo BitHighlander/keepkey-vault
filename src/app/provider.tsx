@@ -24,10 +24,11 @@ import { Flex } from '@chakra-ui/react'
 import { v4 as uuidv4 } from 'uuid'
 import ConnectionError from '@/components/error/ConnectionError'
 import WatchOnlyLanding from '@/components/landing/WatchOnlyLanding'
-import { isZcashEnabled, ZCASH_NETWORK_ID, isPioneerV2Enabled } from '@/config/features'
+import { isZcashEnabled, ZCASH_NETWORK_ID, isPioneerV2Enabled, isFeatureEnabled } from '@/config/features'
 import { getCustomPaths } from '@/lib/storage/customPaths'
 import { savePubkeys, getDeviceInfo } from '@/lib/storage/pubkeyStorage'
 import { isMobileApp } from '@/lib/platformDetection'
+import { PendingSwapsPopup } from '@/components/swap/PendingSwapsPopup'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -1424,6 +1425,10 @@ export function Provider({ children }: ProviderProps) {
   return (
     <AppProvider pioneer={contextValue}>
       {children}
+      {/* Global Swaps Bubble - Shows on all pages */}
+      {isFeatureEnabled('enableSwaps') && contextValue.state.app && (
+        <PendingSwapsPopup app={contextValue.state.app} />
+      )}
     </AppProvider>
   );
 } 
