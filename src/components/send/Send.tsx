@@ -231,6 +231,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [rawTxJson, setRawTxJson] = useState<string>('')
   const [editedRawTxJson, setEditedRawTxJson] = useState<string>('')
 
+  // Step wizard state (1: Recipient, 2: Amount, 3: Fees, 4: Review)
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
+
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
 
@@ -1367,6 +1370,24 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.error('❌ [Send] Error adding path:', err);
     }
   };
+
+  // Step navigation functions
+  const nextStep = () => {
+    if (currentStep < 3) setCurrentStep((currentStep + 1) as 1 | 2 | 3);
+  };
+
+  const prevStep = () => {
+    if (currentStep > 1) setCurrentStep((currentStep - 1) as 1 | 2 | 3);
+  };
+
+  const goToStep = (step: 1 | 2 | 3) => {
+    setCurrentStep(step);
+  };
+
+  // Validation for each step
+  const canProceedFromStep1 = () => recipient.trim().length > 0 && !memoError;
+  const canProceedFromStep2 = () => amount && parseFloat(amount) > 0;
+  const canProceedFromStep3 = () => feeOptions && (feeOptions.slow !== '0' || feeOptions.average !== '0' || feeOptions.fastest !== '0');
 
   // Handle send transaction
   const handleSend = async () => {
@@ -2917,18 +2938,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       <Box
         borderBottom="1px"
         borderColor={theme.borderAlt}
-        p={4}
         bg={theme.cardBg}
         position="sticky"
         top={0}
         zIndex={10}
       >
-        <Flex justify="space-between" align="center">
+        {/* Header with Back Button */}
+        <Flex justify="space-between" align="center" p={4} pb={2}>
           <Button
             size="sm"
             variant="ghost"
             color={assetColor}
-            onClick={onBackClick}
+            onClick={currentStep === 1 ? onBackClick : prevStep}
             _hover={{ color: assetColorHover }}
           >
             <Flex align="center" gap={2}>
@@ -2938,8 +2959,34 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Text color={assetColor} fontWeight="bold">
             Send {assetContext?.name || 'Asset'}
           </Text>
-          <Box w="20px"></Box> {/* Spacer for alignment */}
+          <Box w="60px"></Box>
         </Flex>
+
+        {/* Step Progress Indicator */}
+        <Flex gap={2} px={4} pb={4}>
+          {[1, 2, 3].map((step) => (
+            <Box
+              key={step}
+              flex={1}
+              height="3px"
+              borderRadius="full"
+              bg={step <= currentStep ? assetColor : theme.borderAlt}
+              transition="all 0.3s"
+            />
+          ))}
+        </Flex>
+
+        {/* Step Title */}
+        <Box px={4} pb={3}>
+          <Text color="gray.400" fontSize="xs" fontWeight="medium">
+            STEP {currentStep} OF 3
+          </Text>
+          <Text color="white" fontSize="lg" fontWeight="bold" mt={1}>
+            {currentStep === 1 && 'Enter Recipient'}
+            {currentStep === 2 && 'Enter Amount'}
+            {currentStep === 3 && 'Select Fee & Send'}
+          </Text>
+        </Box>
       </Box>
       
       {/* Main Content */}
@@ -2954,25 +3001,121 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           },
         }}
       >
-        <Stack gap={6} align="center">
-          {/* Asset Header Card - Combined Asset Info + Address Selector */}
-          <AssetHeaderCard
-            assetContext={assetContext}
-            balance={balance}
-            totalBalanceUsd={totalBalanceUsd}
-            selectedPubkey={selectedPubkey}
-            showAdvanced={showAdvanced}
-            onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
-            onPubkeyChange={handlePubkeyChange}
-            onAddPathClick={openAddPathDialog}
-            assetColor={assetColor}
-            assetColorLight={assetColorLight}
-            formatUsd={formatUsd}
-            theme={theme}
-          />
+        {/* Asset Header - Only visible on step 1 */}
+        {currentStep === 1 && (
+          <Box width="100%" mb={4}>
+            <AssetHeaderCard
+              assetContext={assetContext}
+              balance={balance}
+              totalBalanceUsd={totalBalanceUsd}
+              selectedPubkey={selectedPubkey}
+              showAdvanced={showAdvanced}
+              onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
+              onPubkeyChange={handlePubkeyChange}
+              onAddPathClick={openAddPathDialog}
+              assetColor={assetColor}
+              assetColorLight={assetColorLight}
+              formatUsd={formatUsd}
+              theme={theme}
+            />
+          </Box>
+        )}
 
-          {/* Amount - Enhanced Dual Input Mode */}
-          <Box 
+        <Stack gap={6} align="center" width="100%">
+          {/* ========== STEP 1: RECIPIENT ========== */}
+          {currentStep === 1 && (
+            <>
+              <Box
+                width="100%"
+                bg={theme.cardBg}
+                borderRadius={theme.borderAltRadius}
+                p={6}
+                borderWidth="1px"
+                borderColor={theme.borderAlt}
+              >
+                <Stack gap={3}>
+                  <Text color="white" fontWeight="medium" fontSize="lg">Recipient Address</Text>
+                  <Input
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder={`Enter ${assetContext.symbol} address`}
+                    color="white"
+                    borderColor={theme.borderAlt}
+                    _hover={{ borderColor: assetColorHover }}
+                    _focus={{ borderColor: assetColor }}
+                    p={4}
+                    height="56px"
+                    fontSize="md"
+                    autoFocus
+                  />
+                  <Text fontSize="sm" color="gray.500">
+                    Enter the destination address for your {assetContext.symbol}
+                  </Text>
+                </Stack>
+              </Box>
+
+              {supportsMemo && (
+                <Box
+                  width="100%"
+                  bg={theme.cardBg}
+                  borderRadius={theme.borderAltRadius}
+                  p={6}
+                  borderWidth="1px"
+                  borderColor={memoError ? 'red.500' : theme.borderAlt}
+                >
+                  <Stack gap={3}>
+                    <Text color="white" fontWeight="medium" fontSize="lg">
+                      {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'} (Optional)
+                    </Text>
+                    <Input
+                      value={memo}
+                      onChange={(e) => handleMemoChange(e.target.value)}
+                      placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
+                      color="white"
+                      borderColor={memoError ? 'red.500' : theme.borderAlt}
+                      _hover={{ borderColor: memoError ? 'red.600' : assetColorHover }}
+                      _focus={{ borderColor: memoError ? 'red.500' : assetColor }}
+                      p={4}
+                      height="56px"
+                      fontSize="md"
+                      isInvalid={!!memoError}
+                    />
+                    {memoError && (
+                      <Text color="red.400" fontSize="sm">⚠️ {memoError}</Text>
+                    )}
+                    {!memoError && (assetContext?.symbol?.toUpperCase() === 'XRP' ||
+                                  assetContext?.networkId?.includes('ripple') ||
+                                  assetContext?.caip?.includes('ripple')) && (
+                      <Text color="orange.300" fontSize="xs">
+                        ⚠️ Destination tags must be numbers only (0-4294967295)
+                      </Text>
+                    )}
+                  </Stack>
+                </Box>
+              )}
+
+              <Button
+                width="100%"
+                bg={assetColor}
+                color="black"
+                _hover={{ bg: assetColorHover }}
+                onClick={nextStep}
+                disabled={!canProceedFromStep1()}
+                height="56px"
+                fontSize="lg"
+                fontWeight="bold"
+                mt={4}
+              >
+                Next: Enter Amount
+              </Button>
+            </>
+          )}
+
+          {/* ========== STEP 2: AMOUNT ========== */}
+          {currentStep === 2 && (
+            <>
+              {/* Amount - Enhanced Dual Input Mode */}
+              <Box 
             width="100%" 
             bg={theme.cardBg} 
             borderRadius={theme.borderAltRadius} 
@@ -3116,7 +3259,27 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Stack>
           </Box>
 
-          {/* Gas Balance Display for Tokens */}
+          <Button
+            width="100%"
+            bg={assetColor}
+            color="black"
+            _hover={{ bg: assetColorHover }}
+            onClick={nextStep}
+            disabled={!canProceedFromStep2()}
+            height="56px"
+            fontSize="lg"
+            fontWeight="bold"
+            mt={4}
+          >
+            Next: Select Fee
+          </Button>
+        </>
+      )}
+
+      {/* ========== STEP 3: FEE SELECTION ========== */}
+      {currentStep === 3 && (
+        <>
+          {/* Gas Warning for Tokens */}
           {assetContext.isToken && (
             <Box
               width="100%"
@@ -3162,75 +3325,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Box>
           )}
 
-          {/* Recipient */}
-          <Box 
-            width="100%" 
-            bg={theme.cardBg} 
-            borderRadius={theme.borderAltRadius} 
-            p={theme.formPadding}
-            borderWidth="1px"
-            borderColor={theme.borderAlt}
-          >
-            <Stack gap={3}>
-              <Text color="white" fontWeight="medium">Recipient</Text>
-              <Input
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                placeholder={`${assetContext.symbol} Address`}
-                color="white"
-                borderColor={theme.borderAlt}
-                _hover={{ borderColor: assetColorHover }}
-                _focus={{ borderColor: assetColor }}
-                p={3}
-                height="50px"
-                fontSize="md"
-              />
-            </Stack>
-          </Box>
-          
-          {/* Memo/Tag (only for supported networks) */}
-          {supportsMemo && (
-            <Box 
-              width="100%" 
-              bg={theme.cardBg} 
-              borderRadius={theme.borderAltRadius} 
-              p={theme.formPadding}
-              borderWidth="1px"
-              borderColor={memoError ? 'red.500' : theme.borderAlt}
-            >
-              <Stack gap={3}>
-                <Text color="white" fontWeight="medium">
-                  {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'} (Optional)
-                </Text>
-                <Input
-                  value={memo}
-                  onChange={(e) => handleMemoChange(e.target.value)}
-                  placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
-                  color="white"
-                  borderColor={memoError ? 'red.500' : theme.borderAlt}
-                  _hover={{ borderColor: memoError ? 'red.600' : assetColorHover }}
-                  _focus={{ borderColor: memoError ? 'red.500' : assetColor }}
-                  p={3}
-                  height="50px"
-                  fontSize="md"
-                  isInvalid={!!memoError}
-                />
-                {memoError && (
-                  <Text color="red.400" fontSize="sm" mt={1}>
-                    ⚠️ {memoError}
-                  </Text>
-                )}
-                {!memoError && (assetContext?.symbol?.toUpperCase() === 'XRP' || 
-                              assetContext?.networkId?.includes('ripple') ||
-                              assetContext?.caip?.includes('ripple')) && (
-                  <Text color="orange.300" fontSize="xs" mt={1}>
-                    ⚠️ Destination tags must be numbers only (0-4294967295). Sending to wrong tag can cause loss of funds.
-                  </Text>
-                )}
-              </Stack>
-            </Box>
-          )}
-          
           {/* Fee Selection - Now using reusable component - Hide for XRP */}
           {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
             <>
@@ -3289,20 +3383,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Box>
             </>
           )}
-          
-          {/* Send Button */}
+
           <Button
-            mt={4}
             width="100%"
             bg={assetColor}
             color="black"
-            _hover={{
-              bg: assetColorHover,
-            }}
+            _hover={{ bg: assetColorHover }}
             onClick={handleSend}
             disabled={!amount || !recipient || !feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')}
             height="56px"
             fontSize="lg"
+            fontWeight="bold"
+            mt={4}
             boxShadow={`0px 4px 12px ${assetColor}4D`}
           >
             <Flex gap={3} align="center" justify="center">
@@ -3314,7 +3406,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Text>
             </Flex>
           </Button>
-        </Stack>
+        </>
+      )}
+    </Stack>
       </Box>
 
       {/* Add Path Dialog */}
