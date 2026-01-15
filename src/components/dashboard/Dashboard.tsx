@@ -31,7 +31,6 @@ import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { ChatPopup } from '@/components/chat/ChatPopup';
-import { SwapProgress } from '@/components/swap/SwapProgress';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
@@ -234,10 +233,6 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
   const [scamWarningToken, setScamWarningToken] = useState<any | null>(null);
   const [pendingTokenAction, setPendingTokenAction] = useState<(() => void) | null>(null);
 
-  // Global SwapProgress dialog state
-  const [showSwapProgress, setShowSwapProgress] = useState(false);
-  const [swapProgressData, setSwapProgressData] = useState<any>(null);
-
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
@@ -245,32 +240,6 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
 
   // Pending swaps - using same pattern as other working hooks
   const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
-
-  // Listen for swap broadcast events to open global SwapProgress dialog
-  useEffect(() => {
-    const handleSwapBroadcast = (event: CustomEvent) => {
-      console.log('🎯 Dashboard received swap:broadcast:', event.detail);
-
-      // Open SwapProgress dialog with the swap data
-      setSwapProgressData(event.detail);
-      setShowSwapProgress(true);
-    };
-
-    const handleSwapReopen = (event: CustomEvent) => {
-      console.log('🔄 Dashboard received swap:reopen:', event.detail);
-
-      // Reopen SwapProgress dialog with the swap data
-      setSwapProgressData(event.detail);
-      setShowSwapProgress(true);
-    };
-
-    window.addEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
-    window.addEventListener('swap:reopen', handleSwapReopen as EventListener);
-    return () => {
-      window.removeEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
-      window.removeEventListener('swap:reopen', handleSwapReopen as EventListener);
-    };
-  }, []);
 
   // Format balance for display
   const formatBalance = (balance: string) => {
@@ -2531,29 +2500,6 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
 
     {/* Chat Assistant - Global floating chat button */}
     <ChatPopup app={app} />
-
-    {/* Global SwapProgress Dialog */}
-    {showSwapProgress && swapProgressData && (
-      <SwapProgress
-        txid={swapProgressData.txHash}
-        fromAsset={swapProgressData.fromAsset}
-        toAsset={swapProgressData.toAsset}
-        inputAmount={swapProgressData.inputAmount}
-        outputAmount={swapProgressData.outputAmount}
-        integration="thorchain"
-        memo={swapProgressData.memo}
-        onComplete={() => {
-          console.log('✅ Swap completed');
-          setShowSwapProgress(false);
-          setSwapProgressData(null);
-        }}
-        onClose={() => {
-          console.log('ℹ️ User closed global SwapProgress dialog');
-          setShowSwapProgress(false);
-          setSwapProgressData(null);
-        }}
-      />
-    )}
 
     {/* Scam Warning Modal */}
     <ScamWarningModal

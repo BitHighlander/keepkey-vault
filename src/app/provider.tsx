@@ -29,6 +29,7 @@ import { getCustomPaths } from '@/lib/storage/customPaths'
 import { savePubkeys, getDeviceInfo } from '@/lib/storage/pubkeyStorage'
 import { isMobileApp } from '@/lib/platformDetection'
 import { PendingSwapsPopup } from '@/components/swap/PendingSwapsPopup'
+import { SwapProgress } from '@/components/swap/SwapProgress'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -77,6 +78,10 @@ export function Provider({ children }: ProviderProps) {
   const [initError, setInitError] = useState<InitializationError | null>(null);
   const [initPhase, setInitPhase] = useState<InitPhase>('sdk_create');
   const [initStartTime] = useState(Date.now());
+
+  // Global SwapProgress dialog state
+  const [showSwapProgress, setShowSwapProgress] = useState(false);
+  const [swapProgressData, setSwapProgressData] = useState<any>(null);
 
   // Timeout mechanism - fail if init takes too long
   useEffect(() => {
@@ -1422,12 +1427,52 @@ export function Provider({ children }: ProviderProps) {
     hasAppEvents: !!contextValue.state.app?.events,
   });
 
+  // Global swap event listeners
+  useEffect(() => {
+    const handleSwapBroadcast = (event: CustomEvent) => {
+      console.log('🎯 Provider received swap:broadcast:', event.detail);
+      setSwapProgressData(event.detail);
+      setShowSwapProgress(true);
+    };
+
+    const handleSwapReopen = (event: CustomEvent) => {
+      console.log('🔄 Provider received swap:reopen:', event.detail);
+      setSwapProgressData(event.detail);
+      setShowSwapProgress(true);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
+      window.addEventListener('swap:reopen', handleSwapReopen as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
+        window.removeEventListener('swap:reopen', handleSwapReopen as EventListener);
+      }
+    };
+  }, []);
+
   return (
     <AppProvider pioneer={contextValue}>
       {children}
       {/* Global Swaps Bubble - Shows on all pages */}
       {isFeatureEnabled('enableSwaps') && contextValue.state.app && (
         <PendingSwapsPopup app={contextValue.state.app} />
+      )}
+
+      {/* Global SwapProgress Dialog - Shows when swap is opened */}
+      {showSwapProgress && swapProgressData && (
+        <SwapProgress
+          txid={swapProgressData.txHash}
+          fromAsset={swapProgressData.fromAsset}
+          toAsset={swapProgressData.toAsset}
+          inputAmount={swapProgressData.inputAmount}
+          outputAmount={swapProgressData.outputAmount}
+          memo={swapProgressData.memo}
+          onClose={() => setShowSwapProgress(false)}
+        />
       )}
     </AppProvider>
   );
