@@ -31,7 +31,8 @@ import {
   DialogCloseTrigger,
 } from "@/components/ui/dialog"
 import Settings from '@/components/settings/Settings'
-import AddBlockchain from '@/components/blockchain/AddBlockchain'
+// TODO: Re-enable for custom networks feature
+// import AddBlockchain from '@/components/blockchain/AddBlockchain'
 import { 
   ProductStructuredData,
   OrganizationStructuredData,
@@ -67,7 +68,8 @@ export default function Home() {
   }, [showLoading, pioneer, state, app]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
+  // TODO: Re-enable for custom networks feature
+  // const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
 
   // Add debug logging for component mount and state changes
   
@@ -82,10 +84,11 @@ export default function Home() {
     setIsSettingsOpen(details.open);
   };
 
+  // TODO: Re-enable for custom networks feature
   // Handle add blockchain dialog open state
-  const handleAddBlockchainOpenChange = (details: { open: boolean }) => {
-    setIsAddBlockchainOpen(details.open);
-  };
+  // const handleAddBlockchainOpenChange = (details: { open: boolean }) => {
+  //   setIsAddBlockchainOpen(details.open);
+  // };
 
   // Show loading state if pioneer is not ready
   if (!pioneer) {
@@ -173,9 +176,8 @@ export default function Home() {
           transition="all 0.3s ease"
           height="100%"
         >
-          <Dashboard 
+          <Dashboard
             onSettingsClick={() => setIsSettingsOpen(true)}
-            onAddNetworkClick={() => setIsAddBlockchainOpen(true)}
           />
         </Box>
       </Box>
@@ -202,10 +204,9 @@ export default function Home() {
         </DialogContent>
       </DialogRoot>
 
+      {/* TODO: Re-enable for custom networks feature */}
       {/* Add Blockchain Dialog */}
-      {/* @ts-ignore */}
-      <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
-        {/* @ts-ignore */}
+      {/* <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Blockchain</DialogTitle>
@@ -214,7 +215,6 @@ export default function Home() {
             <AddBlockchain onClose={() => setIsAddBlockchainOpen(false)} />
           </DialogBody>
           <DialogFooter>
-            {/* @ts-ignore */}
             <DialogCloseTrigger asChild>
               <Box as="button" color="white" p={2} fontSize="sm">
                 Close
@@ -222,7 +222,7 @@ export default function Home() {
             </DialogCloseTrigger>
           </DialogFooter>
         </DialogContent>
-      </DialogRoot>
+      </DialogRoot> */}
     </Box>
   );
 }

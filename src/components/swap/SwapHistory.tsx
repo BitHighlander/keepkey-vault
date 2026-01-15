@@ -194,7 +194,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
               {/* Integration */}
               <HStack justify="space-between" width="100%">
                 <Text fontSize="sm" color="gray.400">Integration:</Text>
-                <Badge colorScheme="purple">{swap.integration}</Badge>
+                <Badge colorScheme="teal">{swap.integration}</Badge>
               </HStack>
 
               {/* Confirmations */}

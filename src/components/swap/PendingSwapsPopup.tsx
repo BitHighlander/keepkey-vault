@@ -272,6 +272,13 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     })
   ];
 
+  // Check if there are any swaps actively in progress (not completed/failed)
+  const hasActiveSwaps = activeSwaps.some(s =>
+    s.status !== 'completed' &&
+    s.status !== 'failed' &&
+    s.status !== 'refunded'
+  );
+
   // Auto-refresh logic
   useEffect(() => {
     const interval = setInterval(() => {
@@ -293,21 +300,21 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     }
   }, [activeSwaps.length, isOpen]);
 
-  // Detect completed swaps and trigger confetti
+  // Detect completed swaps (confetti disabled temporarily to prevent repeated triggers)
   useEffect(() => {
     pendingSwaps.forEach(swap => {
       if (swap.status === 'completed' && !completedSwaps.has(swap.txHash)) {
-        console.log('🎉 Swap completed! Triggering confetti:', swap.txHash);
+        console.log('🎉 Swap completed:', swap.txHash);
 
         // Record completion time
         setCompletedSwaps(prev => new Map(prev).set(swap.txHash, Date.now()));
 
-        // Trigger confetti
-        setShowConfetti(true);
-        setTimeout(() => setShowConfetti(false), 5000); // 5 seconds of confetti
+        // Confetti disabled - was triggering on already completed swaps
+        // setShowConfetti(true);
+        // setTimeout(() => setShowConfetti(false), 5000);
 
-        // Auto-open bubble to show completion
-        setIsOpen(true);
+        // Don't auto-open - only open when user clicks
+        // setIsOpen(true);
         setHasNewSwaps(true);
       }
     });
@@ -376,8 +383,8 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
       // Add to signing swaps
       setSigningSwaps([tempSwap]);
 
-      // Auto-open popup
-      setIsOpen(true);
+      // Don't auto-open - only open when user clicks
+      // setIsOpen(true);
 
       // Trigger pulse animation
       setHasNewSwaps(true);
@@ -395,8 +402,8 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
       // Clear signing swaps (transition to real pending swap)
       setSigningSwaps([]);
 
-      // Auto-open popup
-      setIsOpen(true);
+      // Don't auto-open - only open when user clicks
+      // setIsOpen(true);
 
       // Trigger pulse animation
       setHasNewSwaps(true);
@@ -458,8 +465,8 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
 
   return (
     <>
-      {/* Confetti Effect on Completion */}
-      {showConfetti && (
+      {/* Confetti Effect - Disabled temporarily to prevent repeated triggers */}
+      {/* {showConfetti && (
         <Confetti
           width={window.innerWidth}
           height={window.innerHeight}
@@ -468,7 +475,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
           gravity={0.3}
           colors={[theme.teal, theme.tealBright, theme.tealHover, '#00ff00', '#ffff00']}
         />
-      )}
+      )} */}
 
       {/* Floating Button - Bottom Left */}
       {!isOpen && (
@@ -488,7 +495,11 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
               boxShadow="0 4px 20px rgba(147, 51, 234, 0.4)"
               transition="all 0.2s"
             >
-              <Spinner size="md" color="white" thickness="3px" />
+              {hasActiveSwaps ? (
+                <Spinner size="md" color="white" thickness="3px" />
+              ) : (
+                <Text fontSize="2xl" fontWeight="bold">⚡</Text>
+              )}
             </Button>
 
             {/* Badge with count */}

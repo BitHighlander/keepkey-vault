@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Text,
@@ -19,8 +19,9 @@ import {
   DialogBody,
   DialogCloseTrigger,
 } from '@/components/ui/dialog';
-import { FaExternalLinkAlt, FaCopy, FaChartLine } from 'react-icons/fa';
-import { SwapProgress } from '@/components/swap/SwapProgress';
+import { FaExternalLinkAlt, FaCopy } from 'react-icons/fa';
+import { mergeSwapStatusUpdate, transformSwapToTransaction } from '@/utils/swapDataAdapter';
+import { usePioneerContext } from '@/components/providers/pioneer';
 
 // Theme colors - matching the asset page theme
 const theme = {
@@ -89,12 +90,60 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
   transaction: tx,
   assetContext,
 }) => {
-  const [showSwapProgress, setShowSwapProgress] = useState(false);
+  const { app } = usePioneerContext();
+  const [transaction, setTransaction] = useState(tx);
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setTransaction(tx);
+  }, [tx]);
+
+  // Subscribe to real-time swap events
+  useEffect(() => {
+    if (!tx?.swapMetadata?.isSwap || !app?.events) return;
+
+    const handleSwapEvent = (event: any) => {
+      // Only handle events for this swap
+      if (event.txHash !== tx.txid && event.transaction?.txid !== tx.txid) return;
+
+      console.log('[TransactionDetailDialog] Received swap:event:', event);
+      const updatedTx = mergeSwapStatusUpdate(transaction, event);
+      setTransaction(updatedTx);
+    };
+
+    app.events.on('swap:event', handleSwapEvent);
+    return () => app.events.off('swap:event', handleSwapEvent);
+  }, [tx?.txid, tx?.swapMetadata?.isSwap, app, transaction]);
+
+  // REST polling fallback for swap status
+  useEffect(() => {
+    if (!tx?.swapMetadata?.isSwap || !isOpen || !app?.pioneer) return;
+
+    const pollSwapStatus = async () => {
+      try {
+        const response = await app.pioneer.GetPendingSwap({ txHash: tx.txid });
+        const swapData = response?.data?.swap || response?.data;
+        if (swapData) {
+          console.log('[TransactionDetailDialog] Polled swap status:', swapData);
+          const updatedTx = transformSwapToTransaction(swapData);
+          setTransaction(updatedTx);
+        }
+      } catch (err) {
+        console.error('[TransactionDetailDialog] Failed to poll swap status:', err);
+      }
+    };
+
+    // Poll every 30s when dialog is open
+    const interval = setInterval(pollSwapStatus, 30000);
+    pollSwapStatus(); // Initial fetch
+
+    return () => clearInterval(interval);
+  }, [tx?.txid, tx?.swapMetadata?.isSwap, isOpen, app]);
 
   if (!tx) return null;
 
-  const date = formatTransactionDate(tx.timestamp);
-  const explorerLink = getExplorerLink(tx, assetContext);
+  const date = formatTransactionDate(transaction.timestamp);
+  const explorerLink = getExplorerLink(transaction, assetContext);
 
   // Use asset color or fallback to gold
   const assetColor = assetContext?.color || theme.gold;
@@ -102,46 +151,15 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
 
   // Direction badge color
   const directionColor =
-    tx.direction === 'received' ? 'green' :
-    tx.direction === 'sent' ? 'red' :
+    transaction.direction === 'received' ? 'green' :
+    transaction.direction === 'sent' ? 'red' :
     'gray';
 
   // Status badge color
   const statusColor =
-    tx.status === 'confirmed' ? 'green' :
-    tx.status === 'pending' ? 'yellow' :
+    transaction.status === 'confirmed' ? 'green' :
+    transaction.status === 'pending' ? 'yellow' :
     'red';
-
-  // If showing swap progress, render SwapProgress instead
-  if (showSwapProgress && tx.swapMetadata?.isSwap) {
-    const meta = tx.swapMetadata;
-    return (
-      <SwapProgress
-        txid={meta.inboundTxHash || tx.txid}
-        fromAsset={{
-          caip: meta.fromAsset || '',
-          symbol: meta.fromAsset || 'UNKNOWN',
-          amount: meta.fromAmount || '0'
-        }}
-        toAsset={{
-          caip: meta.toAsset || '',
-          symbol: meta.toAsset || 'UNKNOWN',
-          amount: meta.toAmount || '0'
-        }}
-        inputAmount={meta.fromAmount || '0'}
-        outputAmount={meta.toAmount || '0'}
-        integration={meta.integration || 'thorchain'}
-        memo={meta.memo}
-        onComplete={() => {
-          // Swap completed
-          setShowSwapProgress(false);
-        }}
-        onClose={() => {
-          setShowSwapProgress(false);
-        }}
-      />
-    );
-  }
 
   return (
     <DialogRoot open={isOpen} onOpenChange={(e) => !e.open && onClose()} size="xl">
@@ -193,11 +211,11 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   borderWidth="1px"
                   borderColor={`${assetColor}22`}
                 >
-                  {tx.txid}
+                  {transaction.txid}
                 </Code>
                 <Box
                   as="button"
-                  onClick={() => copyToClipboard(tx.txid)}
+                  onClick={() => copyToClipboard(transaction.txid)}
                   color={assetColor}
                   _hover={{ color: assetColorHover, transform: 'scale(1.1)' }}
                   p={3}
@@ -239,7 +257,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   Status
                 </Text>
                 <Badge colorScheme={statusColor} fontSize="md" px={4} py={2}>
-                  {tx.status || 'unknown'}
+                  {transaction.status || 'unknown'}
                 </Badge>
               </Box>
               <Box
@@ -253,7 +271,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   Direction
                 </Text>
                 <Badge colorScheme={directionColor} fontSize="md" px={4} py={2}>
-                  {tx.direction || 'unknown'}
+                  {transaction.direction || 'unknown'}
                 </Badge>
               </Box>
             </Grid>
@@ -270,7 +288,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                 <Text color="gray.400" fontSize="sm" mb={3} fontWeight="medium">
                   Type
                 </Text>
-                <Text color="white" fontSize="md">{tx.type || 'transfer'}</Text>
+                <Text color="white" fontSize="md">{transaction.type || 'transfer'}</Text>
               </Box>
               <Box
                 bg={`${assetColor}05`}
@@ -283,7 +301,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   Network
                 </Text>
                 <Text color="white" fontSize="sm" fontFamily="mono">
-                  {tx.networkId || tx.caip || 'unknown'}
+                  {transaction.networkId || transaction.caip || 'unknown'}
                 </Text>
               </Box>
             </Grid>
@@ -301,10 +319,10 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   Value
                 </Text>
                 <Text color={assetColor} fontSize="xl" fontFamily="mono" fontWeight="bold">
-                  {tx.value || '0'}
+                  {transaction.value || '0'}
                 </Text>
               </Box>
-              {tx.fee && (
+              {transaction.fee && (
                 <Box
                   bg={`${assetColor}05`}
                   p={4}
@@ -316,7 +334,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                     Fee
                   </Text>
                   <Text color="white" fontSize="md" fontFamily="mono">
-                    {tx.fee}
+                    {transaction.fee}
                   </Text>
                 </Box>
               )}
@@ -336,7 +354,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                 </Text>
                 <Text color="white" fontSize="md">{date}</Text>
               </Box>
-              {tx.blockHeight && (
+              {transaction.blockHeight && (
                 <Box
                   bg={`${assetColor}05`}
                   p={4}
@@ -348,14 +366,14 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                     Block Height
                   </Text>
                   <Text color="white" fontSize="md" fontFamily="mono">
-                    {tx.blockHeight}
+                    {transaction.blockHeight}
                   </Text>
                 </Box>
               )}
             </Grid>
 
             {/* Confirmations */}
-            {tx.confirmations !== undefined && (
+            {transaction.confirmations !== undefined && (
               <Box
                 bg={`${assetColor}05`}
                 p={4}
@@ -366,12 +384,12 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                 <Text color="gray.400" fontSize="sm" mb={3} fontWeight="medium">
                   Confirmations
                 </Text>
-                <Text color="white" fontSize="md">{tx.confirmations}</Text>
+                <Text color="white" fontSize="md">{transaction.confirmations}</Text>
               </Box>
             )}
 
             {/* Addresses */}
-            {tx.from && tx.from.length > 0 && (
+            {transaction.from && transaction.from.length > 0 && (
               <Box
                 bg={`${assetColor}05`}
                 p={4}
@@ -383,7 +401,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   From
                 </Text>
                 <VStack gap={2} align="stretch">
-                  {tx.from.map((addr: string, idx: number) => (
+                  {transaction.from.map((addr: string, idx: number) => (
                     <HStack key={idx} gap={2}>
                       <Code
                         bg={`${assetColor}08`}
@@ -417,7 +435,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
               </Box>
             )}
 
-            {tx.to && tx.to.length > 0 && (
+            {transaction.to && transaction.to.length > 0 && (
               <Box
                 bg={`${assetColor}05`}
                 p={4}
@@ -429,7 +447,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   To
                 </Text>
                 <VStack gap={2} align="stretch">
-                  {tx.to.map((addr: string, idx: number) => (
+                  {transaction.to.map((addr: string, idx: number) => (
                     <HStack key={idx} gap={2}>
                       <Code
                         bg={`${assetColor}08`}
@@ -464,7 +482,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
             )}
 
             {/* Memo */}
-            {tx.memo && (
+            {transaction.memo && (
               <Box
                 bg={`${assetColor}05`}
                 p={4}
@@ -485,13 +503,13 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   borderWidth="1px"
                   borderColor={`${assetColor}22`}
                 >
-                  {tx.memo}
+                  {transaction.memo}
                 </Code>
               </Box>
             )}
 
             {/* Enhanced Swap Metadata */}
-            {tx.swapMetadata && tx.swapMetadata.isSwap && (
+            {transaction.swapMetadata && transaction.swapMetadata.isSwap && (
               <Box
                 bg={`${assetColor}08`}
                 borderRadius="lg"
@@ -510,43 +528,34 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                     </HStack>
                     <HStack gap={2}>
                       {/* Swap Status Badge */}
-                      {tx.swapMetadata.status && (
+                      {transaction.swapMetadata.status && (
                         <Badge
                           colorScheme={
-                            tx.swapMetadata.status === 'completed' ? 'green' :
-                            tx.swapMetadata.status === 'output_confirmed' ? 'green' :
-                            tx.swapMetadata.status === 'output_detected' ? 'blue' :
-                            tx.swapMetadata.status === 'output_confirming' ? 'blue' :
-                            tx.swapMetadata.status === 'confirming' ? 'blue' :
-                            tx.swapMetadata.status === 'pending' ? 'yellow' :
-                            tx.swapMetadata.status === 'failed' ? 'red' :
-                            tx.swapMetadata.status === 'refunded' ? 'orange' :
+                            transaction.swapMetadata.status === 'completed' ? 'green' :
+                            transaction.swapMetadata.status === 'output_confirmed' ? 'green' :
+                            transaction.swapMetadata.status === 'output_detected' ? 'blue' :
+                            transaction.swapMetadata.status === 'output_confirming' ? 'blue' :
+                            transaction.swapMetadata.status === 'confirming' ? 'blue' :
+                            transaction.swapMetadata.status === 'pending' ? 'yellow' :
+                            transaction.swapMetadata.status === 'failed' ? 'red' :
+                            transaction.swapMetadata.status === 'refunded' ? 'orange' :
                             'gray'
                           }
                           fontSize="sm"
                           px={3}
                           py={1}
                         >
-                          {tx.swapMetadata.status === 'output_detected' ? '🎯 OUTPUT DETECTED' :
-                           tx.swapMetadata.status === 'output_confirming' ? '⏳ CONFIRMING OUTPUT' :
-                           tx.swapMetadata.status === 'output_confirmed' ? '✅ OUTPUT CONFIRMED' :
-                           tx.swapMetadata.status === 'completed' ? '✅ COMPLETED' :
-                           tx.swapMetadata.status === 'confirming' ? '⏳ CONFIRMING' :
-                           tx.swapMetadata.status === 'pending' ? '⏳ PENDING' :
-                           tx.swapMetadata.status === 'failed' ? '❌ FAILED' :
-                           tx.swapMetadata.status === 'refunded' ? '🔄 REFUNDED' :
-                           tx.swapMetadata.status?.toUpperCase()}
+                          {transaction.swapMetadata.status === 'output_detected' ? '🎯 OUTPUT DETECTED' :
+                           transaction.swapMetadata.status === 'output_confirming' ? '⏳ CONFIRMING OUTPUT' :
+                           transaction.swapMetadata.status === 'output_confirmed' ? '✅ OUTPUT CONFIRMED' :
+                           transaction.swapMetadata.status === 'completed' ? '✅ COMPLETED' :
+                           transaction.swapMetadata.status === 'confirming' ? '⏳ CONFIRMING' :
+                           transaction.swapMetadata.status === 'pending' ? '⏳ PENDING' :
+                           transaction.swapMetadata.status === 'failed' ? '❌ FAILED' :
+                           transaction.swapMetadata.status === 'refunded' ? '🔄 REFUNDED' :
+                           transaction.swapMetadata.status?.toUpperCase()}
                         </Badge>
                       )}
-                      {/* Monitor Swap Button */}
-                      <Button
-                        size="sm"
-                        colorPalette="purple"
-                        onClick={() => setShowSwapProgress(true)}
-                        leftIcon={<FaChartLine />}
-                      >
-                        Monitor Swap
-                      </Button>
                     </HStack>
                   </HStack>
                 </VStack>
@@ -565,11 +574,11 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         From Asset
                       </Text>
                       <Text color="white" fontSize="sm" fontWeight="bold">
-                        {tx.swapMetadata.fromAsset || 'N/A'}
+                        {transaction.swapMetadata.fromAsset || 'N/A'}
                       </Text>
-                      {tx.swapMetadata.fromAmount && (
+                      {transaction.swapMetadata.fromAmount && (
                         <Text color={assetColor} fontSize="xs" mt={1}>
-                          {tx.swapMetadata.fromAmount}
+                          {transaction.swapMetadata.fromAmount}
                         </Text>
                       )}
                     </Box>
@@ -584,18 +593,18 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         To Asset
                       </Text>
                       <Text color="white" fontSize="sm" fontWeight="bold">
-                        {tx.swapMetadata.toAsset || 'N/A'}
+                        {transaction.swapMetadata.toAsset || 'N/A'}
                       </Text>
-                      {tx.swapMetadata.toAmount && (
+                      {transaction.swapMetadata.toAmount && (
                         <Text color={assetColor} fontSize="xs" mt={1}>
-                          {tx.swapMetadata.toAmount}
+                          {transaction.swapMetadata.toAmount}
                         </Text>
                       )}
                     </Box>
                   </Grid>
 
                   {/* Protocol Integration */}
-                  {tx.swapMetadata.integration && (
+                  {transaction.swapMetadata.integration && (
                     <Box
                       bg={`${assetColor}05`}
                       p={3}
@@ -607,15 +616,15 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         Integration
                       </Text>
                       <Text color="white" fontSize="sm">
-                        {tx.swapMetadata.integration === 'thorchain' ? 'THORChain' :
-                         tx.swapMetadata.integration === 'mayachain' ? 'Maya Protocol' :
-                         tx.swapMetadata.integration}
+                        {transaction.swapMetadata.integration === 'thorchain' ? 'THORChain' :
+                         transaction.swapMetadata.integration === 'mayachain' ? 'Maya Protocol' :
+                         transaction.swapMetadata.integration}
                       </Text>
                     </Box>
                   )}
 
                   {/* Confirmation Progress - Input Transaction */}
-                  {tx.swapMetadata.confirmations !== undefined && (
+                  {transaction.swapMetadata.confirmations !== undefined && (
                     <Box
                       bg={`${assetColor}05`}
                       p={3}
@@ -627,13 +636,13 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         Input Transaction Confirmations
                       </Text>
                       <Text color="white" fontSize="sm">
-                        {tx.swapMetadata.confirmations} confirmations
+                        {transaction.swapMetadata.confirmations} confirmations
                       </Text>
                     </Box>
                   )}
 
                   {/* Confirmation Progress - Output Transaction */}
-                  {tx.swapMetadata.outboundConfirmations !== undefined && (
+                  {transaction.swapMetadata.outboundConfirmations !== undefined && (
                     <Box
                       bg={`${assetColor}05`}
                       p={3}
@@ -646,15 +655,15 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                       </Text>
                       <HStack>
                         <Text color={assetColor} fontSize="lg" fontWeight="bold">
-                          {tx.swapMetadata.outboundConfirmations}
+                          {transaction.swapMetadata.outboundConfirmations}
                         </Text>
-                        {tx.swapMetadata.outboundRequiredConfirmations && (
+                        {transaction.swapMetadata.outboundRequiredConfirmations && (
                           <Text color="gray.400" fontSize="sm">
-                            / {tx.swapMetadata.outboundRequiredConfirmations} required
+                            / {transaction.swapMetadata.outboundRequiredConfirmations} required
                           </Text>
                         )}
                       </HStack>
-                      {tx.swapMetadata.outboundRequiredConfirmations && (
+                      {transaction.swapMetadata.outboundRequiredConfirmations && (
                         <Box
                           mt={2}
                           h="6px"
@@ -665,7 +674,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                           <Box
                             h="100%"
                             bg={assetColor}
-                            w={`${Math.min(100, (tx.swapMetadata.outboundConfirmations / tx.swapMetadata.outboundRequiredConfirmations) * 100)}%`}
+                            w={`${Math.min(100, (transaction.swapMetadata.outboundConfirmations / transaction.swapMetadata.outboundRequiredConfirmations) * 100)}%`}
                             transition="width 0.3s"
                           />
                         </Box>
@@ -674,7 +683,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   )}
 
                   {/* Timing Information */}
-                  {tx.swapMetadata.createdAt && (
+                  {transaction.swapMetadata.createdAt && (
                     <Grid templateColumns="1fr 1fr" gap={4}>
                       <Box
                         bg={`${assetColor}05`}
@@ -687,10 +696,10 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                           Created
                         </Text>
                         <Text color="white" fontSize="xs">
-                          {new Date(tx.swapMetadata.createdAt).toLocaleString()}
+                          {new Date(transaction.swapMetadata.createdAt).toLocaleString()}
                         </Text>
                       </Box>
-                      {tx.swapMetadata.outputDetectedAt && (
+                      {transaction.swapMetadata.outputDetectedAt && (
                         <Box
                           bg={`${assetColor}05`}
                           p={3}
@@ -702,7 +711,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                             Output Detected
                           </Text>
                           <Text color="white" fontSize="xs">
-                            {new Date(tx.swapMetadata.outputDetectedAt).toLocaleString()}
+                            {new Date(transaction.swapMetadata.outputDetectedAt).toLocaleString()}
                           </Text>
                         </Box>
                       )}
@@ -710,7 +719,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   )}
 
                   {/* Inbound Transaction */}
-                  {tx.swapMetadata.inboundTxHash && (
+                  {transaction.swapMetadata.inboundTxHash && (
                     <Box>
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
                         Inbound Transaction
@@ -727,11 +736,11 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                           borderWidth="1px"
                           borderColor={`${assetColor}22`}
                         >
-                          {tx.swapMetadata.inboundTxHash}
+                          {transaction.swapMetadata.inboundTxHash}
                         </Code>
                         <Box
                           as="button"
-                          onClick={() => copyToClipboard(tx.swapMetadata.inboundTxHash)}
+                          onClick={() => copyToClipboard(transaction.swapMetadata.inboundTxHash)}
                           color={assetColor}
                           _hover={{ color: assetColorHover, transform: 'scale(1.1)' }}
                           p={2}
@@ -746,7 +755,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   )}
 
                   {/* Outbound Transaction */}
-                  {tx.swapMetadata.outboundTxHash && (
+                  {transaction.swapMetadata.outboundTxHash && (
                     <Box>
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
                         Outbound Transaction
@@ -763,11 +772,11 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                           borderWidth="1px"
                           borderColor={`${assetColor}22`}
                         >
-                          {tx.swapMetadata.outboundTxHash}
+                          {transaction.swapMetadata.outboundTxHash}
                         </Code>
                         <Box
                           as="button"
-                          onClick={() => copyToClipboard(tx.swapMetadata.outboundTxHash)}
+                          onClick={() => copyToClipboard(transaction.swapMetadata.outboundTxHash)}
                           color={assetColor}
                           _hover={{ color: assetColorHover, transform: 'scale(1.1)' }}
                           p={2}
@@ -777,10 +786,10 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         >
                           <FaCopy size={14} />
                         </Box>
-                        {tx.swapMetadata.integration === 'thorchain' && (
+                        {transaction.swapMetadata.integration === 'thorchain' && (
                           <Box
                             as="a"
-                            href={`https://viewblock.io/thorchain/tx/${tx.swapMetadata.outboundTxHash}`}
+                            href={`https://viewblock.io/thorchain/tx/${transaction.swapMetadata.outboundTxHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             color={assetColor}
@@ -798,7 +807,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                   )}
 
                   {/* Error Information */}
-                  {tx.swapMetadata.error && (
+                  {transaction.swapMetadata.error && (
                     <Box
                       bg="red.900"
                       borderWidth="1px"
@@ -809,37 +818,37 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                       <HStack mb={2}>
                         <Text fontSize="lg">⚠️</Text>
                         <Text color="red.300" fontSize="sm" fontWeight="bold">
-                          {tx.swapMetadata.error.type || 'Error'}
+                          {transaction.swapMetadata.error.type || 'Error'}
                         </Text>
-                        {tx.swapMetadata.error.severity && (
+                        {transaction.swapMetadata.error.severity && (
                           <Badge
-                            colorScheme={tx.swapMetadata.error.severity === 'ERROR' ? 'red' : 'yellow'}
+                            colorScheme={transaction.swapMetadata.error.severity === 'ERROR' ? 'red' : 'yellow'}
                             fontSize="xs"
                           >
-                            {tx.swapMetadata.error.severity}
+                            {transaction.swapMetadata.error.severity}
                           </Badge>
                         )}
                       </HStack>
-                      {tx.swapMetadata.error.userMessage && (
+                      {transaction.swapMetadata.error.userMessage && (
                         <Text color="red.200" fontSize="sm" mb={2}>
-                          {tx.swapMetadata.error.userMessage}
+                          {transaction.swapMetadata.error.userMessage}
                         </Text>
                       )}
-                      {tx.swapMetadata.error.actionable && (
+                      {transaction.swapMetadata.error.actionable && (
                         <Text color="orange.300" fontSize="xs" fontStyle="italic">
-                          💡 {tx.swapMetadata.error.actionable}
+                          💡 {transaction.swapMetadata.error.actionable}
                         </Text>
                       )}
-                      {tx.swapMetadata.error.message && (
+                      {transaction.swapMetadata.error.message && (
                         <Text color="gray.400" fontSize="xs" mt={2} fontFamily="mono">
-                          Technical: {tx.swapMetadata.error.message}
+                          Technical: {transaction.swapMetadata.error.message}
                         </Text>
                       )}
                     </Box>
                   )}
 
                   {/* Swap Memo */}
-                  {tx.swapMetadata.memo && (
+                  {transaction.swapMetadata.memo && (
                     <Box>
                       <Text color="gray.400" fontSize="xs" mb={2} fontWeight="medium">
                         Swap Memo
@@ -855,7 +864,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         borderWidth="1px"
                         borderColor={`${assetColor}22`}
                       >
-                        {tx.swapMetadata.memo}
+                        {transaction.swapMetadata.memo}
                       </Code>
                     </Box>
                   )}

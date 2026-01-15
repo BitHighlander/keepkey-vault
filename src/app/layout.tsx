@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Provider } from './provider';
 import { MaintenanceWrapper } from '@/components/maintenance/MaintenanceWrapper';
 import { Provider as ChakraProvider } from "@/components/ui/provider";
+import { GlobalHeader } from '@/components/layout/GlobalHeader';
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -91,7 +92,12 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
         <ChakraProvider>
           <MaintenanceWrapper>
-            <Provider>{children}</Provider>
+            <Provider>
+              <GlobalHeader />
+              <div style={{ paddingTop: '72px' }}>
+                {children}
+              </div>
+            </Provider>
           </MaintenanceWrapper>
         </ChakraProvider>
       </body>

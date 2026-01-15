@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Box, VStack, HStack, Text } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
-import { FaCheckCircle } from 'react-icons/fa';
+import { FaCheckCircle, FaArrowUp, FaBolt, FaArrowDown } from 'react-icons/fa';
 import { SwapHeader } from './SwapHeader';
 import { TimingDisplay } from './TimingDisplay';
 import { SuccessView } from './SuccessView';
@@ -17,11 +17,11 @@ import { getStageIcon, getStageDescription } from './swap-timing-utils';
 // Keyframe animations for active step
 const pulseGlow = keyframes`
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
+    box-shadow: 0 0 0 0 rgba(0, 220, 130, 0.7);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 20px 8px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 20px 8px rgba(0, 220, 130, 0.4);
     transform: scale(1.05);
   }
 `;
@@ -56,6 +56,7 @@ interface TimingData {
 
 interface ThorchainData {
   outboundTxHash?: string;
+  inboundTxHash?: string;
 }
 
 interface SwapStatus {
@@ -74,6 +75,7 @@ interface SwapProgressStepsProps {
   swapStatus: SwapStatus;
   fromAsset: Asset;
   toAsset: Asset;
+  inputTxHash?: string;
   onClose: () => void;
 }
 
@@ -82,19 +84,19 @@ const steps = [
   {
     title: 'Input Transaction',
     stage: 1,
-    icon: '↗',
+    Icon: FaArrowUp,
     description: 'Confirming your transaction'
   },
   {
     title: 'Protocol Processing',
     stage: 2,
-    icon: '⚡',
+    Icon: FaBolt,
     description: 'Processing swap via THORChain'
   },
   {
     title: 'Output Transaction',
     stage: 3,
-    icon: '↙',
+    Icon: FaArrowDown,
     description: 'Receiving your assets'
   },
 ];
@@ -103,6 +105,7 @@ export function SwapProgressSteps({
   swapStatus,
   fromAsset,
   toAsset,
+  inputTxHash,
   onClose
 }: SwapProgressStepsProps) {
   const [expandedStage, setExpandedStage] = useState<number | null>(null);
@@ -124,48 +127,50 @@ export function SwapProgressSteps({
 
       {/* Steps progress bar */}
       <HStack justify="space-between" position="relative" px={4}>
-        {steps.map((step, index) => (
-          <VStack key={index} flex={1} gap={2} position="relative">
-            {/* Step indicator */}
-            <Box
-              width="40px"
-              height="40px"
-              borderRadius="full"
-              bg={index < currentStep ? 'green.500' : index === currentStep ? 'purple.500' : 'gray.700'}
-              borderWidth="2px"
-              borderColor={index < currentStep ? 'green.400' : index === currentStep ? 'purple.400' : 'gray.600'}
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              fontSize="xl"
-              fontWeight="bold"
-              color="white"
-              transition="all 0.3s"
-              animation={index === currentStep ? `${pulseGlow} 2s ease-in-out infinite` : undefined}
-              position="relative"
-              _before={index === currentStep ? {
-                content: '""',
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                width: '100%',
-                height: '100%',
-                borderRadius: 'full',
-                border: '2px solid',
-                borderColor: 'purple.400',
-                transform: 'translate(-50%, -50%)',
-                animation: `${pulseGlow} 2s ease-in-out infinite`,
-                zIndex: -1
-              } : undefined}
-            >
-              {index < currentStep ? <FaCheckCircle /> : <Text>{step.icon}</Text>}
-            </Box>
+        {steps.map((step, index) => {
+          const StepIcon = step.Icon;
+          return (
+            <VStack key={index} flex={1} gap={2} position="relative">
+              {/* Step indicator */}
+              <Box
+                width="40px"
+                height="40px"
+                borderRadius="full"
+                bg={index < currentStep ? 'green.500' : index === currentStep ? 'teal.500' : 'gray.700'}
+                borderWidth="2px"
+                borderColor={index < currentStep ? 'green.400' : index === currentStep ? 'teal.400' : 'gray.600'}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                fontSize="lg"
+                fontWeight="bold"
+                color="white"
+                transition="all 0.3s"
+                animation={index === currentStep ? `${pulseGlow} 2s ease-in-out infinite` : undefined}
+                position="relative"
+                _before={index === currentStep ? {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 'full',
+                  border: '2px solid',
+                  borderColor: 'teal.400',
+                  transform: 'translate(-50%, -50%)',
+                  animation: `${pulseGlow} 2s ease-in-out infinite`,
+                  zIndex: -1
+                } : undefined}
+              >
+                {index < currentStep ? <FaCheckCircle /> : <StepIcon />}
+              </Box>
 
             {/* Step title */}
             <Text
               fontSize="sm"
               fontWeight={index === currentStep ? 'bold' : 'normal'}
-              color={index < currentStep ? 'green.400' : index === currentStep ? 'purple.400' : 'gray.500'}
+              color={index < currentStep ? 'green.400' : index === currentStep ? 'teal.400' : 'gray.500'}
               textAlign="center"
             >
               {step.title}
@@ -184,7 +189,8 @@ export function SwapProgressSteps({
               />
             )}
           </VStack>
-        ))}
+        );
+        })}
       </HStack>
 
       {/* Active step content with timing display */}
@@ -206,6 +212,8 @@ export function SwapProgressSteps({
               ? swapStatus.outboundRequiredConfirmations
               : undefined
           }
+          inputTxHash={inputTxHash}
+          thorchainData={swapStatus.thorchainData}
           isExpanded={expandedStage === currentStep}
           onToggleExpand={() => setExpandedStage(
             expandedStage === currentStep ? null : currentStep
@@ -219,6 +227,7 @@ export function SwapProgressSteps({
           swapStatus={swapStatus}
           fromAsset={fromAsset}
           toAsset={toAsset}
+          inputTxHash={inputTxHash}
         />
       )}
     </VStack>

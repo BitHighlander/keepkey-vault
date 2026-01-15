@@ -23,10 +23,9 @@ export interface ScamDetectionResult {
  * Detects if a token is potentially a scam based on its properties
  *
  * Logic:
- * 1. If token matches stablecoin symbol with minimal/no value, it's a CONFIRMED scam
- * 2. If token has minimal value (< $0.01) AND no asset data, it's a POSSIBLE scam
- * 3. If token has no value, it's a POSSIBLE scam
- * 4. Otherwise, it's NOT a scam
+ * 1. If token has USD value >= $1, it's NOT a scam (significant value)
+ * 2. If token matches stablecoin symbol with value < $0.50, it's a CONFIRMED scam
+ * 3. If token has value < $1, it's a POSSIBLE scam (likely worthless airdrop)
  *
  * @param token - Token object with symbol/ticker and valueUsd properties
  * @param assetInfo - Optional asset metadata from assetsMap (contains icon, name, etc.)
@@ -36,9 +35,27 @@ export const detectScamToken = (token: any, assetInfo?: any): ScamDetectionResul
   const symbol = (token.symbol || token.ticker || '').toUpperCase();
   const valueUsd = parseFloat(token.valueUsd || 0);
 
-  // FIRST: Stablecoin symbol with minimal/no value = CONFIRMED SCAM
+  // console.log('🔍 Scam detection for:', {
+  //   symbol,
+  //   valueUsd,
+  //   rawValueUsd: token.valueUsd,
+  //   valueUsdType: typeof token.valueUsd
+  // });
+
+  // FIRST: If token has USD value >= $1, it's NOT a scam (even if symbol matches)
+  if (valueUsd >= 1) {
+    // console.log('✅ NOT a scam - has value:', valueUsd);
+    return {
+      isScam: false,
+      scamType: null,
+      reason: 'Has significant USD value'
+    };
+  }
+
+  // SECOND: Stablecoin symbol with value < $0.50 = CONFIRMED SCAM
   // Real stablecoins have ~$1 value, fake ones have little to no value
   if (KNOWN_STABLECOINS.includes(symbol) && valueUsd < 0.50) {
+    // console.log('🚨 CONFIRMED SCAM - fake stablecoin:', symbol);
     return {
       isScam: true,
       scamType: 'confirmed',
@@ -46,31 +63,13 @@ export const detectScamToken = (token: any, assetInfo?: any): ScamDetectionResul
     };
   }
 
-  // SECOND: Minimal value + missing asset data = POSSIBLE SCAM
-  // Legitimate tokens typically have proper asset metadata including icons
-  // Scammers often create tokens without proper metadata
-  if (valueUsd < 0.01 && (!assetInfo || !assetInfo.icon)) {
-    return {
-      isScam: true,
-      scamType: 'possible',
-      reason: 'This token has minimal value ($' + valueUsd.toFixed(4) + ') and is not recognized in our asset database. Unknown tokens without proper metadata are commonly used in airdrop scams.'
-    };
-  }
-
-  // THIRD: Zero value = POSSIBLE SCAM
-  if (valueUsd === 0) {
-    return {
-      isScam: true,
-      scamType: 'possible',
-      reason: 'Zero-value tokens are commonly used in phishing attacks to gain wallet access or trick users into approving malicious transactions.'
-    };
-  }
-
-  // NOT a scam
+  // THIRD: Low value (< $1) = POSSIBLE SCAM
+  // Most legitimate tokens have at least $1 value when held
+  // console.log('⚠️ POSSIBLE SCAM - low value:', symbol, valueUsd);
   return {
-    isScam: false,
-    scamType: null,
-    reason: ''
+    isScam: true,
+    scamType: 'possible',
+    reason: 'This token has minimal value ($' + valueUsd.toFixed(4) + '). Low-value tokens are commonly used in airdrop scams to trick users into approving malicious transactions.'
   };
 };
 

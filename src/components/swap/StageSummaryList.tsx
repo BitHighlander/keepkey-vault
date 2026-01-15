@@ -55,7 +55,7 @@ export function StageSummaryList({ swapStatus }: StageSummaryListProps) {
           border="1px solid"
           borderColor={
             stage.status === 'complete' ? 'green.700' :
-            stage.status === 'active' ? 'purple.700' : 'gray.700'
+            stage.status === 'active' ? 'teal.700' : 'gray.700'
           }
           justify="space-between"
         >

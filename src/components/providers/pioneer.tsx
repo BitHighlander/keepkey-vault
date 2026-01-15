@@ -126,47 +126,118 @@ export function AppProvider({
         }
     }, [pioneer]);
 
-    // Payment notification system - track balance snapshots for event detection
+    // Balance snapshot tracking for amount-only comparison (prevents price update re-renders)
     // Using useRef to avoid re-renders and prevent infinite loop
-    const balancesSnapshotRef = useRef<Map<string, any>>(new Map());
+    const balanceSnapshotRef = useRef<Map<string, { caip: string; balance: string }>>(new Map());
 
-    // Listen for DASHBOARD_UPDATE events and detect payment events
+    // Helper function to detect REAL balance changes (amount-only, ignores price updates)
+    const hasRealBalanceChange = useCallback((caip: string, newBalance: string): boolean => {
+        const previous = balanceSnapshotRef.current.get(caip);
+        if (!previous) return true; // New asset
+
+        // Compare as numbers with 8-decimal precision (1 satoshi threshold)
+        const oldAmount = parseFloat(previous.balance);
+        const newAmount = parseFloat(newBalance);
+        const threshold = 0.00000001;
+
+        return Math.abs(newAmount - oldAmount) >= threshold;
+    }, []);
+
+    // Memoize triggerBalanceRefresh to prevent recreating on every render
+    // MUST be defined before useEffect that uses it (hoisting requirement)
+    const triggerBalanceRefreshMemoized = useCallback(() => {
+        setBalanceRefreshCounter(prev => prev + 1);
+    }, []);
+
+    // Listen for granular balance update events (real-time balance changes)
     useEffect(() => {
         if (!pioneer?.state?.app?.events) {
-            //console.log('[PioneerProvider] No events object available yet');
             return;
         }
 
-        const handleDashboardUpdate = (data: any) => {
-            //console.log('[PioneerProvider] DASHBOARD_UPDATE event received');
+        // Individual balance change (single asset)
+        const handleBalanceUpdate = (data: { caip: string; balance: any; previousValueUsd?: number; newValueUsd?: number }) => {
+            // Filter: Only react to REAL balance amount changes
+            if (!hasRealBalanceChange(data.caip, data.balance.balance)) {
+                console.debug('[AppProvider] Filtered: Price update only');
+                return;
+            }
 
-            // Get current balances from Pioneer SDK
-            const newBalances = pioneer.state.app.balances || [];
+            // Filter: Ignore optimistic updates (SDK will send real data)
+            if (data.balance.optimistic) {
+                console.debug('[AppProvider] Filtered: Optimistic update');
+                return;
+            }
 
-            // DISABLED: Dashboard-based notifications (balance change detection)
-            // Reason: Triggers on refresh/price updates, shows stale data, unprofessional UX
-            // Only showing txid-based notifications until this system is proven reliable
-            // TODO: Re-enable after implementing proper debouncing and state validation
-            // paymentEventManager.processBalanceUpdate(balancesSnapshotRef.current, newBalances);
+            console.log('[AppProvider] Real balance change:', data.caip, data.balance.balance);
 
-            // Update snapshot for next comparison (doesn't trigger re-render)
-            balancesSnapshotRef.current = createBalancesMap(newBalances);
+            // Update snapshot
+            balanceSnapshotRef.current.set(data.caip, {
+                caip: data.caip,
+                balance: data.balance.balance
+            });
+
+            // Trigger React re-render
+            triggerBalanceRefreshMemoized();
         };
 
-        // Subscribe to DASHBOARD_UPDATE events
-        pioneer.state.app.events.on('DASHBOARD_UPDATE', handleDashboardUpdate);
-        //console.log('[PioneerProvider] Subscribed to DASHBOARD_UPDATE events');
+        // Batch balance changes (multiple assets, swap completion)
+        const handleBalancesUpdated = (balances: any[]) => {
+            console.log('[AppProvider] Batch balance update:', balances.length, 'assets');
+
+            // Rebuild snapshot map
+            balances.forEach(b => {
+                if (b.caip && b.balance) {
+                    balanceSnapshotRef.current.set(b.caip, {
+                        caip: b.caip,
+                        balance: b.balance
+                    });
+                }
+            });
+
+            triggerBalanceRefreshMemoized();
+        };
+
+        // Pending balance created (swap initiated)
+        const handlePendingCreated = (balance: any) => {
+            console.log('[AppProvider] Pending balance created:', balance.symbol, balance.pending?.swapTxHash);
+            triggerBalanceRefreshMemoized();
+        };
+
+        // Pending balance removed (swap completed/failed)
+        const handlePendingRemoved = (data: { swapTxHash: string; balance: any }) => {
+            console.log('[AppProvider] Pending balance removed:', data.swapTxHash);
+            triggerBalanceRefreshMemoized();
+        };
+
+        // Register subscriptions
+        pioneer.state.app.events.on('BALANCE_UPDATE', handleBalanceUpdate);
+        pioneer.state.app.events.on('BALANCES_UPDATED', handleBalancesUpdated);
+        pioneer.state.app.events.on('PENDING_BALANCE_CREATED', handlePendingCreated);
+        pioneer.state.app.events.on('PENDING_BALANCE_REMOVED', handlePendingRemoved);
+
+        console.log('[AppProvider] Subscribed to balance update events');
 
         // Initialize snapshot with current balances
         const currentBalances = pioneer.state.app.balances || [];
-        balancesSnapshotRef.current = createBalancesMap(currentBalances);
+        currentBalances.forEach((b: any) => {
+            if (b.caip && b.balance) {
+                balanceSnapshotRef.current.set(b.caip, {
+                    caip: b.caip,
+                    balance: b.balance
+                });
+            }
+        });
 
         // Cleanup subscription on unmount
         return () => {
-            pioneer.state.app.events.off('DASHBOARD_UPDATE', handleDashboardUpdate);
-            //console.log('[PioneerProvider] Unsubscribed from DASHBOARD_UPDATE events');
+            pioneer.state.app.events.off('BALANCE_UPDATE', handleBalanceUpdate);
+            pioneer.state.app.events.off('BALANCES_UPDATED', handleBalancesUpdated);
+            pioneer.state.app.events.off('PENDING_BALANCE_CREATED', handlePendingCreated);
+            pioneer.state.app.events.off('PENDING_BALANCE_REMOVED', handlePendingRemoved);
+            console.log('[AppProvider] Unsubscribed from balance update events');
         };
-    }, [pioneer?.state?.app?.events]);
+    }, [pioneer?.state?.app?.events, hasRealBalanceChange, triggerBalanceRefreshMemoized]);
 
     // Listen for pioneer:tx events (actual blockchain transactions)
     // NOTE: This is the ONLY notification system currently enabled
@@ -178,9 +249,17 @@ export function AppProvider({
         }
 
         const handleTransactionEvent = (txData: any) => {
+            console.log('🔔 [PIONEER-PROVIDER] Received pioneer:tx event, forwarding to TransactionEventManager:', {
+                type: txData.type,
+                networkId: txData.networkId,
+                txid: txData.txid?.substring(0, 16) + '...',
+                address: txData.address?.substring(0, 10) + '...',
+            });
 
             // Process actual transaction events with txids (ONLY active notification system)
             transactionEventManager.processTransactionEvent(txData);
+
+            console.log('✅ [PIONEER-PROVIDER] TransactionEventManager.processTransactionEvent() completed');
         };
 
         pioneer.state.app.events.on('pioneer:tx', handleTransactionEvent);
@@ -195,11 +274,6 @@ export function AppProvider({
         setAssetContext(null);
         setOutboundAssetContext(null);
         setIsAssetViewActive(false);
-    }, []);
-
-    // Memoize triggerBalanceRefresh to prevent recreating on every render
-    const triggerBalanceRefreshMemoized = useCallback(() => {
-        setBalanceRefreshCounter(prev => prev + 1);
     }, []);
 
     // Create wrapper for pioneer with added asset context

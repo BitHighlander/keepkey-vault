@@ -4,8 +4,8 @@
  * Time-focused display with prominent timing information and expandable diagnostic details
  */
 
-import { Box, VStack, HStack, Text, Button, Badge, Collapsible, Progress } from '@chakra-ui/react';
-import { FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { Box, VStack, HStack, Text, Button, Badge, Collapsible, Progress, Code } from '@chakra-ui/react';
+import { FaChevronDown, FaChevronUp, FaLightbulb, FaExclamationTriangle } from 'react-icons/fa';
 import {
   formatTime,
   calculatePercentage,
@@ -27,6 +27,11 @@ interface TimingData {
   usingDefaults?: boolean;
 }
 
+interface ThorchainData {
+  outboundTxHash?: string;
+  inboundTxHash?: string;
+}
+
 interface TimingDisplayProps {
   timingData?: TimingData;
   stage: 1 | 2 | 3;
@@ -34,6 +39,8 @@ interface TimingDisplayProps {
   requiredConfirmations?: number;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  inputTxHash?: string;
+  thorchainData?: ThorchainData;
 }
 
 /**
@@ -54,7 +61,9 @@ export function TimingDisplay({
   confirmations,
   requiredConfirmations,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
+  inputTxHash,
+  thorchainData
 }: TimingDisplayProps) {
   // Format timing data
   const elapsed = formatTime(timingData?.elapsedSeconds || 0);
@@ -64,11 +73,15 @@ export function TimingDisplay({
     timingData?.stageExpectedSeconds
   );
 
+  // Get transaction hashes
+  const inboundTx = thorchainData?.inboundTxHash || inputTxHash;
+  const outboundTx = thorchainData?.outboundTxHash;
+
   return (
     <Box
       bg="gray.900"
       border="1px solid"
-      borderColor="purple.700"
+      borderColor="teal.700"
       borderRadius="lg"
       p={6}
       mt={4}
@@ -80,7 +93,7 @@ export function TimingDisplay({
             <Text fontSize="xl" fontWeight="bold">
               {getStageIcon(stage)} {getStageTitle(stage)}
             </Text>
-            <Badge colorScheme="purple">Active</Badge>
+            <Badge colorScheme="teal">Active</Badge>
           </HStack>
           {confirmations !== undefined && (
             <Text color="gray.400" fontSize="sm">
@@ -104,7 +117,7 @@ export function TimingDisplay({
             <Text fontSize="2xl" color="gray.600">•</Text>
 
             <VStack spacing={0}>
-              <Text fontSize="2xl" fontWeight="bold" color="purple.400">
+              <Text fontSize="2xl" fontWeight="bold" color="teal.400">
                 ~{remaining}
               </Text>
               <Text fontSize="xs" color="gray.500">
@@ -116,7 +129,7 @@ export function TimingDisplay({
 
         {/* Progress bar */}
         <Box>
-          <Progress.Root value={percentage} colorPalette="purple" size="lg" striped animated>
+          <Progress.Root value={percentage} colorPalette="teal" size="lg" striped animated>
             <Progress.Track>
               <Progress.Range />
             </Progress.Track>
@@ -129,18 +142,83 @@ export function TimingDisplay({
         {/* Reassurance message */}
         {timingData?.reassuranceMessage && (
           <HStack
-            bg="purple.900"
+            bg="teal.900"
             p={3}
             borderRadius="md"
             border="1px solid"
-            borderColor="purple.700"
+            borderColor="teal.700"
           >
-            <Text fontSize="lg">💡</Text>
-            <Text fontSize="sm" color="purple.200">
+            <Box color="teal.300" fontSize="lg">
+              <FaLightbulb />
+            </Box>
+            <Text fontSize="sm" color="teal.200">
               {timingData.reassuranceMessage}
             </Text>
           </HStack>
         )}
+
+        {/* Transaction IDs - Main Focus */}
+        <Box
+          bg="gray.800"
+          borderRadius="md"
+          p={4}
+          border="1px solid"
+          borderColor="teal.700"
+        >
+          <VStack spacing={3} align="stretch">
+            {/* Input Transaction */}
+            {inboundTx && (
+              <Box>
+                <Text fontSize="xs" color="gray.400" mb={1} fontWeight="medium">
+                  Input Transaction
+                </Text>
+                <Code
+                  fontSize="xs"
+                  bg="gray.900"
+                  color="teal.300"
+                  p={2}
+                  borderRadius="md"
+                  display="block"
+                  wordBreak="break-all"
+                >
+                  {inboundTx}
+                </Code>
+              </Box>
+            )}
+
+            {/* Output Transaction */}
+            <Box>
+              <Text fontSize="xs" color="gray.400" mb={1} fontWeight="medium">
+                Output Transaction
+              </Text>
+              {outboundTx ? (
+                <Code
+                  fontSize="xs"
+                  bg="gray.900"
+                  color="green.300"
+                  p={2}
+                  borderRadius="md"
+                  display="block"
+                  wordBreak="break-all"
+                >
+                  {outboundTx}
+                </Code>
+              ) : (
+                <Box
+                  bg="gray.900"
+                  p={2}
+                  borderRadius="md"
+                  border="1px dashed"
+                  borderColor="gray.700"
+                >
+                  <Text fontSize="xs" color="gray.500" textAlign="center">
+                    Waiting for output transaction...
+                  </Text>
+                </Box>
+              )}
+            </Box>
+          </VStack>
+        </Box>
 
         {/* Expandable details toggle */}
         <Button
@@ -192,7 +270,9 @@ export function TimingDisplay({
                   borderRadius="md"
                   fontSize="xs"
                 >
-                  <Text>⚠️</Text>
+                  <Box color="yellow.400">
+                    <FaExclamationTriangle />
+                  </Box>
                   <Text color="yellow.200">
                     Using default estimates - precise timing loading
                   </Text>

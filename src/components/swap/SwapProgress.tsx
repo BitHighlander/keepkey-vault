@@ -339,10 +339,9 @@ export const SwapProgress = ({
       if (eventType === 'swap:output_confirmed' || eventType === 'swap:completed' || eventType === 'output_confirmed' || eventType === 'completed') {
         setCurrentStage(3);
         setIsComplete(true);
-        setShowConfetti(true);
-
-        // Stop confetti after 5 seconds
-        setTimeout(() => setShowConfetti(false), 5000);
+        // Confetti disabled - was triggering repeatedly on already completed swaps
+        // setShowConfetti(true);
+        // setTimeout(() => setShowConfetti(false), 5000);
 
         onComplete();
       } else if (eventType === 'swap:output_detected' || eventType === 'swap:output_confirming' || eventType === 'output_detected' || eventType === 'output_confirming') {
@@ -505,8 +504,8 @@ export const SwapProgress = ({
       p={8}
       boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.5)"
     >
-      {/* Confetti - ONLY when complete */}
-      {showConfetti && isComplete && (
+      {/* Confetti - Disabled temporarily to prevent repeated triggers */}
+      {/* {showConfetti && isComplete && (
         <Box
           position="fixed"
           top="0"
@@ -533,7 +532,7 @@ export const SwapProgress = ({
             }}
           />
         </Box>
-      )}
+      )} */}
 
       <VStack gap={8} width="full" align="stretch" position="relative">
         {/* Header */}
@@ -575,6 +574,7 @@ export const SwapProgress = ({
             symbol: restData?.toAsset?.symbol || toAssetInfo.symbol,
             amount: restData?.outputAmount || outputAmount
           }}
+          inputTxHash={txid}
           onClose={onClose}
         />
 
@@ -600,28 +600,9 @@ export const SwapProgress = ({
         )}
 
 
-        {/* Action Buttons */}
-        {isComplete ? (
+        {/* Action Buttons - Only show Done button when complete */}
+        {isComplete && (
           <VStack gap={4} width="full">
-            {/* Track Swap Button */}
-            <Link href={thorchainTrackerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
-              <Button
-                variant="outline"
-                borderColor={swapTheme.accent}
-                color={swapTheme.text}
-                bg="transparent"
-                _hover={{ bg: `rgba(59, 130, 246, 0.1)`, borderColor: swapTheme.accentHover }}
-                width="full"
-                height="52px"
-                borderRadius="xl"
-                borderWidth="2px"
-                rightIcon={<FaExternalLinkAlt />}
-                fontWeight="semibold"
-              >
-                View Swap Details
-              </Button>
-            </Link>
-
             {/* Done Button */}
             <Button
               size="lg"
@@ -637,68 +618,7 @@ export const SwapProgress = ({
               Done
             </Button>
           </VStack>
-        ) : (
-          <SwapInProgressActions
-            thorchainTrackerLink={thorchainTrackerLink}
-            midgardApiLink={midgardApiLink}
-            onClose={onClose}
-          />
         )}
-
-        {/* Transaction ID */}
-        <VStack gap={3} width="full">
-          <Text fontSize="sm" color={swapTheme.textMuted} fontWeight="medium">
-            Transaction ID
-          </Text>
-          <Box
-            bg={swapTheme.cardBg}
-            borderRadius="xl"
-            p={4}
-            width="full"
-            borderWidth="1px"
-            borderColor={swapTheme.borderLight}
-          >
-            <Code
-              fontSize="xs"
-              bg="transparent"
-              color={swapTheme.accent}
-              wordBreak="break-all"
-            >
-              {txid}
-            </Code>
-          </Box>
-        </VStack>
-
-        {/* Timing Info */}
-        {swapStatus?.timingData && !isComplete && (
-          <Box
-            bg={swapTheme.cardBg}
-            borderRadius="xl"
-            p={4}
-            borderWidth="1px"
-            borderColor={swapTheme.borderLight}
-          >
-            <Text fontSize="xs" color={swapTheme.textMuted} textAlign="center">
-              {swapStatus.timingData.reassuranceMessage}
-            </Text>
-          </Box>
-        )}
-
-        {/* Info Note */}
-        <Box
-          bg={swapTheme.cardBg}
-          borderRadius="xl"
-          p={4}
-          borderWidth="1px"
-          borderColor={swapTheme.borderLight}
-        >
-          <Text fontSize="xs" color={swapTheme.textMuted} textAlign="center">
-            {isComplete
-              ? 'Your swap has been successfully completed and confirmed on the blockchain'
-              : 'Your swap is being processed. This may take several minutes depending on network conditions.'
-            }
-          </Text>
-        </Box>
       </VStack>
     </Box>
   );

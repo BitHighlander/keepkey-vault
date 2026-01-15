@@ -7,7 +7,6 @@ import Asset from '@/components/asset/Asset'
 import {
   Box,
   Flex,
-  VStack,
   Text,
   Spinner
 } from '@chakra-ui/react'
@@ -242,24 +241,32 @@ export default function AssetPage() {
         // Only update if it's a valid view
         if (['asset', 'send', 'receive', 'swap'].includes(validView)) {
           //console.log('🔍 [AssetPage] Auto-opening view from query parameter:', validView)
-          setCurrentView(validView)
+          setCurrentView(validView) // Just set state, URL already has the param
         }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decodedCaip]) // Only run when CAIP changes (initial load or navigation to different asset)
 
+  // Helper function to update view and URL
+  const updateView = (view: ViewType) => {
+    setCurrentView(view)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (view === 'asset') {
+        url.searchParams.delete('view')
+      } else {
+        url.searchParams.set('view', view)
+      }
+      window.history.replaceState({}, '', url.toString())
+    }
+  }
+
   // Handle navigation functions
   const handleBack = () => {
     if (currentView !== 'asset') {
       // If in send, receive, or swap view, go back to asset view
-      setCurrentView('asset')
-      // Clear URL query params
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href)
-        url.searchParams.delete('view')
-        window.history.replaceState({}, '', url.toString())
-      }
+      updateView('asset')
     } else {
       // If already in asset view, go back to dashboard
       //console.log('🔙 [AssetPage] Navigating back to dashboard')
@@ -293,7 +300,6 @@ export default function AssetPage() {
           style={{ background: 'none' }}
         >
           <Box
-            minHeight={{ base: 'calc(100vh - 32px)', md: 'calc(100vh - 48px)', lg: 'calc(100vh - 64px)' }}
             maxW={{ base: '100%', md: '768px', lg: '1200px' }}
             mx="auto"
             bg="rgba(0, 0, 0, 0.6)"
@@ -302,11 +308,12 @@ export default function AssetPage() {
             borderWidth="1px"
             borderColor={`${assetColor}40`}
             boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
+            py={8}
           >
             <Flex
               justify="center"
               align="center"
-              height="100%"
+              minHeight="400px"
               direction="column"
               gap={6}
             >
@@ -341,44 +348,44 @@ export default function AssetPage() {
 
       {/* Content layer */}
       <Box
-        minH="100vh"
         width="100%"
         style={{ background: 'none' }}
         p={{ base: 4, md: 6, lg: 8 }}
       >
         <Box
-          minHeight={currentView === 'asset' ? { base: 'calc(100vh - 32px)', md: 'calc(100vh - 48px)', lg: 'calc(100vh - 64px)' } : undefined}
-          overflow="hidden"
-          position="relative"
           maxW={{ base: '100%', md: '768px', lg: '1200px' }}
           width="100%"
           mx="auto"
-          bg="rgba(0, 0, 0, 0.6)"
-          backdropFilter="blur(10px)"
-          borderRadius="2xl"
-          borderWidth="1px"
-          borderColor={`${assetColor}40`}
-          boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
         >
+          {/* Content Card */}
           <Box
-            height={currentView === 'asset' ? '100%' : undefined}
-            maxHeight={currentView !== 'asset' ? '90vh' : undefined}
-            overflowY="auto"
-            overflowX="hidden"
-            style={{ background: 'none' }}
-            {...scrollbarStyles}
+            overflow="hidden"
+            position="relative"
+            bg="rgba(0, 0, 0, 0.6)"
+            backdropFilter="blur(10px)"
+            borderRadius="2xl"
+            borderWidth="1px"
+            borderColor={`${assetColor}40`}
+            boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
           >
+            <Box
+              maxHeight="80vh"
+              overflowY="auto"
+              overflowX="hidden"
+              style={{ background: 'none' }}
+              {...scrollbarStyles}
+            >
             {currentView === 'asset' && (
               <Asset
                 key={decodedCaip}
                 caip={decodedCaip}
                 onBackClick={handleBack}
-                onSendClick={() => setCurrentView('send')}
-                onReceiveClick={() => setCurrentView('receive')}
+                onSendClick={() => updateView('send')}
+                onReceiveClick={() => updateView('receive')}
                 onSwapClick={() => {
                   // Check feature flag before allowing swap navigation
                   if (isFeatureEnabled('enableSwaps')) {
-                    setCurrentView('swap')
+                    updateView('swap')
                   } else {
                     console.warn('🚫 [AssetPage] Swap feature is disabled')
                   }
@@ -400,6 +407,7 @@ export default function AssetPage() {
             )}
           </Box>
         </Box>
+      </Box>
       </Box>
     </>
   )

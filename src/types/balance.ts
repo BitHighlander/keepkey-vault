@@ -2,6 +2,17 @@
 
 export type AddressType = 'legacy' | 'segwit' | 'native-segwit' | 'taproot' | 'default';
 
+// Pending balance state during swaps
+export interface PendingBalance {
+  isPending: boolean;
+  swapTxHash: string;
+  originalAmount: string;
+  debitedAmount: string;
+  status: 'pending_swap';
+  createdAt: number;
+  estimatedCompletionTime?: number;
+}
+
 export interface BalanceDetail {
   address: string;
   pubkey: string;
@@ -14,6 +25,7 @@ export interface BalanceDetail {
   fetchedAt?: number;      // Unix timestamp when balance was fetched from blockchain
   fetchedAtISO?: string;   // ISO 8601 string for display (e.g., "2025-01-11T12:34:56.789Z")
   isStale?: boolean;       // True if balance is older than 5 minutes
+  pending?: PendingBalance; // Pending swap state
 }
 
 export interface AggregatedBalance {
@@ -23,6 +35,8 @@ export interface AggregatedBalance {
   balances: BalanceDetail[];
   networkId: string;
   caip: string;
+  hasPendingSwaps?: boolean;  // True if any balance has pending swap
+  pendingDebits?: string;      // Total amount reserved for swaps
 }
 
 // Helper to detect Bitcoin address type from address format
@@ -137,13 +151,22 @@ export function aggregateBalances(
   // Calculate percentages
   const detailsWithPercentages = calculateBalancePercentages(balanceDetails);
 
+  // Check for pending swaps
+  const hasPendingSwaps = balances.some(b => b.pending?.isPending);
+  const pendingDebits = balances
+    .filter(b => b.pending?.isPending)
+    .reduce((sum, b) => sum + parseFloat(b.pending!.debitedAmount || '0'), 0)
+    .toFixed(8);
+
   return {
     symbol,
     totalBalance: totalBalance.toString(),
     totalValueUsd,
     balances: detailsWithPercentages,
     networkId,
-    caip: `${networkId}/${symbol.toLowerCase()}`
+    caip: `${networkId}/${symbol.toLowerCase()}`,
+    hasPendingSwaps,
+    pendingDebits: hasPendingSwaps ? pendingDebits : undefined
   };
 }
 

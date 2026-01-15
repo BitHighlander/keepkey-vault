@@ -342,18 +342,18 @@ export const SwapSuccess = ({
           p={5}
           width="full"
           borderWidth="1px"
-          borderColor={emailStatus === 'success' ? 'green.500' : emailStatus === 'error' ? 'red.500' : 'purple.600'}
+          borderColor={emailStatus === 'success' ? 'green.500' : emailStatus === 'error' ? 'red.500' : 'teal.600'}
           position="relative"
           overflow="hidden"
         >
-          {/* Purple gradient accent */}
+          {/* Teal gradient accent */}
           <Box
             position="absolute"
             top="0"
             left="0"
             right="0"
             height="2px"
-            bg="linear-gradient(90deg, #9F7AEA 0%, #805AD5 100%)"
+            bg="linear-gradient(90deg, #00dc82 0%, #00f094 100%)"
           />
           
           <VStack gap={3} width="full">
@@ -372,7 +372,7 @@ export const SwapSuccess = ({
             ) : (
               <>
                 <HStack gap={2} width="full" justify="center">
-                  <FaEnvelope size="20" color="#9F7AEA" />
+                  <FaEnvelope size="20" color="#00dc82" />
                   <Text fontSize="md" fontWeight="semibold" color="white">
                     Get Swap Details via Email
                   </Text>
@@ -391,8 +391,8 @@ export const SwapSuccess = ({
                     value={userEmail}
                     onChange={handleEmailChange}
                     borderColor={emailError ? 'red.500' : 'gray.600'}
-                    _hover={{ borderColor: emailError ? 'red.400' : 'purple.500' }}
-                    _focus={{ borderColor: emailError ? 'red.400' : 'purple.400', boxShadow: 'none' }}
+                    _hover={{ borderColor: emailError ? 'red.400' : 'teal.500' }}
+                    _focus={{ borderColor: emailError ? 'red.400' : 'teal.400', boxShadow: 'none' }}
                     bg="gray.800"
                     color="white"
                     borderRadius="lg"
@@ -410,10 +410,10 @@ export const SwapSuccess = ({
                 <Button
                   width="full"
                   height="40px"
-                  bg="purple.600"
+                  bg="teal.600"
                   color="white"
-                  _hover={{ bg: 'purple.500' }}
-                  _active={{ bg: 'purple.700' }}
+                  _hover={{ bg: 'teal.500' }}
+                  _active={{ bg: 'teal.700' }}
                   onClick={handleEmailSwapInfo}
                   isLoading={isSendingEmail}
                   loadingText="Sending Email..."

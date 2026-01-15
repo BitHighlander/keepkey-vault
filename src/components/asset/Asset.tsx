@@ -916,66 +916,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         : 0;
 
   return (
-    <Box 
-      width="100%" 
-      position="relative"
-      pb={8} // Add bottom padding to ensure content doesn't get cut off
-    >
+    <>
       <Box
-        borderBottom="1px"
-        borderColor={theme.border}
-        p={4}
-        bg={theme.cardBg}
-        position="sticky"
-        top={0}
-        zIndex={10}
+        width="100%"
+        position="relative"
+        p={6}
       >
-        <HStack justify="space-between" align="center">
-          <MotionBox
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-          >
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              onClick={handleBack}
-              isDisabled={isNavigatingBack}
-              _hover={{
-                color: theme.goldHover,
-                bg: 'rgba(255, 215, 0, 0.1)',
-                shadow: '0 0 20px rgba(255, 215, 0, 0.3)'
-              }}
-              _active={{
-                bg: 'rgba(255, 215, 0, 0.2)',
-                shadow: '0 0 30px rgba(255, 215, 0, 0.5)'
-              }}
-              transition="all 0.2s"
-            >
-              {isNavigatingBack ? (
-                <HStack gap={2}>
-                  <Spinner size="xs" color={theme.gold} />
-                  <Text>Going Back...</Text>
-                </HStack>
-              ) : (
-                <Text>Back</Text>
-              )}
-            </Button>
-          </MotionBox>
-          <Button
-            size="sm"
-            variant="ghost"
-            color={theme.gold}
-            onClick={handleClose}
-            _hover={{ color: theme.goldHover }}
-          >
-            <Text>Close</Text>
-          </Button>
-        </HStack>
-      </Box>
-      
-      <Box p={6}>
         <Flex
           direction={{ base: 'column', lg: isDetailsExpanded ? 'row' : 'column' }}
           gap={6}
@@ -2712,7 +2658,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           router.push(`/asset/${encodedCaip}`);
         }}
       />
-    </Box>
+    </>
   );
 };
 

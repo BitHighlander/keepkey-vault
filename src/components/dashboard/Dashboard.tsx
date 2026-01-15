@@ -723,7 +723,7 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
                 }
                 position="relative"
                 overflow="hidden"
-                bg={!loading && dashboard && hasAnyBalance && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
+                bg={theme.cardBg}
                 cursor="pointer"
                 onClick={() => handlePortfolioRefresh(true)}
                 _hover={{
@@ -745,35 +745,11 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
                     handlePortfolioRefresh(true);
                   }
                 }}
-                _before={{
-                  content: '""',
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: !loading && dashboard && hasAnyBalance && chartData.length > 0
-                    ? `linear-gradient(135deg, ${chartData[0].color}40 0%, ${chartData[0].color}20 100%)`
-                    : 'none',
-                  opacity: 0.6,
-                  zIndex: 0,
-                }}
-                _after={{
-                  content: '""',
-                  position: "absolute",
-                  top: "-50%",
-                  left: "-50%",
-                  right: "-50%",
-                  bottom: "-50%",
-                  background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
-                  zIndex: 1,
-                }}
               >
             <Flex
               justify="center"
               align="center"
               position="relative"
-              zIndex={2}
               direction="column"
               gap={6}
               width="100%"

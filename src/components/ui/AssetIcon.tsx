@@ -2,6 +2,7 @@
  * AssetIcon Component
  *
  * Unified component for displaying asset/coin icons with CAIP-based fallback cascade.
+ * Supports optional network badge overlay for multi-chain assets.
  *
  * Fallback Strategy (CAIP identifiers only - NO symbol-based lookups):
  * 1. Primary URL (from Pioneer SDK/props)
@@ -11,11 +12,50 @@
  * IMPORTANT: All icon lookups use base64-encoded CAIP identifiers, never symbol names.
  * The CDN saves icons by CAIP hash, not by symbol.
  *
- * Usage:
+ * Network Badge Feature:
+ * - Automatically extracts networkId from CAIP if not provided
+ * - Maps networkId to network icon via getNetworkIconUrl()
+ * - Customizable badge size and position
+ * - Gracefully degrades if network icon unavailable
+ *
+ * Usage Examples:
  * ```tsx
+ * // Basic asset icon
  * <AssetIcon src={asset.icon} caip={asset.caip} alt={asset.name} boxSize="40px" />
+ *
+ * // With network badge (auto-extracted from CAIP)
+ * <AssetIcon
+ *   src={asset.icon}
+ *   caip="eip155:1/erc20:0xdac17f958d2ee523a2206206994597c13d831ec7"
+ *   alt="USDT on Ethereum"
+ *   boxSize="100px"
+ *   showNetworkBadge={true}
+ * />
+ *
+ * // With explicit networkId and custom badge
+ * <AssetIcon
+ *   src={asset.icon}
+ *   caip={asset.caip}
+ *   networkId="eip155:56"
+ *   alt="Asset on BSC"
+ *   boxSize="60px"
+ *   showNetworkBadge={true}
+ *   badgeSize="35%"
+ *   badgePosition="top-right"
+ * />
+ *
+ * // Minimal (CAIP only, no primary source)
  * <AssetIcon caip="eip155:1/slip44:60" alt="ETH" boxSize="24px" />
  * ```
+ *
+ * Network ID Mapping:
+ * - NetworkId must be in CAIP format (e.g., "eip155:1", "bip122:000...")
+ * - Maps to network icons via NETWORK_CONFIGS in lib/utils/networkIcons.ts
+ * - Auto-extracted from full CAIP if not provided explicitly
+ *
+ * Props Priority:
+ * - Icon Source: src > caip-based CDN > FaCoins fallback
+ * - Network ID: explicit networkId prop > extracted from caip > null
  */
 
 'use client'
@@ -25,6 +65,23 @@ import { Box, Image } from '@chakra-ui/react';
 import { FaCoins } from 'react-icons/fa';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { getNetworkIconUrl, extractNetworkId } from '@/lib/utils/networkIcons';
+
+/**
+ * Get CSS styles for badge positioning
+ */
+const getBadgePositionStyles = (position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => {
+  switch (position) {
+    case 'top-left':
+      return { top: '0px', left: '0px' };
+    case 'top-right':
+      return { top: '0px', right: '0px' };
+    case 'bottom-left':
+      return { bottom: '0px', left: '0px' };
+    case 'bottom-right':
+    default:
+      return { bottom: '0px', right: '0px' };
+  }
+};
 
 interface AssetIconProps {
   /** Primary icon URL (from Pioneer SDK) */
@@ -43,8 +100,15 @@ interface AssetIconProps {
   debug?: boolean;
   /** Show network badge overlay */
   showNetworkBadge?: boolean;
-  /** Network ID for badge (CAIP networkId format) */
+  /**
+   * Network ID for badge (CAIP networkId format: "eip155:1", "bip122:000...")
+   * If not provided and showNetworkBadge is true, will be extracted from caip prop
+   */
   networkId?: string;
+  /** Badge size as percentage of parent (default: 40%) */
+  badgeSize?: string;
+  /** Badge position (default: bottom-right) */
+  badgePosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 }
 
 export const AssetIcon: React.FC<AssetIconProps> = ({
@@ -57,6 +121,8 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
   debug = false,
   showNetworkBadge = false,
   networkId,
+  badgeSize = '40%',
+  badgePosition = 'bottom-right',
 }) => {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [fallbackLevel, setFallbackLevel] = useState<number>(0);
@@ -66,7 +132,7 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
   // Clean and validate primary URL
   const cleanUrl = useMemo(() => {
     if (!src || src.trim() === '') {
-      console.log('🖼️ [AssetIcon] No primary URL provided');
+      //console.log('🖼️ [AssetIcon] No primary URL provided');
       return null;
     }
 
@@ -142,9 +208,20 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
   // Get network icon URL if badge is requested - MUST BE BEFORE CONDITIONAL RETURN
   const networkIconUrl = useMemo(() => {
     if (!showNetworkBadge) return null;
+
+    // Priority: explicit networkId > extract from caip
     const netId = networkId || (caip ? extractNetworkId(caip) : null);
-    return netId ? getNetworkIconUrl(netId) : null;
-  }, [showNetworkBadge, networkId, caip]);
+
+    if (!netId) {
+      if (debug) console.log('⚠️ [AssetIcon] showNetworkBadge enabled but no networkId available');
+      return null;
+    }
+
+    const iconUrl = getNetworkIconUrl(netId);
+    if (debug) console.log('🏷️ [AssetIcon] Network badge:', { netId, iconUrl });
+
+    return iconUrl;
+  }, [showNetworkBadge, networkId, caip, debug]);
 
   // Show icon fallback
   if (showIconFallback || !currentSrc) {
@@ -247,9 +324,8 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
       {showNetworkBadge && networkIconUrl && (
         <Box
           position="absolute"
-          bottom="-2px"
-          right="-2px"
-          boxSize="40%"
+          {...getBadgePositionStyles(badgePosition)}
+          boxSize={badgeSize}
           minW="14px"
           minH="14px"
           bg="rgba(0, 0, 0, 0.8)"
@@ -259,6 +335,7 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
           alignItems="center"
           justifyContent="center"
           overflow="hidden"
+          zIndex={2}
         >
           <Image
             src={networkIconUrl}

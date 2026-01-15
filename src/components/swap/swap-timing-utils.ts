@@ -43,17 +43,17 @@ export function calculatePercentage(
 /**
  * Get performance label based on actual vs expected ratio
  * @param ratio - Ratio string from timingData (e.g., "1.2")
- * @returns Human-readable performance label with emoji
+ * @returns Human-readable performance label
  */
 export function getPerformanceLabel(ratio: string | undefined): string {
   if (!ratio) return 'Unknown';
 
   const ratioNum = parseFloat(ratio);
 
-  if (ratioNum < 0.8) return '🟢 Ahead of schedule';
-  if (ratioNum < 1.2) return '🟢 On track';
-  if (ratioNum < 1.5) return '🟡 Slightly delayed';
-  return '🔴 Behind schedule';
+  if (ratioNum < 0.8) return 'Ahead of schedule';
+  if (ratioNum < 1.2) return 'On track';
+  if (ratioNum < 1.5) return 'Slightly delayed';
+  return 'Behind schedule';
 }
 
 /**

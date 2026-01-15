@@ -12,21 +12,29 @@ import type { PaymentEvent, EventHistory } from '@/types/events'
 import { getEventHistory, saveEventHistory } from './eventDetection'
 import { soundManager } from './SoundManager'
 import { paymentToastManager } from './PaymentToastManager'
-import { getChainMetadata } from './chainMetadata'
+
 
 /**
  * Transaction event data from pioneer:tx WebSocket event
+ * Uses Pioneer SDK format with networkId
  */
 interface TransactionEventData {
-  chain: string // Chain symbol (e.g., "BTC", "LTC", "ETH")
+  // Transaction direction from Pioneer SDK
+  type?: 'incoming' | 'outgoing'
+
+  // Network identification (REQUIRED)
+  networkId: string // Network ID (e.g., "eip155:1", "bitcoin", "litecoin")
+  caip?: string // CAIP identifier (optional, networkId is primary)
+
+  // Transaction details
   address: string // Address that received/sent transaction
   txid: string // Transaction ID (blockchain hash)
-  value: number // Transaction value (satoshis/wei)
+  value: number | string // Transaction value (satoshis/wei)
   confirmations?: number // Block confirmations
   blockHeight?: number // Block height
-  timestamp: number // Event timestamp (ms)
-  from?: string // Sender address
-  to?: string // Recipient address
+  timestamp?: number // Event timestamp (ms)
+  from?: string // Sender address (for direction detection)
+  to?: string // Recipient address (for direction detection)
 }
 
 /**
@@ -47,6 +55,11 @@ class TransactionEventManager {
   private static instance: TransactionEventManager | null = null
   private eventListeners: Set<EventCallback> = new Set()
   private history: EventHistory
+
+  // Track outgoing transaction hashes initiated by user (e.g., from Send component)
+  // This allows us to correctly classify transactions even if Pioneer SDK
+  // doesn't set the address field correctly
+  private outgoingTxids: Set<string> = new Set()
 
   // Deduplication window: 60 seconds (longer than balance comparison)
   // Allows for slower blockchain confirmations
@@ -81,21 +94,21 @@ class TransactionEventManager {
    */
   public processTransactionEvent(txData: TransactionEventData): void {
     try {
-      console.log('[TransactionEventManager] Processing tx event:', {
-        chain: txData.chain,
-        address: txData.address,
-        txid: txData.txid,
+      console.log('[TransactionEventManager] 🔍 Processing tx event:', {
+        networkId: txData.networkId,
+        type: txData.type,
+        address: txData.address?.substring(0, 10) + '...',
+        txid: txData.txid?.substring(0, 16) + '...',
         value: txData.value,
       })
 
-      // Get chain metadata
-      const metadata = getChainMetadata(txData.chain)
-      if (!metadata) {
-        console.error(
-          `[TransactionEventManager] Unknown chain: ${txData.chain}`
-        )
+      // Get network metadata directly from networkId (no conversion needed!)
+      if (!txData.networkId) {
+        console.error('[TransactionEventManager] ❌ Missing networkId in event:', txData)
         return
       }
+
+      const metadata = {}
 
       // Convert transaction to PaymentEvent
       const event = this.convertToPaymentEvent(txData, metadata)
@@ -123,14 +136,19 @@ class TransactionEventManager {
    */
   private convertToPaymentEvent(
     txData: TransactionEventData,
-    metadata: ReturnType<typeof getChainMetadata>
+    metadata: ReturnType<any>
   ): PaymentEvent {
     if (!metadata) {
       throw new Error('Chain metadata is required')
     }
 
+    // Convert value to number if it's a string
+    const valueNumber = typeof txData.value === 'string'
+      ? parseFloat(txData.value)
+      : txData.value
+
     // Convert value from smallest unit (satoshis/wei) to decimal amount
-    const amount = txData.value / Math.pow(10, metadata.decimals)
+    const amount = valueNumber / Math.pow(10, metadata.decimals)
     const amountStr = amount.toString()
 
     // Format amount with proper decimals
@@ -142,15 +160,53 @@ class TransactionEventManager {
     // Compare the address field with from/to to determine if incoming or outgoing
     let eventType: PaymentEvent['type'] = 'payment_received' // Default to received
 
-    if (txData.from && txData.to) {
+    // Enhanced logging to diagnose classification issues
+    console.log('[TransactionEventManager] Direction detection:', {
+      txid: txData.txid,
+      pioneerType: txData.type,
+      address: txData.address,
+      from: txData.from,
+      to: txData.to,
+      isTrackedOutgoing: this.outgoingTxids.has(txData.txid),
+      addressMatchesFrom: txData.address?.toLowerCase() === txData.from?.toLowerCase(),
+      addressMatchesTo: txData.address?.toLowerCase() === txData.to?.toLowerCase(),
+    })
+
+    // Priority 1: Check if this is a tracked outgoing transaction (registered by Send component)
+    if (this.outgoingTxids.has(txData.txid)) {
+      eventType = 'balance_updated' // Outbound payment
+      console.log('[TransactionEventManager] ✅ Classified as OUTGOING (tracked txid)')
+      // Remove from set after classification to free memory
+      this.outgoingTxids.delete(txData.txid)
+    }
+    // Priority 2: Use Pioneer SDK's type field if available
+    else if (txData.type) {
+      if (txData.type === 'incoming') {
+        eventType = 'payment_received'
+        console.log('[TransactionEventManager] ✅ Classified as INCOMING (Pioneer type field)')
+      } else if (txData.type === 'outgoing') {
+        eventType = 'balance_updated'
+        console.log('[TransactionEventManager] ✅ Classified as OUTGOING (Pioneer type field)')
+      }
+    }
+    // Priority 3: Use address-based detection
+    else if (txData.from && txData.to) {
       // If address matches the 'from' field (case-insensitive), it's an outbound payment
       if (txData.address.toLowerCase() === txData.from.toLowerCase()) {
         eventType = 'balance_updated' // Outbound payment (balance decreased)
+        console.log('[TransactionEventManager] ✅ Classified as OUTGOING (address matches from)')
       }
       // If address matches the 'to' field (case-insensitive), it's an inbound payment
       else if (txData.address.toLowerCase() === txData.to.toLowerCase()) {
         eventType = 'payment_received' // Inbound payment (balance increased)
+        console.log('[TransactionEventManager] ✅ Classified as INCOMING (address matches to)')
       }
+      // Address doesn't match either - this shouldn't happen
+      else {
+        console.warn('[TransactionEventManager] ⚠️ Address does not match from or to - defaulting to payment_received')
+      }
+    } else {
+      console.warn('[TransactionEventManager] ⚠️ Missing from/to fields - defaulting to payment_received')
     }
 
     return {
@@ -232,7 +288,10 @@ class TransactionEventManager {
       // ONLY show toast for INCOMING payments (payment_received)
       // Outbound payments just play sound and log - no toast notification
       if (event.type === 'payment_received') {
+        console.log('[TransactionEventManager] 🎉 Showing toast for incoming payment')
         paymentToastManager.showPaymentToast(event)
+      } else {
+        console.log('[TransactionEventManager] ℹ️ Outgoing payment - sound only, no toast')
       }
 
       // Emit to all registered listeners
@@ -260,6 +319,27 @@ class TransactionEventManager {
         console.error('[TransactionEventManager] Error in event listener:', error)
       }
     })
+  }
+
+  /**
+   * Register an outgoing transaction hash
+   *
+   * Call this when a user initiates an outgoing transaction (e.g., from Send component)
+   * to ensure it's correctly classified as outgoing when the event arrives.
+   *
+   * @param txid - Transaction hash to register as outgoing
+   */
+  public registerOutgoingTransaction(txid: string): void {
+    this.outgoingTxids.add(txid)
+    console.log(`[TransactionEventManager] Registered outgoing tx: ${txid.substring(0, 8)}...`)
+
+    // Auto-cleanup after 5 minutes to prevent memory leaks
+    setTimeout(() => {
+      if (this.outgoingTxids.has(txid)) {
+        this.outgoingTxids.delete(txid)
+        console.log(`[TransactionEventManager] Auto-removed stale outgoing tx: ${txid.substring(0, 8)}...`)
+      }
+    }, 5 * 60 * 1000)
   }
 
   /**
