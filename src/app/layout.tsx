@@ -3,6 +3,7 @@ import { Provider } from './provider';
 import { MaintenanceWrapper } from '@/components/maintenance/MaintenanceWrapper';
 import { Provider as ChakraProvider } from "@/components/ui/provider";
 import { GlobalHeader } from '@/components/layout/GlobalHeader';
+import { HeaderProvider } from '@/contexts/HeaderContext';
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -93,10 +94,12 @@ export default function RootLayout({
         <ChakraProvider>
           <MaintenanceWrapper>
             <Provider>
-              <GlobalHeader />
-              <div style={{ paddingTop: '72px' }}>
-                {children}
-              </div>
+              <HeaderProvider>
+                <GlobalHeader />
+                <div style={{ paddingTop: '72px' }}>
+                  {children}
+                </div>
+              </HeaderProvider>
             </Provider>
           </MaintenanceWrapper>
         </ChakraProvider>

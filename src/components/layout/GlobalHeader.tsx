@@ -1,8 +1,10 @@
 'use client'
 
-import { Box, HStack, Text, Button, Image } from '@chakra-ui/react'
+import { Box, HStack, Text, Button, Image, IconButton } from '@chakra-ui/react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { usePioneerContext } from '@/components/providers/pioneer'
+import { useHeader } from '@/contexts/HeaderContext'
+import { FaSyncAlt } from 'react-icons/fa'
 
 const theme = {
   bg: '#000000',
@@ -17,9 +19,10 @@ export function GlobalHeader() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { state } = usePioneerContext()
+  const { actions } = useHeader()
 
-  // Get asset color from context, fallback to gold
-  const assetColor = state?.app?.assetContext?.color || theme.gold
+  // Always use gold color for header
+  const headerColor = theme.gold
 
   // Determine if we're on a page that needs back button
   const isAssetPage = pathname?.startsWith('/asset/')
@@ -65,7 +68,7 @@ export function GlobalHeader() {
           <Button
             size="sm"
             variant="ghost"
-            color={assetColor}
+            color={headerColor}
             onClick={handleBack}
             _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
           >
@@ -77,7 +80,7 @@ export function GlobalHeader() {
 
         <HStack gap={3}>
           <Image src="/images/kk-icon-gold.png" alt="KeepKey" height="24px" />
-          <Text fontSize="lg" fontWeight="bold" color={assetColor}>
+          <Text fontSize="lg" fontWeight="bold" color={headerColor}>
             {getPageTitle()}
           </Text>
         </HStack>
@@ -86,12 +89,41 @@ export function GlobalHeader() {
           <Button
             size="sm"
             variant="ghost"
-            color={assetColor}
+            color={headerColor}
             onClick={handleClose}
             _hover={{ color: theme.goldHover }}
           >
             <Text>Close</Text>
           </Button>
+        ) : isDashboard ? (
+          <HStack gap={2}>
+            {actions.onRefreshClick && (
+              <IconButton
+                aria-label="Force refresh balances"
+                title="Force Refresh (bypass cache)"
+                size="sm"
+                variant="ghost"
+                color={headerColor}
+                _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
+                onClick={actions.onRefreshClick}
+                loading={actions.isRefreshing}
+                disabled={actions.isRefreshing}
+              >
+                <FaSyncAlt />
+              </IconButton>
+            )}
+            {actions.onSettingsClick && (
+              <Button
+                size="sm"
+                variant="ghost"
+                color={headerColor}
+                _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
+                onClick={actions.onSettingsClick}
+              >
+                <Text>Settings</Text>
+              </Button>
+            )}
+          </HStack>
         ) : (
           <Box w="60px" />
         )}

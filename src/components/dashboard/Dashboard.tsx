@@ -631,69 +631,10 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
       }}
       onLoad={() => console.log('🖼️ [Dashboard] Container with background rendered')}
     >
-      {/* Header */}
-      <Box 
-        borderBottom="1px" 
-        borderColor={theme.border}
-        p={4}
-        bg={theme.cardBg}
-        backdropFilter="blur(5px)"
-        position="relative"
-        _after={{
-          content: '""',
-          position: "absolute",
-          bottom: "-1px",
-          left: "0",
-          right: "0",
-          height: "1px",
-          background: `linear-gradient(90deg, transparent 0%, ${theme.gold}40 50%, transparent 100%)`,
-        }}
-      >
-        <HStack justify="space-between" align="center">
-          <HStack gap={3}>
-            <Image src="/images/kk-icon-gold.png" alt="KeepKey" height="24px" />
-            <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
-              KeepKey Vault
-            </Text>
-          </HStack>
-          <HStack gap={2}>
-            <IconButton
-              aria-label="Force refresh balances"
-              title="Force Refresh (bypass cache)"
-              icon={<FaSyncAlt />}
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
-              onClick={() => handlePortfolioRefresh(true)}
-              isLoading={isRefreshing}
-              isDisabled={isRefreshing}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
-              onClick={onSettingsClick}
-            >
-              <HStack gap={2} align="center">
-                <Text>Settings</Text>
-                <Box
-                  w="2px"
-                  h="2px"
-                  borderRadius="full"
-                  bg={theme.gold}
-                />
-              </HStack>
-            </Button>
-          </HStack>
-        </HStack>
-      </Box>
-
       {/* Main Content */}
-      <Box 
-        height="calc(100% - 60px)" 
-        overflowY="auto" 
+      <Box
+        height="100%"
+        overflowY="auto"
         overflowX="hidden"
         {...scrollbarStyles}
       >
