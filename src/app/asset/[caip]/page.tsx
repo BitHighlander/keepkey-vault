@@ -347,7 +347,7 @@ export default function AssetPage() {
         p={{ base: 4, md: 6, lg: 8 }}
       >
         <Box
-          minHeight={{ base: 'calc(100vh - 32px)', md: 'calc(100vh - 48px)', lg: 'calc(100vh - 64px)' }}
+          minHeight={currentView === 'asset' ? { base: 'calc(100vh - 32px)', md: 'calc(100vh - 48px)', lg: 'calc(100vh - 64px)' } : undefined}
           overflow="hidden"
           position="relative"
           maxW={{ base: '100%', md: '768px', lg: '1200px' }}
@@ -361,6 +361,8 @@ export default function AssetPage() {
           boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
         >
           <Box
+            height={currentView === 'asset' ? '100%' : undefined}
+            maxHeight={currentView !== 'asset' ? '90vh' : undefined}
             overflowY="auto"
             overflowX="hidden"
             style={{ background: 'none' }}

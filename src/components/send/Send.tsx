@@ -2744,10 +2744,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       width="100%"
       maxWidth="600px"
       mx="auto"
-      height="100vh"
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
-      overflow="hidden"
       display="flex"
       flexDirection="column"
       sx={{
