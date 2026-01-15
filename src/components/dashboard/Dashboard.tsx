@@ -4,7 +4,7 @@
 const DEBUG_VERBOSE = false;
 const DEBUG_USD = true; // Keep USD debugging on
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, forwardRef, useImperativeHandle } from 'react';
 import {
   Box,
   Flex,
@@ -113,9 +113,7 @@ interface Dashboard {
 }
 
 interface DashboardProps {
-  onSettingsClick: () => void;
-  // TODO: Re-enable for custom networks feature
-  // onAddNetworkClick: () => void;
+  onRefreshStateChange?: (isRefreshing: boolean) => void;
 }
 
 // Animated KeepKey logo pulse effect
@@ -217,7 +215,7 @@ const sortNetworks = (a: Network, b: Network) => {
   return 0;
 };
 
-const Dashboard = ({ onSettingsClick }: DashboardProps) => {
+const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSliceIndex, setActiveSliceIndex] = useState<number>(0);
@@ -561,6 +559,7 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
   const handlePortfolioRefresh = async (forceRefresh = false) => {
     console.log(`🔄 [Dashboard] User clicked to ${forceRefresh ? 'FORCE' : ''} refresh portfolio`);
     setIsRefreshing(true);
+    onRefreshStateChange?.(true);
     try {
       const v2Enabled = isPioneerV2Enabled();
 
@@ -603,8 +602,14 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
       console.error('❌ [Dashboard] Portfolio refresh failed:', error);
     } finally {
       setIsRefreshing(false);
+      onRefreshStateChange?.(false);
     }
   };
+
+  // Expose handleRefresh method to parent via ref
+  useImperativeHandle(ref, () => ({
+    handleRefresh: handlePortfolioRefresh
+  }));
 
   return (
     <>
@@ -2438,6 +2443,8 @@ const Dashboard = ({ onSettingsClick }: DashboardProps) => {
     />
     </>
   );
-};
+});
+
+Dashboard.displayName = 'Dashboard';
 
 export default Dashboard; 

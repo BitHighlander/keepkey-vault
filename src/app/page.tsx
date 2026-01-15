@@ -6,7 +6,8 @@ import { keyframes } from '@emotion/react'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import Dashboard from '@/components/dashboard/Dashboard'
 import { usePioneerContext } from '@/components/providers/pioneer'
-import { useState, useEffect } from 'react'
+import { useHeader } from '@/contexts/HeaderContext'
+import { useState, useEffect, useRef } from 'react'
 // Background image path
 const splashBg = '/images/backgrounds/splash-bg.png'
 
@@ -33,10 +34,10 @@ import {
 import Settings from '@/components/settings/Settings'
 // TODO: Re-enable for custom networks feature
 // import AddBlockchain from '@/components/blockchain/AddBlockchain'
-import { 
+import {
   ProductStructuredData,
   OrganizationStructuredData,
-  SoftwareApplicationStructuredData 
+  SoftwareApplicationStructuredData
 } from '@/components/SEO/StructuredData'
 
 export default function Home() {
@@ -46,6 +47,7 @@ export default function Home() {
   } = pioneer || {};
 
   const { app } = state;
+  const { setActions } = useHeader();
 
   // Show loading state only when data is not ready
   const showLoading = !app?.dashboard;
@@ -68,42 +70,42 @@ export default function Home() {
   }, [showLoading, pioneer, state, app]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  // TODO: Re-enable for custom networks feature
-  // const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const dashboardRef = useRef(null);
 
-  // Add debug logging for component mount and state changes
-  
-
-  
-
-  // Debug loading screen state
-  
+  // Set header actions for dashboard
+  useEffect(() => {
+    setActions({
+      onSettingsClick: () => setIsSettingsOpen(true),
+      onRefreshClick: () => {
+        // Trigger refresh on the Dashboard component
+        if (dashboardRef.current && dashboardRef.current.handleRefresh) {
+          dashboardRef.current.handleRefresh(true);
+        }
+      },
+      isRefreshing,
+    });
+  }, [isRefreshing, setActions]);
 
   // Handle settings dialog open state
   const handleSettingsOpenChange = (details: { open: boolean }) => {
     setIsSettingsOpen(details.open);
   };
 
-  // TODO: Re-enable for custom networks feature
-  // Handle add blockchain dialog open state
-  // const handleAddBlockchainOpenChange = (details: { open: boolean }) => {
-  //   setIsAddBlockchainOpen(details.open);
-  // };
-
   // Show loading state if pioneer is not ready
   if (!pioneer) {
     return (
-      <Box 
-        bg="black" 
-        minHeight="100vh" 
-        width="100vw" 
+      <Box
+        bg="black"
+        minHeight="100vh"
+        width="100vw"
         overflow="hidden"
         backgroundImage={`url(${splashBg})`}
         backgroundSize="cover"
         backgroundPosition="center"
         backgroundRepeat="no-repeat"
       >
-        <Box 
+        <Box
           width="100%"
           height="100vh"
           display="flex"
@@ -113,9 +115,9 @@ export default function Home() {
           <Box
             animation={`${pulseAnimation} 2s ease-in-out infinite`}
           >
-            <KeepKeyUiGlyph 
-              width="100px" 
-              height="100px" 
+            <KeepKeyUiGlyph
+              width="100px"
+              height="100px"
               color="#FFD700"
             />
           </Box>
@@ -130,11 +132,11 @@ export default function Home() {
       <ProductStructuredData />
       <OrganizationStructuredData />
       <SoftwareApplicationStructuredData />
-      
-      <Box 
+
+      <Box
         width="100%"
         height="100vh"
-        bg="black" 
+        bg="black"
         overflow="hidden"
         position="relative"
         backgroundImage={`url(${splashBg})`}
@@ -162,9 +164,9 @@ export default function Home() {
           <Box
             animation={`${pulseAnimation} 2s ease-in-out infinite`}
           >
-            <KeepKeyUiGlyph 
-              width="100px" 
-              height="100px" 
+            <KeepKeyUiGlyph
+              width="100px"
+              height="100px"
               color="#FFD700"
             />
           </Box>
@@ -177,7 +179,8 @@ export default function Home() {
           height="100%"
         >
           <Dashboard
-            onSettingsClick={() => setIsSettingsOpen(true)}
+            ref={dashboardRef}
+            onRefreshStateChange={setIsRefreshing}
           />
         </Box>
       </Box>
@@ -203,26 +206,6 @@ export default function Home() {
           </DialogFooter>
         </DialogContent>
       </DialogRoot>
-
-      {/* TODO: Re-enable for custom networks feature */}
-      {/* Add Blockchain Dialog */}
-      {/* <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Blockchain</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <AddBlockchain onClose={() => setIsAddBlockchainOpen(false)} />
-          </DialogBody>
-          <DialogFooter>
-            <DialogCloseTrigger asChild>
-              <Box as="button" color="white" p={2} fontSize="sm">
-                Close
-              </Box>
-            </DialogCloseTrigger>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot> */}
     </Box>
   );
 }
