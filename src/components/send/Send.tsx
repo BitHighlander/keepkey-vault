@@ -20,6 +20,7 @@ import {
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
+import { useHeader } from '@/contexts/HeaderContext'
 import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
 import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus, FaChevronDown, FaChevronUp, FaCircle } from 'react-icons/fa'
 import Confetti from 'react-confetti'
@@ -144,6 +145,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const { state } = pioneer
   const { app } = state
   const assetContext = app?.assetContext
+
+  // Use header context for custom back button
+  const { setActions } = useHeader()
 
   // Check if KeepKey is connected (check SDK first, then context)
   const isKeepKeyConnected = !!(app?.keepKeySdk || app?.context)
@@ -1384,6 +1388,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const goToStep = (step: 1 | 2 | 3) => {
     setCurrentStep(step);
   };
+
+  // Set custom back handler based on current step
+  useEffect(() => {
+    const handleBack = currentStep === 1 ? onBackClick : prevStep;
+    setActions({ onBackClick: handleBack });
+
+    // Cleanup: reset to default behavior when component unmounts
+    return () => {
+      setActions({ onBackClick: undefined });
+    };
+  }, [currentStep, onBackClick, prevStep, setActions]);
 
   // Validation for each step
   const canProceedFromStep1 = () => recipient.trim().length > 0 && !memoError;
@@ -2940,35 +2955,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         </Box>
       )}
     
+      {/* Step Progress Indicator */}
       <Box
+        bg={theme.cardBg}
         borderBottom="1px"
         borderColor={theme.borderAlt}
-        bg={theme.cardBg}
         position="sticky"
         top={0}
         zIndex={10}
       >
-        {/* Header with Back Button */}
-        <Flex justify="space-between" align="center" p={4} pb={2}>
-          <Button
-            size="sm"
-            variant="ghost"
-            color={assetColor}
-            onClick={currentStep === 1 ? onBackClick : prevStep}
-            _hover={{ color: assetColorHover }}
-          >
-            <Flex align="center" gap={2}>
-              <Text>Back</Text>
-            </Flex>
-          </Button>
-          <Text color={assetColor} fontWeight="bold">
-            Send {assetContext?.name || 'Asset'}
-          </Text>
-          <Box w="60px"></Box>
-        </Flex>
-
-        {/* Step Progress Indicator */}
-        <Flex gap={2} px={4} pb={4}>
+        <Flex gap={2} px={4} pt={4} pb={2}>
           {[1, 2, 3].map((step) => (
             <Box
               key={step}
@@ -2993,7 +2989,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           </Text>
         </Box>
       </Box>
-      
+
       {/* Main Content */}
       <Box 
         p={5} 

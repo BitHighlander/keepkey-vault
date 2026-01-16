@@ -114,7 +114,6 @@ interface AssetIconProps {
 export const AssetIcon: React.FC<AssetIconProps> = ({
   src,
   caip,
-  symbol,
   alt,
   boxSize,
   color = '#FFD700',

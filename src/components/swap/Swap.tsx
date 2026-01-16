@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { usePioneerContext } from '@/components/providers/pioneer';
+import { useHeader } from '@/contexts/HeaderContext';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import {
   Box,
@@ -28,7 +29,7 @@ import {
   Code,
   Badge
 } from '@chakra-ui/react';
-import { FaArrowLeft, FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt, FaExchangeAlt } from 'react-icons/fa';
+import { FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt, FaExchangeAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
 import CountUp from 'react-countup';
 import { bip32ToAddressNList, COIN_MAP_KEEPKEY_LONG, validateThorchainSwapMemo } from '@pioneer-platform/pioneer-coins'
@@ -147,6 +148,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
+
+  // Use header context
+  const { setActions } = useHeader();
+
+  // Clear any custom back handlers when component mounts
+  useEffect(() => {
+    setActions({ onBackClick: undefined });
+  }, [setActions]);
   
   // Get pending swaps for badge
   const { pendingSwaps } = usePendingSwaps();
@@ -2972,38 +2981,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           </Box>
         </>
       )}
-      
-      {/* Top Header */}
-      <Box
-        position="absolute"
-        top={0}
-        left={0}
-        right={0}
-        p={4}
-        zIndex={10}
-      >
-        <Container maxW="container.xl">
-          <Flex align="center" justify="space-between">
-            {/* Back button */}
-            <Button
-              leftIcon={<FaArrowLeft size={18} />}
-              variant="solid"
-              onClick={onBackClick}
-              color="white"
-              bg="gray.800"
-              _hover={{ bg: 'gray.700', transform: 'translateX(-2px)' }}
-              _active={{ bg: 'gray.600' }}
-              size="sm"
-              px={3}
-            >
-              Back
-            </Button>
-
-            {/* Empty space for balance */}
-            <Box w="80px" />
-          </Flex>
-        </Container>
-      </Box>
 
       {/* Main Swap Content - Centered vertically */}
       <Flex

@@ -5,7 +5,7 @@ const nextConfig = {
     // Dangerously allow production builds to successfully complete even if
     // your project has type errors.
     // !! WARN !!
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   // Turbopack is default in Next.js 16 - empty config to silence warning
   turbopack: {},

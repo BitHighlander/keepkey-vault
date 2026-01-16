@@ -44,7 +44,12 @@ export function GlobalHeader() {
   }
 
   const handleBack = () => {
-    router.back()
+    // Use custom back handler if provided, otherwise use router.back()
+    if (actions.onBackClick) {
+      actions.onBackClick()
+    } else {
+      router.back()
+    }
   }
 
   const handleClose = () => {

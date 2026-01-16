@@ -357,20 +357,20 @@ export default function AssetPage() {
           width="100%"
           mx="auto"
         >
-          {/* Content Card */}
+          {/* Content Card - Hidden for swap view to avoid double carding */}
           <Box
             overflow="hidden"
             position="relative"
-            bg="rgba(0, 0, 0, 0.6)"
-            backdropFilter="blur(10px)"
-            borderRadius="2xl"
-            borderWidth="1px"
-            borderColor={`${assetColor}40`}
-            boxShadow={`0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
+            bg={currentView === 'swap' ? 'transparent' : 'rgba(0, 0, 0, 0.6)'}
+            backdropFilter={currentView === 'swap' ? 'none' : 'blur(10px)'}
+            borderRadius={currentView === 'swap' ? '0' : '2xl'}
+            borderWidth={currentView === 'swap' ? '0' : '1px'}
+            borderColor={currentView === 'swap' ? 'transparent' : `${assetColor}40`}
+            boxShadow={currentView === 'swap' ? 'none' : `0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px ${assetColor}20`}
           >
             <Box
-              maxHeight="80vh"
-              overflowY="auto"
+              maxHeight={currentView === 'swap' ? 'none' : '80vh'}
+              overflowY={currentView === 'swap' ? 'visible' : 'auto'}
               overflowX="hidden"
               style={{ background: 'none' }}
               {...scrollbarStyles}

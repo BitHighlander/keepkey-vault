@@ -17,8 +17,9 @@ import { keyframes } from '@emotion/react';
 import { Skeleton, SkeletonCircle } from '@/components/ui/skeleton';
 import { Avatar } from '@/components/ui/avatar';
 import { usePioneerContext } from '@/components/providers/pioneer';
+import { useHeader } from '@/contexts/HeaderContext';
 import QRCode from 'qrcode';
-import { FaArrowLeft, FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaChevronDown, FaEye } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getAndVerifyAddress } from '@/utils/keepkeyAddress';
 import { SignMessageDialog } from './SignMessageDialog';
@@ -85,6 +86,14 @@ export function Receive({ onBackClick }: ReceiveProps) {
   const { app } = state;
   const assetContext = app?.assetContext;
 
+  // Use header context
+  const { setActions } = useHeader();
+
+  // Clear any custom back handlers when component mounts
+  useEffect(() => {
+    setActions({ onBackClick: undefined });
+  }, [setActions]);
+
   // Effect to handle scrolling issue when advanced details are shown/hidden
   useEffect(() => {
     if (showAdvanced) {
@@ -111,44 +120,16 @@ export function Receive({ onBackClick }: ReceiveProps) {
       
       // Set initial pubkey but DON'T set address or generate QR until verified
       if (availablePubkeys.length > 0) {
-        // For Bitcoin, prefer Segwit addresses
-        let initialPubkey = availablePubkeys[0];
-        
-        // Check if this is Bitcoin (BTC or similar)
-        const isBitcoin = assetContext.symbol === 'BTC' || 
-                         assetContext.name?.toLowerCase().includes('bitcoin') ||
-                         assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
-        
-        if (isBitcoin) {
-          // Find Native Segwit pubkey (Bech32 - bc1 addresses)
-          // Native Segwit uses BIP84 (m/84'/0'/0') and p2wpkh script type
-          const nativeSegwitPubkey = availablePubkeys.find(pk => 
-            (pk.note?.toLowerCase().includes('native') && pk.note?.toLowerCase().includes('segwit')) ||
-            pk.note?.toLowerCase() === 'segwit native' ||
-            (pk.pathMaster?.includes("84'") && pk.scriptType === 'p2wpkh') ||
-            pk.scriptType === 'p2wpkh'
-          );
-          
-          if (nativeSegwitPubkey) {
-            //console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
-            initialPubkey = nativeSegwitPubkey;
-          } else {
-            // Fallback to any Segwit if Native not found
-            const anySegwitPubkey = availablePubkeys.find(pk => 
-              pk.note?.toLowerCase().includes('segwit') || 
-              pk.pathMaster?.includes("84'") ||
-              pk.pathMaster?.includes("49'") // P2SH-Segwit
-            );
-            
-            if (anySegwitPubkey) {
-              //console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
-              initialPubkey = anySegwitPubkey;
-            } else {
-              console.log('⚠️ [Receive] No Segwit address found, using first available');
-            }
-          }
-        }
-        
+        // Use first pubkey (dropdown sorting already handles priority)
+        // This avoids hardcoding and works for all chains
+        const initialPubkey = availablePubkeys[0];
+
+        console.log('🔐 [Receive] Using initial pubkey:', {
+          note: initialPubkey.note,
+          pathMaster: initialPubkey.pathMaster,
+          scriptType: initialPubkey.scriptType
+        });
+
         setSelectedPubkey(initialPubkey);
         // DO NOT set address or generate QR code until verified on device!
         
@@ -209,8 +190,22 @@ export function Receive({ onBackClick }: ReceiveProps) {
         // Set pubkey context in Pioneer SDK for transactions
         if (app?.setPubkeyContext) {
           try {
+            // CRITICAL: Set asset context BEFORE pubkey context
+            // setAssetContext has auto-set logic that can overwrite pubkeyContext
+            // So we must set asset first, then override with our desired pubkey
+            if (app?.setAssetContext && assetContext) {
+              console.log('🔄 [Receive] Setting asset context first...');
+              await app.setAssetContext(assetContext);
+              console.log('✅ [Receive] Asset context set');
+            }
+
+            // Now set the specific pubkey context we want (this overrides any auto-set)
             await app.setPubkeyContext(result);
-            console.log('✅ [Receive] Pubkey context set in Pioneer SDK:', result);
+            console.log('✅ [Receive] Pubkey context set to desired address:', {
+              address: result.address,
+              note: result.note,
+              pathMaster: result.pathMaster
+            });
           } catch (error) {
             console.error('❌ [Receive] Error setting pubkey context:', error);
           }
@@ -444,35 +439,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
   if (loading) {
     return (
       <Box height="100vh" bg={theme.bg} width="100%">
-        {/* Header */}
-        <Box 
-          borderBottom="1px" 
-          borderColor={theme.border}
-          p={4}
-          bg={theme.cardBg}
-          backdropFilter="blur(10px)"
-        >
-          <Flex justify="space-between" align="center">
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              onClick={handleBack}
-              _hover={{ color: theme.goldHover }}
-            >
-              <Flex align="center" gap={2}>
-                <FaArrowLeft />
-                Back
-              </Flex>
-            </Button>
-            <Text color={theme.gold} fontWeight="bold">
-              Receive {assetContext?.name || 'Asset'}
-            </Text>
-            <Box w="20px"></Box> {/* Spacer for alignment */}
-          </Flex>
-        </Box>
-        
-        <MotionBox 
+        <MotionBox
           p={6}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -493,39 +460,11 @@ export function Receive({ onBackClick }: ReceiveProps) {
   if (!assetContext || !assetContext.pubkeys || assetContext.pubkeys.length === 0) {
     return (
       <Box height="100vh" bg={theme.bg} width="100%">
-        {/* Header */}
-        <Box 
-          borderBottom="1px" 
-          borderColor={theme.border}
-          p={4}
-          bg={theme.cardBg}
-          backdropFilter="blur(10px)"
-        >
-          <Flex justify="space-between" align="center">
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              onClick={handleBack}
-              _hover={{ color: theme.goldHover }}
-            >
-              <Flex align="center" gap={2}>
-                <FaArrowLeft />
-                Back
-              </Flex>
-            </Button>
-            <Text color={theme.gold} fontWeight="bold">
-              Receive {assetContext?.name || 'Asset'}
-            </Text>
-            <Box w="20px"></Box> {/* Spacer for alignment */}
-          </Flex>
-        </Box>
-        
-        <MotionFlex 
-          direction="column" 
-          justify="center" 
-          align="center" 
-          height="calc(100% - 60px)" 
+        <MotionFlex
+          direction="column"
+          justify="center"
+          align="center"
+          height="100%"
           p={6} gap={4}
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -536,8 +475,8 @@ export function Receive({ onBackClick }: ReceiveProps) {
             animate={{ scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
           >
-            <Avatar 
-              size="xl" 
+            <Avatar
+              size="xl"
               icon={<FaWallet size="2em" />}
               bg={theme.cardBg}
               p={2}
@@ -547,11 +486,11 @@ export function Receive({ onBackClick }: ReceiveProps) {
               opacity={0.7}
             />
           </MotionBox>
-          
+
           <Text color="white" textAlign="center" fontSize="lg" mt={4}>
             No addresses available for this asset
           </Text>
-          
+
           <MotionBox
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.98 }}
@@ -715,36 +654,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
 
       {/* Main Content Container */}
       <Box>
-        {/* Header - Always visible */}
-        <Box 
-          borderBottom="1px" 
-          borderColor={theme.border}
-          p={4}
-          bg={theme.cardBg}
-          position="sticky"
-          top={0}
-          zIndex={10}
-        >
-          <Flex justify="space-between" align="center">
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              onClick={handleBack}
-              _hover={{ color: theme.goldHover }}
-            >
-              <Flex align="center" gap={2}>
-                <FaArrowLeft />
-                <Text>Back</Text>
-              </Flex>
-            </Button>
-            <Text color={theme.gold} fontWeight="bold">
-              Receive {assetContext.name}
-            </Text>
-            <Box w="20px"></Box>
-          </Flex>
-        </Box>
-
         {/* Content Section */}
         <Box p={6} width="100%">
           <Box 

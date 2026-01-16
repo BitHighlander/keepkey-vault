@@ -5,6 +5,7 @@ import { createContext, useContext, useState, ReactNode } from 'react'
 interface HeaderActions {
   onSettingsClick?: () => void
   onRefreshClick?: () => void
+  onBackClick?: () => void
   isRefreshing?: boolean
 }
 
