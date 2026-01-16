@@ -12,6 +12,7 @@ import type { PaymentEvent, EventHistory } from '@/types/events'
 import { getEventHistory, saveEventHistory } from './eventDetection'
 import { soundManager } from './SoundManager'
 import { paymentToastManager } from './PaymentToastManager'
+import { isEventsEnabled } from '@/config/features'
 
 
 /**
@@ -93,6 +94,12 @@ class TransactionEventManager {
    * @param txData - Transaction event data from WebSocket
    */
   public processTransactionEvent(txData: TransactionEventData): void {
+    // Check if events feature flag is enabled
+    if (!isEventsEnabled()) {
+      console.log('[TransactionEventManager] Events feature disabled - skipping event processing')
+      return
+    }
+
     try {
       console.log('[TransactionEventManager] 🔍 Processing tx event:', {
         networkId: txData.networkId,

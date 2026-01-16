@@ -43,6 +43,7 @@ import { ConnectKeepKeyDialog } from './ConnectKeepKeyDialog'
 import { enrichPubkeysWithUsageInfo, isUTXONetwork } from '@/utils/utxoAddressUtils'
 import { ReviewTransaction } from './ReviewTransaction'
 import { formatTransactionDetails as formatTxDetails, type NetworkType } from '@/utils/transactionFormatter'
+import { getBlockTimeEstimate, getConfirmationMessage } from '@/utils/blockTime'
 import {
   formatUsd as formatUsdValue,
   usdToNative as convertUsdToNative,
@@ -2335,13 +2336,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 />
               </Box>
 
-              {/* Title */}
-              <Text fontSize="2xl" fontWeight="bold" color="white" textAlign="center">
-                {confirmationStatus.detected
-                  ? 'Confirming Transaction...'
-                  : 'Waiting for Confirmation...'}
-              </Text>
-
               {/* Asset Icon */}
               <Box
                 borderRadius="full"
@@ -2359,9 +2353,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Box>
 
               {/* Amount */}
-              <Text fontSize="lg" color="gray.400" textAlign="center">
-                {amount} {assetContext?.symbol}
-              </Text>
+              <VStack gap={2}>
+                <Text fontSize="2xl" fontWeight="bold" color="white" textAlign="center">
+                  {isUsdInput ? usdToNative(amount) : amount} {assetContext?.symbol}
+                </Text>
+                <Text fontSize="sm" color="gray.400" textAlign="center">
+                  {getConfirmationMessage(
+                    assetContext?.networkId || assetContext?.caip || '',
+                    confirmationStatus.detected,
+                    confirmationStatus.confirmations
+                  )}
+                </Text>
+              </VStack>
 
               {/* Progress Steps */}
               <Box
@@ -2432,17 +2435,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       {confirmationStatus.firstConfirmed ? <Icon as={FaCheck} /> : <Icon as={FaCircle} boxSize="8px" />}
                     </Box>
                     <Flex justify="space-between" w="100%" alignItems="center">
-                      <Text
-                        color={confirmationStatus.firstConfirmed ? 'white' : 'gray.500'}
-                        fontSize="sm"
-                      >
-                        First confirmation
-                      </Text>
-                      {confirmationStatus.confirmations > 0 && (
-                        <Text color="gray.400" fontSize="xs">
-                          {confirmationStatus.confirmations} block{confirmationStatus.confirmations > 1 ? 's' : ''}
+                      <VStack alignItems="flex-start" gap={0}>
+                        <Text
+                          color={confirmationStatus.firstConfirmed ? 'white' : 'gray.500'}
+                          fontSize="sm"
+                        >
+                          {confirmationStatus.confirmations > 0
+                            ? `${confirmationStatus.confirmations} block confirmation${confirmationStatus.confirmations > 1 ? 's' : ''}`
+                            : 'Waiting for confirmation'}
                         </Text>
-                      )}
+                        {!confirmationStatus.firstConfirmed && confirmationStatus.detected && (
+                          <Text color="gray.500" fontSize="xs">
+                            {getBlockTimeEstimate(assetContext?.networkId || assetContext?.caip || '').displayTime}
+                          </Text>
+                        )}
+                      </VStack>
                     </Flex>
                   </Flex>
                 </VStack>
@@ -2999,26 +3006,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           },
         }}
       >
-        {/* Asset Header - Only visible on step 1 */}
-        {currentStep === 1 && (
-          <Box width="100%" mb={4}>
-            <AssetHeaderCard
-              assetContext={assetContext}
-              balance={balance}
-              totalBalanceUsd={totalBalanceUsd}
-              selectedPubkey={selectedPubkey}
-              showAdvanced={showAdvanced}
-              onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
-              onPubkeyChange={handlePubkeyChange}
-              onAddPathClick={openAddPathDialog}
-              assetColor={assetColor}
-              assetColorLight={assetColorLight}
-              formatUsd={formatUsd}
-              theme={theme}
-            />
-          </Box>
-        )}
-
         <Stack gap={6} align="center" width="100%">
           {/* ========== STEP 1: RECIPIENT ========== */}
           {currentStep === 1 && (

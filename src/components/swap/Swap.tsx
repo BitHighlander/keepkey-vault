@@ -3006,10 +3006,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       </Box>
 
       {/* Main Swap Content - Centered vertically */}
-      <Flex 
-        align="center" 
-        justify="center" 
-        minH="100vh" 
+      <Flex
+        align="center"
+        justify="center"
+        minH="100vh"
         px={4}
         py={20}
       >
@@ -3344,7 +3344,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             </Card.Body>
           </Card.Root>
         </Box>
-        
+
         {/* Asset Picker for From (filtered by balance) */}
         <AssetPicker
           isOpen={showAssetPicker === 'from'}

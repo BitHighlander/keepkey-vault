@@ -8,6 +8,7 @@ interface FeatureFlags {
   enableZcash: boolean;
   enablePioneerV2: boolean; // Enable Pioneer SDK v2 APIs (sync, refresh, dashboard)
   enableSwapHistory: boolean; // Enable Swap History tab
+  enableEvents: boolean; // Enable event-based notifications (toasts for payments/transactions)
   // Add more feature flags here as needed
 }
 
@@ -21,12 +22,14 @@ export const getFeatureFlags = (): FeatureFlags => {
   const envZcashEnabled = process.env.NEXT_PUBLIC_ENABLE_ZCASH === 'true';
   const envPioneerV2Enabled = process.env.NEXT_PUBLIC_ENABLE_PIONEER_V2 === 'true';
   const envSwapHistoryEnabled = process.env.NEXT_PUBLIC_ENABLE_SWAP_HISTORY === 'true';
+  const envEventsEnabled = process.env.NEXT_PUBLIC_ENABLE_EVENTS === 'true';
 
   // Check localStorage for runtime overrides (only on client side)
   let swapsOverride: boolean | null = null;
   let zcashOverride: boolean | null = null;
   let pioneerV2Override: boolean | null = null;
   let swapHistoryOverride: boolean | null = null;
+  let eventsOverride: boolean | null = null;
 
   if (typeof window !== 'undefined') {
     const storedSwaps = localStorage.getItem('feature_enable_swaps');
@@ -48,6 +51,11 @@ export const getFeatureFlags = (): FeatureFlags => {
     if (storedSwapHistory !== null) {
       swapHistoryOverride = storedSwapHistory === 'true';
     }
+
+    const storedEvents = localStorage.getItem('feature_enable_events');
+    if (storedEvents !== null) {
+      eventsOverride = storedEvents === 'true';
+    }
   }
 
   return {
@@ -55,6 +63,7 @@ export const getFeatureFlags = (): FeatureFlags => {
     enableZcash: zcashOverride !== null ? zcashOverride : envZcashEnabled,
     enablePioneerV2: pioneerV2Override !== null ? pioneerV2Override : envPioneerV2Enabled,
     enableSwapHistory: swapHistoryOverride !== null ? swapHistoryOverride : envSwapHistoryEnabled,
+    enableEvents: eventsOverride !== null ? eventsOverride : envEventsEnabled,
   };
 };
 
@@ -123,4 +132,12 @@ export const isPioneerV2Enabled = (): boolean => {
  */
 export const isSwapHistoryEnabled = (): boolean => {
   return isFeatureEnabled('enableSwapHistory');
+};
+
+/**
+ * Check if Events feature is enabled
+ * Controls event-based notifications (toasts for payments/transactions)
+ */
+export const isEventsEnabled = (): boolean => {
+  return isFeatureEnabled('enableEvents');
 };

@@ -30,6 +30,7 @@ import { savePubkeys, getDeviceInfo } from '@/lib/storage/pubkeyStorage'
 import { isMobileApp } from '@/lib/platformDetection'
 import { PendingSwapsPopup } from '@/components/swap/PendingSwapsPopup'
 import { GlobalSwapProgress } from '@/components/swap/GlobalSwapProgress'
+import { ChatPopup } from '@/components/chat/ChatPopup'
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -1436,6 +1437,11 @@ export function Provider({ children }: ProviderProps) {
 
       {/* Global SwapProgress Dialog - Separate component with own state to avoid Provider re-renders */}
       <GlobalSwapProgress />
+
+      {/* Global Chat Assistant - Shows on all pages */}
+      {contextValue.state.app && (
+        <ChatPopup app={contextValue.state.app} />
+      )}
     </AppProvider>
   );
 } 

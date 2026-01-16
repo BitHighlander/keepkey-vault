@@ -15,6 +15,7 @@ import { assetIconService } from './AssetIconService'
 import { toaster } from '@/components/ui/toaster'
 import { PaymentToast } from '@/components/notifications/PaymentToast'
 import { createElement } from 'react'
+import { isEventsEnabled } from '@/config/features'
 
 const STORAGE_KEY = 'payment_notification_preferences'
 
@@ -22,7 +23,7 @@ const STORAGE_KEY = 'payment_notification_preferences'
  * Default notification preferences
  */
 const DEFAULT_PREFERENCES: NotificationPreferences = {
-  enabled: true,
+  enabled: false, // Toasts disabled by default
   soundEnabled: true,
   minimumAmountUsd: 0,
   showFiatValue: true,
@@ -82,9 +83,15 @@ class PaymentToastManager {
       return
     }
 
-    // Check if notifications are enabled
+    // Check if events feature flag is enabled
+    if (!isEventsEnabled()) {
+      console.log('[PaymentToastManager] Events feature disabled')
+      return
+    }
+
+    // Check if notifications are enabled in preferences
     if (!this.preferences.enabled) {
-      console.log('[PaymentToastManager] Notifications disabled')
+      console.log('[PaymentToastManager] Notifications disabled in preferences')
       return
     }
 

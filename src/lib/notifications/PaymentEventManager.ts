@@ -15,6 +15,7 @@ import {
 } from './eventDetection'
 import { soundManager } from './SoundManager'
 import { paymentToastManager } from './PaymentToastManager'
+import { isEventsEnabled } from '@/config/features'
 
 /**
  * Callback function type for event listeners
@@ -80,6 +81,12 @@ class PaymentEventManager {
     oldBalances: Map<string, BalanceSnapshot> | BalanceSnapshot[],
     newBalances: BalanceSnapshot[]
   ): void {
+    // Check if events feature flag is enabled
+    if (!isEventsEnabled()) {
+      console.log('[PaymentEventManager] Events feature disabled - skipping balance update processing')
+      return
+    }
+
     try {
       // Detect potential payment events
       const detectedEvents = detectPaymentEvents(oldBalances, newBalances)

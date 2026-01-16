@@ -30,7 +30,6 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
-import { ChatPopup } from '@/components/chat/ChatPopup';
 import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
@@ -2419,9 +2418,6 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
         </Box>
       </Box>
     </Box>
-
-    {/* Chat Assistant - Global floating chat button */}
-    <ChatPopup app={app} />
 
     {/* Scam Warning Modal */}
     <ScamWarningModal
