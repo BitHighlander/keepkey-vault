@@ -49,7 +49,7 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
   const outboundTx = swapStatus.thorchainData?.outboundTxHash;
 
   return (
-    <VStack spacing={6} py={8}>
+    <VStack gap={6} py={8}>
       {showConfetti && (
         <Confetti
           recycle={false}
@@ -58,7 +58,7 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
         />
       )}
 
-      <VStack spacing={2}>
+      <VStack gap={2}>
         <Text fontSize="6xl">🎉</Text>
         <Text fontSize="2xl" fontWeight="bold" color="green.400">
           Swap Complete!
@@ -78,7 +78,7 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
           w="full"
           maxW="300px"
         >
-          <VStack spacing={2}>
+          <VStack gap={2}>
             <Text fontSize="sm" color="gray.400">
               Total Time
             </Text>
@@ -103,7 +103,7 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
         borderColor="green.700"
         w="full"
       >
-        <VStack spacing={3} align="stretch">
+        <VStack gap={3} align="stretch">
           {/* Input Transaction */}
           {inboundTx && (
             <Box>

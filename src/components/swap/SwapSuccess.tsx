@@ -396,7 +396,7 @@ export const SwapSuccess = ({
                     bg="gray.800"
                     color="white"
                     borderRadius="lg"
-                    isDisabled={isSendingEmail}
+                    disabled={isSendingEmail}
                     size="md"
                   />
                 </InputGroup>
@@ -415,10 +415,10 @@ export const SwapSuccess = ({
                   _hover={{ bg: 'teal.500' }}
                   _active={{ bg: 'teal.700' }}
                   onClick={handleEmailSwapInfo}
-                  isLoading={isSendingEmail}
+                  loading={isSendingEmail}
                   loadingText="Sending Email..."
                   borderRadius="lg"
-                  isDisabled={!userEmail || !!emailError || emailStatus === 'success'}
+                  disabled={!userEmail || !!emailError || emailStatus === 'success'}
                   fontSize="sm"
                   fontWeight="semibold"
                 >
@@ -446,9 +446,9 @@ export const SwapSuccess = ({
               width="full"
               height="48px"
               borderRadius="xl"
-              rightIcon={<FaExternalLinkAlt />}
             >
               View on Block Explorer
+              <Box ml={2}><FaExternalLinkAlt /></Box>
             </Button>
           </Link>
         )}
@@ -463,9 +463,9 @@ export const SwapSuccess = ({
             width="full"
             height="48px"
             borderRadius="xl"
-            rightIcon={<FaExternalLinkAlt />}
           >
             View Swap Details (Midgard API)
+            <Box ml={2}><FaExternalLinkAlt /></Box>
           </Button>
         </Link>
 
@@ -480,9 +480,9 @@ export const SwapSuccess = ({
               width="full"
               height="48px"
               borderRadius="xl"
-              rightIcon={<FaExternalLinkAlt />}
             >
               Track Swap Status
+              <Box ml={2}><FaExternalLinkAlt /></Box>
             </Button>
           </Link>
           <Text fontSize="xs" color="gray.500" textAlign="center">

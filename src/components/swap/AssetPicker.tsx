@@ -189,7 +189,7 @@ export const AssetPicker = ({
                 <Box
                   flex="1"
                   animation="fadeIn 0.3s ease"
-                  sx={{
+                  css={{
                     '@keyframes fadeIn': {
                       from: { opacity: 0, transform: 'translateX(10px)' },
                       to: { opacity: 1, transform: 'translateX(0)' },

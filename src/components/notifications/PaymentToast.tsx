@@ -85,7 +85,7 @@ export function PaymentToast({
       boxShadow="0 4px 24px rgba(0, 0, 0, 0.4)"
       zIndex={9999}
     >
-      <HStack spacing={6} align="center">
+      <HStack gap={6} align="center">
         {/* Icon */}
         <Box
           width="48px"
@@ -102,9 +102,9 @@ export function PaymentToast({
         </Box>
 
         {/* Payment Info */}
-        <HStack flex={1} spacing={8} align="center">
+        <HStack flex={1} gap={8} align="center">
           {/* Title & Amount */}
-          <VStack align="start" spacing={1} minW="200px">
+          <VStack align="start" gap={1} minW="200px">
             <Text fontSize="lg" fontWeight="bold" color={accentColor}>
               Payment Received!
             </Text>
@@ -114,21 +114,21 @@ export function PaymentToast({
           </VStack>
 
           {/* Address */}
-          <VStack align="start" spacing={1} flex={1}>
+          <VStack align="start" gap={1} flex={1}>
             <Text fontSize="xs" color="gray.500" fontWeight="semibold" textTransform="uppercase">
               Address
             </Text>
-            <Text fontSize="sm" color="white" fontFamily="mono" isTruncated maxW="100%">
+            <Text fontSize="sm" color="white" fontFamily="mono" truncate maxW="100%">
               {event.address}
             </Text>
           </VStack>
 
           {/* Transaction ID */}
-          <VStack align="start" spacing={1} flex={1}>
+          <VStack align="start" gap={1} flex={1}>
             <Text fontSize="xs" color="gray.500" fontWeight="semibold" textTransform="uppercase">
               Transaction ID
             </Text>
-            <Text fontSize="sm" color="white" fontFamily="mono" isTruncated maxW="100%">
+            <Text fontSize="sm" color="white" fontFamily="mono" truncate maxW="100%">
               {event.txid}
             </Text>
           </VStack>

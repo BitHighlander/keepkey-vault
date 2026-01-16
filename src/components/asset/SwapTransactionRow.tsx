@@ -78,7 +78,7 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
           alt={fromAssetDisplay}
           boxSize="24px"
         />
-        <Text color="white" fontSize="xs" fontWeight="medium" isTruncated>
+        <Text color="white" fontSize="xs" fontWeight="medium" truncate>
           {fromAssetDisplay}
         </Text>
       </HStack>
@@ -92,7 +92,7 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
           alt={toAssetDisplay}
           boxSize="24px"
         />
-        <Text color="white" fontSize="xs" fontWeight="medium" isTruncated>
+        <Text color="white" fontSize="xs" fontWeight="medium" truncate>
           {toAssetDisplay}
         </Text>
       </HStack>
@@ -112,7 +112,7 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
       </Badge>
 
       {/* Amount */}
-      <Text color="white" fontSize="xs" fontFamily="mono" isTruncated fontWeight="semibold">
+      <Text color="white" fontSize="xs" fontFamily="mono" truncate fontWeight="semibold">
         {meta.fromAmount || 'N/A'}
       </Text>
 
@@ -137,7 +137,7 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
             {formattedInbound}
           </Link>
         ) : (
-          <Text color="gray.400" fontSize="xs" fontFamily="mono" isTruncated>
+          <Text color="gray.400" fontSize="xs" fontFamily="mono" truncate>
             {formattedInbound}
           </Text>
         );
@@ -171,7 +171,7 @@ export const SwapTransactionRow: React.FC<SwapTransactionRowProps> = ({
             {formattedOutbound}
           </Link>
         ) : (
-          <Text color="gray.400" fontSize="xs" fontFamily="mono" isTruncated>
+          <Text color="gray.400" fontSize="xs" fontFamily="mono" truncate>
             {formattedOutbound}
           </Text>
         );

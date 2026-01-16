@@ -2346,8 +2346,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Spinner
                   size="xl"
                   color={assetColor}
-                  thickness="4px"
-                  speed="0.8s"
                 />
               </Box>
 
@@ -2770,7 +2768,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       pb={8} // Add bottom padding to ensure content doesn't get cut off
       display="flex"
       flexDirection="column"
-      sx={{
+      css={{
         '&::-webkit-scrollbar': {
           width: '0px',
           background: 'transparent',
@@ -2995,7 +2993,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         p={5} 
         flex="1" 
         overflowY="auto"
-        sx={{
+        css={{
           '&::-webkit-scrollbar': {
             width: '0px',
             background: 'transparent',

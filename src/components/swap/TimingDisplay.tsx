@@ -86,7 +86,7 @@ export function TimingDisplay({
       p={6}
       mt={4}
     >
-      <VStack spacing={4} align="stretch">
+      <VStack gap={4} align="stretch">
         {/* Stage title with icon and badge */}
         <HStack justify="space-between">
           <HStack>
@@ -104,8 +104,8 @@ export function TimingDisplay({
 
         {/* Prominent time display */}
         <Box bg="gray.800" p={4} borderRadius="md">
-          <HStack spacing={6} justify="center">
-            <VStack spacing={0}>
+          <HStack gap={6} justify="center">
+            <VStack gap={0}>
               <Text fontSize="2xl" fontWeight="bold" color="white">
                 {elapsed}
               </Text>
@@ -116,7 +116,7 @@ export function TimingDisplay({
 
             <Text fontSize="2xl" color="gray.600">•</Text>
 
-            <VStack spacing={0}>
+            <VStack gap={0}>
               <Text fontSize="2xl" fontWeight="bold" color="teal.400">
                 ~{remaining}
               </Text>
@@ -165,7 +165,7 @@ export function TimingDisplay({
           border="1px solid"
           borderColor="teal.700"
         >
-          <VStack spacing={3} align="stretch">
+          <VStack gap={3} align="stretch">
             {/* Input Transaction */}
             {inboundTx && (
               <Box>
@@ -225,15 +225,17 @@ export function TimingDisplay({
           variant="ghost"
           size="sm"
           onClick={onToggleExpand}
-          rightIcon={isExpanded ? <FaChevronUp /> : <FaChevronDown />}
         >
           {isExpanded ? 'Hide' : 'Show'} Details
+          <Box ml={2}>
+            {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+          </Box>
         </Button>
 
         {/* Expanded content */}
         <Collapsible.Root open={isExpanded}>
           <Collapsible.Content>
-            <VStack spacing={3} align="stretch" pt={3}>
+            <VStack gap={3} align="stretch" pt={3}>
               <Box borderTop="1px" borderColor="gray.700" />
 
               <DetailRow

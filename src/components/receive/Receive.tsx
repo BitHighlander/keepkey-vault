@@ -153,7 +153,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
           pioneer.api.GetChangeAddress({
             network: assetContext.symbol || 'BTC',
             xpub
-          }).then(addressInfo => {
+          }).then((addressInfo: any) => {
             console.log('📊 [Receive] Initial indices:', addressInfo);
             if (addressInfo?.data) {
               setAddressIndices({
@@ -165,7 +165,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
               setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
             }
             setLoadingIndices(false);
-          }).catch(error => {
+          }).catch((error: any) => {
             console.error('❌ [Receive] Error getting initial indices:', error);
             setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
             setLoadingIndices(false);
@@ -560,7 +560,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
             boxShadow="0 20px 60px rgba(0, 0, 0, 0.8), 0 0 80px rgba(255, 215, 0, 0.1)"
             backdropFilter="blur(20px)"
           >
-            <VStack spacing={6}>
+            <VStack gap={6}>
               {/* Icon with glow effect */}
               <Box position="relative">
                 <Box
@@ -597,7 +597,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
               </Text>
               
               {/* Instructions */}
-              <VStack spacing={4} width="100%">
+              <VStack gap={4} width="100%">
                 <Text color="gray.300" fontSize="15px" textAlign="center" lineHeight="1.6">
                   To ensure security, you must verify the receive address on your KeepKey device before receiving funds.
                 </Text>
@@ -610,7 +610,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   borderColor="rgba(255, 69, 0, 0.2)"
                   width="100%"
                 >
-                  <HStack spacing={3} align="flex-start">
+                  <HStack gap={3} align="flex-start">
                     <Text fontSize="20px" flexShrink={0}>⚠️</Text>
                     <Text color="orange.300" fontSize="13px" fontWeight="medium" lineHeight="1.5">
                       Never receive funds without verifying the address on your hardware wallet. This protects you from malware and phishing attacks.
@@ -627,12 +627,11 @@ export function Receive({ onBackClick }: ReceiveProps) {
               >
                 <Button
                   onClick={handleViewOnDevice}
-                  isLoading={viewingOnDevice}
+                  loading={viewingOnDevice}
                   loadingText="Verifying on Device..."
-                  leftIcon={<FaEye />}
                   bg="linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"
                   color="black"
-                  _hover={{ 
+                  _hover={{
                     bg: "linear-gradient(135deg, #FFE135 0%, #FFB347 100%)",
                     transform: "translateY(-1px)",
                     boxShadow: "0 8px 25px rgba(255, 215, 0, 0.35)"
@@ -646,10 +645,11 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   fontWeight="bold"
                   height="52px"
                   fontSize="16px"
-                  isDisabled={!selectedPubkey}
+                  disabled={!selectedPubkey}
                   boxShadow="0 4px 20px rgba(255, 215, 0, 0.25)"
                   transition="all 0.2s ease"
                 >
+                  <FaEye style={{ marginRight: '8px' }} />
                   View on Device
                 </Button>
               </MotionBox>
@@ -954,7 +954,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
               >
                 <Button
                   onClick={handleViewOnDevice}
-                  isLoading={viewingOnDevice}
+                  loading={viewingOnDevice}
                   loadingText="Verifying on Device..."
                   leftIcon={<FaEye />}
                   bg={theme.gold}
@@ -963,7 +963,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   size="lg"
                   width="100%"
                   fontWeight="bold"
-                  isDisabled={!selectedPubkey}
+                  disabled={!selectedPubkey}
                 >
                   <Flex align="center" gap={2}>
                     <FaEye />
@@ -984,7 +984,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
               >
                 <Button
                   onClick={handleViewOnDevice}
-                  isLoading={viewingOnDevice}
+                  loading={viewingOnDevice}
                   loadingText="Viewing on Device..."
                   leftIcon={<FaEye />}
                   variant="outline"
@@ -993,7 +993,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
                   size="md"
                   width="100%"
-                  isDisabled={!selectedPubkey}
+                  disabled={!selectedPubkey}
                 >
                   Verify Again
                 </Button>
@@ -1082,7 +1082,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                             <Text color="gray.400" fontSize="sm" mb={2}>Message Signing</Text>
                             <SignMessageDialog
                               onSignMessage={handleSignMessage}
-                              isLoading={viewingOnDevice}
+                              loading={viewingOnDevice}
                             />
                           </Box>
                         )}

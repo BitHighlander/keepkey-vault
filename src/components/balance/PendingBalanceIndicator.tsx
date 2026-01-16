@@ -1,6 +1,7 @@
 'use client'
 
-import { Box, HStack, VStack, Text, Badge, Tooltip } from '@chakra-ui/react';
+import { Box, HStack, VStack, Text, Badge } from '@chakra-ui/react';
+import { Tooltip } from '@/components/ui/tooltip';
 import { keyframes } from '@emotion/react';
 import { FC } from 'react';
 import { PendingBalance } from '@/types/balance';
@@ -44,7 +45,7 @@ export const PendingBalanceIndicator: FC<Props> = ({ pending, symbol, mode, size
         p={4}
         w="full"
       >
-        <VStack align="start" spacing={2}>
+        <VStack align="start" gap={2}>
           <HStack>
             <Box as="span" animation={`${spinAnimation} 2s linear infinite`}>
               🔄
@@ -84,17 +85,16 @@ export const PendingBalanceIndicator: FC<Props> = ({ pending, symbol, mode, size
   // mode === 'tooltip'
   return (
     <Tooltip
-      label={
-        <VStack align="start" spacing={1}>
+      content={
+        <VStack align="start" gap={1}>
           <Text fontWeight="bold">Swap in Progress</Text>
           <Text fontSize="xs">Original: {formatAmount(pending.originalAmount)} {symbol}</Text>
           <Text fontSize="xs">Reserved: {formatAmount(pending.debitedAmount)} {symbol}</Text>
           {estimatedMinutes && <Text fontSize="xs">Est: {estimatedMinutes} min</Text>}
         </VStack>
       }
-      placement="right"
-      bg="teal.900"
-      color="white"
+      positioning={{ placement: "right" }}
+      contentProps={{ bg: "teal.900", color: "white" }}
     >
       <Box as="span" display="inline-block" animation={`${spinAnimation} 2s linear infinite`}>
         🔄

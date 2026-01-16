@@ -65,7 +65,7 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({ transaction, onC
           {formattedTxId}
         </Link>
       ) : (
-        <Text color="gray.300" fontFamily="mono" fontSize="xs" isTruncated>
+        <Text color="gray.300" fontFamily="mono" fontSize="xs" truncate>
           {formattedTxId}
         </Text>
       )}

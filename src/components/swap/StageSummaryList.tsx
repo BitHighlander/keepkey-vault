@@ -45,7 +45,7 @@ export function StageSummaryList({ swapStatus }: StageSummaryListProps) {
   ];
 
   return (
-    <VStack spacing={2} align="stretch" mt={6}>
+    <VStack gap={2} align="stretch" mt={6}>
       {stages.map((stage, index) => (
         <HStack
           key={index}

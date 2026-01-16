@@ -230,7 +230,7 @@ export function SignMessageDialog({
                   borderWidth="1px"
                   borderColor="rgba(255, 215, 0, 0.2)"
                 >
-                  <HStack spacing={3} align="flex-start">
+                  <HStack gap={3} align="flex-start">
                     <Text fontSize="20px" flexShrink={0}>🔐</Text>
                     <Text color="gray.300" fontSize="xs" lineHeight="1.5">
                       You will need to confirm this action on your KeepKey device. The message will be signed using the currently selected address.
@@ -353,13 +353,13 @@ export function SignMessageDialog({
               </Button>
               <Button
                 onClick={handleSign}
-                isLoading={signing}
+                loading={signing}
                 loadingText="Signing..."
                 bg={theme.gold}
                 color="black"
                 _hover={{ bg: theme.goldHover }}
                 fontWeight="bold"
-                isDisabled={
+                disabled={
                   !message.trim() ||
                   signing ||
                   isLoading ||

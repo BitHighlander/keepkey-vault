@@ -23,15 +23,15 @@ interface SwapHeaderProps {
 export function SwapHeader({ fromAsset, toAsset, onClose }: SwapHeaderProps) {
   return (
     <HStack justify="center" mb={8} position="relative" width="full">
-      <HStack spacing={8}>
-        <VStack spacing={2}>
+      <HStack gap={8}>
+        <VStack gap={2}>
           <AssetIcon caip={fromAsset.caip} boxSize="160px" alt={fromAsset.symbol} />
           <Text fontWeight="bold" fontSize="2xl">
             {fromAsset.amount} {fromAsset.symbol}
           </Text>
         </VStack>
         <FaArrowRight size={32} color="gray" />
-        <VStack spacing={2}>
+        <VStack gap={2}>
           <AssetIcon caip={toAsset.caip} boxSize="160px" alt={toAsset.symbol} />
           <Text fontWeight="bold" fontSize="2xl">
             {toAsset.amount} {toAsset.symbol}

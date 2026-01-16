@@ -1,5 +1,5 @@
 import { BaseReportGenerator } from './BaseReportGenerator';
-import { ReportData, ReportOptions } from './types';
+import { ReportData, ReportOptions, ReportSection } from './types';
 
 export class GenericReportGenerator extends BaseReportGenerator {
   
@@ -30,7 +30,7 @@ export class GenericReportGenerator extends BaseReportGenerator {
     }
 
     // Create report sections
-    const sections = [
+    const sections: ReportSection[] = [
       {
         title: 'Account Summary',
         type: 'table' as const,

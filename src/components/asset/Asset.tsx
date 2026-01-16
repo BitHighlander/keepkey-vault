@@ -47,7 +47,6 @@ import { ReportDialog } from './ReportDialog';
 import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
-// @ts-expect-error - Pioneer CAIP utilities
 import { networkIdToCaip } from '@pioneer-platform/pioneer-caip';
 import { TransactionHistory } from './TransactionHistory';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
@@ -1006,7 +1005,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                 top={4}
                 right={4}
                 color={theme.gold}
-                leftIcon={<FaSync />}
                 _hover={{
                   color: theme.goldHover,
                   bg: 'rgba(255, 215, 0, 0.1)',
@@ -1081,9 +1079,10 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     setIsRefreshing(false);
                   }
                 }}
-                isLoading={isRefreshing}
+                loading={isRefreshing}
                 loadingText="Refreshing..."
               >
+                <FaSync style={{ marginRight: '8px' }} />
                 Refresh
               </Button>
               <VStack align="center" gap={4}>
@@ -1167,8 +1166,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         <Spinner
                           size="xl"
                           color={theme.gold}
-                          thickness="4px"
-                          speed="0.8s"
                         />
                       </Box>
                     )}
@@ -1210,8 +1207,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         <Spinner
                           size="xl"
                           color={theme.gold}
-                          thickness="4px"
-                          speed="0.8s"
                         />
                       </Box>
                     )}
@@ -1431,7 +1426,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   borderColor: '#00D9FF',
                 }}
                 onClick={handleRefreshCharts}
-                isLoading={isRefreshing}
+                loading={isRefreshing}
                 loadingText="Discovering tokens..."
               >
                 <Flex gap={2} align="center">
@@ -1566,12 +1561,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                           variant="ghost"
                           color={theme.gold}
                           onClick={() => setShowAllPubkeys(!showAllPubkeys)}
-                          rightIcon={<Icon as={showAllPubkeys ? FaChevronUp : FaChevronDown} />}
                           _hover={{
                             bg: 'rgba(255, 215, 0, 0.1)',
                           }}
                         >
                           {showAllPubkeys ? 'Hide' : 'Show All'}
+                          <Icon as={showAllPubkeys ? FaChevronUp : FaChevronDown} style={{ marginLeft: '8px' }} />
                         </Button>
                       </Flex>
                       <BalanceDistribution
@@ -2449,17 +2444,18 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   </Text>
                   <IconButton
                     aria-label="Refresh tokens"
-                    icon={<FaSync />}
                     size="sm"
                     variant="ghost"
                     color={theme.gold}
-                    isLoading={isRefreshing}
+                    loading={isRefreshing}
                     onClick={handleRefreshCharts}
                     _hover={{
                       bg: 'rgba(255, 215, 0, 0.1)',
                       color: theme.goldHover,
                     }}
-                  />
+                  >
+                    <FaSync />
+                  </IconButton>
                 </Flex>
               </Box>
 
@@ -2570,9 +2566,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                           borderColor: theme.gold,
                         }}
                         onClick={handleRefreshCharts}
-                        isLoading={isRefreshing}
-                        leftIcon={<FaSync />}
+                        loading={isRefreshing}
                       >
+                        <FaSync style={{ marginRight: '8px' }} />
                         Discover Tokens
                       </Button>
                       {isEvmNetwork && (
@@ -2587,8 +2583,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                             borderColor: '#23DCC8',
                           }}
                           onClick={() => setIsCustomTokenDialogOpen(true)}
-                          leftIcon={<FaPlus />}
                         >
+                          <FaPlus style={{ marginRight: '8px' }} />
                           Add Custom Token
                         </Button>
                       )}

@@ -56,7 +56,7 @@ export const BalanceBreakdownContent: React.FC<BalanceBreakdownContentProps> = (
   }, [balances]);
 
   return (
-    <VStack align="stretch" spacing={2}>
+    <VStack align="stretch" gap={2}>
       <HStack justify="space-between" mb={1}>
         <Text fontSize="sm" fontWeight="bold" color={theme.gold}>
           Balance Breakdown
@@ -75,9 +75,9 @@ export const BalanceBreakdownContent: React.FC<BalanceBreakdownContentProps> = (
           bg={index % 2 === 0 ? 'transparent' : 'whiteAlpha.50'}
           borderRadius="sm"
         >
-          <VStack align="stretch" spacing={1}>
+          <VStack align="stretch" gap={1}>
             <HStack justify="space-between">
-              <HStack spacing={1}>
+              <HStack gap={1}>
                 <Text fontSize="xs">
                   {getAddressTypeIcon(balance.addressType)}
                 </Text>

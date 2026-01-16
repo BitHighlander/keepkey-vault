@@ -203,7 +203,7 @@ export const SwapInput = ({
               _placeholder={{ color: COLORS.gray[500] }}
               _focus={{ outline: 'none', boxShadow: 'none', borderColor: 'transparent' }}
               _selection={{ background: 'blue.600', color: 'white' }}
-              sx={{
+              css={{
                 cursor: 'text',
                 caretColor: 'white',
                 '::selection': { background: COLORS.accentSelection, color: 'white' },

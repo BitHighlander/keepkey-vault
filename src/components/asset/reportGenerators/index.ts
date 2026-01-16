@@ -1,5 +1,5 @@
 export * from './types';
-export * from './BaseReportGenerator';
+export { BaseReportGenerator } from './BaseReportGenerator';
 export * from './UTXOReportGenerator';
 export * from './EVMReportGenerator';
 export * from './CosmosReportGenerator';

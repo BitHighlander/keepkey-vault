@@ -274,7 +274,7 @@ const WatchOnlyLanding: React.FC<WatchOnlyLandingProps> = ({
             size="lg"
             fontSize="lg"
             fontWeight="bold"
-            isDisabled={isPolling}
+            disabled={isPolling}
           >
             <HStack>
               <FaEye />
@@ -291,8 +291,8 @@ const WatchOnlyLanding: React.FC<WatchOnlyLandingProps> = ({
             _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
             onClick={launchKeepKeyDesktop}
             size="md"
-            isDisabled={isPolling}
-            isLoading={isPolling}
+            disabled={isPolling}
+            loading={isPolling}
           >
             <HStack>
               <FaExternalLinkAlt />

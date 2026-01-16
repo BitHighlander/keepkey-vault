@@ -3,6 +3,7 @@
 // Debug flag - set to false to reduce console noise
 const DEBUG_VERBOSE = false;
 const DEBUG_USD = true; // Keep USD debugging on
+let assetsMapLogged = false;
 
 import React, { useState, useEffect, useTransition, forwardRef, useImperativeHandle } from 'react';
 import {
@@ -279,9 +280,9 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
     if (!app?.assetsMap || !caip) return null;
 
     // Debug: Log all assetsMap keys once
-    if (!window.assetsMapLogged) {
+    if (!assetsMapLogged) {
       console.log('🗺️ [Dashboard] assetsMap keys:', Array.from(app.assetsMap.keys()));
-      window.assetsMapLogged = true;
+      assetsMapLogged = true;
     }
 
     try {
@@ -619,7 +620,7 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
       backgroundSize="cover"
       backgroundPosition="center"
       backgroundRepeat="no-repeat"
-      sx={{
+      css={{
         '&::before': {
           content: '""',
           position: 'absolute',
@@ -949,8 +950,6 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
                             <Spinner
                               size="lg"
                               color={network.color}
-                              thickness="3px"
-                              speed="0.6s"
                             />
                           </Flex>
                         )}
@@ -1478,13 +1477,11 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
                         color={showZeroValueTokens ? 'orange.400' : theme.gold}
                         _hover={{ color: showZeroValueTokens ? 'orange.300' : theme.goldHover }}
                         onClick={() => setShowZeroValueTokens(!showZeroValueTokens)}
-                        rightIcon={
-                          <Text fontSize="xs">
-                            {showZeroValueTokens ? '▲' : '▼'}
-                          </Text>
-                        }
                       >
                         {showZeroValueTokens ? 'Hide' : 'Show'} $0 Tokens ({tokensWithZeroValue.length})
+                        <Text fontSize="xs" ml={1}>
+                          {showZeroValueTokens ? '▲' : '▼'}
+                        </Text>
                       </Button>
                     )}
                     {scamTokens.length > 0 && (
@@ -1494,13 +1491,11 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
                         color={showScamTokens ? 'red.400' : 'gray.500'}
                         _hover={{ color: showScamTokens ? 'red.300' : 'red.600' }}
                         onClick={() => setShowScamTokens(!showScamTokens)}
-                        rightIcon={
-                          <Text fontSize="xs">
-                            {showScamTokens ? '▲' : '▼'}
-                          </Text>
-                        }
                       >
                         {showScamTokens ? 'Hide' : 'Show'} Scam Tokens ({scamTokens.length})
+                        <Text fontSize="xs" ml={1}>
+                          {showScamTokens ? '▲' : '▼'}
+                        </Text>
                       </Button>
                     )}
                   </HStack>
@@ -1839,8 +1834,6 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
                             <Spinner
                               size="lg"
                               color={tokenColor}
-                              thickness="3px"
-                              speed="0.6s"
                             />
                           </Flex>
                         )}
@@ -2232,8 +2225,6 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
                             <Spinner
                               size="lg"
                               color={stakingColor}
-                              thickness="3px"
-                              speed="0.6s"
                             />
                           </Flex>
                         )}

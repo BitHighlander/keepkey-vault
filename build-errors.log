@@ -1,0 +1,51 @@
+
+> keepkey-vault@0.1.0 build
+> next build
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/highlander/pnpm-lock.yaml as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault/pnpm-lock.yaml
+   * /Users/highlander/WebstormProjects/keepkey-stack/pnpm-lock.yaml
+
+   ▲ Next.js 16.0.10 (Turbopack)
+   - Environments: .env.local, .env
+
+   Creating an optimized production build ...
+Turbopack build encountered 1 warnings:
+[externals]/node:buffer
+unexpected export *
+export * used with module [externals]/node:buffer [external] (node:buffer, cjs) which is a CommonJS module with exports only available at runtime
+List all export names manually (`export { a, b, c } from "...") or rewrite the module to ESM, to avoid the additional runtime code.`
+
+Import trace:
+  external:
+    [externals]/node:buffer [external]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/node_modules/@swagger-api/apidom-reference/src/parse/parsers/binary/index-node.mjs [Client Component SSR]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/node_modules/swagger-client/es/resolver/strategies/openapi-3-1-apidom/resolve.js [Client Component SSR]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/node_modules/swagger-client/es/resolver/strategies/openapi-3-1-apidom/index.js [Client Component SSR]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/node_modules/swagger-client/es/index.js [Client Component SSR]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/node_modules/@pioneer-platform/pioneer-sdk/dist/index.js [Client Component SSR]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/src/app/provider.tsx [Client Component SSR]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/src/app/provider.tsx [Server Component]
+    ./WebstormProjects/keepkey-stack/projects/keepkey-vault/src/app/layout.tsx [Server Component]
+
+
+ ✓ Compiled successfully in 5.5s
+   Running TypeScript ...
+Failed to compile.
+
+./src/components/asset/Asset.tsx:1564:27
+Type error: Type '{ children: string; size: "xs"; variant: "ghost"; color: "#FFD700"; onClick: () => void; rightIcon: Element; _hover: { bg: "rgba(255, 215, 0, 0.1)"; }; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'rightIcon' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+
+[0m [90m 1562 |[39m                           color[33m=[39m{theme[33m.[39mgold}
+ [90m 1563 |[39m                           onClick[33m=[39m{() [33m=>[39m setShowAllPubkeys([33m![39mshowAllPubkeys)}
+[31m[1m>[22m[39m[90m 1564 |[39m                           rightIcon[33m=[39m{[33m<[39m[33mIcon[39m [36mas[39m[33m=[39m{showAllPubkeys [33m?[39m [33mFaChevronUp[39m [33m:[39m [33mFaChevronDown[39m} [33m/[39m[33m>[39m}
+ [90m      |[39m                           [31m[1m^[22m[39m
+ [90m 1565 |[39m                           _hover[33m=[39m{{
+ [90m 1566 |[39m                             bg[33m:[39m [32m'rgba(255, 215, 0, 0.1)'[39m[33m,[39m
+ [90m 1567 |[39m                           }}[0m
+Next.js build worker exited with code: 1 and signal: null

@@ -7,17 +7,33 @@ import {
   VStack,
   HStack,
   IconButton,
-  useClipboard,
   Badge,
   Button,
 } from '@chakra-ui/react';
 import { FaCopy, FaCheck, FaChevronDown, FaChevronUp } from 'react-icons/fa';
-import { 
-  BalanceDetail, 
+import {
+  BalanceDetail,
   getAddressTypeIcon,
   formatAddress,
   AggregatedBalance,
 } from '@/types/balance';
+
+// Simple clipboard hook replacement for Chakra UI v3
+const useClipboard = (text: string) => {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  return { copied, onCopy };
+};
 
 interface BalanceDistributionProps {
   aggregatedBalance: AggregatedBalance;
@@ -43,8 +59,8 @@ const BalanceCard: React.FC<{
   onToggle: () => void;
   onAddressClick?: (address: string) => void;
 }> = ({ balance, aggregatedBalance, isExpanded, isSelected, onToggle, onAddressClick }) => {
-  const { hasCopied: hasCopiedAddress, onCopy: onCopyAddress } = useClipboard(balance.address);
-  const { hasCopied: hasCopiedPubkey, onCopy: onCopyPubkey } = useClipboard(balance.pubkey || '');
+  const { copied: hasCopiedAddress, onCopy: onCopyAddress } = useClipboard(balance.address);
+  const { copied: hasCopiedPubkey, onCopy: onCopyPubkey } = useClipboard(balance.pubkey || '');
 
   const formatUsd = (value: number) => {
     return value.toLocaleString('en-US', {
@@ -80,15 +96,15 @@ const BalanceCard: React.FC<{
     >
       {/* Main Card Content */}
       <Box p={3}>
-        <VStack align="stretch" spacing={2}>
+        <VStack align="stretch" gap={2}>
           {/* Header Row */}
           <HStack justify="space-between">
-            <HStack spacing={2}>
+            <HStack gap={2}>
               <Text fontSize="md">
                 {getAddressTypeIcon(balance.addressType)}
               </Text>
-              <VStack align="start" spacing={0}>
-                <HStack spacing={1}>
+              <VStack align="start" gap={0}>
+                <HStack gap={1}>
                   <Text fontSize="sm" fontWeight="medium" color="white">
                     {balance.label}
                   </Text>
@@ -98,13 +114,12 @@ const BalanceCard: React.FC<{
                     </Text>
                   )}
                 </HStack>
-                <HStack spacing={1}>
+                <HStack gap={1}>
                   <Text fontSize="xs" color="gray.400" fontFamily="mono">
                     {formatAddress(balance.address, 20)}
                   </Text>
                   <IconButton
                     aria-label="Copy address"
-                    icon={hasCopiedAddress ? <FaCheck /> : <FaCopy />}
                     size="xs"
                     variant="ghost"
                     color={hasCopiedAddress ? 'green.400' : 'gray.400'}
@@ -113,14 +128,15 @@ const BalanceCard: React.FC<{
                       onCopyAddress();
                     }}
                     _hover={{ color: hasCopiedAddress ? 'green.300' : 'white' }}
-                  />
+                  >
+                    {hasCopiedAddress ? <FaCheck /> : <FaCopy />}
+                  </IconButton>
                 </HStack>
               </VStack>
             </HStack>
             
             <IconButton
               aria-label="Expand details"
-              icon={isExpanded ? <FaChevronUp /> : <FaChevronDown />}
               size="sm"
               variant="ghost"
               color="gray.400"
@@ -129,12 +145,14 @@ const BalanceCard: React.FC<{
                 onToggle();
               }}
               _hover={{ color: 'white' }}
-            />
+            >
+              {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+            </IconButton>
           </HStack>
 
           {/* Balance Row */}
           <HStack justify="space-between">
-            <HStack spacing={3}>
+            <HStack gap={3}>
               <Text 
                 fontSize="sm" 
                 fontWeight="medium" 
@@ -177,7 +195,7 @@ const BalanceCard: React.FC<{
           borderTop="1px solid"
           borderColor={theme.border}
         >
-          <VStack align="stretch" spacing={2}>
+          <VStack align="stretch" gap={2}>
             <HStack justify="space-between">
               <Text fontSize="xs" color="gray.400">Full Address</Text>
               <Text fontSize="xs" fontFamily="mono" color="gray.200">
@@ -187,13 +205,12 @@ const BalanceCard: React.FC<{
             {balance.pubkey && (
               <HStack justify="space-between">
                 <Text fontSize="xs" color="gray.400">Public Key (XPUB)</Text>
-                <HStack spacing={1}>
+                <HStack gap={1}>
                   <Text fontSize="xs" fontFamily="mono" color="gray.200">
                     {formatAddress(balance.pubkey, 20)}
                   </Text>
                   <IconButton
                     aria-label="Copy public key"
-                    icon={hasCopiedPubkey ? <FaCheck /> : <FaCopy />}
                     size="xs"
                     variant="ghost"
                     color={hasCopiedPubkey ? 'green.400' : 'gray.400'}
@@ -202,7 +219,9 @@ const BalanceCard: React.FC<{
                       onCopyPubkey();
                     }}
                     _hover={{ color: hasCopiedPubkey ? 'green.300' : 'white' }}
-                  />
+                  >
+                    {hasCopiedPubkey ? <FaCheck /> : <FaCopy />}
+                  </IconButton>
                 </HStack>
               </HStack>
             )}
@@ -297,13 +316,13 @@ export const BalanceDistribution: React.FC<BalanceDistributionProps> = ({
   }
 
   return (
-    <VStack align="stretch" spacing={2} width="100%">
+    <VStack align="stretch" gap={2} width="100%">
       {/* Compact Header with Sort */}
       <HStack justify="space-between" align="center">
         <Text fontSize="sm" color="gray.400">
           {aggregatedBalance.balances.length} addresses · {formatBalance(aggregatedBalance.totalBalance)} {aggregatedBalance.symbol}
         </Text>
-        <HStack spacing={1}>
+        <HStack gap={1}>
           {(['value', 'type'] as const).map((option) => (
             <Button
               key={option}
@@ -323,7 +342,7 @@ export const BalanceDistribution: React.FC<BalanceDistributionProps> = ({
       </HStack>
 
       {/* Balance Cards */}
-      <VStack align="stretch" spacing={2}>
+      <VStack align="stretch" gap={2}>
         {sortedBalances.map((balance, index) => (
           <BalanceCard
             key={`${balance.address}-${index}`}

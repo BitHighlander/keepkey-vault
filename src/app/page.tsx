@@ -1,5 +1,4 @@
 'use client'
-// @ts-nocheck
 
 import { Box, Flex } from "@chakra-ui/react"
 import { keyframes } from '@emotion/react'
@@ -8,6 +7,11 @@ import Dashboard from '@/components/dashboard/Dashboard'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { useHeader } from '@/contexts/HeaderContext'
 import { useState, useEffect, useRef } from 'react'
+
+// Type for Dashboard ref to expose handleRefresh method
+interface DashboardRef {
+  handleRefresh: (force?: boolean) => void
+}
 // Background image path
 const splashBg = '/images/backgrounds/splash-bg.png'
 
@@ -71,7 +75,7 @@ export default function Home() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const dashboardRef = useRef(null);
+  const dashboardRef = useRef<DashboardRef>(null);
 
   // Set header actions for dashboard
   useEffect(() => {

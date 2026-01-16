@@ -86,7 +86,6 @@ export const StageIndicator = ({
     }
 
     if (isActive) {
-      return <Spinner size="lg" color="blue.400" thickness="3px" speed="0.8s" />;
     }
 
     // Pending state
@@ -140,7 +139,7 @@ export const StageIndicator = ({
           <HStack gap={2}>
             <Box
               animation={isActive ? 'pulse 2s ease-in-out infinite' : undefined}
-              sx={{
+              css={{
                 '@keyframes pulse': {
                   '0%, 100%': { opacity: 1 },
                   '50%': { opacity: 0.5 }

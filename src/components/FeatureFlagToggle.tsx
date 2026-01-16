@@ -6,18 +6,19 @@ import {
   Button,
   Text,
   VStack,
-  Switch,
   HStack,
   useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
   IconButton,
-  Tooltip,
+  Switch,
 } from '@chakra-ui/react';
+import { Tooltip } from '@/components/ui/tooltip';
+import {
+  DialogRoot,
+  DialogContent,
+  DialogHeader,
+  DialogBody,
+  DialogCloseTrigger,
+} from '@/components/ui/dialog';
 import { FaCog } from 'react-icons/fa';
 import { getFeatureFlags, setFeatureFlag } from '@/config/features';
 
@@ -27,7 +28,7 @@ import { getFeatureFlags, setFeatureFlag } from '@/config/features';
  * Only visible in development mode or when explicitly enabled
  */
 export const FeatureFlagToggle = () => {
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { open: isOpen, onOpen, onClose } = useDisclosure();
   const [flags, setFlags] = useState(getFeatureFlags());
   const [showButton, setShowButton] = useState(false);
 
@@ -51,9 +52,8 @@ export const FeatureFlagToggle = () => {
 
   return (
     <>
-      <Tooltip label="Feature Flags" placement="left">
+      <Tooltip content="Feature Flags" positioning={{ placement: "left" }}>
         <IconButton
-          icon={<FaCog />}
           aria-label="Feature Flags"
           position="fixed"
           bottom="20px"
@@ -62,15 +62,16 @@ export const FeatureFlagToggle = () => {
           colorScheme="gray"
           onClick={onOpen}
           zIndex={1000}
-        />
+        >
+          <FaCog />
+        </IconButton>
       </Tooltip>
 
-      <Modal isOpen={isOpen} onClose={onClose}>
-        <ModalOverlay />
-        <ModalContent bg="#111111" borderColor="#222222" borderWidth="1px">
-          <ModalHeader color="white">Feature Flags</ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody pb={6}>
+      <DialogRoot open={isOpen} onOpenChange={({ open }) => !open && onClose()}>
+        <DialogContent bg="#111111" borderColor="#222222" borderWidth="1px">
+          <DialogHeader color="white">Feature Flags</DialogHeader>
+          <DialogCloseTrigger />
+          <DialogBody pb={6}>
             <VStack gap={4} align="stretch">
               {/* Swaps Feature Toggle */}
               <HStack justify="space-between" p={3} bg="#1a1a1a" borderRadius="md">
@@ -82,11 +83,16 @@ export const FeatureFlagToggle = () => {
                     Enable swap functionality
                   </Text>
                 </VStack>
-                <Switch
+                <Switch.Root
                   checked={flags.enableSwaps}
                   onCheckedChange={(e) => handleToggle('enableSwaps', !!e.checked)}
                   colorPalette="green"
-                />
+                >
+                  <Switch.HiddenInput />
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Root>
               </HStack>
 
               {/* ZCash Feature Toggle */}
@@ -99,11 +105,16 @@ export const FeatureFlagToggle = () => {
                     Enable ZCash support (experimental)
                   </Text>
                 </VStack>
-                <Switch
+                <Switch.Root
                   checked={flags.enableZcash}
                   onCheckedChange={(e) => handleToggle('enableZcash', !!e.checked)}
                   colorPalette="green"
-                />
+                >
+                  <Switch.HiddenInput />
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Root>
               </HStack>
 
               <Box pt={4} borderTop="1px solid" borderColor="#222222">
@@ -112,9 +123,9 @@ export const FeatureFlagToggle = () => {
                 </Text>
               </Box>
             </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+          </DialogBody>
+        </DialogContent>
+      </DialogRoot>
     </>
   );
 };

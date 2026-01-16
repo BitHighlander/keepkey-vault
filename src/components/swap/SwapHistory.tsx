@@ -94,7 +94,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
         {/* Header - Always visible */}
         <Flex justify="space-between" align="center" mb={3}>
           <HStack>
-            <HStack spacing={2}>
+            <HStack gap={2}>
               {/* From Asset */}
               <Box position="relative" width="32px" height="32px">
                 <AssetIcon
@@ -110,7 +110,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
 
             <Text color="gray.500" px={2}>→</Text>
 
-            <HStack spacing={2}>
+            <HStack gap={2}>
               {/* To Asset */}
               <Box position="relative" width="32px" height="32px">
                 <AssetIcon
@@ -139,7 +139,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
         </Flex>
 
         {/* Summary - Always visible */}
-        <VStack align="start" spacing={1} mb={2}>
+        <VStack align="start" gap={1} mb={2}>
           <HStack justify="space-between" width="100%">
             <Text fontSize="sm" color="gray.400">Selling:</Text>
             <Text fontSize="sm" color="white" fontWeight="medium">
@@ -163,7 +163,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
               borderTopWidth="1px"
               borderColor="gray.700"
             >
-              <VStack align="start" spacing={3}>
+              <VStack align="start" gap={3}>
               {/* Transaction Hash */}
               <Box width="100%">
                 <Text fontSize="sm" color="gray.400" mb={1}>
@@ -259,7 +259,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
                 <Text fontSize="xs" color="gray.500" fontWeight="semibold" mb={2}>
                   AUDIT TRAIL
                 </Text>
-                <VStack align="start" spacing={1} fontSize="xs">
+                <VStack align="start" gap={1} fontSize="xs">
                   <HStack justify="space-between" width="100%">
                     <Text color="gray.400">Sell Asset CAIP:</Text>
                     <Code fontSize="xs" bg="gray.900">{swap.sellAsset.caip}</Code>
@@ -324,7 +324,7 @@ export const SwapHistory = ({ onBackClick }: SwapHistoryProps) => {
           <Button
             size="sm"
             onClick={handleRefresh}
-            isLoading={isRefreshing}
+            loading={isRefreshing}
             loadingText="Refreshing"
             leftIcon={<FaSync />}
             bg="#23DCC8"
@@ -361,7 +361,7 @@ export const SwapHistory = ({ onBackClick }: SwapHistoryProps) => {
         {!isLoading && !error && pendingSwaps.length === 0 && (
           <Card.Root bg="gray.900" borderColor="gray.700">
             <Card.Body p={8}>
-              <VStack spacing={3}>
+              <VStack gap={3}>
                 <Text fontSize="lg" color="gray.400">
                   No swap history found
                 </Text>

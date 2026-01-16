@@ -47,7 +47,7 @@ export const NumberControls: React.FC<NumberControlsProps> = ({
         onClick={onDecrement}
         aria-label="Decrease value"
         icon={<FaChevronDown size={12} />}
-        isDisabled={!canDecrement}
+        disabled={!canDecrement}
       />
     </VStack>
   );

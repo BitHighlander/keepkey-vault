@@ -47,7 +47,7 @@ export const SwapQuote = ({ quote, isLoading, error, formatTime }: SwapQuoteProp
         borderWidth="1px"
         borderColor="rgba(35, 220, 200, 0.2)"
       >
-        <VStack spacing={2} align="stretch">
+        <VStack gap={2} align="stretch">
           {/* Network Gas Fee */}
           {networkFee > 0 && (
             <HStack justify="space-between">

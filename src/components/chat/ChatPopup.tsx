@@ -466,7 +466,7 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
               color="white"
               _hover={{ bg: theme.blueHover }}
               disabled={isProcessing || !inputValue.trim()}
-              isLoading={isProcessing}
+              loading={isProcessing}
             >
               Send
             </Button>

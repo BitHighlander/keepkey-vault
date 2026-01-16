@@ -154,7 +154,7 @@ export const FeeSelection: React.FC<FeeSelectionProps> = ({
             transition="all 0.2s ease"
             onClick={() => onFeeSelectionChange(level)}
           >
-            <Stack gap={1.5} align="center" spacing={1}>
+            <Stack gap={1.5} align="center">
               <Text fontSize="sm" fontWeight="bold" lineHeight="1.2">
                 {getFeeLabel(level)}
               </Text>

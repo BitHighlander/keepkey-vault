@@ -1,5 +1,5 @@
 import { BaseReportGenerator } from './BaseReportGenerator';
-import { ReportData, ReportOptions, CosmosAccountData } from './types';
+import { ReportData, ReportOptions, CosmosAccountData, ReportSection } from './types';
 
 export class CosmosReportGenerator extends BaseReportGenerator {
   
@@ -37,7 +37,7 @@ export class CosmosReportGenerator extends BaseReportGenerator {
     }
 
     // Create report sections
-    const sections = [
+    const sections: ReportSection[] = [
       {
         title: 'Account Overview',
         type: 'table' as const,

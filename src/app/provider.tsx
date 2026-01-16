@@ -3,6 +3,32 @@
 'use client'
 
 // ============================================================================
+// Console Filter: Suppress noisy Fast Refresh logs
+// ============================================================================
+if (typeof window !== 'undefined') {
+  const shouldFilterMessage = (args: any[]) => {
+    return args.some(arg => {
+      const message = arg?.toString() || '';
+      return message.includes('[Fast Refresh]');
+    });
+  };
+
+  const originalLog = console.log;
+  const originalInfo = console.info;
+
+  console.log = (...args: any[]) => {
+    if (shouldFilterMessage(args)) return;
+    originalLog.apply(console, args);
+  };
+
+  console.info = (...args: any[]) => {
+    if (shouldFilterMessage(args)) return;
+    originalInfo.apply(console, args);
+  };
+}
+// ============================================================================
+
+// ============================================================================
 // CRITICAL DIAGNOSTIC: Verify console works and file loads
 // ============================================================================
 console.log('========================================');
@@ -14,7 +40,6 @@ import React from 'react';
 import { useEffect, useState } from 'react'
 import { SDK } from '@pioneer-platform/pioneer-sdk'
 import { availableChainsByWallet, getChainEnumValue, WalletOption } from '@pioneer-platform/pioneer-types'
-// @ts-expect-error
 import { caipToNetworkId, ChainToNetworkId } from '@pioneer-platform/pioneer-caip'
 import { getPaths } from '@pioneer-platform/pioneer-coins'
 import { AppProvider } from '@/components/providers/pioneer'
@@ -339,7 +364,7 @@ export function Provider({ children }: ProviderProps) {
         });
 
         // // Filter out any unsupported networks that cause getCharts errors
-        const unsupportedNetworks = [
+        const unsupportedNetworks: string[] = [
           // 'eip155:100', // Gnosis/xDAI
           // 'eip155:250', // Fantom
           // 'eip155:534352', // Scroll
@@ -669,7 +694,6 @@ export function Provider({ children }: ProviderProps) {
             errorStack: initError.stack,
             currentPhase: initPhase,
             hasPioneer: !!appInit.pioneer,
-            hasClient: !!appInit.client,
             hasSpec: !!appInit.spec,
             walletCount: appInit.wallets?.length || 0,
             pubkeyCount: appInit.pubkeys?.length || 0,
@@ -1052,7 +1076,6 @@ export function Provider({ children }: ProviderProps) {
           console.error('[INIT] SDK state when events missing:', {
             status: appInit.status,
             hasPioneer: !!appInit.pioneer,
-            hasClient: !!appInit.client,
             hasSpec: !!appInit.spec,
             pubkeyCount: appInit.pubkeys?.length || 0,
             balanceCount: appInit.balances?.length || 0,

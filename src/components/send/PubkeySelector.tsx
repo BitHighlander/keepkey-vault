@@ -59,9 +59,11 @@ export const PubkeySelector: React.FC<PubkeySelectorProps> = ({
           borderColor={theme.border}
           _hover={{ bg: theme.border, color: "white" }}
           onClick={onToggleAdvanced}
-          rightIcon={showAdvanced ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
         >
           Advanced
+          <Box ml={2}>
+            {showAdvanced ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
+          </Box>
         </Button>
       </Flex>
 

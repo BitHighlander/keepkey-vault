@@ -228,6 +228,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                 {explorerLink && (
                   <Box
                     as="a"
+                    // @ts-ignore - Chakra UI v3 polymorphic typing issue
                     href={explorerLink}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -789,6 +790,7 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
                         {transaction.swapMetadata.integration === 'thorchain' && (
                           <Box
                             as="a"
+                            // @ts-ignore - Chakra UI v3 polymorphic typing issue
                             href={`https://viewblock.io/thorchain/tx/${transaction.swapMetadata.outboundTxHash}`}
                             target="_blank"
                             rel="noopener noreferrer"

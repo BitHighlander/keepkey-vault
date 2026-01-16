@@ -6,22 +6,24 @@
  * to the default paths.
  */
 
+import type { ScriptType, CurveType, PubKeyType } from '@pioneer-platform/pioneer-coins';
+
 const CUSTOM_PATHS_KEY = 'keepkey-custom-paths';
 
 export interface CustomPath {
   note: string;
-  type: string;
+  type: PubKeyType;
   addressNList: number[];
   addressNListMaster: number[];
-  curve: string;
-  script_type: string;
+  curve: CurveType;
+  script_type: ScriptType;
   showDisplay: boolean;
   networks: string[];
   // Optional fields
   blockchain?: string;
   symbol?: string;
   symbolSwapKit?: string;
-  available_scripts_types?: string[];
+  available_scripts_types?: ScriptType[];
   // Metadata
   createdAt: number; // Timestamp when path was added
   id: string; // Unique identifier

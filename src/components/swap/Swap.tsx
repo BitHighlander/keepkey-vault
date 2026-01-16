@@ -2426,7 +2426,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       {isLoadingSwapAssets && (
         <Container maxW="container.md" py={8}>
           <Box textAlign="center" py={12}>
-            <Spinner size="xl" color="blue.500" thickness="4px" />
             <Text mt={4} color="gray.400">Loading swap assets...</Text>
           </Box>
         </Container>
@@ -2694,7 +2693,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         setMemoValid(null);
                       }}
                       flex={1}
-                      isDisabled={isVerifyingOnDevice}
+                      disabled={isVerifyingOnDevice}
                     >
                       Cancel
                     </Button>
@@ -2715,7 +2714,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         }
                       }}
                       flex={1}
-                      isDisabled={memoValid === false || isVerifyingOnDevice}
+                      disabled={memoValid === false || isVerifyingOnDevice}
                     >
                       {console.log('🔘 Button rendering:', { memoValid, vaultVerified, isVerifyingOnDevice })}
                       Proceed with Swap
@@ -2813,7 +2812,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     boxShadow="0 0 20px rgba(59, 130, 246, 0.5)"
                   >
                     <VStack gap={3}>
-                      <Spinner size="lg" color="blue.500" thickness="4px" />
                       <Text fontSize="lg" fontWeight="bold" color="white">
                         Confirm on your KeepKey device!
                       </Text>
@@ -2908,7 +2906,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   boxShadow="0 0 20px rgba(59, 130, 246, 0.5)"
                 >
                   <VStack gap={3}>
-                    <Spinner size="lg" color="blue.500" thickness="4px" />
                     <Text fontSize="lg" fontWeight="bold" color="white">
                       Look at your KeepKey device!
                     </Text>
@@ -3014,8 +3011,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     <Spinner
                       size="xl"
                       color="blue.500"
-                      thickness="3px"
-                      speed="0.8s"
                     />
                     <Box
                       position="absolute"
@@ -3084,8 +3079,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <VStack py={20} gap={6}>
                         <Box position="relative">
                           <Spinner
-                            thickness="4px"
-                            speed="0.8s"
                             emptyColor="gray.700"
                             color="#23DCC8"
                             size="xl"
@@ -3241,7 +3234,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     {/* Quote Display */}
                     <SwapQuote
                       quote={quote}
-                      isLoading={isLoading}
+                      loading={isLoading}
                       error={error}
                     />
 
@@ -3253,13 +3246,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       _hover={{ bg: '#1FC4B3' }}
                       _active={{ bg: '#1AAB9B' }}
                       onClick={handlePrepareSwap}
-                      isLoading={isLoadingQuote}
+                      loading={isLoadingQuote}
                       width="full"
                       height="48px"
                       borderRadius="xl"
                       fontWeight="bold"
                       mt={2}
-                      isDisabled={
+                      disabled={
                         !inputAmount ||
                         parseFloat(inputAmount) <= 0 ||
                         app?.assetContext?.caip === app?.outboundAssetContext?.caip ||
@@ -3305,7 +3298,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     quote={quote}
                     onConfirm={executeSwap}
                     onCancel={() => setConfirmMode(false)}
-                    isLoading={isLoading}
+                    loading={isLoading}
                     inputUsdValue={inputUSDValue || (inputAmount && app?.assetContext?.priceUsd ? 
                       (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) : 
                       undefined)}

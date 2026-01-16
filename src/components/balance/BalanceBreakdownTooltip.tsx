@@ -6,10 +6,9 @@ import {
   Text,
   VStack,
   HStack,
-  Tooltip,
   Icon,
-  useColorModeValue,
 } from '@chakra-ui/react';
+import { Tooltip } from '@/components/ui/tooltip';
 import { FaInfoCircle } from 'react-icons/fa';
 import { 
   BalanceDetail, 
@@ -78,7 +77,7 @@ export const BalanceBreakdownTooltip: React.FC<BalanceBreakdownTooltipProps> = (
       minWidth="280px"
       boxShadow="xl"
     >
-      <VStack align="stretch" spacing={2}>
+      <VStack align="stretch" gap={2}>
         <HStack justify="space-between" mb={1}>
           <Text fontSize="sm" fontWeight="bold" color={theme.gold}>
             Balance Breakdown
@@ -97,9 +96,9 @@ export const BalanceBreakdownTooltip: React.FC<BalanceBreakdownTooltipProps> = (
             bg={index % 2 === 0 ? 'transparent' : 'whiteAlpha.50'}
             borderRadius="sm"
           >
-            <VStack align="stretch" spacing={1}>
+            <VStack align="stretch" gap={1}>
               <HStack justify="space-between">
-                <HStack spacing={1}>
+                <HStack gap={1}>
                   <Text fontSize="xs">
                     {getAddressTypeIcon(balance.addressType)}
                   </Text>
@@ -146,15 +145,12 @@ export const BalanceBreakdownTooltip: React.FC<BalanceBreakdownTooltipProps> = (
 
   return (
     <Tooltip
-      label={tooltipContent}
-      placement="bottom-start"
-      hasArrow
-      arrowSize={8}
-      isOpen={isVisible}
-      bg="transparent"
-      p={0}
-      gutter={8}
+      content={tooltipContent}
+      positioning={{ placement: "bottom-start", gutter: 8 }}
+      showArrow
+      open={isVisible}
       closeOnClick={false}
+      contentProps={{ bg: "transparent", p: 0 }}
     >
       <Box display="inline-block" position="relative">
         {children}

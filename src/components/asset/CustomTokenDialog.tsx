@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { InputGroup } from '@/components/ui/input-group';
 import { FaSearch, FaPlus, FaTimes, FaCheck, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+// @ts-expect-error - No type definitions available for pioneer-discovery
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { CustomToken } from '@/hooks/useCustomTokens';
@@ -589,7 +590,7 @@ export const CustomTokenDialog = ({
               <HStack gap={3}>
                 <Button
                   onClick={handleRescan}
-                  isDisabled={isScanning}
+                  disabled={isScanning}
                   flex={1}
                   bg="rgba(35, 220, 200, 0.1)"
                   color="#23DCC8"
@@ -751,7 +752,7 @@ export const CustomTokenDialog = ({
                         fontWeight="bold"
                         color={isAdded ? '#23DCC8' : 'white'}
                         textAlign="center"
-                        noOfLines={1}
+                        lineClamp={1}
                         width="full"
                       >
                         {token.symbol}
@@ -780,7 +781,7 @@ export const CustomTokenDialog = ({
                       color="gray.500"
                       textAlign="center"
                       mt={1}
-                      noOfLines={1}
+                      lineClamp={1}
                       width="full"
                     >
                       {token.name}
@@ -804,7 +805,7 @@ export const CustomTokenDialog = ({
                         },
                       }}
                     >
-                      <Spinner size="xl" color="#23DCC8" thickness="4px" />
+                      <Spinner size="xl" color="#23DCC8" />
                     </Box>
                     <VStack gap={2}>
                       <Text color="#23DCC8" fontSize="lg" fontWeight="bold">
@@ -872,7 +873,7 @@ export const CustomTokenDialog = ({
                 <Button
                   size="sm"
                   onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-                  isDisabled={currentPage === 0}
+                  disabled={currentPage === 0}
                   bg="rgba(30, 30, 30, 0.6)"
                   color="white"
                   _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#23DCC8' }}
@@ -887,7 +888,7 @@ export const CustomTokenDialog = ({
                 <Button
                   size="sm"
                   onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
-                  isDisabled={currentPage === totalPages - 1}
+                  disabled={currentPage === totalPages - 1}
                   bg="rgba(30, 30, 30, 0.6)"
                   color="white"
                   _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#23DCC8' }}

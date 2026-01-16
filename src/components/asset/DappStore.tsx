@@ -202,7 +202,7 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
                         fontWeight="medium"
                         color="white"
                         textAlign="center"
-                        noOfLines={2}
+                        lineClamp={2}
                       >
                         {dapp.name}
                       </Text>
@@ -217,16 +217,17 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
               <Flex justify="center" align="center" gap={4}>
                 <IconButton
                   aria-label="Previous page"
-                  icon={<FaChevronLeft />}
                   size="sm"
                   variant="ghost"
                   color={theme.gold}
-                  isDisabled={currentPage === 0}
+                  disabled={currentPage === 0}
                   onClick={handlePrevPage}
                   _hover={{
                     bg: 'rgba(255, 215, 0, 0.1)',
                   }}
-                />
+                >
+                  <FaChevronLeft />
+                </IconButton>
 
                 <HStack gap={2}>
                   {Array.from({ length: totalPages }, (_, i) => (
@@ -248,16 +249,17 @@ export const DappStore = ({ networkId }: DappStoreProps) => {
 
                 <IconButton
                   aria-label="Next page"
-                  icon={<FaChevronRight />}
                   size="sm"
                   variant="ghost"
                   color={theme.gold}
-                  isDisabled={currentPage === totalPages - 1}
+                  disabled={currentPage === totalPages - 1}
                   onClick={handleNextPage}
                   _hover={{
                     bg: 'rgba(255, 215, 0, 0.1)',
                   }}
-                />
+                >
+                  <FaChevronRight />
+                </IconButton>
               </Flex>
             )}
           </>

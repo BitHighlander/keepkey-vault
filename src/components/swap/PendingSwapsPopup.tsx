@@ -164,7 +164,7 @@ const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({
     >
       {/* Asset Pair Header */}
       <HStack justify="space-between" mb={2}>
-        <HStack spacing={2}>
+        <HStack gap={2}>
           <AssetIcon
             src={swap.sellAsset.icon}
             caip={swap.sellAsset.caip}
@@ -187,7 +187,7 @@ const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({
       </HStack>
 
       {/* Amounts and Time */}
-      <VStack align="start" spacing={1} fontSize="xs" color="gray.400">
+      <VStack align="start" gap={1} fontSize="xs" color="gray.400">
         <Text>
           {formatAmount(swap.sellAsset.amount)} {swap.sellAsset.symbol} →{' '}
           {formatAmount(swap.buyAsset.amount)} {swap.buyAsset.symbol}
@@ -496,7 +496,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
               transition="all 0.2s"
             >
               {hasActiveSwaps ? (
-                <Spinner size="md" color="white" thickness="3px" />
+                <Spinner size="md" color="white" />
               ) : (
                 <Text fontSize="2xl" fontWeight="bold">⚡</Text>
               )}
@@ -555,12 +555,12 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
               </Text>
               <Badge colorScheme="teal">{activeSwaps.length}</Badge>
             </HStack>
-            <HStack spacing={2}>
+            <HStack gap={2}>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={handleRefresh}
-                isLoading={isRefreshing}
+                loading={isRefreshing}
                 _hover={{ color: theme.teal }}
               >
                 🔄
@@ -583,7 +583,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
             p={4}
             gap={3}
             align="stretch"
-            sx={{
+            css={{
               '&::-webkit-scrollbar': {
                 width: '8px',
               },

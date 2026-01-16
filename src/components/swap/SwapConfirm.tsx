@@ -135,9 +135,9 @@ export const SwapConfirm = ({
           borderRadius="xl"
           fontSize="lg"
           fontWeight="bold"
-          isLoading={isLoading}
+          loading={isLoading}
           loadingText="Check your KeepKey device..."
-          isDisabled={isLoading}
+          disabled={isLoading}
           spinnerPlacement="start"
         >
           Confirm Swap
@@ -151,7 +151,7 @@ export const SwapConfirm = ({
           width="full"
           height="48px"
           fontSize="md"
-          isDisabled={isLoading}
+          disabled={isLoading}
         >
           Cancel
         </Button>
