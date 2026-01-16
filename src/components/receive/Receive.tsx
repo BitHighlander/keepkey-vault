@@ -111,20 +111,33 @@ export function Receive({ onBackClick }: ReceiveProps) {
   useEffect(() => {
     // Skip if no asset context
     if (!assetContext) return;
-    
+
     setLoading(true);
-    
+
     try {
       const availablePubkeys = (assetContext.pubkeys || []) as Pubkey[];
       //console.log('📊 [Receive] Available pubkeys:', availablePubkeys);
-      
+
+      // Reset selectedPubkey if the asset/network has changed
+      // This ensures we initialize for the new asset while preserving selection within same asset
+      if (selectedPubkey && selectedPubkey.networks &&
+          selectedPubkey.networks[0] !== assetContext.networkId) {
+        console.log('🔄 [Receive] Asset changed, resetting pubkey selection');
+        setSelectedPubkey(null);
+        // Return early, let the effect re-run with null selectedPubkey
+        setLoading(false);
+        return;
+      }
+
       // Set initial pubkey but DON'T set address or generate QR until verified
-      if (availablePubkeys.length > 0) {
+      // CRITICAL: Only initialize if selectedPubkey is NOT already set by user
+      // This prevents overwriting user selections when assetContext updates
+      if (availablePubkeys.length > 0 && !selectedPubkey) {
         // Use first pubkey (dropdown sorting already handles priority)
         // This avoids hardcoding and works for all chains
         const initialPubkey = availablePubkeys[0];
 
-        console.log('🔐 [Receive] Using initial pubkey:', {
+        console.log('🔐 [Receive] Initializing with first pubkey:', {
           note: initialPubkey.note,
           pathMaster: initialPubkey.pathMaster,
           scriptType: initialPubkey.scriptType
@@ -132,7 +145,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
 
         setSelectedPubkey(initialPubkey);
         // DO NOT set address or generate QR code until verified on device!
-        
+
         // Get initial indices for the first pubkey
         if (pioneer.api) {
           setLoadingIndices(true);
@@ -162,13 +175,13 @@ export function Receive({ onBackClick }: ReceiveProps) {
           setAddressIndices({ changeIndex: 0, receiveIndex: 0 });
         }
       }
-      
+
       setLoading(false);
     } catch (error) {
       console.error('❌ [Receive] Error initializing pubkeys:', error);
       setLoading(false);
     }
-  }, [assetContext]);
+  }, [assetContext, selectedPubkey]);
 
   // Handle pubkey selection change - DO NOT show address yet!
   const handlePubkeyChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -257,9 +270,9 @@ export function Receive({ onBackClick }: ReceiveProps) {
       setViewingOnDevice(true);
       console.log('👁️ [Receive] Viewing on device for verification...');
 
-      // CRITICAL: Use pubkeyContext from Pioneer SDK instead of React state
-      // This ensures we're using the most recently set context
-      const currentPubkeyContext = app?.pubkeyContext || app?.keepKeySdk?.pubkeyContext || selectedPubkey;
+      // CRITICAL: Use selectedPubkey from React state (what user selected in dropdown)
+      // Pioneer SDK's pubkeyContext can be stale due to auto-set logic in setAssetContext
+      const currentPubkeyContext = selectedPubkey || app?.pubkeyContext || app?.keepKeySdk?.pubkeyContext;
 
       console.log('🔑 [Receive] Current pubkey context:', currentPubkeyContext);
       console.log('📊 [Receive] Using indices - Change:', addressIndices?.changeIndex, 'Receive:', addressIndices?.receiveIndex);
