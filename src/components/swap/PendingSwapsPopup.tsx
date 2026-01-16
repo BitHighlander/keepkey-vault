@@ -402,8 +402,13 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
       // Clear signing swaps (transition to real pending swap)
       setSigningSwaps([]);
 
-      // Don't auto-open - only open when user clicks
-      // setIsOpen(true);
+      // Auto-reopen dialog after broadcast (bridge event gap)
+      setTimeout(() => {
+        console.log('🔄 Auto-reopening swap dialog after broadcast');
+        window.dispatchEvent(new CustomEvent('swap:reopen', {
+          detail: event.detail
+        }));
+      }, 500);
 
       // Trigger pulse animation
       setHasNewSwaps(true);

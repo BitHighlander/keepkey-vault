@@ -530,141 +530,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
       position="relative"
       pb={8}
     >
-      {/* Verification Modal Overlay */}
-      {!addressVerified && (
-        <Box
-          position="fixed"
-          top={0}
-          left={0}
-          right={0}
-          bottom={0}
-          bg="rgba(0, 0, 0, 0.9)"
-          backdropFilter="blur(10px)"
-          zIndex={200}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          p={4}
-        >
-          <MotionBox
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 25 }}
-            bg="rgba(17, 17, 17, 0.95)"
-            borderRadius="24px"
-            borderWidth="1px"
-            borderColor="rgba(255, 215, 0, 0.3)"
-            p={8}
-            maxW="440px"
-            width="100%"
-            boxShadow="0 20px 60px rgba(0, 0, 0, 0.8), 0 0 80px rgba(255, 215, 0, 0.1)"
-            backdropFilter="blur(20px)"
-          >
-            <VStack gap={6}>
-              {/* Icon with glow effect */}
-              <Box position="relative">
-                <Box
-                  fontSize="64px"
-                  lineHeight="1"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                >
-                  🔐
-                </Box>
-                <Box
-                  position="absolute"
-                  top="50%"
-                  left="50%"
-                  transform="translate(-50%, -50%)"
-                  width="80px"
-                  height="80px"
-                  borderRadius="full"
-                  bg="radial-gradient(circle, rgba(255, 215, 0, 0.2) 0%, transparent 70%)"
-                  animation={`${pulseRing} 3s ease-in-out infinite`}
-                />
-              </Box>
-              
-              {/* Title */}
-              <Text 
-                color={theme.gold} 
-                fontSize="24px" 
-                fontWeight="bold"
-                textAlign="center"
-                letterSpacing="-0.02em"
-              >
-                Verify Address on Device
-              </Text>
-              
-              {/* Instructions */}
-              <VStack gap={4} width="100%">
-                <Text color="gray.300" fontSize="15px" textAlign="center" lineHeight="1.6">
-                  To ensure security, you must verify the receive address on your KeepKey device before receiving funds.
-                </Text>
-                
-                <Box 
-                  bg="rgba(255, 69, 0, 0.08)" 
-                  borderRadius="12px" 
-                  p={4} 
-                  borderWidth="1px" 
-                  borderColor="rgba(255, 69, 0, 0.2)"
-                  width="100%"
-                >
-                  <HStack gap={3} align="flex-start">
-                    <Text fontSize="20px" flexShrink={0}>⚠️</Text>
-                    <Text color="orange.300" fontSize="13px" fontWeight="medium" lineHeight="1.5">
-                      Never receive funds without verifying the address on your hardware wallet. This protects you from malware and phishing attacks.
-                    </Text>
-                  </HStack>
-                </Box>
-              </VStack>
-              
-              {/* CTA Button */}
-              <MotionBox
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                width="100%"
-              >
-                <Button
-                  onClick={handleViewOnDevice}
-                  loading={viewingOnDevice}
-                  loadingText="Verifying on Device..."
-                  bg="linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"
-                  color="black"
-                  _hover={{
-                    bg: "linear-gradient(135deg, #FFE135 0%, #FFB347 100%)",
-                    transform: "translateY(-1px)",
-                    boxShadow: "0 8px 25px rgba(255, 215, 0, 0.35)"
-                  }}
-                  _active={{
-                    transform: "translateY(0)",
-                    boxShadow: "0 4px 15px rgba(255, 215, 0, 0.25)"
-                  }}
-                  size="lg"
-                  width="100%"
-                  fontWeight="bold"
-                  height="52px"
-                  fontSize="16px"
-                  disabled={!selectedPubkey}
-                  boxShadow="0 4px 20px rgba(255, 215, 0, 0.25)"
-                  transition="all 0.2s ease"
-                >
-                  <FaEye style={{ marginRight: '8px' }} />
-                  View on Device
-                </Button>
-              </MotionBox>
-              
-              {/* Disabled state message */}
-              {!selectedPubkey && (
-                <Text color="gray.500" fontSize="12px" textAlign="center" mt={-2}>
-                  Select an address type above to continue
-                </Text>
-              )}
-            </VStack>
-          </MotionBox>
-        </Box>
-      )}
-
       {/* Main Content Container */}
       <Box>
         {/* Content Section */}
@@ -940,6 +805,32 @@ export function Receive({ onBackClick }: ReceiveProps) {
                     Address will appear here after verification
                   </Text>
                 </VStack>
+              </Box>
+            )}
+
+            {/* Security Warning - Show before verification */}
+            {!addressVerified && (
+              <Box
+                mt={6}
+                bg="rgba(255, 69, 0, 0.08)"
+                borderRadius="12px"
+                p={4}
+                borderWidth="1px"
+                borderColor="rgba(255, 69, 0, 0.2)"
+                width="100%"
+                maxW="sm"
+              >
+                <HStack gap={3} align="flex-start">
+                  <Text fontSize="20px" flexShrink={0}>🛡️</Text>
+                  <VStack align="flex-start" gap={1} flex={1}>
+                    <Text color="orange.300" fontSize="sm" fontWeight="semibold">
+                      Security Verification Required
+                    </Text>
+                    <Text color="orange.200" fontSize="xs" lineHeight="1.5">
+                      Always verify the address on your KeepKey device before receiving funds. This protects you from malware and phishing attacks.
+                    </Text>
+                  </VStack>
+                </HStack>
               </Box>
             )}
 
