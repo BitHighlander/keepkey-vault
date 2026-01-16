@@ -6,12 +6,12 @@ import {
   HStack,
   VStack,
   Text,
-  Progress,
   Circle,
-  Image
+  Image,
+  Spinner,
+  Progress
 } from '@chakra-ui/react';
 import { FaCheckCircle, FaClock } from 'react-icons/fa';
-import { Spinner } from '@chakra-ui/react';
 
 interface StageIndicatorProps {
   stage: 1 | 2 | 3;
@@ -109,14 +109,11 @@ export const StageIndicator = ({
     return (
       <VStack align="flex-start" gap={2} width="full">
         <HStack gap={2} width="full">
-          <Progress
-            value={percentage}
-            size="sm"
-            width="full"
-            colorScheme={isComplete ? 'green' : 'blue'}
-            borderRadius="full"
-            bg="gray.700"
-          />
+          <Progress.Root value={percentage} size="sm" width="full" colorPalette={isComplete ? 'green' : 'blue'}>
+            <Progress.Track bg="gray.700" borderRadius="full">
+              <Progress.Range />
+            </Progress.Track>
+          </Progress.Root>
           <Text fontSize="sm" color="gray.400" whiteSpace="nowrap" minWidth="80px">
             {confirmations}/{requiredConfirmations}
           </Text>

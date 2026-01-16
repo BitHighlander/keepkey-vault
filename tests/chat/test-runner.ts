@@ -503,4 +503,5 @@ Return JSON with: {"intent": "...", "functions": [...], "content": "..."}`;
 }
 
 // Export for use in other files
-export { TestRunner, TestCase, TestResult };
+export { TestRunner };
+export type { TestCase, TestResult };

@@ -14,6 +14,7 @@ import { FaExternalLinkAlt, FaTimes } from 'react-icons/fa';
 import Confetti from 'react-confetti';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { THORCHAIN_TRACKER_URL, MIDGARD_URL } from '@/config/external-trackers';
+// @ts-expect-error - pioneer-discovery doesn't have TypeScript declarations
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 
 // Import sub-components

@@ -163,8 +163,8 @@ export const ViewOnlyBanner: React.FC<ViewOnlyBannerProps> = ({
               bg={theme.gold}
               _hover={{ bg: theme.goldHover }}
               onClick={onConnectDevice}
-              leftIcon={<FaPlug />}
             >
+              <FaPlug style={{ marginRight: '8px' }} />
               Connect Device
             </Button>
           )}

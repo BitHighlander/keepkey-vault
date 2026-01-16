@@ -422,7 +422,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               master: selectedPubkey.master,
               pubkey: selectedPubkey.pubkey,
               note: selectedPubkey.note,
-              caip: selectedPubkey.caip,
               availableBalances: app?.balances?.length || 0
             });
 
@@ -879,7 +878,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Helper: Get native asset info for a network (similar to Asset.tsx)
   const getNativeAssetInfo = (networkId: string, balances?: any[]) => {
     try {
-      // @ts-expect-error - Pioneer CAIP utilities
       const { networkIdToCaip } = require('@pioneer-platform/pioneer-caip');
       // Get the native CAIP using Pioneer's utility
       const nativeCaip = networkIdToCaip(networkId);
@@ -1549,7 +1547,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         selectedFeeLevel,
         feeLevel: sendPayload.feeLevel,
         customFeeOption,
-        customFee: sendPayload.customFee,
         feeOptions,
         normalizedFees
       });
@@ -1562,7 +1559,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.log('  - amountType:', typeof sendPayload.amount);
       console.log('  - amountIsNaN:', isNaN(parseFloat(sendPayload.amount)));
       console.log('  - feeLevel:', sendPayload.feeLevel);
-      console.log('  - customFee:', sendPayload.customFee);
       console.log('  - isMax:', sendPayload.isMax);
       console.log('  - assetContext.balance:', assetContext?.balance);
       console.log('  - Full payload:', JSON.stringify(sendPayload, null, 2));
@@ -2361,7 +2357,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <AssetIcon
                   src={assetContext.icon || assetContext.image || ''}
                   symbol={assetContext.symbol}
-                  size="44px"
+                  alt={assetContext.name || assetContext.symbol || 'Asset'}
+                  boxSize="44px"
                 />
               </Box>
 
@@ -2493,16 +2490,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   </Text>
                   <IconButton
                     aria-label="Copy transaction hash"
-                    icon={hasCopied ? <Icon as={FaCheck} /> : <Icon as={FaCopy} />}
                     size="sm"
                     onClick={copyToClipboard}
                     variant="ghost"
                     color={hasCopied ? 'green.400' : 'gray.400'}
-                  />
+                  >
+                    {hasCopied ? <Icon as={FaCheck} /> : <Icon as={FaCopy} />}
+                  </IconButton>
                   {assetContext?.explorerTxLink && (
                     <IconButton
                       aria-label="View on explorer"
-                      icon={<Icon as={FaExternalLinkAlt} />}
                       size="sm"
                       onClick={() => {
                         const url = `${assetContext.explorerTxLink}${txHash}`;
@@ -2510,7 +2507,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       }}
                       variant="ghost"
                       color="gray.400"
-                    />
+                    >
+                      <Icon as={FaExternalLinkAlt} />
+                    </IconButton>
                   )}
                 </Flex>
               </Box>
@@ -3007,7 +3006,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box
                 width="100%"
                 bg={theme.cardBg}
-                borderRadius={theme.borderAltRadius}
+                borderRadius={theme.borderRadius}
                 p={6}
                 borderWidth="1px"
                 borderColor={theme.borderAlt}
@@ -3037,7 +3036,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 <Box
                   width="100%"
                   bg={theme.cardBg}
-                  borderRadius={theme.borderAltRadius}
+                  borderRadius={theme.borderRadius}
                   p={6}
                   borderWidth="1px"
                   borderColor={memoError ? 'red.500' : theme.borderAlt}
@@ -3057,7 +3056,6 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                       p={4}
                       height="56px"
                       fontSize="md"
-                      isInvalid={!!memoError}
                     />
                     {memoError && (
                       <Text color="red.400" fontSize="sm">⚠️ {memoError}</Text>
@@ -3097,7 +3095,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box 
             width="100%" 
             bg={theme.cardBg} 
-            borderRadius={theme.borderAltRadius} 
+            borderRadius={theme.borderRadius} 
             p={theme.formPadding}
             borderWidth="1px"
             borderColor={theme.borderAlt}
@@ -3263,7 +3261,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             <Box
               width="100%"
               bg={theme.cardBg}
-              borderRadius={theme.borderAltRadius}
+              borderRadius={theme.borderRadius}
               p={theme.formPadding}
               borderWidth="2px"
               borderColor={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.500" : theme.borderAlt}
@@ -3310,7 +3308,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box 
                 width="100%" 
                 bg={assetColorLight} 
-                borderRadius={theme.borderAltRadius} 
+                borderRadius={theme.borderRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
                 borderColor={`${assetColor}33`}
@@ -3343,7 +3341,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box 
                 width="100%" 
                 bg={assetColorLight} 
-                borderRadius={theme.borderAltRadius} 
+                borderRadius={theme.borderRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
                 borderColor={`${assetColor}33`}

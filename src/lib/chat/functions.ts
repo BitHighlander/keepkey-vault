@@ -246,7 +246,7 @@ export async function navigateToSend(caip: string | undefined, app: any): Promis
     }
 
     // Encode CAIP for URL
-    const encodedCaip = btoa(targetCaip);
+    const encodedCaip = btoa(targetCaip!);
 
     // Use router for client-side navigation if available
     if (app.navigate) {
@@ -316,7 +316,7 @@ export async function navigateToReceive(caip: string | undefined, app: any): Pro
     }
 
     // Encode CAIP for URL
-    const encodedCaip = btoa(targetCaip);
+    const encodedCaip = btoa(targetCaip!);
 
     // Use router for client-side navigation if available
     if (app.navigate) {
@@ -395,7 +395,7 @@ export async function navigateToSwap(caip: string | undefined, app: any): Promis
     }
 
     // Encode CAIP for URL
-    const encodedCaip = btoa(targetCaip);
+    const encodedCaip = btoa(targetCaip!);
 
     // Use router for client-side navigation if available
     if (app.navigate) {
@@ -844,20 +844,20 @@ export async function getChainCapability(query: string): Promise<FunctionResult>
     if (feature.supported === false) {
       return {
         success: true,
-        message: `❌ No, KeepKey does not support ${query}.\n\n${feature.reason}`,
-        data: { supported: false, feature: featureKey, ...feature }
+        message: `❌ No, KeepKey does not support ${query}.\n\n${(feature as any).reason || (feature as any).details}`,
+        data: { feature: featureKey, ...feature }
       };
     } else if (feature.supported === 'receive_only') {
       return {
         success: true,
-        message: `⚠️ Partial support for ${query}:\n\n${feature.details}`,
-        data: { supported: 'partial', feature: featureKey, ...feature }
+        message: `⚠️ Partial support for ${query}:\n\n${(feature as any).details || (feature as any).reason}`,
+        data: { feature: featureKey, ...feature }
       };
     } else {
       return {
         success: true,
-        message: `✅ Yes, KeepKey supports ${query}!\n\n${feature.details}`,
-        data: { supported: true, feature: featureKey, ...feature }
+        message: `✅ Yes, KeepKey supports ${query}!\n\n${(feature as any).details || (feature as any).reason}`,
+        data: { feature: featureKey, ...feature }
       };
     }
   }

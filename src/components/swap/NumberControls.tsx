@@ -40,15 +40,17 @@ export const NumberControls: React.FC<NumberControlsProps> = ({
         {...buttonStyles}
         onClick={onIncrement}
         aria-label="Increase value"
-        icon={<FaChevronUp size={12} />}
-      />
+      >
+        <FaChevronUp size={12} />
+      </IconButton>
       <IconButton
         {...buttonStyles}
         onClick={onDecrement}
         aria-label="Decrease value"
-        icon={<FaChevronDown size={12} />}
         disabled={!canDecrement}
-      />
+      >
+        <FaChevronDown size={12} />
+      </IconButton>
     </VStack>
   );
 };

@@ -292,10 +292,10 @@ const ChangeControl: React.FC<ChangeControlProps> = ({
                 color={assetColor}
                 borderColor={theme.border}
                 _hover={{ bg: assetColorLight, borderColor: assetColor }}
-                leftIcon={<Icon as={FaEye} />}
                 onClick={() => onViewOnDevice?.(primaryOutput)}
                 disabled={!onViewOnDevice}
               >
+                <Icon as={FaEye} mr={2} />
                 View & Verify on Device
               </Button>
 

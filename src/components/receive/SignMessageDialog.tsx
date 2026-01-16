@@ -113,13 +113,13 @@ export function SignMessageDialog({
     >
       <DialogTrigger asChild>
         <Button
-          leftIcon={<FaPen />}
           variant="outline"
           borderColor={theme.gold}
           color={theme.gold}
           _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
           size="sm"
         >
+          <FaPen style={{ marginRight: '8px' }} />
           Sign Message
         </Button>
       </DialogTrigger>
@@ -149,22 +149,26 @@ export function SignMessageDialog({
                     <Text color="gray.400" fontSize="sm" mb={2}>
                       Select address to sign with:
                     </Text>
-                    <Box
-                      as="select"
+                    <select
                       value={selectedAddress}
                       onChange={(e: any) => setSelectedAddress(e.target.value)}
-                      bg="rgba(0, 0, 0, 0.3)"
-                      borderColor={theme.border}
-                      borderWidth="1px"
-                      borderRadius="md"
-                      color="white"
-                      p={2}
-                      fontSize="sm"
-                      fontFamily="mono"
-                      width="100%"
-                      cursor="pointer"
-                      _hover={{
-                        borderColor: theme.gold
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        borderColor: theme.border,
+                        borderWidth: '1px',
+                        borderRadius: '0.375rem',
+                        color: 'white',
+                        padding: '0.5rem',
+                        fontSize: '0.875rem',
+                        fontFamily: 'monospace',
+                        width: '100%',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = theme.gold;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = theme.border;
                       }}
                     >
                       <option value="" style={{ background: '#000000' }}>
@@ -179,7 +183,7 @@ export function SignMessageDialog({
                           {addr.address} ({addr.path})
                         </option>
                       ))}
-                    </Box>
+                    </select>
                   </Box>
                 )}
 

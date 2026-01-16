@@ -36,7 +36,7 @@ export const AssetSelector = ({
           borderRadius="xl"
           p={2}
           height="auto"
-          justify="space-between"
+          justifyContent="space-between"
           width="full"
           _hover={{ bg: 'gray.700' }}
         >
@@ -130,7 +130,7 @@ export const AssetSelector = ({
         p={2}
         height="auto"
         width="full"
-        justify="flex-start"
+        justifyContent="flex-start"
         borderWidth="1px"
         borderColor="rgba(255, 255, 255, 0.1)"
         _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: 'rgba(35, 220, 200, 0.3)' }}

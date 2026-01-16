@@ -956,7 +956,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   onClick={handleViewOnDevice}
                   loading={viewingOnDevice}
                   loadingText="Verifying on Device..."
-                  leftIcon={<FaEye />}
                   bg={theme.gold}
                   color="black"
                   _hover={{ bg: theme.goldHover }}
@@ -986,7 +985,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   onClick={handleViewOnDevice}
                   loading={viewingOnDevice}
                   loadingText="Viewing on Device..."
-                  leftIcon={<FaEye />}
                   variant="outline"
                   borderColor={theme.gold}
                   color={theme.gold}
@@ -995,6 +993,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                   width="100%"
                   disabled={!selectedPubkey}
                 >
+                  <FaEye style={{ marginRight: '8px' }} />
                   Verify Again
                 </Button>
               </MotionBox>
@@ -1082,7 +1081,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
                             <Text color="gray.400" fontSize="sm" mb={2}>Message Signing</Text>
                             <SignMessageDialog
                               onSignMessage={handleSignMessage}
-                              loading={viewingOnDevice}
+                              isLoading={viewingOnDevice}
                             />
                           </Box>
                         )}

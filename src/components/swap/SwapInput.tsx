@@ -138,14 +138,15 @@ export const SwapInput = ({
                 variant="ghost"
                 onClick={handleToggle}
                 aria-label="Toggle USD/Native"
-                icon={<FaExchangeAlt size={10} />}
                 color={COLORS.gray[400]}
                 _hover={{ bg: COLORS.accentHover, color: COLORS.accent }}
                 height="20px"
                 width="20px"
                 minW="20px"
                 fontSize="xs"
-              />
+              >
+                <FaExchangeAlt size={10} />
+              </IconButton>
             )}
           </HStack>
         </HStack>
@@ -192,7 +193,7 @@ export const SwapInput = ({
               placeholder={localIsUsdMode ? '0.00' : placeholder}
               fontSize="2xl"
               fontWeight="medium"
-              variant="unstyled"
+              variant="flushed"
               type="text"
               inputMode="decimal"
               pattern="[0-9]*"

@@ -87,8 +87,8 @@ export const PubkeySelector: React.FC<PubkeySelectorProps> = ({
             borderColor={assetColor}
             _hover={{ bg: assetColorLight }}
             onClick={onAddPathClick}
-            leftIcon={<FaPlus />}
           >
+            <FaPlus style={{ marginRight: '8px' }} />
             Add Custom Path
           </Button>
         </Box>

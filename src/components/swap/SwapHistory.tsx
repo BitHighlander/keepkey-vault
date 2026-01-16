@@ -28,11 +28,15 @@ interface SwapHistoryProps {
 
 const StatusBadge = ({ status }: { status: PendingSwap['status'] }) => {
   const statusConfig = {
+    signing: { color: 'purple', icon: FaClock, label: 'Signing' },
     pending: { color: 'yellow', icon: FaClock, label: 'Pending' },
     confirming: { color: 'blue', icon: FaClock, label: 'Confirming' },
     completed: { color: 'green', icon: FaCheckCircle, label: 'Completed' },
     failed: { color: 'red', icon: FaExclamationTriangle, label: 'Failed' },
     refunded: { color: 'orange', icon: FaExclamationTriangle, label: 'Refunded' },
+    output_detected: { color: 'teal', icon: FaClock, label: 'Output Detected' },
+    output_confirming: { color: 'cyan', icon: FaClock, label: 'Output Confirming' },
+    output_confirmed: { color: 'green', icon: FaCheckCircle, label: 'Output Confirmed' },
   };
 
   const config = statusConfig[status];
@@ -98,9 +102,10 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
               {/* From Asset */}
               <Box position="relative" width="32px" height="32px">
                 <AssetIcon
-                  assetCaip={swap.sellAsset.caip}
+                  caip={swap.sellAsset.caip}
                   src={getAssetIconUrl(swap.sellAsset.caip)}
-                  size="32px"
+                  boxSize="32px"
+                  alt={swap.sellAsset.symbol}
                 />
               </Box>
               <Text fontWeight="medium" color="white">
@@ -114,9 +119,10 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
               {/* To Asset */}
               <Box position="relative" width="32px" height="32px">
                 <AssetIcon
-                  assetCaip={swap.buyAsset.caip}
+                  caip={swap.buyAsset.caip}
                   src={getAssetIconUrl(swap.buyAsset.caip)}
-                  size="32px"
+                  boxSize="32px"
+                  alt={swap.buyAsset.symbol}
                 />
               </Box>
               <Text fontWeight="medium" color="white">
@@ -223,13 +229,13 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
                       flex={1}
                       wordBreak="break-all"
                     >
-                      {swap.thorchainData.outboundTxHash}
+                      {swap.thorchainData?.outboundTxHash}
                     </Code>
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => window.open(
-                        getExplorerUrl(swap.thorchainData.outboundTxHash!, swap.integration),
+                        getExplorerUrl(swap.thorchainData?.outboundTxHash!, swap.integration),
                         '_blank'
                       )}
                     >
@@ -326,11 +332,11 @@ export const SwapHistory = ({ onBackClick }: SwapHistoryProps) => {
             onClick={handleRefresh}
             loading={isRefreshing}
             loadingText="Refreshing"
-            leftIcon={<FaSync />}
             bg="#23DCC8"
             color="black"
             _hover={{ bg: '#1FC4B3' }}
           >
+            <FaSync style={{ marginRight: '8px' }} />
             Refresh
           </Button>
         </Flex>

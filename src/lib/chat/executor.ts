@@ -62,12 +62,12 @@ async function executeFunction(
         return await fn(parameters.caip, app);
 
       case 'navigateToDashboard':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       // Query functions
       case 'getBalances':
       case 'getNetworks':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       case 'searchAssets':
         return await fn(parameters.query || '', app);
@@ -77,35 +77,35 @@ async function executeFunction(
 
       // Action functions
       case 'refreshPortfolio':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       // Tutorial & Help functions
       case 'startTutorial':
       case 'getPageHelp':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       case 'highlightElement':
       case 'explainElement':
         return await fn(parameters.elementId || parameters.element || '', app);
 
       case 'getProjectInfo':
-        return await fn(parameters.topic || parameters.query || '');
+        return await (fn as (topic: string) => Promise<FunctionResult>)(parameters.topic || parameters.query || '');
 
       // Capability & Intelligence functions
       case 'getChainCapability':
-        return await fn(parameters.query || parameters.chain || '');
+        return await (fn as (chain: string) => Promise<FunctionResult>)(parameters.query || parameters.chain || '');
 
       case 'getCAIPInfo':
         return await fn(parameters.query || parameters.asset || '', app);
 
       case 'getDeviceInfo':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       case 'getVaultStatus':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       case 'getSupportedChains':
-        return await fn(app);
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
 
       // Path Intelligence functions
       case 'getPathsForBlockchain':

@@ -27,7 +27,8 @@ import {
   DialogTitle,
   DialogRoot,
   Code,
-  Badge
+  Badge,
+  Link
 } from '@chakra-ui/react';
 import { FaEye, FaShieldAlt, FaExclamationTriangle, FaExternalLinkAlt, FaExchangeAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
@@ -158,7 +159,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   }, [setActions]);
   
   // Get pending swaps for badge
-  const { pendingSwaps } = usePendingSwaps();
+  const { pendingSwaps, refreshPendingSwaps } = usePendingSwaps();
 
   // Debug app state
   useEffect(() => {
@@ -440,7 +441,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
       if (!asset) {
         console.warn(`getUserBalance: No asset found for CAIP ${caip}`, {
-          availableAssets: availableAssets.map(a => ({ caip: a.caip, symbol: a.symbol }))
+          availableAssets: availableAssets.map((a: any) => ({ caip: a.caip, symbol: a.symbol }))
         });
         return '0';
       }
@@ -578,9 +579,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     // Start with all supported swap assets
     return supportedSwapAssets.map(poolAsset => {
       // Group user balances by CAIP and aggregate
-      const userBalances = availableAssets.filter(a => a.caip === poolAsset.caip);
-      const aggregatedBalance = userBalances.reduce((sum, asset) => sum + asset.balance, 0);
-      const aggregatedBalanceUsd = userBalances.reduce((sum, asset) => sum + asset.balanceUsd, 0);
+      const userBalances = availableAssets.filter((a: any) => a.caip === poolAsset.caip);
+      const aggregatedBalance = userBalances.reduce((sum: number, asset: any) => sum + asset.balance, 0);
+      const aggregatedBalanceUsd = userBalances.reduce((sum: number, asset: any) => sum + asset.balanceUsd, 0);
 
       // Get icon from user's balance or Pioneer SDK assetsMap
       let icon = userBalances[0]?.icon;
@@ -614,7 +615,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     // This ensures we can swap to any asset with an active pool, even with 0 balance
     const allSupportedAssets = supportedSwapAssets.map(poolAsset => {
       // Match by CAIP, not symbol! This keeps ETH mainnet and ETH BNB separate
-      const balance = availableAssets.find(a => a.caip === poolAsset.caip);
+      const balance = availableAssets.find((a: any) => a.caip === poolAsset.caip);
 
       // Get icon from Pioneer SDK assetsMap FIRST, then fallback chain
       // DO NOT use hardcoded icons from thorchain-pools
@@ -670,16 +671,23 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       });
 
       // Try to get user balance data if available
-      const fromAsset = availableAssets.find(a => a.caip === urlPair.from);
-      const toAsset = availableAssets.find(a => a.caip === urlPair.to);
+      const fromAsset = availableAssets.find((a: any) => a.caip === urlPair.from);
+      const toAsset = availableAssets.find((a: any) => a.caip === urlPair.to);
 
       // Set FROM asset - merge pool data with user balance if available
+      // Get icon from user balance or Pioneer SDK assetsMap
+      let fromIcon = fromAsset?.icon;
+      if (!fromIcon && app?.assetsMap) {
+        const assetInfo = app.assetsMap.get(fromPool.caip);
+        fromIcon = assetInfo?.icon;
+      }
+
       app.setAssetContext({
         caip: fromPool.caip,
         networkId: fromPool.networkId || caipToNetworkId(fromPool.caip),
         symbol: fromPool.symbol,
         name: fromPool.name,
-        icon: fromPool.icon,
+        icon: fromIcon || '',
         priceUsd: fromAsset?.priceUsd || 0,
         balance: fromAsset?.balance || 0,
         balanceUsd: fromAsset?.balanceUsd || 0
@@ -733,8 +741,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       }
 
       // Merge pool data with user balance data if available
-      const fromBalanceData = availableAssets.find(a => a.caip === defaultFrom.caip);
-      const toBalanceData = availableAssets.find(a => a.caip === defaultTo.caip);
+      const fromBalanceData = availableAssets.find((a: any) => a.caip === defaultFrom.caip);
+      const toBalanceData = availableAssets.find((a: any) => a.caip === defaultTo.caip);
 
       const fromAsset = {
         ...defaultFrom,
@@ -821,7 +829,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         !inputAmount &&
         availableAssets.length > 0) {
 
-      const fromAsset = availableAssets.find(a => a.caip === app.assetContext.caip);
+      const fromAsset = availableAssets.find((a: any) => a.caip === app.assetContext.caip);
 
       if (fromAsset && fromAsset.balance > 0 && fromAsset.priceUsd > 0) {
         const maxUsdValue = fromAsset.balance * fromAsset.priceUsd;
@@ -896,7 +904,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       console.log(`[SWAP-DEBUG] ⚠️ Same CAIP detected: ${app.assetContext.caip} - auto-selecting different TO asset`);
 
       // Find an alternative asset for "to" by CAIP (prefer native assets)
-      const alternativeAsset = availableAssets.find(a => a.caip !== app.assetContext.caip) ||
+      const alternativeAsset = availableAssets.find((a: any) => a.caip !== app.assetContext.caip) ||
                                supportedSwapAssets.find(a => a.caip !== app.assetContext.caip && a.isNative) ||
                                supportedSwapAssets.find(a => a.caip !== app.assetContext.caip);
 
@@ -1989,10 +1997,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         if (quote?.memo) {
           try {
             console.log('🔍 Validating THORChain memo:', quote.memo);
-            const isValid = validateThorchainSwapMemo(quote.memo);
-            console.log('✅ Memo validation result:', isValid);
+            const validation = validateThorchainSwapMemo(quote.memo) as any;
+            console.log('✅ Memo validation result:', validation);
+            const isValid = validation?.isValid ?? Boolean(validation);
             setMemoValid(isValid);
-            
+
             if (!isValid) {
               throw new Error('Invalid THORChain swap memo - transaction cancelled for safety');
             }
@@ -2018,12 +2027,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setShowDeviceVerificationDialog(false);
 
           // Show progress dialog with fake txid
-          setProgressTxid(fakeTxid);
-          setProgressFromAsset(app?.assetContext);
-          setProgressToAsset(app?.outboundAssetContext);
-          setProgressInputAmount(inputAmount);
-          setProgressOutputAmount(outputAmount);
-          setShowProgress(true);
+          // TODO: Implement progress dialog state
+          // setProgressTxid(fakeTxid);
+          // setProgressFromAsset(app?.assetContext);
+          // setProgressToAsset(app?.outboundAssetContext);
+          // setProgressInputAmount(inputAmount);
+          // setProgressOutputAmount(outputAmount);
+          // setShowProgress(true);
           setConfirmMode(false);
           setPendingSwap(false);
           setVerificationStep('destination');
@@ -2594,24 +2604,22 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         >
                           {vaultAddress}
                         </Code>
-                        <Button
-                          as="a"
-                          href="https://thornode.ninerealms.com/thorchain/inbound_addresses"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          size="sm"
-                          variant="outline"
-                          borderColor="#23DCC8"
-                          color="#23DCC8"
-                          width="full"
-                          leftIcon={<FaExternalLinkAlt />}
-                          _hover={{
-                            bg: 'rgba(35, 220, 200, 0.1)',
-                            borderColor: '#1FC4B3'
-                          }}
-                        >
-                          Verify Vault Address (THORNode)
-                        </Button>
+                        <Link href="https://thornode.ninerealms.com/thorchain/inbound_addresses" target="_blank" rel="noopener noreferrer" width="full">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            borderColor="#23DCC8"
+                            color="#23DCC8"
+                            width="full"
+                            _hover={{
+                              bg: 'rgba(35, 220, 200, 0.1)',
+                              borderColor: '#1FC4B3'
+                            }}
+                          >
+                            <FaExternalLinkAlt style={{ marginRight: '8px' }} />
+                            Verify Vault Address (THORNode)
+                          </Button>
+                        </Link>
                         <Text fontSize="xs" color="gray.400" textAlign="center" width="full">
                           Verify this vault address is official from THORChain
                         </Text>
@@ -2716,7 +2724,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       flex={1}
                       disabled={memoValid === false || isVerifyingOnDevice}
                     >
-                      {console.log('🔘 Button rendering:', { memoValid, vaultVerified, isVerifyingOnDevice })}
                       Proceed with Swap
                     </Button>
                   </HStack>
@@ -2753,7 +2760,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             <HStack justify="space-between" width="full">
                               <Text fontSize="xs" color="gray.400">To:</Text>
                               <HStack gap={1}>
-                                <Text fontSize="xs" fontFamily="mono" color="gray.300" noOfLines={1}>
+                                <Text fontSize="xs" fontFamily="mono" color="gray.300" lineClamp={1}>
                                   {app?.outboundAssetContext?.address ?
                                     `${app.outboundAssetContext.address.slice(0, 8)}...${app.outboundAssetContext.address.slice(-6)}` :
                                     'N/A'}
@@ -2763,7 +2770,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                             {vaultAddress && (
                               <HStack justify="space-between" width="full">
                                 <Text fontSize="xs" color="gray.400">Via Vault:</Text>
-                                <Text fontSize="xs" fontFamily="mono" color="gray.300" noOfLines={1}>
+                                <Text fontSize="xs" fontFamily="mono" color="gray.300" lineClamp={1}>
                                   {vaultAddress.slice(0, 8)}...{vaultAddress.slice(-6)}
                                 </Text>
                               </HStack>
@@ -2888,7 +2895,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   </HStack>
                   <HStack justify="space-between">
                     <Text fontSize="sm" color="gray.400">Address:</Text>
-                    <Text fontSize="xs" fontFamily="mono" color="gray.300" noOfLines={1}>
+                    <Text fontSize="xs" fontFamily="mono" color="gray.300" lineClamp={1}>
                       {app?.outboundAssetContext?.address?.slice(0, 8)}...{app?.outboundAssetContext?.address?.slice(-6)}
                     </Text>
                   </HStack>
@@ -3079,10 +3086,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       <VStack py={20} gap={6}>
                         <Box position="relative">
                           <Spinner
-                            emptyColor="gray.700"
                             color="#23DCC8"
                             size="xl"
-                            boxSize="80px"
                           />
                           <Box
                             position="absolute"
@@ -3234,7 +3239,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     {/* Quote Display */}
                     <SwapQuote
                       quote={quote}
-                      loading={isLoading}
+                      isLoading={isLoading}
                       error={error}
                     />
 
@@ -3256,7 +3261,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         !inputAmount ||
                         parseFloat(inputAmount) <= 0 ||
                         app?.assetContext?.caip === app?.outboundAssetContext?.caip ||
-                        (inputAmount && getUserBalance(app?.assetContext?.caip) && parseFloat(inputAmount) > parseFloat(getUserBalance(app?.assetContext?.caip)))
+                        Boolean(inputAmount && getUserBalance(app?.assetContext?.caip) && parseFloat(inputAmount) > parseFloat(getUserBalance(app?.assetContext?.caip)))
                       }
                       _disabled={{
                         bg: 'gray.700',
@@ -3298,7 +3303,7 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                     quote={quote}
                     onConfirm={executeSwap}
                     onCancel={() => setConfirmMode(false)}
-                    loading={isLoading}
+                    isLoading={isLoading}
                     inputUsdValue={inputUSDValue || (inputAmount && app?.assetContext?.priceUsd ? 
                       (parseFloat(inputAmount) * parseFloat(app.assetContext.priceUsd)).toFixed(2) : 
                       undefined)}

@@ -379,7 +379,7 @@ export const AssetPicker = ({
                         fontWeight="bold"
                         color={isSelected ? '#23DCC8' : 'white'}
                         textAlign="center"
-                        noOfLines={1}
+                        lineClamp={1}
                         width="full"
                       >
                         {asset.symbol}
@@ -410,7 +410,7 @@ export const AssetPicker = ({
                         fontSize="xs"
                         color="gray.400"
                         textAlign="center"
-                        noOfLines={2}
+                        lineClamp={2}
                         width="full"
                         lineHeight="1.3"
                       >

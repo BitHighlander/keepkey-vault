@@ -40,14 +40,15 @@ export function SwapHeader({ fromAsset, toAsset, onClose }: SwapHeaderProps) {
       </HStack>
       <IconButton
         aria-label="Close swap progress"
-        icon={<FaTimes />}
         size="sm"
         variant="ghost"
         onClick={onClose}
         position="absolute"
         right={0}
         top={0}
-      />
+      >
+        <FaTimes />
+      </IconButton>
     </HStack>
   );
 }

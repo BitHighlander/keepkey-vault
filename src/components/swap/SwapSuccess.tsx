@@ -418,7 +418,7 @@ export const SwapSuccess = ({
                   loading={isSendingEmail}
                   loadingText="Sending Email..."
                   borderRadius="lg"
-                  disabled={!userEmail || !!emailError || emailStatus === 'success'}
+                  disabled={!userEmail || !!emailError}
                   fontSize="sm"
                   fontWeight="semibold"
                 >
@@ -437,7 +437,7 @@ export const SwapSuccess = ({
 
         {/* View on Block Explorer Button - only show if we have a valid explorer link */}
         {blockExplorerLink && (
-          <Link href={blockExplorerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+          <Link href={blockExplorerLink} target="_blank" rel="noopener noreferrer" width="full">
             <Button
               variant="outline"
               borderColor="blue.500"
@@ -454,7 +454,7 @@ export const SwapSuccess = ({
         )}
 
         {/* View Swap Details on Midgard API */}
-        <Link href={midgardApiLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+        <Link href={midgardApiLink} target="_blank" rel="noopener noreferrer" width="full">
           <Button
             variant="outline"
             borderColor="#23DCC8"
@@ -471,7 +471,7 @@ export const SwapSuccess = ({
 
         {/* Track THORChain Swap Button */}
         <VStack gap={2} width="full">
-          <Link href={thorchainTrackerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+          <Link href={thorchainTrackerLink} target="_blank" rel="noopener noreferrer" width="full">
             <Button
               variant="outline"
               borderColor="#23DCC8"

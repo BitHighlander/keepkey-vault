@@ -217,7 +217,7 @@ const SwapCardCompact: React.FC<{ swap: PendingSwap; onClick: () => void }> = ({
             <Box
               h="100%"
               bg={theme.teal}
-              w={`${Math.min(100, (swap.outboundConfirmations / swap.outboundRequiredConfirmations) * 100)}%`}
+              w={`${Math.min(100, ((swap.outboundConfirmations ?? 0) / (swap.outboundRequiredConfirmations ?? 1)) * 100)}%`}
               transition="width 0.3s"
             />
           </Box>
@@ -623,7 +623,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
           <Flex p={3} borderTop="1px solid" borderColor={theme.border} justify="center">
             <Button
               size="sm"
-              variant="link"
+              variant="plain"
               color={theme.teal}
               onClick={() => {
                 // TODO: Navigate to full SwapHistory view

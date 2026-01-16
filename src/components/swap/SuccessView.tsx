@@ -149,7 +149,8 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
       {swapStatus.thorchainData?.outboundTxHash && (
         <Link
           href={`https://runescan.io/tx/${swapStatus.thorchainData.outboundTxHash}`}
-          isExternal
+          target="_blank"
+          rel="noopener noreferrer"
           color="teal.400"
           fontSize="sm"
           display="flex"

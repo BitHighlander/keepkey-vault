@@ -10,13 +10,15 @@ const SCRIPT_TYPES = {
   thorchain: ['thorchain'],
 };
 
+import type { PubKeyType, CurveType, ScriptType } from '@pioneer-platform/pioneer-coins';
+
 export interface PathConfig {
   note: string;
-  type: string;
+  type: PubKeyType;
   addressNList: number[];
   addressNListMaster: number[];
-  curve: string;
-  script_type: string;
+  curve: CurveType;
+  script_type: ScriptType;
   showDisplay: boolean;
   networks: string[];
 }
@@ -92,7 +94,6 @@ export const usePathManager = ({ assetContext, app }: UsePathManagerProps) => {
 
     // Determine purpose based on script type
     let purpose = 44; // BIP44 (Legacy)
-    if (defaultScriptType === 'p2sh-p2wpkh') purpose = 49; // BIP49 (SegWit)
     if (defaultScriptType === 'p2wpkh') purpose = 84; // BIP84 (Native SegWit)
 
     return { purpose, coinType, account, change, address };
@@ -145,7 +146,7 @@ export const usePathManager = ({ assetContext, app }: UsePathManagerProps) => {
         addressNList,
         addressNListMaster: addressNList,
         curve: 'secp256k1',
-        script_type: defaultScriptType,
+        script_type: defaultScriptType as ScriptType,
         showDisplay: false,
         networks,
       };

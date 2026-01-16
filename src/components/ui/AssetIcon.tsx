@@ -292,32 +292,33 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
         pointerEvents: 'none',
       }}
     >
-      <Image
-        key={imageKey}
-        src={currentSrc}
-        alt={alt}
-        boxSize="100%"
-        objectFit="contain"
-        onError={handleError}
-        onLoad={handleLoad}
-        borderRadius="full"
-        position="relative"
-        zIndex={1}
-        filter="drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5))"
-        fallback={
-          <Box
-            boxSize="100%"
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            color={color}
-            position="relative"
-            zIndex={1}
-          >
-            <FaCoins />
-          </Box>
-        }
-      />
+      {showIconFallback || !currentSrc ? (
+        <Box
+          boxSize="100%"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          color={color}
+          position="relative"
+          zIndex={1}
+        >
+          <FaCoins />
+        </Box>
+      ) : (
+        <Image
+          key={imageKey}
+          src={currentSrc}
+          alt={alt}
+          boxSize="100%"
+          objectFit="contain"
+          onError={handleError}
+          onLoad={handleLoad}
+          borderRadius="full"
+          position="relative"
+          zIndex={1}
+          filter="drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5))"
+        />
+      )}
 
       {/* Network Badge Overlay */}
       {showNetworkBadge && networkIconUrl && (
@@ -341,7 +342,6 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
             alt="Network"
             boxSize="100%"
             objectFit="contain"
-            fallback={<Box boxSize="100%" />}
           />
         </Box>
       )}

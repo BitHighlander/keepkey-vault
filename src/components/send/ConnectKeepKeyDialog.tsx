@@ -84,8 +84,8 @@ export const ConnectKeepKeyDialog: React.FC<ConnectKeepKeyDialogProps> = ({ isOp
                 onClick={onBackToDashboard}
                 _hover={{ color: '#00E563' }}
                 alignSelf="flex-start"
-                leftIcon={<FaArrowLeft />}
               >
+                <FaArrowLeft style={{ marginRight: '8px' }} />
                 Go Back to Dashboard
               </Button>
             )}
@@ -176,10 +176,10 @@ export const ConnectKeepKeyDialog: React.FC<ConnectKeepKeyDialogProps> = ({ isOp
                 <Button
                   colorScheme="green"
                   size="lg"
-                  leftIcon={<FaExternalLinkAlt />}
                   onClick={launchKeepKeyDesktop}
                   w="full"
                 >
+                  <FaExternalLinkAlt style={{ marginRight: '8px' }} />
                   Launch KeepKey Desktop
                 </Button>
 
@@ -187,10 +187,10 @@ export const ConnectKeepKeyDialog: React.FC<ConnectKeepKeyDialogProps> = ({ isOp
                   variant="outline"
                   colorScheme="green"
                   size="lg"
-                  leftIcon={<FaSync />}
                   onClick={() => window.location.reload()}
                   w="full"
                 >
+                  <FaSync style={{ marginRight: '8px' }} />
                   Refresh Page
                 </Button>
 
