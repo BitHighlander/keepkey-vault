@@ -1,6 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { theme } from '@/lib/theme';
+import { wooshSound, chachingSound, playSound } from '@/lib/audio';
 import {
   Box,
   Button,
@@ -14,11 +16,12 @@ import {
   Textarea,
   Spinner,
   CloseButton,
+  Icon,
 } from '@chakra-ui/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePioneerContext } from '@/components/providers/pioneer'
 import { FeeSelection, type FeeLevel } from '@/components/FeeSelection'
-import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa'
+import { FaArrowRight, FaPaperPlane, FaTimes, FaWallet, FaExternalLinkAlt, FaCheck, FaCopy, FaPlus, FaChevronDown, FaChevronUp, FaCircle } from 'react-icons/fa'
 import Confetti from 'react-confetti'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import { keyframes } from '@emotion/react'
@@ -36,9 +39,11 @@ import {
 import { AssetHeaderCard } from './AssetHeaderCard'
 import { AssetIcon } from '@/components/ui/AssetIcon'
 import ChangeControl from './ChangeControl'
+import { ConnectKeepKeyDialog } from './ConnectKeepKeyDialog'
 import { enrichPubkeysWithUsageInfo, isUTXONetwork } from '@/utils/utxoAddressUtils'
 import { ReviewTransaction } from './ReviewTransaction'
 import { formatTransactionDetails as formatTxDetails, type NetworkType } from '@/utils/transactionFormatter'
+import { getBlockTimeEstimate, getConfirmationMessage } from '@/utils/blockTime'
 import {
   formatUsd as formatUsdValue,
   usdToNative as convertUsdToNative,
@@ -46,27 +51,6 @@ import {
   isPriceAvailable as checkPriceAvailable,
   calculateFeeInUsd as calcFeeInUsd
 } from '@/utils/currencyConverter'
-
-// Add sound effect imports
-const wooshSound = typeof Audio !== 'undefined' ? new Audio('/sounds/woosh.mp3') : null;
-const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
-
-// Play sound utility function
-const playSound = (sound: HTMLAudioElement | null) => {
-  if (sound) {
-    sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => console.error('Error playing sound:', err));
-  }
-};
-
-// Theme colors - matching our dashboard theme
-const theme = {
-  bg: '#000000',
-  cardBg: '#111111',
-  border: '#3A4A5C',
-  formPadding: '16px', // Added for consistent form padding
-  borderRadius: '12px', // Added for consistent border radius
-}
 
 // Define animation keyframes
 const scale = keyframes`
@@ -160,9 +144,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const { state } = pioneer
   const { app } = state
   const assetContext = app?.assetContext
-  
+
+  // Check if KeepKey is connected (check SDK first, then context)
+  const isKeepKeyConnected = !!(app?.keepKeySdk || app?.context)
+
   // Get the asset color dynamically, with fallback based on asset
   const getAssetColor = () => {
+    // XRP brand color is too dark (#23292F), use white instead
+    if (assetContext?.symbol?.toUpperCase() === 'XRP') {
+      return '#FFFFFF';
+    }
+    
     if (assetContext?.color) return assetContext.color;
     
     // Fallback colors for common assets
@@ -185,6 +177,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [amount, setAmount] = useState<string>('')
   const [recipient, setRecipient] = useState<string>('')
   const [memo, setMemo] = useState<string>('')
+  const [memoError, setMemoError] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(true)
   const [balance, setBalance] = useState<string>('0')
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0)
@@ -206,7 +199,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [isMax, setIsMax] = useState<boolean>(false)
   const [unsignedTx, setUnsignedTx] = useState<any>(null)
   const [signedTx, setSignedTx] = useState<any>(null)
-  const [transactionStep, setTransactionStep] = useState<'review' | 'sign' | 'broadcast' | 'success'>('review')
+  const [transactionStep, setTransactionStep] = useState<'review' | 'sign' | 'broadcast' | 'confirming' | 'success'>('review')
+
+  // Track confirmation progress through Pioneer SDK events
+  const [confirmationStatus, setConfirmationStatus] = useState<{
+    detected: boolean;
+    firstConfirmed: boolean;
+    confirmed: boolean;
+    confirmations: number;
+    detectedAt?: number;
+    firstConfirmedAt?: number;
+    confirmedAt?: number;
+  }>({
+    detected: false,
+    firstConfirmed: false,
+    confirmed: false,
+    confirmations: 0
+  })
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001')
   // Add state for fee in USD
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<string>('0.00')
@@ -222,6 +231,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   const [showRawTxDialog, setShowRawTxDialog] = useState<boolean>(false)
   const [rawTxJson, setRawTxJson] = useState<string>('')
   const [editedRawTxJson, setEditedRawTxJson] = useState<string>('')
+
+  // Step wizard state (1: Recipient, 2: Amount, 3: Fees, 4: Review)
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
 
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
@@ -259,6 +271,44 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Path manager hook for adding custom paths
   const pathManager = usePathManager({ assetContext, app })
 
+  // XRP Destination Tag Validation Function
+  const validateXrpDestinationTag = (tag: string): string => {
+    // Empty is allowed (optional field)
+    if (!tag || tag.trim() === '') {
+      return ''
+    }
+    
+    // Must be numeric only
+    if (!/^\d+$/.test(tag.trim())) {
+      return 'Destination tag must be a number (0-4294967295)'
+    }
+    
+    // Must be in valid range (uint32)
+    const tagNum = parseInt(tag.trim(), 10)
+    if (isNaN(tagNum) || tagNum < 0 || tagNum > 4294967295) {
+      return 'Destination tag must be between 0 and 4294967295'
+    }
+    
+    return '' // Valid
+  }
+
+  // Handle memo change with validation for XRP
+  const handleMemoChange = (value: string) => {
+    setMemo(value)
+    
+    // Validate if this is XRP
+    const isXrp = assetContext?.symbol?.toUpperCase() === 'XRP' || 
+                  assetContext?.networkId?.includes('ripple') ||
+                  assetContext?.caip?.includes('ripple')
+    
+    if (isXrp) {
+      const error = validateXrpDestinationTag(value)
+      setMemoError(error)
+    } else {
+      setMemoError('') // Clear error for non-XRP networks
+    }
+  }
+
   // Calculate total balance - sum all pubkey balances for UTXO chains
   useEffect(() => {
     console.log('🔄 [Send useEffect] Balance calculation triggered', {
@@ -289,10 +339,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         if (isUtxoNetwork && assetContext.pubkeys && assetContext.pubkeys.length > 0) {
           const assetCaip = assetContext.caip || assetContext.networkId;
 
-          // CRITICAL FIX: If a specific pubkey is selected, only show that pubkey's balance
-          // Otherwise, sum all pubkey balances
-          if (selectedPubkey) {
-            console.log('🔍 [Send] Calculating balance for selected UTXO pubkey:', selectedPubkey);
+          // CRITICAL FIX: Balance display logic for UTXO networks
+          // - When advanced tab is HIDDEN (showAdvanced = false): Show TOTAL balance (sum all paths)
+          // - When advanced tab is SHOWN (showAdvanced = true) AND pubkey selected: Show SELECTED path balance only
+          // This allows users to see total balance by default, but choose specific path when sending
+          if (showAdvanced && selectedPubkey) {
+            console.log('🔍 [Send] Advanced mode: Calculating balance for selected UTXO pubkey:', selectedPubkey);
 
             // Find balance for the selected pubkey only
             const pubkeyBalance = app?.balances?.find((b: any) => {
@@ -319,8 +371,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               newBalance = '0';
             }
           } else {
-            // No specific pubkey selected - sum all pubkey balances
-            console.log('Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
+            // Advanced tab hidden OR no specific pubkey selected - sum all pubkey balances
+            console.log('🔍 [Send] Simple mode: Calculating total UTXO balance from all pubkeys:', assetContext.pubkeys);
 
             let totalBalance = 0;
 
@@ -353,7 +405,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             }
 
             newBalance = totalBalance.toFixed(8);
-            console.log('Total UTXO balance calculated:', newBalance);
+            console.log('✅ [Send] Total UTXO balance calculated:', newBalance);
           }
         } else {
           // For non-UTXO chains
@@ -478,9 +530,17 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         
         // Also update fee in USD when asset context changes
         updateFeeInUsd(estimatedFee);
-        
+
         // Fetch fee rates for the current blockchain
-        fetchFeeRates();
+        fetchFeeRates().catch(error => {
+          console.error('Error fetching fee rates:', error);
+          setError(error.message);
+          setShowErrorDialog(true);
+          // Set fees to 0 to prevent transaction submission
+          setFeeOptions({ slow: '0', average: '0', fastest: '0' });
+          setEstimatedFee('0');
+          setEstimatedFeeUsd('0.00');
+        });
       } catch (e) {
         console.error('Error setting balance:', e)
         setBalance('0')
@@ -494,13 +554,52 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }, 3000)
       return () => clearTimeout(timer)
     }
-  }, [assetContext, assetLoaded, estimatedFee, selectedPubkey, app?.balances])
+  }, [assetContext, assetLoaded, estimatedFee, selectedPubkey, showAdvanced, app?.balances])
 
   // Initialize selected pubkey when component mounts or assetContext changes
   useEffect(() => {
     if (assetContext?.pubkeys && assetContext.pubkeys.length > 0 && !selectedPubkey) {
-      // Sort pubkeys - prioritize Native Segwit for Bitcoin
-      const sortedPubkeys = [...assetContext.pubkeys].sort((a: Pubkey, b: Pubkey) => {
+      const networkId = assetContext.networkId || assetContext.caip;
+
+      console.log('🔍 [Send] Looking for compatible pubkeys:', {
+        networkId,
+        totalPubkeys: assetContext.pubkeys.length,
+        pubkeyNetworks: assetContext.pubkeys.map((p: Pubkey) => ({
+          note: p.note,
+          networks: p.networks,
+          address: p.address?.substring(0, 10)
+        }))
+      });
+
+      // Filter pubkeys that are compatible with this network
+      const compatiblePubkeys = assetContext.pubkeys.filter((pubkey: Pubkey) => {
+        if (!pubkey.networks) return false;
+
+        // Check for exact match
+        if (pubkey.networks.includes(networkId)) return true;
+
+        // Check for wildcard patterns
+        // EVM chains: eip155:* matches any eip155:X
+        if (networkId.startsWith('eip155:')) {
+          return pubkey.networks.includes('eip155:*');
+        }
+
+        // Cosmos chains: cosmos:* matches any cosmos:X (if ever needed)
+        if (networkId.startsWith('cosmos:')) {
+          return pubkey.networks.includes('cosmos:*');
+        }
+
+        return false;
+      });
+
+      if (compatiblePubkeys.length === 0) {
+        console.warn('❌ [Send] No compatible pubkeys found for network:', networkId);
+        console.warn('Available pubkey networks:', assetContext.pubkeys.map((p: Pubkey) => p.networks));
+        return;
+      }
+
+      // Sort compatible pubkeys - prioritize Native Segwit for Bitcoin
+      const sortedPubkeys = [...compatiblePubkeys].sort((a: Pubkey, b: Pubkey) => {
         // Bitcoin - Native Segwit (bc1...) should come first
         if (a.note?.includes('Native Segwit') && !b.note?.includes('Native Segwit')) return -1;
         if (!a.note?.includes('Native Segwit') && b.note?.includes('Native Segwit')) return 1;
@@ -516,14 +615,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       if (app?.setPubkeyContext) {
         app.setPubkeyContext(firstPubkey)
           .then(() => {
-            console.log('✅ [Send] Initial pubkey context set:', firstPubkey);
+            console.log('✅ [Send] Initial pubkey context set:', firstPubkey.note, 'for network:', networkId);
           })
           .catch((error: Error) => {
             console.error('❌ [Send] Error setting initial pubkey context:', error);
           });
       }
     }
-  }, [assetContext?.pubkeys, selectedPubkey, app])
+  }, [assetContext?.pubkeys, assetContext?.networkId, selectedPubkey, app])
 
   // Update native gas balance (CACAO) when selectedPubkey changes
   useEffect(() => {
@@ -531,25 +630,31 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       return;
     }
 
-    console.log('🔍 [Send] Looking for native gas balance for selected pubkey:', {
-      address: selectedPubkey.address,
-      master: selectedPubkey.master,
-      nativeSymbol: assetContext.nativeSymbol,
-      networkId: assetContext.networkId
+    // Find native asset balance by pattern matching
+    const tokenNetworkId = assetContext.networkId;
+
+    console.log('🔍 [Send] Gas balance lookup starting:', {
+      tokenNetworkId,
+      selectedPubkey: {
+        address: selectedPubkey.address,
+        master: selectedPubkey.master,
+        pubkey: selectedPubkey.pubkey
+      }
     });
 
-    // Find the native asset CAIP for this network
-    // For Maya tokens, native asset is CACAO
-    let nativeAssetCaip = assetContext.networkId;
-
-    // Find the native gas balance for the selected pubkey
+    // Find native asset balance - native assets have format: networkId/slip44:* (no contract)
     const gasBalance = app.balances.find((b: any) => {
-      // Must match the native asset (e.g., CACAO for Maya)
-      const isNativeAsset = b.caip === nativeAssetCaip ||
-                           b.networkId === nativeAssetCaip ||
-                           b.symbol === assetContext.nativeSymbol;
+      // Must be on the same network
+      if (!b.caip?.startsWith(tokenNetworkId)) return false;
 
-      if (!isNativeAsset) {
+      // Native assets don't have contract addresses
+      if (b.caip.includes('/erc20:') || b.caip.includes('/ibc:') || b.caip.includes('/factory:')) {
+        return false; // This is a token, not native
+      }
+
+      // Should have exactly 2 parts (networkId/slip44:*)
+      const parts = b.caip.split('/');
+      if (parts.length !== 2 || !parts[1].startsWith('slip44:')) {
         return false;
       }
 
@@ -564,6 +669,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         console.log('✅ [Send] Found native gas balance:', {
           balance: b.balance,
           symbol: b.symbol,
+          caip: b.caip,
           address: b.address || b.pubkey
         });
       }
@@ -573,12 +679,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
     if (gasBalance && gasBalance.balance) {
       setNativeGasBalance(gasBalance.balance);
-      console.log('✅ [Send] Native gas balance updated:', gasBalance.balance, assetContext.nativeSymbol);
+      console.log('✅ [Send] Native gas balance updated:', gasBalance.balance, gasBalance.symbol);
     } else {
       console.warn('⚠️ [Send] No native gas balance found for selected pubkey');
       setNativeGasBalance('0');
     }
-  }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId, assetContext?.nativeSymbol])
+  }, [selectedPubkey, app?.balances, assetContext?.isToken, assetContext?.networkId])
 
   // Update change script type when selected pubkey changes (for UTXO chains)
   useEffect(() => {
@@ -634,17 +740,217 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     enrichPubkeys();
   }, [assetContext?.symbol, assetContext?.networkId]); // Only re-run when asset changes
 
+  // Listen for transaction confirmation events from Pioneer SDK
+  useEffect(() => {
+    console.log('🔍 [SEND] Confirmation listener useEffect triggered:', {
+      hasPioneer: !!pioneer,
+      hasEvents: !!pioneer?.state?.app?.events,
+      txHash: txHash ? txHash.substring(0, 10) + '...' : 'none',
+      transactionStep
+    });
+
+    // Early return if events not available or no transaction hash
+    if (!pioneer?.state?.app?.events || !txHash) {
+      console.log('⏭️ [SEND] Skipping listener setup - missing events or txHash');
+      return;
+    }
+
+    const events = pioneer.state.app.events;
+    console.log('✅ [SEND] Setting up event listeners for transaction:', txHash);
+
+    // Handler: Transaction detected in mempool (0 confirmations)
+    const handleTxDetected = (txData: any) => {
+      console.log('🔔 [SEND] TX_DETECTED event received:', txData);
+      console.log('TX_DETECTED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) {
+        console.log('⏭️ [SEND] TX_DETECTED ignored - different txid:', txData.txid);
+        return;
+      }
+
+      console.log('✅ [SEND] TX_DETECTED matched our transaction - updating status');
+      setConfirmationStatus(prev => ({
+        ...prev,
+        detected: true,
+        confirmations: 0,
+        detectedAt: Date.now()
+      }));
+
+      console.log('✅ Transaction detected in mempool');
+    };
+
+    // Handler: First block confirmation received
+    const handleTxFirstConfirmed = (txData: any) => {
+      console.log('🎉 [SEND] TX_FIRST_CONFIRMED event received:', txData);
+      console.log('TX_FIRST_CONFIRMED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) {
+        console.log('⏭️ [SEND] TX_FIRST_CONFIRMED ignored - different txid:', txData.txid);
+        return;
+      }
+
+      console.log('✅ [SEND] TX_FIRST_CONFIRMED matched - transitioning to success!');
+      setConfirmationStatus(prev => ({
+        ...prev,
+        firstConfirmed: true,
+        confirmations: txData.confirmations || 1,
+        firstConfirmedAt: Date.now()
+      }));
+
+      console.log('✅ Transaction received first confirmation');
+
+      // Play success sound on first confirmation
+      playSound(chachingSound);
+
+      // Transition to success state on first confirmation
+      console.log('🎊 [SEND] Setting transactionStep to SUCCESS');
+      setTransactionStep('success');
+    };
+
+    // Handler: Full confirmation received (chain-specific threshold)
+    const handleTxConfirmed = (txData: any) => {
+      console.log('TX_CONFIRMED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) return;
+
+      setConfirmationStatus(prev => ({
+        ...prev,
+        confirmed: true,
+        confirmations: txData.confirmations || 1,
+        confirmedAt: Date.now()
+      }));
+
+      console.log('✅ Transaction fully confirmed');
+
+      // If we haven't already transitioned to success (from TX_FIRST_CONFIRMED),
+      // transition now
+      setTransactionStep('success');
+    };
+
+    // Handler: Transaction failed on-chain
+    const handleTxFailed = (txData: any) => {
+      console.error('TX_FAILED event received:', txData);
+
+      // Only process events for our transaction
+      if (txData.txid !== txHash) return;
+
+      // Show error to user
+      setError('Transaction failed on-chain. Please check block explorer for details.');
+      setShowErrorDialog(true);
+
+      // Reset to review state to allow retry
+      setTransactionStep('review');
+
+      console.error('❌ Transaction failed on blockchain');
+    };
+
+    // Register event listeners
+    events.on('TX_DETECTED', handleTxDetected);
+    events.on('TX_FIRST_CONFIRMED', handleTxFirstConfirmed);
+    events.on('TX_CONFIRMED', handleTxConfirmed);
+    events.on('TX_FAILED', handleTxFailed);
+
+    console.log('📡 Registered transaction confirmation listeners for:', txHash.substring(0, 10) + '...');
+
+    // Cleanup function - remove listeners
+    return () => {
+      events.off('TX_DETECTED', handleTxDetected);
+      events.off('TX_FIRST_CONFIRMED', handleTxFirstConfirmed);
+      events.off('TX_CONFIRMED', handleTxConfirmed);
+      events.off('TX_FAILED', handleTxFailed);
+
+      console.log('🧹 Cleaned up transaction confirmation listeners');
+    };
+  }, [pioneer?.state?.app?.events, txHash]); // Re-run when events or txHash changes
+
   // Currency conversion helpers
   const formatUsd = (value: number) => formatUsdValue(value);
   const isPriceAvailable = () => checkPriceAvailable(assetContext);
   const usdToNative = (usdAmount: string) => convertUsdToNative(usdAmount, assetContext?.priceUsd);
   const nativeToUsd = (nativeAmount: string) => convertNativeToUsd(nativeAmount, assetContext?.priceUsd);
 
-  // Calculate fee in USD
-  const updateFeeInUsd = (feeInNative: string) => {
-    const networkType = assetContext?.networkId ? getNetworkType(assetContext.networkId) : 'OTHER';
-    const feeUsd = calcFeeInUsd(feeInNative, assetContext?.priceUsd, networkType, assetContext?.networkId);
-    setEstimatedFeeUsd(feeUsd);
+  // Helper: Get native asset info for a network (similar to Asset.tsx)
+  const getNativeAssetInfo = (networkId: string, balances?: any[]) => {
+    try {
+      // @ts-expect-error - Pioneer CAIP utilities
+      const { networkIdToCaip } = require('@pioneer-platform/pioneer-caip');
+      // Get the native CAIP using Pioneer's utility
+      const nativeCaip = networkIdToCaip(networkId);
+
+      // Find the native asset balance (if available)
+      const nativeBalance = balances?.find((b: any) => b.caip === nativeCaip);
+
+      return {
+        caip: nativeCaip,
+        symbol: nativeBalance?.symbol || nativeBalance?.ticker || 'GAS',
+        priceUsd: nativeBalance?.priceUsd || nativeBalance?.price || '0',
+        balance: nativeBalance?.balance || '0'
+      };
+    } catch (error) {
+      console.error('[getNativeAssetInfo] Error getting native asset info:', { networkId, error });
+      return {
+        caip: networkId,
+        symbol: 'GAS',
+        priceUsd: '0',
+        balance: '0'
+      };
+    }
+  };
+
+  // Calculate fee in USD using NETWORK NATIVE TOKEN price from assetContext
+  const updateFeeInUsd = async (feeInNative: string) => {
+    try {
+      // Validate feeInNative is a valid number to prevent NaN issues
+      const feeAsNumber = parseFloat(feeInNative);
+      if (isNaN(feeAsNumber) || feeAsNumber < 0) {
+        console.warn('[updateFeeInUsd] Invalid fee value:', feeInNative);
+        setEstimatedFeeUsd('0.00');
+        return;
+      }
+
+      // Get nativeAsset from context, or fetch it if missing
+      let nativeAsset = assetContext?.nativeAsset;
+
+      if (!nativeAsset && assetContext?.networkId && app?.balances) {
+        console.warn('[updateFeeInUsd] nativeAsset missing, fetching from balances');
+        nativeAsset = getNativeAssetInfo(assetContext.networkId, app.balances);
+        console.log('[updateFeeInUsd] Fetched nativeAsset:', nativeAsset);
+      }
+
+      if (!nativeAsset) {
+        console.warn('[updateFeeInUsd] No nativeAsset available, cannot calculate fee in USD');
+        setEstimatedFeeUsd('0.00');
+        return;
+      }
+
+      // Use the native asset price from assetContext (set in Asset.tsx)
+      const nativeTokenPrice = parseFloat(nativeAsset.priceUsd || '0');
+
+      // If native token has no price, we can't calculate USD fee
+      if (nativeTokenPrice === 0) {
+        console.log('[updateFeeInUsd] Native token price is 0, cannot calculate USD fee');
+        setEstimatedFeeUsd('0.00');
+        return;
+      }
+
+      const networkType = getNetworkType(assetContext.networkId);
+      const feeUsd = calcFeeInUsd(feeInNative, nativeTokenPrice.toString(), networkType, assetContext.networkId);
+      setEstimatedFeeUsd(feeUsd);
+
+      console.log('[updateFeeInUsd] Fee calculation:', {
+        feeInNative,
+        nativeTokenPrice,
+        feeUsd,
+        networkType,
+        nativeSymbol: nativeAsset.symbol
+      });
+    } catch (error) {
+      console.error('[updateFeeInUsd] Error calculating fee in USD:', error);
+      setEstimatedFeeUsd('0.00');
+    }
   };
 
   // Add helper function to classify the network type
@@ -706,33 +1012,40 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Fetch fee rates from Pioneer API
   const fetchFeeRates = async () => {
-    if (!assetContext) {
-      setError('Asset context not available');
-      return;
-    }
+    console.log('[fetchFeeRates] Starting, assetContext:', assetContext);
 
-    // Use helper to resolve network ID
+    // FAIL FAST: Validate prerequisites
+    if (!assetContext) throw new Error('Asset context not available');
+    if (!app?.getFees) throw new Error('Pioneer SDK getFees not available');
+
     const networkId = resolveNetworkId(assetContext);
+    console.log('[fetchFeeRates] Resolved networkId:', networkId);
 
     if (!networkId) {
-      setError('Cannot determine specific network chain ID');
-      console.error('Invalid network ID:', networkId, 'Asset context:', assetContext);
-      return;
+      console.error('[fetchFeeRates] Could not resolve network ID:', {
+        caip: assetContext.caip,
+        networkId: assetContext.networkId,
+        assetId: assetContext.assetId,
+        symbol: assetContext.symbol
+      });
+      throw new Error('Cannot determine specific network chain ID');
     }
 
-    // Store the resolved network ID for use in other components
     setResolvedNetworkId(networkId);
 
     try {
-      if (!app?.getFees) {
-        throw new Error('Pioneer SDK getFees not available');
-      }
-
       console.log('Fetching fee rates for network:', networkId);
 
       // Use the new normalized getFees method from SDK
       const normalizedFees = await app.getFees(networkId);
       console.log('Normalized fees from SDK:', normalizedFees);
+      console.log('Fetched fees for networkId:', networkId, 'Asset context:', {
+        caip: assetContext.caip,
+        networkId: assetContext.networkId,
+        symbol: assetContext.symbol,
+        isToken: assetContext.isToken,
+        type: assetContext.type
+      });
 
       // Store the complete normalized fee data
       setNormalizedFees(normalizedFees);
@@ -745,6 +1058,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       };
 
       console.log('Using fees from SDK:', fees);
+
+      // Validate that we got non-zero fees
+      if (fees.slow === '0' && fees.average === '0' && fees.fastest === '0') {
+        console.error('SDK returned zero fees for all levels. Network:', networkId, 'Fees:', normalizedFees);
+        throw new Error(`Unable to fetch fee rates for ${assetContext.symbol || 'this asset'}. The network may be experiencing issues. Please try again later.`);
+      }
       console.log('Fee metadata:', {
         unit: normalizedFees.slow.unit,
         networkType: normalizedFees.networkType,
@@ -817,30 +1136,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       console.error('Failed to fetch fee rates:', error);
       console.error('Network ID sent to API:', networkId);
       console.error('Full asset context:', assetContext);
-      
-      // Extract more detailed error information
+
+      // Extract detailed error information
       let errorDetail = error.message || 'Unknown error';
       if (error.response?.data?.message) {
         errorDetail = error.response.data.message;
       } else if (error.response?.data?.error) {
         errorDetail = JSON.stringify(error.response.data.error);
       }
-      
+
       // Check for the specific server-side routing bug
       if (errorDetail.includes('missing node! for network eip155:*')) {
         errorDetail = `Server routing issue: The Pioneer API server is incorrectly converting "${networkId}" to "eip155:*". This is a known server bug that needs to be fixed in the Pioneer API backend.`;
         console.error('SERVER BUG DETECTED:', errorDetail);
       }
-      
-      const errorMessage = `Failed to get network fees for ${networkId}: ${errorDetail}`;
-      setError(errorMessage);
-      setShowErrorDialog(true);
 
-      // Don't proceed with fake fees - show the error to the user
-      // Setting to 0 prevents transaction from proceeding
-      setFeeOptions({ slow: '0', average: '0', fastest: '0' });
-      setEstimatedFee('0');
-      setEstimatedFeeUsd('0.00');
+      // FAIL FAST: Re-throw instead of swallowing
+      throw new Error(`Failed to get network fees for ${networkId}: ${errorDetail}`);
     }
   };
   
@@ -899,12 +1211,16 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           // Custom value is fee rate in sat/byte
           const estimatedTxSize = getEstimatedTxSize();
           const feeRateSatPerByte = parseFloat(value);
-          const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
-          const feeInBTC = feeInSatoshis / 100000000;
-          const feeString = feeInBTC.toFixed(8);
 
-          setEstimatedFee(feeString);
-          updateFeeInUsd(feeString);
+          // Only update if we have a valid number
+          if (!isNaN(feeRateSatPerByte) && feeRateSatPerByte > 0) {
+            const feeInSatoshis = feeRateSatPerByte * estimatedTxSize;
+            const feeInBTC = feeInSatoshis / 100000000;
+            const feeString = feeInBTC.toFixed(8);
+
+            setEstimatedFee(feeString);
+            updateFeeInUsd(feeString);
+          }
         } else if (normalizedFees.networkType === 'EVM') {
           // Custom value is gas price in gwei
           // Native ETH transfers: 21000 gas
@@ -912,16 +1228,23 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           const isToken = assetContext?.isToken || assetContext?.type === 'token';
           const gasLimit = isToken ? 65000 : 21000;
           const gasPriceGwei = parseFloat(value);
-          const feeInGwei = gasPriceGwei * gasLimit;
-          const feeInEth = feeInGwei / 1e9;
-          const feeString = feeInEth.toFixed(9);
 
-          setEstimatedFee(feeString);
-          updateFeeInUsd(feeString);
+          // Only update if we have a valid number
+          if (!isNaN(gasPriceGwei) && gasPriceGwei > 0) {
+            const feeInGwei = gasPriceGwei * gasLimit;
+            const feeInEth = feeInGwei / 1e9;
+            const feeString = feeInEth.toFixed(9);
+
+            setEstimatedFee(feeString);
+            updateFeeInUsd(feeString);
+          }
         } else {
           // For other chains (COSMOS, RIPPLE), use the fee directly
-          setEstimatedFee(value);
-          updateFeeInUsd(value);
+          const numericValue = parseFloat(value);
+          if (!isNaN(numericValue) && numericValue > 0) {
+            setEstimatedFee(value);
+            updateFeeInUsd(value);
+          }
         }
       }
     }
@@ -1049,48 +1372,53 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
     }
   };
 
+  // Step navigation functions
+  const nextStep = () => {
+    if (currentStep < 3) setCurrentStep((currentStep + 1) as 1 | 2 | 3);
+  };
+
+  const prevStep = () => {
+    if (currentStep > 1) setCurrentStep((currentStep - 1) as 1 | 2 | 3);
+  };
+
+  const goToStep = (step: 1 | 2 | 3) => {
+    setCurrentStep(step);
+  };
+
+  // Validation for each step
+  const canProceedFromStep1 = () => recipient.trim().length > 0 && !memoError;
+  const canProceedFromStep2 = () => amount && parseFloat(amount) > 0;
+  const canProceedFromStep3 = () => feeOptions && (feeOptions.slow !== '0' || feeOptions.average !== '0' || feeOptions.fastest !== '0');
+
   // Handle send transaction
   const handleSend = async () => {
-    if (!amount || !recipient) {
-      console.error('Missing fields')
-      return
-    }
+    // FAIL FAST: Validate all prerequisites upfront
+    if (!amount || !recipient) throw new Error('Missing required fields: amount and recipient');
+    if (memoError) throw new Error(memoError);
 
-    // Check if we have valid fee data before proceeding
+    const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel];
     if (!feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')) {
-      console.error('No valid fee data available')
-      setError('Unable to proceed: Fee data is not available. Please try again or check your network connection.')
-      setShowErrorDialog(true)
-      return
+      throw new Error('Fee data is not available. Please try again or check your network connection.');
     }
-
-    // Also check if the selected fee is 0 (which shouldn't be allowed)
-    const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel]
     if (!selectedFee || parseFloat(selectedFee) === 0) {
-      console.error('Invalid fee amount:', selectedFee)
-      setError('Unable to proceed: Invalid fee amount. Please select a valid fee option or enter a custom fee.')
-      setShowErrorDialog(true)
-      return
+      throw new Error('Invalid fee amount. Please select a valid fee option or enter a custom fee.');
     }
 
-    // Show loading spinner while building transaction
-    setIsBuildingTx(true)
-    setLoading(true)
+    setIsBuildingTx(true);
+    setLoading(true);
 
     try {
-      // Build the transaction first
-      setTransactionStep('review')
-      const builtTx = await buildTransaction()
-
-      // Then show confirmation dialog with the built transaction
-      if (builtTx) {
-        openConfirmation()
-      }
+      setTransactionStep('review');
+      const builtTx = await buildTransaction();
+      if (builtTx) openConfirmation();
     } catch (error) {
-      console.error('Error preparing transaction:', error)
+      console.error('Transaction build failed:', error);
+      setError(error instanceof Error ? error.message : 'Failed to build transaction');
+      setShowErrorDialog(true);
+      throw error;
     } finally {
-      setIsBuildingTx(false)
-      setLoading(false)
+      setIsBuildingTx(false);
+      setLoading(false);
     }
   }
 
@@ -1136,8 +1464,24 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
       // Verify we have valid fee data before building the transaction
       const selectedFee = customFeeOption ? customFeeAmount : feeOptions[selectedFeeLevel];
-      if (!selectedFee || parseFloat(selectedFee) === 0) {
+      const selectedFeeNumber = parseFloat(selectedFee || '0');
+
+      if (!selectedFee || selectedFeeNumber === 0 || isNaN(selectedFeeNumber)) {
+        console.error('Invalid fee data:', {
+          selectedFee,
+          selectedFeeNumber,
+          customFeeOption,
+          customFeeAmount,
+          feeOptions,
+          selectedFeeLevel
+        });
         throw new Error('Cannot build transaction without valid fee data. Please wait for fee rates to load.');
+      }
+
+      // Additional validation: ensure amount is valid number
+      const amountNumber = parseFloat(nativeAmount);
+      if (isNaN(amountNumber) || amountNumber <= 0) {
+        throw new Error('Invalid transaction amount. Please enter a valid amount.');
       }
 
       // Map fee levels to SDK fee level values (valid range: 1-5)
@@ -1156,15 +1500,25 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         isMax,
       }
 
-      // Add custom fee if specified
+      // Add custom fee if specified - validate it's a valid number
       if (customFeeOption && customFeeAmount) {
-        // @ts-ignore - Adding custom fee property
-        sendPayload.customFee = customFeeAmount;
+        const customFeeNumeric = parseFloat(customFeeAmount);
+        if (!isNaN(customFeeNumeric) && customFeeNumeric > 0) {
+          // @ts-ignore - Adding custom fee property
+          sendPayload.customFee = customFeeAmount;
+        } else {
+          console.error('Invalid custom fee amount:', customFeeAmount);
+          throw new Error('Invalid custom fee: Please enter a valid fee amount');
+        }
       }
 
-      // Add memo for supported chains if provided
-      if (memo && supportsMemo) {
-        sendPayload.memo = memo;
+      // Add memo for supported chains
+      // For XRP, always include destination tag field (empty string if not provided)
+      // For other chains, only include if memo is provided
+      if (supportsMemo) {
+        const isXrp = assetContext?.symbol?.toUpperCase() === 'XRP' ||
+                      assetContext?.networkId?.startsWith('eip155:1/slip44:144');
+        sendPayload.memo = memo || (isXrp ? '' : undefined);
       }
 
       // Add change script type for UTXO chains if specified
@@ -1184,14 +1538,52 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         feeOptions,
         normalizedFees
       });
-      
+
+      // CRITICAL: Validate the payload before sending to SDK to prevent NaN errors
+      console.log('🔍 [VALIDATION] Checking sendPayload before SDK call:');
+      console.log('  - caip:', sendPayload.caip);
+      console.log('  - to:', sendPayload.to);
+      console.log('  - amount:', sendPayload.amount);
+      console.log('  - amountType:', typeof sendPayload.amount);
+      console.log('  - amountIsNaN:', isNaN(parseFloat(sendPayload.amount)));
+      console.log('  - feeLevel:', sendPayload.feeLevel);
+      console.log('  - customFee:', sendPayload.customFee);
+      console.log('  - isMax:', sendPayload.isMax);
+      console.log('  - assetContext.balance:', assetContext?.balance);
+      console.log('  - Full payload:', JSON.stringify(sendPayload, null, 2));
+
+      // CRITICAL: When isMax is true, the SDK MUST have access to the balance
+      // The SDK will calculate: maxAmount = balance - estimatedFee
+      // If balance is undefined, the calculation becomes NaN
+      if (sendPayload.isMax) {
+        console.log('⚠️  isMax is TRUE - SDK will need balance to calculate max amount');
+        console.log('   Current assetContext:', {
+          symbol: assetContext?.symbol,
+          balance: assetContext?.balance,
+          caip: assetContext?.caip,
+          hasBalance: !!assetContext?.balance
+        });
+      }
+
+      // Validate amount is a valid string number
+      if (!sendPayload.amount || typeof sendPayload.amount !== 'string') {
+        throw new Error(`Invalid amount format: ${sendPayload.amount} (type: ${typeof sendPayload.amount})`);
+      }
+
+      const amountCheck = parseFloat(sendPayload.amount);
+      if (isNaN(amountCheck) || amountCheck <= 0) {
+        throw new Error(`Amount is NaN or invalid: ${sendPayload.amount}`);
+      }
+
       // Call the SDK's buildTx method
       let unsignedTxResult;
       try {
+        console.log('📤 [SDK CALL] About to call app.buildTx with sendPayload...');
         unsignedTxResult = await app.buildTx(sendPayload);
-        console.log('Unsigned TX Result:', unsignedTxResult);
+        console.log('✅ [SDK RESPONSE] Successfully received unsigned TX result:', unsignedTxResult);
       } catch (buildError: any) {
-        console.error('Transaction build error:', buildError);
+        console.error('❌ [SDK ERROR] Transaction build error:', buildError);
+        console.error('❌ [SDK ERROR] Failed payload was:', sendPayload);
         const errorMessage = `Failed to build transaction: ${buildError.message || 'Unknown error'}`;
         setError(errorMessage);
         setShowErrorDialog(true);
@@ -1538,10 +1930,27 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
       }
       
       console.log('Final TX Hash:', finalTxHash);
+      console.log('📡 [SEND] Transaction broadcast successful! TxHash:', finalTxHash);
       setTxHash(finalTxHash)
       setTxSuccess(true)
-      setTransactionStep('success')
-      
+      console.log('⏳ [SEND] Setting transactionStep to CONFIRMING');
+      setTransactionStep('confirming') // Wait for confirmation before showing success
+
+      // Reset confirmation status for new transaction
+      setConfirmationStatus({
+        detected: false,
+        firstConfirmed: false,
+        confirmed: false,
+        confirmations: 0
+      });
+
+      console.log('📡 [SEND] Now waiting for confirmation events...', {
+        txHash: finalTxHash,
+        hasPioneer: !!pioneer,
+        hasEvents: !!pioneer?.state?.app?.events
+      });
+      console.log('📡 Transaction broadcast, waiting for confirmation:', finalTxHash);
+
       return broadcastResult
     } catch (error: any) {
       console.error('Transaction broadcast error:', error)
@@ -1750,6 +2159,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             explorerUrl = `https://blockchair.com/dogecoin/transaction/${txHash}`;
           } else if (networkId.includes('bip122:000000000000000000651ef99cb9fcbe')) {
             explorerUrl = `https://blockchair.com/bitcoin-cash/transaction/${txHash}`;
+          } else if (networkId.includes('bip122:4da631f2ac1bed857bd968c67c913978')) {
+            explorerUrl = `https://chainz.cryptoid.info/dgb/tx.dws?${txHash}.htm`;
           } else {
             console.error(`Unsupported UTXO network: ${networkId}`);
             alert(`Error: No explorer configured for UTXO network: ${networkId}`);
@@ -1881,8 +2292,221 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Network supports memo
   const supportsMemo = TENDERMINT_SUPPORT.includes(assetContext.assetId) || OTHER_SUPPORT.includes(assetContext.assetId);
 
+  // Debug: Log current transaction state
+  console.log('🔄 [SEND] Current state:', {
+    transactionStep,
+    showConfirmation,
+    txHash: txHash ? txHash.substring(0, 10) + '...' : null,
+    confirmationStatus
+  });
+
   // Render confirmation overlay if needed
   if (showConfirmation) {
+    // Transaction confirming screen - waiting for blockchain confirmation
+    if (transactionStep === 'confirming') {
+      console.log('🎨 [SEND] Rendering CONFIRMING UI with status:', confirmationStatus);
+      return (
+        <Box height="100vh" bg={theme.bg}>
+          <Box
+            position="relative"
+            height="100%"
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            p={6}
+          >
+            <VStack gap={6} maxW="400px" w="100%">
+              {/* Loading Spinner */}
+              <Box
+                w="80px"
+                h="80px"
+                borderRadius="full"
+                bg={`${assetColor}22`}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                position="relative"
+              >
+                <Spinner
+                  size="xl"
+                  color={assetColor}
+                  thickness="4px"
+                  speed="0.8s"
+                />
+              </Box>
+
+              {/* Asset Icon */}
+              <Box
+                borderRadius="full"
+                overflow="hidden"
+                boxSize="60px"
+                bg={theme.cardBg}
+                boxShadow="lg"
+                p={2}
+              >
+                <AssetIcon
+                  src={assetContext.icon || assetContext.image || ''}
+                  symbol={assetContext.symbol}
+                  size="44px"
+                />
+              </Box>
+
+              {/* Amount */}
+              <VStack gap={2}>
+                <Text fontSize="2xl" fontWeight="bold" color="white" textAlign="center">
+                  {isUsdInput ? usdToNative(amount) : amount} {assetContext?.symbol}
+                </Text>
+                <Text fontSize="sm" color="gray.400" textAlign="center">
+                  {getConfirmationMessage(
+                    assetContext?.networkId || assetContext?.caip || '',
+                    confirmationStatus.detected,
+                    confirmationStatus.confirmations
+                  )}
+                </Text>
+              </VStack>
+
+              {/* Progress Steps */}
+              <Box
+                w="100%"
+                p={4}
+                bg={theme.cardBg}
+                borderRadius="lg"
+                border="1px solid"
+                borderColor={theme.borderAlt}
+              >
+                <VStack gap={3} alignItems="flex-start">
+                  {/* Step 1: Broadcast Complete */}
+                  <Flex alignItems="center" gap={3} w="100%">
+                    <Box
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      bg="green.500"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="white"
+                      fontSize="sm"
+                    >
+                      <Icon as={FaCheck} />
+                    </Box>
+                    <Text color="white" fontSize="sm">
+                      Broadcast to network
+                    </Text>
+                  </Flex>
+
+                  {/* Step 2: Detected in Mempool */}
+                  <Flex alignItems="center" gap={3} w="100%">
+                    <Box
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      bg={confirmationStatus.detected ? 'green.500' : 'gray.600'}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="white"
+                      fontSize="sm"
+                    >
+                      {confirmationStatus.detected ? <Icon as={FaCheck} /> : <Icon as={FaCircle} boxSize="8px" />}
+                    </Box>
+                    <Text
+                      color={confirmationStatus.detected ? 'white' : 'gray.500'}
+                      fontSize="sm"
+                    >
+                      Detected in mempool
+                    </Text>
+                  </Flex>
+
+                  {/* Step 3: First Confirmation */}
+                  <Flex alignItems="center" gap={3} w="100%">
+                    <Box
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      bg={confirmationStatus.firstConfirmed ? 'green.500' : 'gray.600'}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      color="white"
+                      fontSize="sm"
+                    >
+                      {confirmationStatus.firstConfirmed ? <Icon as={FaCheck} /> : <Icon as={FaCircle} boxSize="8px" />}
+                    </Box>
+                    <Flex justify="space-between" w="100%" alignItems="center">
+                      <VStack alignItems="flex-start" gap={0}>
+                        <Text
+                          color={confirmationStatus.firstConfirmed ? 'white' : 'gray.500'}
+                          fontSize="sm"
+                        >
+                          {confirmationStatus.confirmations > 0
+                            ? `${confirmationStatus.confirmations} block confirmation${confirmationStatus.confirmations > 1 ? 's' : ''}`
+                            : 'Waiting for confirmation'}
+                        </Text>
+                        {!confirmationStatus.firstConfirmed && confirmationStatus.detected && (
+                          <Text color="gray.500" fontSize="xs">
+                            {getBlockTimeEstimate(assetContext?.networkId || assetContext?.caip || '').displayTime}
+                          </Text>
+                        )}
+                      </VStack>
+                    </Flex>
+                  </Flex>
+                </VStack>
+              </Box>
+
+              {/* Transaction Hash Display */}
+              <Box
+                w="100%"
+                p={3}
+                bg={theme.cardBg}
+                borderRadius="md"
+                border="1px solid"
+                borderColor={theme.borderAlt}
+              >
+                <Text fontSize="xs" color="gray.500" mb={1}>
+                  Transaction ID
+                </Text>
+                <Flex alignItems="flex-start" gap={2}>
+                  <Text
+                    fontSize="xs"
+                    color="white"
+                    fontFamily="monospace"
+                    wordBreak="break-all"
+                    flex={1}
+                    lineHeight="1.4"
+                  >
+                    {txHash}
+                  </Text>
+                  <IconButton
+                    aria-label="Copy transaction hash"
+                    icon={hasCopied ? <Icon as={FaCheck} /> : <Icon as={FaCopy} />}
+                    size="sm"
+                    onClick={copyToClipboard}
+                    variant="ghost"
+                    color={hasCopied ? 'green.400' : 'gray.400'}
+                  />
+                  {assetContext?.explorerTxLink && (
+                    <IconButton
+                      aria-label="View on explorer"
+                      icon={<Icon as={FaExternalLinkAlt} />}
+                      size="sm"
+                      onClick={() => {
+                        const url = `${assetContext.explorerTxLink}${txHash}`;
+                        window.open(url, '_blank');
+                      }}
+                      variant="ghost"
+                      color="gray.400"
+                    />
+                  )}
+                </Flex>
+              </Box>
+            </VStack>
+          </Box>
+        </Box>
+      );
+    }
+
     // Transaction success screen
     if (transactionStep === 'success' && txSuccess) {
       return (
@@ -1899,7 +2523,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           
           <Box 
             bg={theme.cardBg}
-            borderColor={theme.border}
+            borderColor={theme.borderAlt}
             borderWidth="1px"
             borderRadius="md"
             width="100%"
@@ -1911,7 +2535,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             {/* Header */}
             <Box 
               borderBottom="1px" 
-              borderColor={theme.border}
+              borderColor={theme.borderAlt}
               p={5}
               bg={theme.cardBg}
             >
@@ -1968,7 +2592,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   boxShadow="lg"
                   p={2}
                   borderWidth="1px"
-                  borderColor={assetContext.color || theme.border}
+                  borderColor={assetContext.color || theme.borderAlt}
                 >
                   <AssetIcon
                     src={assetContext.icon}
@@ -1999,7 +2623,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     bg={theme.bg}
                     borderRadius="md"
                     borderWidth="1px"
-                    borderColor={theme.border}
+                    borderColor={theme.borderAlt}
                   >
                     <Flex align="center">
                       <Text fontSize="sm" fontFamily="mono" color="white" wordBreak="break-all" flex="1">
@@ -2039,7 +2663,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             {/* Footer with Action Buttons */}
             <Box 
               borderTop="1px" 
-              borderColor={theme.border}
+              borderColor={theme.borderAlt}
               p={5}
             >
               <Stack gap={4}>
@@ -2063,7 +2687,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   width="100%"
                   variant="outline"
                   color={assetColor}
-                  borderColor={theme.border}
+                  borderColor={theme.borderAlt}
                   _hover={{
                     bg: assetColorLight,
                     borderColor: assetColor,
@@ -2095,6 +2719,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         memo={memo}
         estimatedFee={estimatedFee}
         estimatedFeeUsd={estimatedFeeUsd}
+        feeSymbol={assetContext?.nativeAsset?.symbol || 'GAS'}
         balance={balance}
         isMax={isMax}
         isUsdInput={isUsdInput}
@@ -2122,14 +2747,12 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Normal send form
   return (
-    <Box 
-      width="100%" 
+    <Box
+      width="100%"
       maxWidth="600px"
       mx="auto"
-      height="100vh"
       position="relative"
       pb={8} // Add bottom padding to ensure content doesn't get cut off
-      overflow="hidden"
       display="flex"
       flexDirection="column"
       sx={{
@@ -2143,6 +2766,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         },
       }}
     >
+      {/* Connect KeepKey Dialog - Shows when no device is connected */}
+      <ConnectKeepKeyDialog isOpen={!isKeepKeyConnected} onBackToDashboard={onBackClick} />
+
       {/* Transaction Building Overlay */}
       {isBuildingTx && (
         <Box
@@ -2314,21 +2940,21 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         </Box>
       )}
     
-      <Box 
-        borderBottom="1px" 
-        borderColor={theme.border}
-        p={4}
+      <Box
+        borderBottom="1px"
+        borderColor={theme.borderAlt}
         bg={theme.cardBg}
         position="sticky"
         top={0}
         zIndex={10}
       >
-        <Flex justify="space-between" align="center">
+        {/* Header with Back Button */}
+        <Flex justify="space-between" align="center" p={4} pb={2}>
           <Button
             size="sm"
             variant="ghost"
             color={assetColor}
-            onClick={onBackClick}
+            onClick={currentStep === 1 ? onBackClick : prevStep}
             _hover={{ color: assetColorHover }}
           >
             <Flex align="center" gap={2}>
@@ -2338,8 +2964,34 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           <Text color={assetColor} fontWeight="bold">
             Send {assetContext?.name || 'Asset'}
           </Text>
-          <Box w="20px"></Box> {/* Spacer for alignment */}
+          <Box w="60px"></Box>
         </Flex>
+
+        {/* Step Progress Indicator */}
+        <Flex gap={2} px={4} pb={4}>
+          {[1, 2, 3].map((step) => (
+            <Box
+              key={step}
+              flex={1}
+              height="3px"
+              borderRadius="full"
+              bg={step <= currentStep ? assetColor : theme.borderAlt}
+              transition="all 0.3s"
+            />
+          ))}
+        </Flex>
+
+        {/* Step Title */}
+        <Box px={4} pb={3}>
+          <Text color="gray.400" fontSize="xs" fontWeight="medium">
+            STEP {currentStep} OF 3
+          </Text>
+          <Text color="white" fontSize="lg" fontWeight="bold" mt={1}>
+            {currentStep === 1 && 'Enter Recipient'}
+            {currentStep === 2 && 'Enter Amount'}
+            {currentStep === 3 && 'Select Fee & Send'}
+          </Text>
+        </Box>
       </Box>
       
       {/* Main Content */}
@@ -2354,31 +3006,107 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           },
         }}
       >
-        <Stack gap={6} align="center">
-          {/* Asset Header Card - Combined Asset Info + Address Selector */}
-          <AssetHeaderCard
-            assetContext={assetContext}
-            balance={balance}
-            totalBalanceUsd={totalBalanceUsd}
-            selectedPubkey={selectedPubkey}
-            showAdvanced={showAdvanced}
-            onToggleAdvanced={() => setShowAdvanced(!showAdvanced)}
-            onPubkeyChange={handlePubkeyChange}
-            onAddPathClick={openAddPathDialog}
-            assetColor={assetColor}
-            assetColorLight={assetColorLight}
-            formatUsd={formatUsd}
-            theme={theme}
-          />
+        <Stack gap={6} align="center" width="100%">
+          {/* ========== STEP 1: RECIPIENT ========== */}
+          {currentStep === 1 && (
+            <>
+              <Box
+                width="100%"
+                bg={theme.cardBg}
+                borderRadius={theme.borderAltRadius}
+                p={6}
+                borderWidth="1px"
+                borderColor={theme.borderAlt}
+              >
+                <Stack gap={3}>
+                  <Text color="white" fontWeight="medium" fontSize="lg">Recipient Address</Text>
+                  <Input
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder={`Enter ${assetContext.symbol} address`}
+                    color="white"
+                    borderColor={theme.borderAlt}
+                    _hover={{ borderColor: assetColorHover }}
+                    _focus={{ borderColor: assetColor }}
+                    p={4}
+                    height="56px"
+                    fontSize="md"
+                    autoFocus
+                  />
+                  <Text fontSize="sm" color="gray.500">
+                    Enter the destination address for your {assetContext.symbol}
+                  </Text>
+                </Stack>
+              </Box>
 
-          {/* Amount - Enhanced Dual Input Mode */}
-          <Box 
+              {supportsMemo && (
+                <Box
+                  width="100%"
+                  bg={theme.cardBg}
+                  borderRadius={theme.borderAltRadius}
+                  p={6}
+                  borderWidth="1px"
+                  borderColor={memoError ? 'red.500' : theme.borderAlt}
+                >
+                  <Stack gap={3}>
+                    <Text color="white" fontWeight="medium" fontSize="lg">
+                      {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'} (Optional)
+                    </Text>
+                    <Input
+                      value={memo}
+                      onChange={(e) => handleMemoChange(e.target.value)}
+                      placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
+                      color="white"
+                      borderColor={memoError ? 'red.500' : theme.borderAlt}
+                      _hover={{ borderColor: memoError ? 'red.600' : assetColorHover }}
+                      _focus={{ borderColor: memoError ? 'red.500' : assetColor }}
+                      p={4}
+                      height="56px"
+                      fontSize="md"
+                      isInvalid={!!memoError}
+                    />
+                    {memoError && (
+                      <Text color="red.400" fontSize="sm">⚠️ {memoError}</Text>
+                    )}
+                    {!memoError && (assetContext?.symbol?.toUpperCase() === 'XRP' ||
+                                  assetContext?.networkId?.includes('ripple') ||
+                                  assetContext?.caip?.includes('ripple')) && (
+                      <Text color="orange.300" fontSize="xs">
+                        ⚠️ Destination tags must be numbers only (0-4294967295)
+                      </Text>
+                    )}
+                  </Stack>
+                </Box>
+              )}
+
+              <Button
+                width="100%"
+                bg={assetColor}
+                color="black"
+                _hover={{ bg: assetColorHover }}
+                onClick={nextStep}
+                disabled={!canProceedFromStep1()}
+                height="56px"
+                fontSize="lg"
+                fontWeight="bold"
+                mt={4}
+              >
+                Next: Enter Amount
+              </Button>
+            </>
+          )}
+
+          {/* ========== STEP 2: AMOUNT ========== */}
+          {currentStep === 2 && (
+            <>
+              {/* Amount - Enhanced Dual Input Mode */}
+              <Box 
             width="100%" 
             bg={theme.cardBg} 
-            borderRadius={theme.borderRadius} 
+            borderRadius={theme.borderAltRadius} 
             p={theme.formPadding}
             borderWidth="1px"
-            borderColor={theme.border}
+            borderColor={theme.borderAlt}
           >
             <Stack gap={3}>
               <Flex justify="space-between" align="center">
@@ -2387,7 +3115,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   size="sm"
                   bg={theme.cardBg}
                   color={assetColor}
-                  borderColor={theme.border}
+                  borderColor={theme.borderAlt}
                   borderWidth="1px"
                   height="30px"
                   px={3}
@@ -2422,11 +3150,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     onChange={isUsdInput ? handleAmountChange : undefined}
                     placeholder="0.00"
                     color={isUsdInput ? "white" : "gray.400"}
-                    borderColor={isUsdInput ? assetColor : theme.border}
+                    borderColor={isUsdInput ? assetColor : theme.borderAlt}
                     borderWidth={isUsdInput ? "2px" : "1px"}
                     bg={isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
-                    _hover={{ borderColor: isUsdInput ? assetColorHover : theme.border }}
-                    _focus={{ borderColor: isUsdInput ? assetColor : theme.border }}
+                    _hover={{ borderColor: isUsdInput ? assetColorHover : theme.borderAlt }}
+                    _focus={{ borderColor: isUsdInput ? assetColor : theme.borderAlt }}
                     p={3}
                     pl="35px"
                     pr="60px"
@@ -2444,13 +3172,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
               {/* Divider with Switch Icon */}
               <Flex align="center" justify="center" position="relative" my={1}>
-                <Box position="absolute" width="100%" height="1px" bg={theme.border} />
+                <Box position="absolute" width="100%" height="1px" bg={theme.borderAlt} />
                 <Box 
                   position="relative"
                   bg={theme.cardBg}
                   borderRadius="full"
                   border="1px solid"
-                  borderColor={theme.border}
+                  borderColor={theme.borderAlt}
                   p={2}
                   cursor="pointer"
                   onClick={toggleInputMode}
@@ -2484,11 +3212,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                     onChange={!isUsdInput ? handleAmountChange : undefined}
                     placeholder="0.00000000"
                     color={!isUsdInput ? "white" : "gray.400"}
-                    borderColor={!isUsdInput ? assetColor : theme.border}
+                    borderColor={!isUsdInput ? assetColor : theme.borderAlt}
                     borderWidth={!isUsdInput ? "2px" : "1px"}
                     bg={!isUsdInput ? theme.cardBg : "rgba(255,255,255,0.02)"}
-                    _hover={{ borderColor: !isUsdInput ? assetColorHover : theme.border }}
-                    _focus={{ borderColor: !isUsdInput ? assetColor : theme.border }}
+                    _hover={{ borderColor: !isUsdInput ? assetColorHover : theme.borderAlt }}
+                    _focus={{ borderColor: !isUsdInput ? assetColor : theme.borderAlt }}
                     p={3}
                     pl="12px"
                     pr="80px"
@@ -2516,15 +3244,35 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Stack>
           </Box>
 
-          {/* Gas Balance Display for Tokens */}
+          <Button
+            width="100%"
+            bg={assetColor}
+            color="black"
+            _hover={{ bg: assetColorHover }}
+            onClick={nextStep}
+            disabled={!canProceedFromStep2()}
+            height="56px"
+            fontSize="lg"
+            fontWeight="bold"
+            mt={4}
+          >
+            Next: Select Fee
+          </Button>
+        </>
+      )}
+
+      {/* ========== STEP 3: FEE SELECTION ========== */}
+      {currentStep === 3 && (
+        <>
+          {/* Gas Warning for Tokens */}
           {assetContext.isToken && (
             <Box
               width="100%"
               bg={theme.cardBg}
-              borderRadius={theme.borderRadius}
+              borderRadius={theme.borderAltRadius}
               p={theme.formPadding}
               borderWidth="2px"
-              borderColor={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.500" : theme.border}
+              borderColor={nativeGasBalance && parseFloat(nativeGasBalance) === 0 ? "red.500" : theme.borderAlt}
             >
               <Stack gap={2}>
                 <Text color="white" fontWeight="medium" fontSize="sm">Gas Balance Required</Text>
@@ -2562,69 +3310,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Box>
           )}
 
-          {/* Recipient */}
-          <Box 
-            width="100%" 
-            bg={theme.cardBg} 
-            borderRadius={theme.borderRadius} 
-            p={theme.formPadding}
-            borderWidth="1px"
-            borderColor={theme.border}
-          >
-            <Stack gap={3}>
-              <Text color="white" fontWeight="medium">Recipient</Text>
-              <Input
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                placeholder={`${assetContext.symbol} Address`}
-                color="white"
-                borderColor={theme.border}
-                _hover={{ borderColor: assetColorHover }}
-                _focus={{ borderColor: assetColor }}
-                p={3}
-                height="50px"
-                fontSize="md"
-              />
-            </Stack>
-          </Box>
-          
-          {/* Memo/Tag (only for supported networks) */}
-          {supportsMemo && (
-            <Box 
-              width="100%" 
-              bg={theme.cardBg} 
-              borderRadius={theme.borderRadius} 
-              p={theme.formPadding}
-              borderWidth="1px"
-              borderColor={theme.border}
-            >
-              <Stack gap={3}>
-                <Text color="white" fontWeight="medium">
-                  {assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Tag'} (Optional)
-                </Text>
-                <Input
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  placeholder={assetContext.networkId?.includes('cosmos') ? 'Memo' : 'Destination Tag'}
-                  color="white"
-                  borderColor={theme.border}
-                  _hover={{ borderColor: assetColorHover }}
-                  _focus={{ borderColor: assetColor }}
-                  p={3}
-                  height="50px"
-                  fontSize="md"
-                />
-              </Stack>
-            </Box>
-          )}
-          
           {/* Fee Selection - Now using reusable component - Hide for XRP */}
           {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
             <>
               <Box 
                 width="100%" 
                 bg={assetColorLight} 
-                borderRadius={theme.borderRadius} 
+                borderRadius={theme.borderAltRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
                 borderColor={`${assetColor}33`}
@@ -2648,7 +3340,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   theme={{
                     gold: assetColor,
                     goldHover: assetColorHover,
-                    border: theme.border
+                    border: theme.borderAlt
                   }}
                 />
               </Box>
@@ -2657,7 +3349,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               <Box 
                 width="100%" 
                 bg={assetColorLight} 
-                borderRadius={theme.borderRadius} 
+                borderRadius={theme.borderAltRadius} 
                 p={theme.formPadding}
                 borderWidth="1px"
                 borderColor={`${assetColor}33`}
@@ -2666,7 +3358,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   <Text color="gray.400">Estimated Fee</Text>
                   <Stack gap={0} align="flex-end">
                     <Text color={assetColor} fontWeight="medium">
-                      {estimatedFee} {assetContext.symbol}
+                      {estimatedFee} {assetContext?.nativeAsset?.symbol || 'GAS'}
                     </Text>
                     <Text color="gray.500" fontSize="xs">
                       ≈ ${estimatedFeeUsd} USD
@@ -2676,20 +3368,18 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Box>
             </>
           )}
-          
-          {/* Send Button */}
+
           <Button
-            mt={4}
             width="100%"
             bg={assetColor}
             color="black"
-            _hover={{
-              bg: assetColorHover,
-            }}
+            _hover={{ bg: assetColorHover }}
             onClick={handleSend}
             disabled={!amount || !recipient || !feeOptions || (feeOptions.slow === '0' && feeOptions.average === '0' && feeOptions.fastest === '0')}
             height="56px"
             fontSize="lg"
+            fontWeight="bold"
+            mt={4}
             boxShadow={`0px 4px 12px ${assetColor}4D`}
           >
             <Flex gap={3} align="center" justify="center">
@@ -2701,7 +3391,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               </Text>
             </Flex>
           </Button>
-        </Stack>
+        </>
+      )}
+    </Stack>
       </Box>
 
       {/* Add Path Dialog */}
@@ -2714,7 +3406,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
           maxW="600px"
           p={8}
         >
-          <DialogHeader borderBottom={`1px solid ${theme.border}`} pb={6} mb={6}>
+          <DialogHeader borderBottom={`1px solid ${theme.borderAlt}`} pb={6} mb={6}>
             <DialogTitle color={assetColor} fontSize="2xl" fontWeight="bold">
               Add New Path for {assetContext?.symbol}
             </DialogTitle>
@@ -2737,7 +3429,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             />
           </DialogBody>
 
-          <DialogFooter borderTop={`1px solid ${theme.border}`} pt={6}>
+          <DialogFooter borderTop={`1px solid ${theme.borderAlt}`} pt={6}>
             <Flex gap={4} width="100%">
               <Button
                 flex={1}
@@ -2746,7 +3438,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 variant="ghost"
                 onClick={closeAddPathDialog}
                 color="gray.400"
-                _hover={{ bg: theme.border }}
+                _hover={{ bg: theme.borderAlt }}
                 borderRadius="lg"
                 disabled={pathManager.loading}
               >

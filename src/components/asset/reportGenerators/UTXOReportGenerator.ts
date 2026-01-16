@@ -17,21 +17,21 @@ export class UTXOReportGenerator extends BaseReportGenerator {
   getDefaultOptions(): ReportOptions {
     return {
       accountCount: 3,
-      includeTransactions: false,
-      includeAddresses: false,
-      lodLevel: 1, // Default to basic XPUB report
+      includeTransactions: true,
+      includeAddresses: true,
+      lod: 4, // LOD 4 includes XPUB details + addresses + transaction history
       gapLimit: 20 // Default gap limit for address discovery
     };
   }
 
   async generateReport(assetContext: any, app: any, options: ReportOptions): Promise<ReportData> {
     const accountCount = options.accountCount || 3;
-    const lodLevel = options.lodLevel || 1;
+    const lod = options.lod || options.lodLevel || 1; // Support both lod and lodLevel for backward compatibility
 
     console.log('📊 [REPORT] Starting report generation:', {
       symbol: assetContext.symbol,
       accountCount,
-      lodLevel,
+      lod,
       gapLimit: options.gapLimit
     });
 
@@ -94,17 +94,17 @@ export class UTXOReportGenerator extends BaseReportGenerator {
       throw new Error(`❌ FATAL: No ${assetContext.symbol} balances found in loaded wallet data.`);
     }
 
-    console.log(`📡 [API] Calling Pioneer Server API with ${pubkeys.length} pubkeys at LOD ${lodLevel}...`);
+    console.log(`📡 [API] Calling Pioneer Server API with ${pubkeys.length} pubkeys at LOD ${lod}...`);
 
     // Call Pioneer Server REST API (matching e2e test exactly)
     const serverUrl = process.env.NEXT_PUBLIC_PIONEER_URL_SPEC?.replace('/spec/swagger.json', '') || 'http://localhost:9001';
-    const serverReport = await this.fetchServerReport(serverUrl, pubkeys, lodLevel, options.gapLimit || 20);
+    const serverReport = await this.fetchServerReport(serverUrl, pubkeys, lod, options.gapLimit || 20);
 
     console.log('✅ [API] Server report received');
 
     // Transform server response using E2E test logic
     console.log('🔄 [TRANSFORM] Transforming server data (using E2E test logic)...');
-    const reportSections = this.transformServerData(serverReport, lodLevel);
+    const reportSections = this.transformServerData(serverReport, lod);
 
     // Add device information section at the beginning
     const sections: any[] = [
@@ -128,9 +128,11 @@ export class UTXOReportGenerator extends BaseReportGenerator {
     ];
 
     return {
-      title: `${deviceName} Report LOD:${lodLevel}`,
+      title: `${deviceName} Report LOD:${lod}`,
       subtitle: `${assetContext.symbol} Wallet Analysis - ${accountCount} Accounts`,
       generatedDate: this.getCurrentDate(),
+      chain: assetContext.symbol, // Added for consistency with e2e tests
+      lod: lod, // Added for consistency with e2e tests
       sections
     };
   }
@@ -229,7 +231,6 @@ export class UTXOReportGenerator extends BaseReportGenerator {
 
   /**
    * Transform server API response into report sections
-   * COPIED FROM E2E TEST - EXACT SAME LOGIC
    */
   private transformServerData(serverData: any, lod: number): any[] {
     const sections: any[] = [];
@@ -246,22 +247,43 @@ export class UTXOReportGenerator extends BaseReportGenerator {
 
     // LOD 2: XPUB details with used addresses
     if (lod >= 2) {
-      sections.push(this.createXpubDetailsSection(serverData));
+      const xpubDetails = this.createXpubDetailsSection(serverData);
+      // Handle both single section and array of sections
+      if (Array.isArray(xpubDetails)) {
+        sections.push(...xpubDetails);
+      } else {
+        sections.push(xpubDetails);
+      }
     }
 
     // LOD 3: All addresses (used and unused)
     if (lod >= 3) {
-      sections.push(this.createAllAddressesSection(serverData));
+      const allAddresses = this.createAllAddressesSection(serverData);
+      if (Array.isArray(allAddresses)) {
+        sections.push(...allAddresses);
+      } else {
+        sections.push(allAddresses);
+      }
     }
 
     // LOD 4: Transaction summary
     if (lod >= 4) {
-      sections.push(this.createTransactionSummarySection(serverData));
+      const txSummary = this.createTransactionSummarySection(serverData);
+      if (Array.isArray(txSummary)) {
+        sections.push(...txSummary);
+      } else {
+        sections.push(txSummary);
+      }
     }
 
-    // LOD 5: Full transaction details with paths
+    // LOD 5: Full transaction details
     if (lod >= 5) {
-      sections.push(this.createFullTransactionDetailsSection(serverData));
+      const txDetails = this.createFullTransactionDetailsSection(serverData);
+      if (Array.isArray(txDetails)) {
+        sections.push(...txDetails);
+      } else {
+        sections.push(txDetails);
+      }
     }
 
     return sections;
@@ -314,6 +336,7 @@ export class UTXOReportGenerator extends BaseReportGenerator {
       type: 'table',
       data: {
         headers: ['Label', 'Type', 'Path', 'XPUB', 'Balance (BTC)', 'Addresses', 'TXs'],
+        widths: ['10%', '10%', '15%', '35%', '12%', '9%', '9%'],
         rows
       }
     };
@@ -321,59 +344,59 @@ export class UTXOReportGenerator extends BaseReportGenerator {
 
   /**
    * Create XPUB details section (LOD 2)
-   * COPIED FROM E2E TEST - Returns structured XPUB data
+   * Shows used addresses for each XPUB
    */
   private createXpubDetailsSection(serverData: any): any {
     const xpubs = serverData.xpubs || [];
+    const sections: any[] = [];
 
     if (xpubs.length === 0) {
       return {
         title: 'XPUB Details with Used Addresses (LOD 2)',
-        type: 'xpub_details',
-        data: []
+        type: 'text',
+        data: 'No XPUBs found'
       };
     }
 
-    const xpubDetails = xpubs.map((xpub: any) => {
-      // Map addresses
-      const addresses = (xpub.addresses || []).map((addr: any) => ({
-        address: addr.address,
-        path: addr.path,
-        type: addr.type,
-        balance: addr.balance || 0,
-        txCount: addr.txCount || 0,
-        isChange: addr.type === 'change',
-        isUsed: (addr.txCount || 0) > 0 || (addr.balance || 0) > 0,
-        txids: addr.txids || []
-      }));
+    // Create a table for each XPUB showing its used addresses
+    for (const xpub of xpubs) {
+      const usedAddresses = (xpub.addresses || []).filter((addr: any) =>
+        (addr.txCount || 0) > 0 || (addr.balance || 0) > 0
+      );
 
-      return {
-        label: xpub.label || 'Unknown',
-        type: xpub.type,
-        xpub: xpub.xpub,
-        path: xpub.path,
-        balance: xpub.balance || 0,
-        totalReceived: xpub.totalReceived || 0,
-        totalSent: xpub.totalSent || 0,
-        txCount: xpub.txCount || 0,
-        receiveIndex: xpub.receiveIndex || 0,
-        changeIndex: xpub.changeIndex || 0,
-        addresses
-      };
-    });
+      if (usedAddresses.length > 0) {
+        const rows = usedAddresses.map((addr: any) => [
+          addr.address,
+          addr.path || 'Unknown',
+          addr.type === 'change' ? 'Change' : 'Receive',
+          (addr.balance || 0).toFixed(8),
+          (addr.txCount || 0).toString()
+        ]);
 
-    return {
+        sections.push({
+          title: `${xpub.label || 'Unknown'} - Used Addresses (${usedAddresses.length})`,
+          type: 'table',
+          data: {
+            headers: ['Address', 'Path', 'Type', 'Balance (BTC)', 'TX Count'],
+            widths: ['35%', '20%', '12%', '18%', '15%'],
+            rows
+          }
+        });
+      }
+    }
+
+    return sections.length > 0 ? sections : [{
       title: 'XPUB Details with Used Addresses (LOD 2)',
-      type: 'xpub_details',
-      data: xpubDetails
-    };
+      type: 'text',
+      data: 'No used addresses found'
+    }];
   }
 
   /**
    * Create all addresses section (LOD 3)
-   * COPIED FROM E2E TEST - Returns structured address data
+   * Shows all addresses (used and unused) grouped by type
    */
-  private createAllAddressesSection(serverData: any): any {
+  private createAllAddressesSection(serverData: any): any[] {
     const xpubs = serverData.xpubs || [];
     const allAddresses: any[] = [];
 
@@ -387,45 +410,75 @@ export class UTXOReportGenerator extends BaseReportGenerator {
           type: addr.type,
           balance: addr.balance || 0,
           txCount: addr.txCount || 0,
-          isChange: addr.type === 'change',
-          isUsed: (addr.txCount || 0) > 0 || (addr.balance || 0) > 0,
-          txids: addr.txids || []
+          isUsed: (addr.txCount || 0) > 0 || (addr.balance || 0) > 0
         });
       }
     }
 
     if (allAddresses.length === 0) {
-      return {
+      return [{
         title: 'All Addresses - Used and Unused (LOD 3)',
-        type: 'address_details',
-        data: {
-          total: 0,
-          receiveAddresses: [],
-          changeAddresses: []
-        }
-      };
+        type: 'text',
+        data: 'No addresses found'
+      }];
     }
+
+    const sections: any[] = [];
 
     // Group by type
     const receiveAddrs = allAddresses.filter(a => a.type === 'receive');
     const changeAddrs = allAddresses.filter(a => a.type === 'change');
 
-    return {
-      title: 'All Addresses - Used and Unused (LOD 3)',
-      type: 'address_details',
-      data: {
-        total: allAddresses.length,
-        receiveAddresses: receiveAddrs,
-        changeAddresses: changeAddrs
-      }
-    };
+    // Receive addresses table
+    if (receiveAddrs.length > 0) {
+      const rows = receiveAddrs.map((addr: any) => [
+        addr.address,
+        addr.path || 'Unknown',
+        addr.isUsed ? 'Used' : 'Unused',
+        (addr.balance || 0).toFixed(8),
+        (addr.txCount || 0).toString()
+      ]);
+
+      sections.push({
+        title: `Receive Addresses (${receiveAddrs.length})`,
+        type: 'table',
+        data: {
+          headers: ['Address', 'Path', 'Status', 'Balance (BTC)', 'TX Count'],
+          widths: ['35%', '20%', '12%', '18%', '15%'],
+          rows
+        }
+      });
+    }
+
+    // Change addresses table
+    if (changeAddrs.length > 0) {
+      const rows = changeAddrs.map((addr: any) => [
+        addr.address,
+        addr.path || 'Unknown',
+        addr.isUsed ? 'Used' : 'Unused',
+        (addr.balance || 0).toFixed(8),
+        (addr.txCount || 0).toString()
+      ]);
+
+      sections.push({
+        title: `Change Addresses (${changeAddrs.length})`,
+        type: 'table',
+        data: {
+          headers: ['Address', 'Path', 'Status', 'Balance (BTC)', 'TX Count'],
+          widths: ['35%', '20%', '12%', '18%', '15%'],
+          rows
+        }
+      });
+    }
+
+    return sections;
   }
 
   /**
    * Create transaction summary section (LOD 4)
-   * COPIED FROM E2E TEST
+   * Shows all transactions in a table with summary stats
    */
-  private createTransactionSummarySection(serverData: any): any {
+  private createTransactionSummarySection(serverData: any): any[] {
     const xpubs = serverData.xpubs || [];
     const allTransactions: any[] = [];
 
@@ -447,11 +500,11 @@ export class UTXOReportGenerator extends BaseReportGenerator {
     const transactions = Array.from(txMap.values()).sort((a, b) => b.blockHeight - a.blockHeight);
 
     if (transactions.length === 0) {
-      return {
+      return [{
         title: 'Transaction Summary (LOD 4)',
         type: 'text',
         data: 'No transactions found'
-      };
+      }];
     }
 
     const rows = transactions.map((tx, idx) => [
@@ -463,25 +516,36 @@ export class UTXOReportGenerator extends BaseReportGenerator {
       tx.confirmations?.toString() || '0'
     ]);
 
-    let summary = `\nTotal Transactions: ${transactions.length}\n`;
-    summary += `Block Range: ${Math.min(...transactions.map((t: any) => t.blockHeight))} - ${Math.max(...transactions.map((t: any) => t.blockHeight))}\n`;
+    const minBlock = Math.min(...transactions.map((t: any) => t.blockHeight));
+    const maxBlock = Math.max(...transactions.map((t: any) => t.blockHeight));
 
-    return {
-      title: 'Transaction Summary (LOD 4)',
-      type: 'table',
-      data: {
-        headers: ['#', 'TXID', 'Block', 'Timestamp', 'Value (BTC)', 'Confirmations'],
-        rows,
-        footer: summary
+    return [
+      {
+        title: 'Transaction History',
+        type: 'table',
+        data: {
+          headers: ['#', 'TXID', 'Block', 'Timestamp', 'Value (BTC)', 'Confirmations'],
+          widths: ['6%', '18%', '12%', '20%', '18%', '15%'],
+          rows
+        }
+      },
+      {
+        title: 'Transaction Statistics',
+        type: 'summary',
+        data: [
+          `Total Transactions: ${transactions.length}`,
+          `Block Range: ${minBlock} - ${maxBlock}`,
+          `Block Span: ${maxBlock - minBlock} blocks`
+        ]
       }
-    };
+    ];
   }
 
   /**
    * Create full transaction details section (LOD 5)
-   * COPIED FROM E2E TEST - Returns structured transaction data
+   * Shows detailed input/output information for each transaction
    */
-  private createFullTransactionDetailsSection(serverData: any): any {
+  private createFullTransactionDetailsSection(serverData: any): any[] {
     const xpubs = serverData.xpubs || [];
 
     // Collect all detailed transactions
@@ -504,65 +568,96 @@ export class UTXOReportGenerator extends BaseReportGenerator {
     const rawTransactions = Array.from(txMap.values()).sort((a, b) => b.blockHeight - a.blockHeight);
 
     if (rawTransactions.length === 0) {
-      return {
+      return [{
         title: 'Full Transaction Details with Paths (LOD 5)',
-        type: 'transactions',
-        data: []
-      };
+        type: 'text',
+        data: 'No detailed transaction data available'
+      }];
     }
 
-    // Transform into structured transaction data
-    const transactions = rawTransactions.map((tx: any) => {
+    const sections: any[] = [];
+
+    // Create a detailed section for each transaction
+    for (const tx of rawTransactions.slice(0, 20)) { // Limit to first 20 for PDF size
       const inputs = tx.inputs || [];
       const outputs = tx.outputs || [];
 
-      // Categorize transaction (SEND/RECEIVE/SELF)
+      // Categorize transaction
       const hasOwnInputs = inputs.some((inp: any) => inp.isOwn);
       const hasOwnOutputs = outputs.some((out: any) => out.isOwn);
 
-      let category: 'SEND' | 'RECEIVE' | 'SELF' = 'RECEIVE';
+      let category = 'RECEIVE';
       if (hasOwnInputs && hasOwnOutputs) {
         category = 'SELF';
       } else if (hasOwnInputs) {
         category = 'SEND';
       }
 
-      // Map inputs
-      const mappedInputs = inputs.map((inp: any) => ({
-        address: inp.address,
-        value: inp.value || 0,
-        isOwn: inp.isOwn || false,
-        path: inp.path || null,
-        isChange: inp.isChange || false
-      }));
+      // Transaction header
+      sections.push({
+        title: `TX: ${tx.txid.substring(0, 20)}... (${category})`,
+        type: 'summary',
+        data: [
+          `Block: ${tx.blockHeight}`,
+          `Timestamp: ${tx.timestamp || 'Pending'}`,
+          `Confirmations: ${tx.confirmations || 0}`,
+          `Value: ${(tx.value || 0).toFixed(8)} BTC`,
+          `Fee: ${(tx.fee || 0).toFixed(8)} BTC`
+        ]
+      });
 
-      // Map outputs
-      const mappedOutputs = outputs.map((out: any) => ({
-        address: out.address,
-        value: out.value || 0,
-        isOwn: out.isOwn || false,
-        path: out.path || null,
-        isChange: out.isChange || false
-      }));
+      // Inputs table
+      if (inputs.length > 0) {
+        const inputRows = inputs.map((inp: any) => [
+          inp.address || 'Unknown',
+          inp.path || 'N/A',
+          (inp.value || 0).toFixed(8),
+          inp.isOwn ? 'Own' : 'External',
+          inp.isChange ? 'Change' : 'Receive'
+        ]);
 
-      return {
-        txid: tx.txid,
-        blockHeight: tx.blockHeight,
-        timestamp: tx.timestamp || 'Pending',
-        confirmations: tx.confirmations || 0,
-        value: tx.value || 0,
-        fee: tx.fee || 0,
-        category,
-        inputs: mappedInputs,
-        outputs: mappedOutputs
-      };
-    });
+        sections.push({
+          title: 'Inputs',
+          type: 'table',
+          data: {
+            headers: ['Address', 'Path', 'Value (BTC)', 'Type', 'Category'],
+            widths: ['30%', '20%', '15%', '15%', '20%'],
+            rows: inputRows
+          }
+        });
+      }
 
-    return {
-      title: 'Full Transaction Details with Paths (LOD 5)',
-      type: 'transactions',
-      data: transactions
-    };
+      // Outputs table
+      if (outputs.length > 0) {
+        const outputRows = outputs.map((out: any) => [
+          out.address || 'Unknown',
+          out.path || 'N/A',
+          (out.value || 0).toFixed(8),
+          out.isOwn ? 'Own' : 'External',
+          out.isChange ? 'Change' : 'Receive'
+        ]);
+
+        sections.push({
+          title: 'Outputs',
+          type: 'table',
+          data: {
+            headers: ['Address', 'Path', 'Value (BTC)', 'Type', 'Category'],
+            widths: ['30%', '20%', '15%', '15%', '20%'],
+            rows: outputRows
+          }
+        });
+      }
+    }
+
+    if (rawTransactions.length > 20) {
+      sections.push({
+        title: 'Note',
+        type: 'text',
+        data: `Showing 20 of ${rawTransactions.length} transactions. Use LOD 4 for complete transaction list.`
+      });
+    }
+
+    return sections;
   }
 
   /**

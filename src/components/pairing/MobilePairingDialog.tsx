@@ -163,18 +163,27 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
       console.log('✅ [Pairing] All pubkeys validated successfully');
 
       // Prepare the request payload
+      // For Bitcoin (UTXO chains), use pubkey field which contains the actual xpub
       const pairingPayload = {
         deviceId: deviceId,
         label: deviceLabel || features.label || 'My KeepKey',
-        pubkeys: pubkeys.map((pk: any) => ({
-          pubkey: pk.pubkey,
-          pathMaster: pk.pathMaster,
-          networks: pk.networks,
-          address: pk.address,
-          master: pk.master,
-          note: pk.note,
-          type: pk.type,
-        })),
+        pubkeys: pubkeys.map((pk: any) => {
+          // Check if this is a Bitcoin/UTXO chain pubkey
+          const isUTXO = pk.networks?.some((n: string) => n.startsWith('bip122:'));
+
+          return {
+            pubkey: pk.pubkey,
+            pathMaster: pk.pathMaster,
+            networks: pk.networks,
+            // For UTXO chains, exclude address field - only use xpub via master
+            address: isUTXO ? undefined : pk.address,
+            // For UTXO chains, use pubkey field which contains the actual xpub
+            // Pioneer SDK incorrectly puts address in master field, so we fix it here
+            master: isUTXO ? pk.pubkey : pk.master,
+            note: pk.note,
+            type: pk.type,
+          };
+        }),
       };
 
       console.log('📤 [Pairing] Sending request to /api/pairing');
@@ -239,7 +248,7 @@ export function MobilePairingDialog({ open, onClose }: MobilePairingDialogProps)
       setExpiresAt(data.expiresAt);
 
       // Generate tiny QR code
-      const vaultUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const vaultUrl = 'https://vault.keepkey.com'; // Hardcoded production URL
 
       const qrPayload = {
         code: data.code,

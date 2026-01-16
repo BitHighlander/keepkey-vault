@@ -91,6 +91,35 @@ async function executeFunction(
       case 'getProjectInfo':
         return await fn(parameters.topic || parameters.query || '');
 
+      // Capability & Intelligence functions
+      case 'getChainCapability':
+        return await fn(parameters.query || parameters.chain || '');
+
+      case 'getCAIPInfo':
+        return await fn(parameters.query || parameters.asset || '', app);
+
+      case 'getDeviceInfo':
+        return await fn(app);
+
+      case 'getVaultStatus':
+        return await fn(app);
+
+      case 'getSupportedChains':
+        return await fn(app);
+
+      // Path Intelligence functions
+      case 'getPathsForBlockchain':
+        return await fn(parameters.blockchain || parameters.query || '', app);
+
+      case 'listConfiguredPaths':
+        return await fn(parameters.blockchain || parameters.query, app);
+
+      case 'getPathInfo':
+        return await fn(parameters.path || parameters.query || '', app);
+
+      case 'suggestPathForBlockchain':
+        return await fn(parameters.blockchain || parameters.query || '', parameters.accountNumber || 0);
+
       default:
         return {
           success: false,
@@ -135,12 +164,22 @@ export async function executeChatFunctions(
         parameters.caip = firstAsset.caip;
         finalData = { asset: firstAsset };
 
+        // Debug logging
+        //console.log('🔍 [Executor] Search found asset:', {
+        //   query: parameters.query,
+        //   symbol: firstAsset.symbol,
+        //   name: firstAsset.name,
+        //   caip: firstAsset.caip,
+        //   totalResults: searchResult.data.results.length
+        // });
+
         // Execute the navigation function
         const navFunction = functions.find(f =>
           f.startsWith('navigate') && f !== 'navigateToDashboard'
         );
 
         if (navFunction) {
+          //console.log('🔍 [Executor] Executing navigation:', navFunction, 'with CAIP:', parameters.caip);
           const navResult = await executeFunction(navFunction, parameters, app);
           results.push({ function: navFunction, result: navResult });
         }
@@ -264,6 +303,20 @@ export function formatExecutionResponse(
         response += `\n\nAddress: ${executionResult.data.address}`;
       }
       break;
+
+    case 'query_caip':
+    case 'query_capability':
+    case 'query_status':
+    case 'query_path':
+      // For these intents, the function result message IS the complete response
+      // Replace the AI placeholder with the actual function result
+      if (executionResult.results && executionResult.results.length > 0) {
+        const functionResult = executionResult.results[0].result;
+        if (functionResult.message) {
+          response = functionResult.message;
+        }
+      }
+      break;
   }
 
   return response;
@@ -312,6 +365,13 @@ Actions: refreshPortfolio
 - For security queries, return security_warning intent with educational response
 - For send/swap actions, guide users through the UI (don't execute automatically)
 
+**IMPORTANT Navigation Rules**:
+- For "How do I send X?" → use searchAssets + navigateToSend to open the send page for that asset
+- For "Show me how to receive X" → use searchAssets + navigateToReceive to open the receive page
+- For "I want to swap X" → use searchAssets + navigateToSwap to open the swap page
+- For "Show me X" → use searchAssets + navigateToAsset to open the asset details page
+- Always search for the asset first, then navigate with the CAIP identifier
+
 **Examples**:
 
 User: "What's my Bitcoin balance?"
@@ -330,12 +390,12 @@ User: "Show me my Ethereum"
   "content": "Opening your Ethereum asset page..."
 }
 
-User: "I want to send Bitcoin"
+User: "How do I send Bitcoin?"
 {
   "intent": "action_send",
   "functions": ["searchAssets", "navigateToSend"],
   "parameters": { "query": "bitcoin" },
-  "content": "Opening the send page for Bitcoin. You'll be able to enter the recipient address and amount there."
+  "content": "I'll open the Bitcoin send page for you. You'll be able to enter the recipient address and amount there."
 }
 
 User: "How do I receive ETH?"

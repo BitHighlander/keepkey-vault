@@ -1,15 +1,13 @@
 'use client'
 // @ts-nocheck
 
-// Debug flag - set to false to reduce console noise
-const DEBUG_VERBOSE = false;
-
 import { Box, Flex } from "@chakra-ui/react"
 import { keyframes } from '@emotion/react'
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph'
 import Dashboard from '@/components/dashboard/Dashboard'
 import { usePioneerContext } from '@/components/providers/pioneer'
-import { useState, useEffect } from 'react'
+import { useHeader } from '@/contexts/HeaderContext'
+import { useState, useEffect, useRef } from 'react'
 // Background image path
 const splashBg = '/images/backgrounds/splash-bg.png'
 
@@ -34,82 +32,80 @@ import {
   DialogCloseTrigger,
 } from "@/components/ui/dialog"
 import Settings from '@/components/settings/Settings'
-import AddBlockchain from '@/components/blockchain/AddBlockchain'
-import { 
+// TODO: Re-enable for custom networks feature
+// import AddBlockchain from '@/components/blockchain/AddBlockchain'
+import {
   ProductStructuredData,
   OrganizationStructuredData,
-  SoftwareApplicationStructuredData 
+  SoftwareApplicationStructuredData
 } from '@/components/SEO/StructuredData'
 
 export default function Home() {
   const pioneer = usePioneerContext();
-  const { 
+  const {
     state = {},
   } = pioneer || {};
-  
+
   const { app } = state;
-  
+  const { setActions } = useHeader();
+
   // Show loading state only when data is not ready
   const showLoading = !app?.dashboard;
 
+  // 🚨 CRITICAL DEBUG - Why is dashboard missing?
+  useEffect(() => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🟡 [PAGE.TSX] YELLOW LOGO STATUS');
+    console.log('🟡 showLoading:', showLoading);
+    console.log('🟡 pioneer:', !!pioneer);
+    console.log('🟡 state:', !!state);
+    console.log('🟡 app:', !!app);
+    console.log('🟡 app.dashboard:', !!app?.dashboard);
+    console.log('🟡 app.balances:', app?.balances?.length || 0);
+    console.log('🟡 app.pubkeys:', app?.pubkeys?.length || 0);
+    if (!app?.dashboard) {
+      console.error('🚨 [PAGE.TSX] DASHBOARD IS MISSING - THIS IS WHY YELLOW LOGO IS STUCK!');
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }, [showLoading, pioneer, state, app]);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isAddBlockchainOpen, setIsAddBlockchainOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const dashboardRef = useRef(null);
 
-  // Add debug logging for component mount and state changes
+  // Set header actions for dashboard
   useEffect(() => {
-    if (DEBUG_VERBOSE) console.log('🏠 [Page] Component mounted');
-    return () => {
-      if (DEBUG_VERBOSE) console.log('🏠 [Page] Component unmounting');
-    };
-  }, []);
-
-  useEffect(() => {
-    if (DEBUG_VERBOSE) {
-      console.log('🔄 [Page] State update:', {
-        hasApp: !!app,
-        hasAssetContext: !!app?.assetContext,
-        hasDashboard: !!app?.dashboard,
-        hasPioneer: !!pioneer,
-        splashBgPath: splashBg // Debug: check if image imported correctly
-      });
-    }
-  }, [app, pioneer]);
-
-  // Debug loading screen state
-  useEffect(() => {
-    if (DEBUG_VERBOSE) {
-      if (showLoading) {
-        console.log('🎬 [LOADING SCREEN] Showing loading screen with background:', splashBg);
-      } else {
-        console.log('✅ [LOADING SCREEN] Loading screen hidden');
-      }
-    }
-  }, [showLoading]);
+    setActions({
+      onSettingsClick: () => setIsSettingsOpen(true),
+      onRefreshClick: () => {
+        // Trigger refresh on the Dashboard component
+        if (dashboardRef.current && dashboardRef.current.handleRefresh) {
+          dashboardRef.current.handleRefresh(true);
+        }
+      },
+      isRefreshing,
+    });
+  }, [isRefreshing, setActions]);
 
   // Handle settings dialog open state
   const handleSettingsOpenChange = (details: { open: boolean }) => {
     setIsSettingsOpen(details.open);
   };
 
-  // Handle add blockchain dialog open state
-  const handleAddBlockchainOpenChange = (details: { open: boolean }) => {
-    setIsAddBlockchainOpen(details.open);
-  };
-
   // Show loading state if pioneer is not ready
   if (!pioneer) {
     return (
-      <Box 
-        bg="black" 
-        minHeight="100vh" 
-        width="100vw" 
+      <Box
+        bg="black"
+        minHeight="100vh"
+        width="100vw"
         overflow="hidden"
         backgroundImage={`url(${splashBg})`}
         backgroundSize="cover"
         backgroundPosition="center"
         backgroundRepeat="no-repeat"
       >
-        <Box 
+        <Box
           width="100%"
           height="100vh"
           display="flex"
@@ -119,9 +115,9 @@ export default function Home() {
           <Box
             animation={`${pulseAnimation} 2s ease-in-out infinite`}
           >
-            <KeepKeyUiGlyph 
-              width="100px" 
-              height="100px" 
+            <KeepKeyUiGlyph
+              width="100px"
+              height="100px"
               color="#FFD700"
             />
           </Box>
@@ -136,11 +132,11 @@ export default function Home() {
       <ProductStructuredData />
       <OrganizationStructuredData />
       <SoftwareApplicationStructuredData />
-      
-      <Box 
+
+      <Box
         width="100%"
         height="100vh"
-        bg="black" 
+        bg="black"
         overflow="hidden"
         position="relative"
         backgroundImage={`url(${splashBg})`}
@@ -168,9 +164,9 @@ export default function Home() {
           <Box
             animation={`${pulseAnimation} 2s ease-in-out infinite`}
           >
-            <KeepKeyUiGlyph 
-              width="100px" 
-              height="100px" 
+            <KeepKeyUiGlyph
+              width="100px"
+              height="100px"
               color="#FFD700"
             />
           </Box>
@@ -182,9 +178,9 @@ export default function Home() {
           transition="all 0.3s ease"
           height="100%"
         >
-          <Dashboard 
-            onSettingsClick={() => setIsSettingsOpen(true)}
-            onAddNetworkClick={() => setIsAddBlockchainOpen(true)}
+          <Dashboard
+            ref={dashboardRef}
+            onRefreshStateChange={setIsRefreshing}
           />
         </Box>
       </Box>
@@ -199,28 +195,6 @@ export default function Home() {
           </DialogHeader>
           <DialogBody>
             <Settings onClose={() => setIsSettingsOpen(false)} />
-          </DialogBody>
-          <DialogFooter>
-            {/* @ts-ignore */}
-            <DialogCloseTrigger asChild>
-              <Box as="button" color="white" p={2} fontSize="sm">
-                Close
-              </Box>
-            </DialogCloseTrigger>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
-
-      {/* Add Blockchain Dialog */}
-      {/* @ts-ignore */}
-      <DialogRoot open={isAddBlockchainOpen} onOpenChange={handleAddBlockchainOpenChange}>
-        {/* @ts-ignore */}
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Blockchain</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <AddBlockchain onClose={() => setIsAddBlockchainOpen(false)} />
           </DialogBody>
           <DialogFooter>
             {/* @ts-ignore */}

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   VStack,
   HStack,
@@ -10,6 +10,8 @@ import {
   Grid,
   Input,
   Button,
+  IconButton,
+  Flex,
 } from '@chakra-ui/react';
 import {
   DialogRoot,
@@ -21,8 +23,9 @@ import {
 } from '@/components/ui/dialog';
 import { InputGroup } from '@/components/ui/input-group';
 import { AssetIcon } from '@/components/ui/AssetIcon';
-import { FaSearch } from 'react-icons/fa';
+import { FaSearch, FaTimes } from 'react-icons/fa';
 import { middleEllipsis } from '@/utils/strings';
+import { extractNetworkId, getNetworkColor, getNetworkName, getNetworkSortOrder } from '@/lib/utils/networkIcons';
 
 interface Asset {
   caip: string;
@@ -32,6 +35,8 @@ interface Asset {
   balance?: string | number;
   balanceUsd?: string | number;
   networkId?: string;
+  isDisabled?: boolean; // Flag to grey out and disable selection
+  hasBalance?: boolean; // Flag to indicate if asset has meaningful balance
 }
 
 interface AssetPickerProps {
@@ -54,34 +59,58 @@ export const AssetPicker = ({
   isFromSelection = false
 }: AssetPickerProps) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAllAssets, setShowAllAssets] = useState(false);
   const [hoveredAsset, setHoveredAsset] = useState<string | null>(null);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when search expands
+  useEffect(() => {
+    if (isSearchExpanded && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isSearchExpanded]);
+
+  // Reset search when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery('');
+      setIsSearchExpanded(false);
+    }
+  }, [isOpen]);
 
   const handleSelect = (asset: Asset) => {
+    // Prevent selection of disabled assets
+    if (asset.isDisabled) {
+      return;
+    }
     onSelect(asset);
     onClose();
   };
 
-  // Sort assets by USD value (descending) - largest first
+  // Sort assets by network first, then by USD value within each network
   const sortedAssets = [...assets].sort((a, b) => {
+    // Primary sort: by network (Bitcoin first, then ETH, BSC, AVAX, etc.)
+    const aNetworkId = a.networkId || extractNetworkId(a.caip);
+    const bNetworkId = b.networkId || extractNetworkId(b.caip);
+    const aNetworkOrder = getNetworkSortOrder(aNetworkId);
+    const bNetworkOrder = getNetworkSortOrder(bNetworkId);
+
+    if (aNetworkOrder !== bNetworkOrder) {
+      return aNetworkOrder - bNetworkOrder;
+    }
+
+    // Secondary sort: by USD value (descending) within same network
     const aUsd = a.balanceUsd ? (typeof a.balanceUsd === 'number' ? a.balanceUsd : parseFloat(a.balanceUsd.toString())) : 0;
     const bUsd = b.balanceUsd ? (typeof b.balanceUsd === 'number' ? b.balanceUsd : parseFloat(b.balanceUsd.toString())) : 0;
     return bUsd - aUsd; // Descending order
   });
 
-  // Filter assets based on search query and balance
+  // Filter assets based on search query only
+  // Always show all assets (including zero balance) - disabled assets will be greyed out
   let filteredAssets = sortedAssets.filter(asset =>
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     asset.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  // For FROM selection, hide zero balance assets unless "show all" is toggled
-  if (isFromSelection && !showAllAssets) {
-    filteredAssets = filteredAssets.filter(asset => {
-      const balance = asset.balance ? parseFloat(asset.balance.toString()) : 0;
-      return balance > 0;
-    });
-  }
 
   // Count assets with balance
   const assetsWithBalance = sortedAssets.filter(asset => {
@@ -123,41 +152,134 @@ export const AssetPicker = ({
         transform="translate(-50%, -50%)"
         margin="0"
       >
-        <DialogHeader borderBottom="1px solid rgba(255, 255, 255, 0.1)" pb={4} pt={2} px={6}>
-          <DialogTitle color="white" fontSize="lg" fontWeight="600">{title}</DialogTitle>
-          <DialogCloseTrigger />
+        <DialogHeader
+          borderBottom="1px solid rgba(255, 255, 255, 0.1)"
+          pb={3}
+          pt={3}
+          px={6}
+        >
+          <Flex
+            align="center"
+            justify="space-between"
+            gap={3}
+            width="full"
+          >
+            {/* Title - shrinks when search is expanded */}
+            <DialogTitle
+              color="white"
+              fontSize="xl"
+              fontWeight="700"
+              letterSpacing="-0.02em"
+              flex={isSearchExpanded ? "0 0 auto" : "1"}
+              transition="all 0.3s ease"
+              whiteSpace="nowrap"
+            >
+              {title}
+            </DialogTitle>
+
+            {/* Search Section */}
+            <Flex
+              align="center"
+              gap={2}
+              flex={isSearchExpanded ? "1" : "0 0 auto"}
+              transition="all 0.3s ease"
+            >
+              {/* Collapsible Search Input */}
+              {isSearchExpanded && (
+                <Box
+                  flex="1"
+                  animation="fadeIn 0.3s ease"
+                  sx={{
+                    '@keyframes fadeIn': {
+                      from: { opacity: 0, transform: 'translateX(10px)' },
+                      to: { opacity: 1, transform: 'translateX(0)' },
+                    },
+                  }}
+                >
+                  <InputGroup
+                    startElement={
+                      <Box pl={3}>
+                        <FaSearch color="#23DCC8" size={14} />
+                      </Box>
+                    }
+                  >
+                    <Input
+                      ref={searchInputRef}
+                      placeholder="Search assets..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      bg="rgba(30, 30, 30, 0.8)"
+                      borderColor="rgba(35, 220, 200, 0.3)"
+                      _hover={{ borderColor: 'rgba(35, 220, 200, 0.5)' }}
+                      _focus={{
+                        borderColor: '#23DCC8',
+                        boxShadow: '0 0 0 1px #23DCC8',
+                        bg: 'rgba(30, 30, 30, 0.95)'
+                      }}
+                      color="white"
+                      size="sm"
+                      pl={10}
+                      height="36px"
+                    />
+                  </InputGroup>
+                </Box>
+              )}
+
+              {/* Search Toggle Button */}
+              <IconButton
+                aria-label={isSearchExpanded ? "Close search" : "Open search"}
+                onClick={() => {
+                  if (isSearchExpanded && searchQuery) {
+                    setSearchQuery('');
+                  } else {
+                    setIsSearchExpanded(!isSearchExpanded);
+                  }
+                }}
+                size="sm"
+                variant="ghost"
+                bg={isSearchExpanded ? 'rgba(35, 220, 200, 0.1)' : 'transparent'}
+                color={isSearchExpanded ? '#23DCC8' : 'gray.400'}
+                _hover={{
+                  bg: 'rgba(35, 220, 200, 0.2)',
+                  color: '#23DCC8',
+                  transform: 'scale(1.05)'
+                }}
+                _active={{
+                  bg: 'rgba(35, 220, 200, 0.3)',
+                  transform: 'scale(0.95)'
+                }}
+                transition="all 0.2s ease"
+                borderRadius="md"
+                height="36px"
+                width="36px"
+              >
+                {isSearchExpanded && searchQuery ? (
+                  <FaTimes size={14} />
+                ) : (
+                  <FaSearch size={14} />
+                )}
+              </IconButton>
+            </Flex>
+
+            <DialogCloseTrigger
+              position="relative"
+              top="unset"
+              right="unset"
+            />
+          </Flex>
         </DialogHeader>
         <DialogBody pb={6} pt={4} px={6}>
           <VStack align="stretch" gap={4}>
-            {/* Search Input */}
-            <InputGroup
-              startElement={
-                <Box pl={3}>
-                  <FaSearch color="gray" size={14} />
-                </Box>
-              }
-            >
-              <Input
-                placeholder="Search assets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                bg="rgba(30, 30, 30, 0.6)"
-                borderColor="rgba(255, 255, 255, 0.1)"
-                _hover={{ borderColor: 'rgba(35, 220, 200, 0.3)' }}
-                _focus={{ borderColor: '#23DCC8', boxShadow: '0 0 0 1px #23DCC8' }}
-                color="white"
-                size="md"
-                pl={10}
-              />
-            </InputGroup>
 
             {/* Asset Grid */}
             <Grid
-              templateColumns="repeat(auto-fill, minmax(160px, 1fr))"
+              templateColumns="repeat(auto-fit, minmax(160px, 1fr))"
               gap={3}
               maxH="500px"
               overflowY="auto"
               pr={2}
+              justifyContent="center"
+              justifyItems="center"
               css={{
                 '&::-webkit-scrollbar': {
                   width: '8px',
@@ -178,26 +300,35 @@ export const AssetPicker = ({
               {filteredAssets.map((asset) => {
                 const isSelected = currentAsset?.caip === asset.caip;
                 const hasBalance = asset.balance && parseFloat(asset.balance.toString()) > 0;
+                const networkId = asset.networkId || extractNetworkId(asset.caip);
+                const networkColor = getNetworkColor(networkId);
+                const networkName = getNetworkName(networkId);
+                const isDisabled = asset.isDisabled || false;
 
                 return (
                   <Box
                     key={asset.caip}
                     onClick={() => handleSelect(asset)}
-                    onMouseEnter={() => setHoveredAsset(asset.caip)}
+                    onMouseEnter={() => !isDisabled && setHoveredAsset(asset.caip)}
                     onMouseLeave={() => setHoveredAsset(null)}
-                    cursor="pointer"
+                    cursor={isDisabled ? 'not-allowed' : 'pointer'}
                     position="relative"
                     transition="all 0.2s"
                     bg={isSelected ? 'rgba(35, 220, 200, 0.15)' : 'rgba(30, 30, 30, 0.6)'}
                     borderRadius="xl"
                     borderWidth="2px"
                     borderColor={isSelected ? '#23DCC8' : 'rgba(255, 255, 255, 0.1)'}
+                    borderTopColor={networkColor}
+                    borderTopWidth="3px"
                     p={4}
-                    _hover={{
+                    opacity={isDisabled ? 0.4 : 1}
+                    filter={isDisabled ? 'grayscale(50%)' : 'none'}
+                    _hover={isDisabled ? {} : {
                       bg: isSelected ? 'rgba(35, 220, 200, 0.2)' : 'rgba(35, 220, 200, 0.1)',
                       borderColor: '#23DCC8',
+                      borderTopColor: networkColor,
                       transform: 'translateY(-2px)',
-                      boxShadow: '0 4px 12px rgba(35, 220, 200, 0.2)',
+                      boxShadow: `0 4px 12px rgba(35, 220, 200, 0.2), 0 -2px 8px ${networkColor}40`,
                     }}
                   >
                     {/* Selected Indicator */}
@@ -230,7 +361,7 @@ export const AssetPicker = ({
                     )}
 
                     <VStack gap={2} align="center">
-                      {/* Asset Icon */}
+                      {/* Asset Icon with Network Badge */}
                       <AssetIcon
                         src={asset.icon}
                         caip={asset.caip}
@@ -238,6 +369,8 @@ export const AssetPicker = ({
                         alt={asset.name}
                         boxSize="48px"
                         color="#FFD700"
+                        showNetworkBadge={true}
+                        networkId={networkId}
                       />
 
                       {/* Asset Symbol */}
@@ -251,6 +384,26 @@ export const AssetPicker = ({
                       >
                         {asset.symbol}
                       </Text>
+
+                      {/* Network Name Badge */}
+                      <Box
+                        bg={`${networkColor}20`}
+                        borderRadius="md"
+                        px={2}
+                        py={0.5}
+                        borderWidth="1px"
+                        borderColor={`${networkColor}60`}
+                      >
+                        <Text
+                          fontSize="9px"
+                          color={networkColor}
+                          fontWeight="semibold"
+                          textTransform="uppercase"
+                          letterSpacing="wide"
+                        >
+                          {networkName}
+                        </Text>
+                      </Box>
 
                       {/* Asset Name */}
                       <Text
@@ -287,45 +440,17 @@ export const AssetPicker = ({
             {filteredAssets.length === 0 && (
               <Box py={8} textAlign="center">
                 <Text color="gray.500" fontSize="sm">
-                  {searchQuery ? `No assets found matching "${searchQuery}"` : 'No assets with balance'}
+                  {searchQuery ? `No assets found matching "${searchQuery}"` : 'No assets available'}
                 </Text>
               </Box>
             )}
 
-            {/* Show All Assets Toggle (only for FROM selection) */}
-            {isFromSelection && assetsWithBalance < sortedAssets.length && (
-              <HStack justify="center" pt={2}>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => setShowAllAssets(!showAllAssets)}
-                  color="gray.400"
-                  _hover={{ color: '#23DCC8', bg: 'rgba(35, 220, 200, 0.1)' }}
-                  fontSize="xs"
-                  height="auto"
-                  py={1}
-                >
-                  {showAllAssets ? (
-                    <HStack gap={1}>
-                      <Text>Hide zero balances</Text>
-                      <Text>▲</Text>
-                    </HStack>
-                  ) : (
-                    <HStack gap={1}>
-                      <Text>Show all {sortedAssets.length} assets</Text>
-                      <Text>▼</Text>
-                    </HStack>
-                  )}
-                </Button>
-              </HStack>
-            )}
-
             {/* Asset count */}
             <Text fontSize="xs" color="gray.500" textAlign="center">
-              {isFromSelection && !showAllAssets
-                ? `${assetsWithBalance} asset${assetsWithBalance !== 1 ? 's' : ''} with balance`
-                : `${filteredAssets.length} asset${filteredAssets.length !== 1 ? 's' : ''} available`
-              }
+              {filteredAssets.length} asset{filteredAssets.length !== 1 ? 's' : ''} available
+              {isFromSelection && assetsWithBalance > 0 && (
+                <> ({assetsWithBalance} with balance)</>
+              )}
             </Text>
           </VStack>
         </DialogBody>

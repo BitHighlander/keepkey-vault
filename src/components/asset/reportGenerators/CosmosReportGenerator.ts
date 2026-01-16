@@ -18,7 +18,8 @@ export class CosmosReportGenerator extends BaseReportGenerator {
     return {
       accountCount: 1, // Cosmos typically uses one main account
       includeTransactions: true,
-      includeAddresses: true
+      includeAddresses: true,
+      lod: 1 // Default level of detail (synced with e2e)
     };
   }
 
@@ -105,6 +106,8 @@ export class CosmosReportGenerator extends BaseReportGenerator {
       title: `${assetContext.name} Staking Report`,
       subtitle: `${assetContext.symbol} Account Analysis`,
       generatedDate: this.getCurrentDate(),
+      chain: assetContext.symbol, // Added for consistency with e2e tests
+      lod: options.lod || options.lodLevel || 1, // Added for consistency with e2e tests
       sections
     };
   }

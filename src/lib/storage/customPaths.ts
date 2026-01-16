@@ -36,7 +36,7 @@ export const getCustomPaths = (): CustomPath[] => {
     if (!stored) return [];
 
     const paths = JSON.parse(stored) as CustomPath[];
-    console.log('📂 [CustomPaths] Loaded custom paths from storage:', paths.length);
+    //console.log('📂 [CustomPaths] Loaded custom paths from storage:', paths.length);
     return Array.isArray(paths) ? paths : [];
   } catch (error) {
     console.error('❌ [CustomPaths] Error loading custom paths:', error);
@@ -64,7 +64,7 @@ export const saveCustomPath = (path: Omit<CustomPath, 'createdAt' | 'id'>): Cust
     // Save to localStorage
     localStorage.setItem(CUSTOM_PATHS_KEY, JSON.stringify(updatedPaths));
 
-    console.log('✅ [CustomPaths] Saved custom path:', newPath);
+    //console.log('✅ [CustomPaths] Saved custom path:', newPath);
     return newPath;
   } catch (error) {
     console.error('❌ [CustomPaths] Error saving custom path:', error);
@@ -81,7 +81,7 @@ export const deleteCustomPath = (id: string): void => {
     const updatedPaths = existingPaths.filter(path => path.id !== id);
 
     localStorage.setItem(CUSTOM_PATHS_KEY, JSON.stringify(updatedPaths));
-    console.log('🗑️ [CustomPaths] Deleted custom path:', id);
+    //console.log('🗑️ [CustomPaths] Deleted custom path:', id);
   } catch (error) {
     console.error('❌ [CustomPaths] Error deleting custom path:', error);
     throw new Error('Failed to delete custom path from localStorage');
@@ -94,7 +94,7 @@ export const deleteCustomPath = (id: string): void => {
 export const clearCustomPaths = (): void => {
   try {
     localStorage.removeItem(CUSTOM_PATHS_KEY);
-    console.log('🗑️ [CustomPaths] Cleared all custom paths');
+    //console.log('🗑️ [CustomPaths] Cleared all custom paths');
   } catch (error) {
     console.error('❌ [CustomPaths] Error clearing custom paths:', error);
   }

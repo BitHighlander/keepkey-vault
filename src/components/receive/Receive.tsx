@@ -107,7 +107,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
     
     try {
       const availablePubkeys = (assetContext.pubkeys || []) as Pubkey[];
-      console.log('📊 [Receive] Available pubkeys:', availablePubkeys);
+      //console.log('📊 [Receive] Available pubkeys:', availablePubkeys);
       
       // Set initial pubkey but DON'T set address or generate QR until verified
       if (availablePubkeys.length > 0) {
@@ -130,7 +130,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
           );
           
           if (nativeSegwitPubkey) {
-            console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
+            //console.log('🔐 [Receive] Defaulting to Native Segwit (Bech32) address for Bitcoin');
             initialPubkey = nativeSegwitPubkey;
           } else {
             // Fallback to any Segwit if Native not found
@@ -141,7 +141,7 @@ export function Receive({ onBackClick }: ReceiveProps) {
             );
             
             if (anySegwitPubkey) {
-              console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
+              //console.log('⚠️ [Receive] Native Segwit not found, using Segwit address');
               initialPubkey = anySegwitPubkey;
             } else {
               console.log('⚠️ [Receive] No Segwit address found, using first available');

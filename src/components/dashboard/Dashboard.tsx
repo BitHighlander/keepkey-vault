@@ -4,7 +4,7 @@
 const DEBUG_VERBOSE = false;
 const DEBUG_USD = true; // Keep USD debugging on
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, forwardRef, useImperativeHandle } from 'react';
 import {
   Box,
   Flex,
@@ -18,7 +18,10 @@ import {
   GridItem,
   useDisclosure,
   Spinner,
+  IconButton,
+  Badge,
 } from '@chakra-ui/react';
+import { FaSyncAlt } from 'react-icons/fa';
 import { keyframes } from '@emotion/react';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
 import { usePioneerContext } from '@/components/providers/pioneer'
@@ -27,7 +30,10 @@ import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 import { AssetIcon } from '@/components/ui/AssetIcon';
-import { ChatPopup } from '@/components/chat/ChatPopup';
+import { usePendingSwaps } from '@/hooks/usePendingSwaps';
+import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
+import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
+import { detectScamToken, type ScamDetectionResult } from '@/utils/scamDetection';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -39,6 +45,8 @@ const playSound = (sound: HTMLAudioElement | null) => {
     sound.play().catch(err => console.error('Error playing sound:', err));
   }
 };
+
+// Scam detection is now imported from @/utils/scamDetection
 
 // Custom scrollbar styles
 const scrollbarStyles = {
@@ -75,6 +83,9 @@ interface Network {
   icon: string;
   color: string;
   totalNativeBalance: string;
+  fetchedAt?: number;      // Unix timestamp of balance fetch
+  fetchedAtISO?: string;   // ISO 8601 string
+  isStale?: boolean;       // True if > 5 minutes old
 }
 
 interface NetworkPercentage {
@@ -101,8 +112,7 @@ interface Dashboard {
 }
 
 interface DashboardProps {
-  onSettingsClick: () => void;
-  onAddNetworkClick: () => void;
+  onRefreshStateChange?: (isRefreshing: boolean) => void;
 }
 
 // Animated KeepKey logo pulse effect
@@ -115,6 +125,12 @@ const pulseAnimation = keyframes`
     transform: scale(1.1);
     opacity: 1;
   }
+`;
+
+// Spin animation for pending swap indicator
+const spinAnimation = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 `;
 
 const LoadingScreen = () => (
@@ -198,7 +214,7 @@ const sortNetworks = (a: Network, b: Network) => {
   return 0;
 };
 
-const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
+const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref) => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSliceIndex, setActiveSliceIndex] = useState<number>(0);
@@ -207,10 +223,20 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingAssetCaip, setLoadingAssetCaip] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Scam detection and zero-value token states
+  const [showZeroValueTokens, setShowZeroValueTokens] = useState(false);
+  const [showScamTokens, setShowScamTokens] = useState(false);
+  const [scamWarningToken, setScamWarningToken] = useState<any | null>(null);
+  const [pendingTokenAction, setPendingTokenAction] = useState<(() => void) | null>(null);
+
   const pioneer = usePioneerContext();
   const { state } = pioneer;
   const { app } = state;
   const router = useRouter();
+
+  // Pending swaps - using same pattern as other working hooks
+  const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
 
   // Format balance for display
   const formatBalance = (balance: string) => {
@@ -309,7 +335,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   // Set up interval to sync market data every 15 seconds
   useEffect(() => {
     if (!app) return;
-    
+
     const intervalId = setInterval(() => {
       app
         .syncMarket()
@@ -326,6 +352,48 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
     return () => clearInterval(intervalId);
   }, [app]);
+
+  // Listen for real-time dashboard updates from Pioneer SDK
+  useEffect(() => {
+    if (!app?.events) return;
+
+    const handleDashboardUpdate = (data: any) => {
+      // Defensive checks for undefined values
+      const previousTotal = data.previousTotal ?? 0;
+      const newTotal = data.newTotal ?? 0;
+
+      console.log('🔄 [Dashboard] Real-time update received:', {
+        trigger: data.trigger,
+        affectedAsset: data.affectedAsset,
+        valueChange: `$${previousTotal.toFixed(2)} → $${newTotal.toFixed(2)}`
+      });
+
+      // Update dashboard with new data
+      setDashboard(data.dashboard);
+
+      // Check for value increases and play sound if enabled
+      if (newTotal > previousTotal && previousTotal > 0) {
+        console.log("💰 [Dashboard] Portfolio value increased!", {
+          previous: previousTotal,
+          current: newTotal,
+          increase: newTotal - previousTotal
+        });
+        // playSound(chachingSound); // Disabled - sound is annoying
+      }
+
+      setPreviousTotalValue(newTotal);
+    };
+
+    // Subscribe to dashboard update events
+    console.log('📡 [Dashboard] Subscribing to DASHBOARD_UPDATE events');
+    app.events.on('DASHBOARD_UPDATE', handleDashboardUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      console.log('📡 [Dashboard] Unsubscribing from DASHBOARD_UPDATE events');
+      app.events.off('DASHBOARD_UPDATE', handleDashboardUpdate);
+    };
+  }, [app?.events]);
 
   const fetchDashboard = async () => {
     if (DEBUG_VERBOSE) console.log('📊 [Dashboard] Fetching dashboard data');
@@ -399,16 +467,46 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   const networksWithBalance = dashboard?.networks
     ?.filter((network: Network) =>
       parseFloat(network.totalNativeBalance) > 0 || network.totalValueUsd > 0
-    ) || [];
+    )
+    .map((network: Network) => {
+      // Check if this network has any pending swaps
+      const networkBalances = app?.balances?.filter((b: any) =>
+        b.networkId === network.networkId
+      ) || [];
 
-  const hasAnyBalance = networksWithBalance.length > 0;
-  
-  const chartData = hasAnyBalance 
-    ? networksWithBalance.map((network: Network) => ({
-        name: network.gasAssetSymbol,
-        value: network.totalValueUsd,
-        color: network.color,
-      }))
+      const hasPendingSwaps = networkBalances.some((b: any) => b.pending?.isPending);
+
+      return { ...network, hasPendingSwaps };
+    }) || [];
+
+  // Get staking positions from app.balances with chart === 'staking'
+  // NOTE: Don't filter by valueUsd - prices may not be calculated yet
+  const stakingBalances = app?.balances?.filter((balance: any) =>
+    balance.chart === 'staking' && parseFloat(balance.balance || 0) > 0
+  ) || [];
+
+  // Calculate total staking value
+  const totalStakingValue = stakingBalances.reduce((sum: number, balance: any) =>
+    sum + parseFloat(balance.valueUsd || 0), 0
+  );
+
+  const hasAnyBalance = networksWithBalance.length > 0 || stakingBalances.length > 0;
+
+  const chartData = hasAnyBalance
+    ? [
+        // Network balances
+        ...networksWithBalance.map((network: Network) => ({
+          name: network.gasAssetSymbol,
+          value: network.totalValueUsd,
+          color: network.color,
+        })),
+        // Staking positions (if any)
+        ...(totalStakingValue > 0 ? [{
+          name: 'STAKING',
+          value: totalStakingValue,
+          color: '#9333EA', // Purple color for staking
+        }] : [])
+      ]
     : [];
 
   // Handle slice or legend hover
@@ -457,16 +555,29 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
   };
 
   // Handle portfolio refresh
-  const handlePortfolioRefresh = async () => {
-    console.log('🔄 [Dashboard] User clicked to refresh portfolio');
+  const handlePortfolioRefresh = async (forceRefresh = false) => {
+    console.log(`🔄 [Dashboard] User clicked to ${forceRefresh ? 'FORCE' : ''} refresh portfolio`);
     setIsRefreshing(true);
+    onRefreshStateChange?.(true);
     try {
-      if (app && typeof app.refresh === 'function') {
-        console.log('🔄 [Dashboard] Calling app.refresh()');
-        await app.refresh();
-      } else if (app && typeof app.sync === 'function') {
-        console.log('🔄 [Dashboard] Calling app.sync()');
-        await app.sync();
+      const v2Enabled = isPioneerV2Enabled();
+
+      // Only call v2 APIs if they're enabled
+      if (v2Enabled) {
+        if (app && typeof app.refresh === 'function') {
+          console.log(`🔄 [Dashboard] Calling app.refresh(${forceRefresh})`);
+          await app.refresh(forceRefresh);
+        } else if (app && typeof app.sync === 'function') {
+          console.log('🔄 [Dashboard] Calling app.sync()');
+          await app.sync();
+        }
+      } else {
+        console.log('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
+        // For v1, we can call getBalances directly
+        if (app && typeof app.getBalances === 'function') {
+          console.log('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
+          await app.getBalances();
+        }
       }
 
       // Also get charts/tokens (with error handling for staking position bug)
@@ -480,20 +591,29 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
         }
       }
 
-      // Fetch dashboard data after refresh
-      await fetchDashboard();
+      // Fetch dashboard data after refresh (only if v2 enabled)
+      if (v2Enabled) {
+        await fetchDashboard();
+      }
 
       console.log('✅ [Dashboard] Portfolio refresh completed');
     } catch (error) {
       console.error('❌ [Dashboard] Portfolio refresh failed:', error);
     } finally {
       setIsRefreshing(false);
+      onRefreshStateChange?.(false);
     }
   };
 
+  // Expose handleRefresh method to parent via ref
+  useImperativeHandle(ref, () => ({
+    handleRefresh: handlePortfolioRefresh
+  }));
+
   return (
-    <Box 
-      height="100vh" 
+    <>
+    <Box
+      height="100vh"
       bg={theme.bg}
       backgroundImage="url(/images/backgrounds/splash-bg.png)"
       backgroundSize="cover"
@@ -515,55 +635,10 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
       }}
       onLoad={() => console.log('🖼️ [Dashboard] Container with background rendered')}
     >
-      {/* Header */}
-      <Box 
-        borderBottom="1px" 
-        borderColor={theme.border}
-        p={4}
-        bg={theme.cardBg}
-        backdropFilter="blur(5px)"
-        position="relative"
-        _after={{
-          content: '""',
-          position: "absolute",
-          bottom: "-1px",
-          left: "0",
-          right: "0",
-          height: "1px",
-          background: `linear-gradient(90deg, transparent 0%, ${theme.gold}40 50%, transparent 100%)`,
-        }}
-      >
-        <HStack justify="space-between" align="center">
-          <HStack gap={3}>
-            <Image src="/images/kk-icon-gold.png" alt="KeepKey" height="24px" />
-            <Text fontSize="lg" fontWeight="bold" color={theme.gold}>
-              KeepKey Vault
-            </Text>
-          </HStack>
-          <Button
-            size="sm"
-            variant="ghost"
-            color={theme.gold}
-            _hover={{ color: theme.goldHover, bg: 'rgba(255, 215, 0, 0.1)' }}
-            onClick={onSettingsClick}
-          >
-            <HStack gap={2} align="center">
-              <Text>Settings</Text>
-              <Box 
-                w="2px" 
-                h="2px" 
-                borderRadius="full" 
-                bg={theme.gold} 
-              />
-            </HStack>
-          </Button>
-        </HStack>
-      </Box>
-
       {/* Main Content */}
-      <Box 
-        height="calc(100% - 60px)" 
-        overflowY="auto" 
+      <Box
+        height="100%"
+        overflowY="auto"
         overflowX="hidden"
         {...scrollbarStyles}
       >
@@ -593,9 +668,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 }
                 position="relative"
                 overflow="hidden"
-                bg={!loading && dashboard && hasAnyBalance && chartData.length > 0 ? `${chartData[0].color}15` : theme.cardBg}
+                bg={theme.cardBg}
                 cursor="pointer"
-                onClick={handlePortfolioRefresh}
+                onClick={() => handlePortfolioRefresh(true)}
                 _hover={{
                   transform: 'scale(1.02)',
                   boxShadow: !loading && dashboard && hasAnyBalance && chartData.length > 0
@@ -612,38 +687,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handlePortfolioRefresh();
+                    handlePortfolioRefresh(true);
                   }
-                }}
-                _before={{
-                  content: '""',
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: !loading && dashboard && hasAnyBalance && chartData.length > 0
-                    ? `linear-gradient(135deg, ${chartData[0].color}40 0%, ${chartData[0].color}20 100%)`
-                    : 'none',
-                  opacity: 0.6,
-                  zIndex: 0,
-                }}
-                _after={{
-                  content: '""',
-                  position: "absolute",
-                  top: "-50%",
-                  left: "-50%",
-                  right: "-50%",
-                  bottom: "-50%",
-                  background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
-                  zIndex: 1,
                 }}
               >
             <Flex
               justify="center"
               align="center"
               position="relative"
-              zIndex={2}
               direction="column"
               gap={6}
               width="100%"
@@ -793,7 +844,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         p={5}
                         borderRadius="2xl"
                         borderWidth="1px"
-                        borderColor={`${network.color}40`}
+                        borderColor={`${network.color}70`}
+                        borderLeftWidth="4px"
+                        borderLeftColor={network.color}
                         boxShadow={`0 4px 20px ${network.color}20, inset 0 0 20px ${network.color}10`}
                         position="relative"
                         bg={`${network.color}15`}
@@ -823,8 +876,9 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         _hover={{
                           transform: 'translateY(-2px)',
-                          boxShadow: `0 8px 24px ${network.color}30, inset 0 0 30px ${network.color}20`,
+                          boxShadow: `0 8px 24px ${network.color}40, inset 0 0 30px ${network.color}20`,
                           borderColor: network.color,
+                          borderLeftWidth: "5px",
                           bg: `${network.color}25`,
                           _before: {
                             opacity: 0.8,
@@ -922,7 +976,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               }}
                             >
                               <AssetIcon
-                                src={getAssetIconUrl(network.gasAssetCaip, network.icon)}
+                                src={network.icon}
                                 alt={network.networkId}
                                 boxSize="44px"
                                 color={network.color}
@@ -931,9 +985,22 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             </Box>
                             <Stack gap={0.5} flex="1">
                               <HStack gap={2} align="center">
-                                <Text fontSize="md" fontWeight="bold" color={network.color}>
+                                <Text
+                                  fontSize="md"
+                                  fontWeight="bold"
+                                  color={network.gasAssetSymbol === 'XRP' ? 'white' : network.color}
+                                >
                                   {network.gasAssetSymbol}
                                 </Text>
+                                {(network as any).hasPendingSwaps && (
+                                  <Box
+                                    as="span"
+                                    fontSize="sm"
+                                    css={`animation: ${spinAnimation} 2s linear infinite;`}
+                                  >
+                                    🔄
+                                  </Box>
+                                )}
                                 {(() => {
                                   // Check if this network has tokens but no native gas
                                   const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;
@@ -970,6 +1037,45 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                   </Text>
                                 ) : null;
                               })()}
+                              {/* Balance Timestamp */}
+                              {network.fetchedAtISO && (
+                                <HStack gap={1.5} fontSize="2xs" color="gray.500">
+                                  <Text>
+                                    Updated: {new Date(network.fetchedAtISO).toLocaleTimeString()}
+                                  </Text>
+                                  {network.isStale ? (
+                                    <Box
+                                      as="span"
+                                      px={1.5}
+                                      py={0.5}
+                                      borderRadius="sm"
+                                      bg="orange.900"
+                                      color="orange.300"
+                                      fontSize="2xs"
+                                      fontWeight="medium"
+                                      border="1px solid"
+                                      borderColor="orange.700"
+                                    >
+                                      ⚠️ Stale
+                                    </Box>
+                                  ) : (
+                                    <Box
+                                      as="span"
+                                      px={1.5}
+                                      py={0.5}
+                                      borderRadius="sm"
+                                      bg="green.900"
+                                      color="green.300"
+                                      fontSize="2xs"
+                                      fontWeight="medium"
+                                      border="1px solid"
+                                      borderColor="green.700"
+                                    >
+                                      ✓ Fresh
+                                    </Box>
+                                  )}
+                                </HStack>
+                              )}
                               {(() => {
                                 // Show warning if tokens but no gas
                                 const hasNativeBalance = parseFloat(network.totalNativeBalance) > 0;
@@ -997,13 +1103,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               })()}
                               <Box
                                 fontSize="xs"
-                                color="gray.400"
+                                color="gray.500"
                                 mb={1}
                                 title={network.gasAssetCaip || network.networkId}
                                 cursor="help"
                                 _hover={{
                                   textDecoration: 'underline',
-                                  textDecorationStyle: 'dotted'
+                                  textDecorationStyle: 'dotted',
+                                  color: 'gray.400'
                                 }}
                               >
                                 <Box
@@ -1020,24 +1127,26 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                                 </Box>
                               </Box>
                               <HStack gap={2} align="center">
-                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
+                                <Text fontSize="sm" color="white" fontWeight="medium">
                                   {integer}.{largePart}
-                                  <Text as="span" fontSize="xs" color="gray.300">
+                                  <Text as="span" fontSize="xs" color="white">
                                     {smallPart}
                                   </Text>
                                 </Text>
-                                <Text fontSize="xs" color={network.color} fontWeight="medium">
+                                <Text
+                                  fontSize="xs"
+                                  color="white"
+                                  fontWeight="medium"
+                                >
                                   {network.gasAssetSymbol}
                                 </Text>
                               </HStack>
                             </Stack>
                           </HStack>
 
-                          {/* Token Icons Display - Center Section for Tokens Only */}
+                          {/* Token Icons Display - Center Section for All Networks with Tokens */}
                           {(() => {
-                            if (!hasTokenValue) return null;
-
-                            // Get tokens for this network
+                            // Get tokens for this network (regardless of native balance)
                             const networkTokens = app?.balances?.filter((balance: any) => {
                               const balanceNetworkId = balance.networkId;
                               const isMatchingNetwork =
@@ -1121,7 +1230,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
                           <Stack
                             align="flex-end"
-                            gap={0.5}
+                            gap={2}
                             p={1}
                             borderRadius="md"
                             position="relative"
@@ -1132,30 +1241,69 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               boxShadow: `0 0 8px ${network.color}40`,
                             }}
                           >
-                            <Text 
-                              fontSize="md" 
-                              color={network.color}
-                              fontWeight="medium"
+                            <Stack align="flex-end" gap={0.5}>
+                              <Text
+                                fontSize="md"
+                                color="white"
+                                fontWeight="medium"
+                              >
+                                $<CountUp
+                                  key={`network-${network.networkId}-${lastSync}`}
+                                  end={network.totalValueUsd}
+                                  decimals={2}
+                                  duration={1.5}
+                                  separator=","
+                                />
+                              </Text>
+                              <Text
+                                fontSize="xs"
+                                color="white"
+                                fontWeight="medium"
+                                px={1}
+                                py={0.5}
+                                borderRadius="sm"
+                                bg={`${network.color}20`}
+                              >
+                                {percentage.toFixed(1)}%
+                              </Text>
+                            </Stack>
+
+                            <Button
+                              size="sm"
+                              variant="solid"
+                              bg="#000000"
+                              color="white"
+                              fontWeight="bold"
+                              px={4}
+                              py={2}
+                              borderRadius="lg"
+                              borderWidth="2px"
+                              borderColor={network.color}
+                              boxShadow={`0 2px 8px ${network.color}40`}
+                              _hover={{
+                                bg: `${network.color}15`,
+                                transform: 'translateY(-1px)',
+                                boxShadow: `0 4px 12px ${network.color}60`,
+                                borderColor: network.color,
+                                filter: 'brightness(1.2)',
+                              }}
+                              _active={{
+                                transform: 'translateY(0px)',
+                                boxShadow: `0 1px 4px ${network.color}40`,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const caip = network.gasAssetCaip;
+                                setLoadingAssetCaip(caip);
+                                const encodedCaip = btoa(caip);
+                                startTransition(() => {
+                                  router.push(`/asset/${encodedCaip}`);
+                                });
+                              }}
+                              whiteSpace="nowrap"
                             >
-                              $<CountUp 
-                                key={`network-${network.networkId}-${lastSync}`}
-                                end={network.totalValueUsd} 
-                                decimals={2}
-                                duration={1.5}
-                                separator=","
-                              />
-                            </Text>
-                            <Text 
-                              fontSize="xs" 
-                              color={`${network.color}80`}
-                              fontWeight="medium"
-                              px={1}
-                              py={0.5}
-                              borderRadius="sm"
-                              bg={`${network.color}20`}
-                            >
-                              {percentage.toFixed(1)}%
-                            </Text>
+                              Select {network.gasAssetSymbol}
+                            </Button>
                           </Stack>
                         </Flex>
                       </Box>
@@ -1165,6 +1313,7 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
               )}
             </VStack>
           </Box>
+
 
           {/* Tokens Section - Always Show */}
           {(() => {
@@ -1202,31 +1351,58 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
 
             // Filter tokens from balances if we have balances
             let tokenBalances: any[] = [];
+            let tokensWithValue: any[] = [];
+            let tokensWithZeroValue: any[] = [];
+            let scamTokens: any[] = [];
+            let displayedTokens: any[] = [];
+
             if (app?.balances) {
+              // DEBUG: Log total balances available
+              console.log('🔍 [Dashboard] STARTING TOKEN FILTER - Total balances:', app.balances.length);
+
+              // DEBUG: Show sample balance structure
+              if (app.balances.length > 0) {
+                console.log('🔍 [Dashboard] Sample balance object structure:', {
+                  firstBalance: app.balances[0],
+                  keys: Object.keys(app.balances[0])
+                });
+              }
+
               tokenBalances = app.balances.filter((balance: any) => {
-                // Check explicit type first
-                if (balance.type === 'token') return true;
-                
-                // Check CAIP pattern
+                // CRITICAL FIX: Pioneer SDK uses `.token` field, NOT `.type`
+                // Check explicit token flag first (matches Pioneer SDK test pattern)
+                const hasTokenFlag = balance.token === true;
+
+                // Check CAIP pattern for additional token detection
                 const isToken = isTokenCaip(balance.caip);
-                
+
                 // Only show tokens that have a balance > 0
                 const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
-                
-                // Debug logging for each balance
-                // if (balance.caip && (balance.caip.includes('mayachain') || balance.caip.includes('MAYA') || isToken)) {
-                //   console.log('🔍 [Dashboard] Checking balance for token classification:', {
-                //     caip: balance.caip,
-                //     symbol: balance.symbol,
-                //     balance: balance.balance,
-                //     type: balance.type,
-                //     isToken: isToken,
-                //     hasBalance: hasBalance,
-                //     willInclude: isToken && hasBalance
-                //   });
-                // }
-                
-                return isToken && hasBalance;
+
+                // DEBUG: Log every potential token
+                if (hasTokenFlag || isToken || balance.caip?.includes('erc20') || balance.caip?.includes('bep20')) {
+                  console.log('🪙 [Dashboard] Token candidate:', {
+                    symbol: balance.symbol || balance.ticker,
+                    caip: balance.caip,
+                    balance: balance.balance,
+                    valueUsd: balance.valueUsd,
+                    'balance.token': balance.token,
+                    'balance.type': balance.type,
+                    hasTokenFlag,
+                    isToken,
+                    hasBalance,
+                    willInclude: (hasTokenFlag || isToken) && hasBalance
+                  });
+                }
+
+                return (hasTokenFlag || isToken) && hasBalance;
+              });
+
+              // DEBUG: Log final results
+              console.log('🪙 [Dashboard] Token filter complete:', {
+                totalBalances: app.balances.length,
+                tokensFound: tokenBalances.length,
+                tokenSymbols: tokenBalances.map((t: any) => t.symbol || t.ticker)
               });
 
               // Sort tokens by USD value (highest first)
@@ -1236,10 +1412,48 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 return valueB - valueA; // Descending order (highest first)
               });
 
+              // Separate clean tokens from scam tokens
+              const cleanTokens = tokenBalances.filter((t: any) => !detectScamToken(t).isScam);
+              scamTokens = tokenBalances.filter((t: any) => detectScamToken(t).isScam);
+
+              console.log('📊 Token categorization:', {
+                total: tokenBalances.length,
+                clean: cleanTokens.length,
+                scam: scamTokens.length,
+                scamSymbols: scamTokens.map((t: any) => t.symbol || t.ticker)
+              });
+
+              // Split clean tokens by value
+              tokensWithValue = cleanTokens.filter((t: any) => parseFloat(t.valueUsd || 0) > 0);
+              tokensWithZeroValue = cleanTokens.filter((t: any) => parseFloat(t.valueUsd || 0) === 0);
+
+              // Display tokens based on user preferences
+              displayedTokens = tokensWithValue;
+              if (showZeroValueTokens) {
+                displayedTokens = [...displayedTokens, ...tokensWithZeroValue];
+              }
+              if (showScamTokens) {
+                displayedTokens = [...displayedTokens, ...scamTokens];
+              }
+
               // Debug logging for token detection
-              console.log('🪙 [Dashboard] Total balances:', app.balances.length);
-              console.log('🪙 [Dashboard] All balance CAIPs:', app.balances.map((b: any) => b.caip));
-              console.log('🪙 [Dashboard] Token balances found:', tokenBalances.length);
+              console.log('🪙 [Dashboard] FINAL - Total balances:', app.balances.length);
+              console.log('🪙 [Dashboard] FINAL - Token balances found:', tokenBalances.length);
+
+              // DEBUG: Show all balance CAIPs for analysis
+              if (tokenBalances.length === 0 && app.balances.length > 0) {
+                console.warn('⚠️ [Dashboard] NO TOKENS FOUND! Sample balance CAIPs:',
+                  app.balances.slice(0, 10).map((b: any) => ({
+                    caip: b.caip,
+                    symbol: b.symbol,
+                    token: b.token,
+                    type: b.type,
+                    balance: b.balance
+                  }))
+                );
+              }
+            } else {
+              console.warn('⚠️ [Dashboard] app.balances is null/undefined');
             }
 
             return (
@@ -1248,26 +1462,96 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                   <HStack gap={2}>
                     <Text fontSize="md" color="gray.400">Tokens</Text>
                     <Text fontSize="xs" color="gray.600">
-                      ({tokenBalances.length})
+                      ({displayedTokens.length}{!showZeroValueTokens && tokensWithZeroValue.length > 0 ? ` of ${tokenBalances.length}` : ''})
                     </Text>
-                    {tokenBalances.length > 0 && (
+                    {displayedTokens.length > 0 && (
                       <Text fontSize="xs" color="gray.500" fontStyle="italic">
                         • sorted by value
                       </Text>
                     )}
                   </HStack>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    color={theme.gold}
-                    _hover={{ color: theme.goldHover }}
-                  >
-                    View All
-                  </Button>
+                  <HStack gap={2}>
+                    {tokensWithZeroValue.length > 0 && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        color={showZeroValueTokens ? 'orange.400' : theme.gold}
+                        _hover={{ color: showZeroValueTokens ? 'orange.300' : theme.goldHover }}
+                        onClick={() => setShowZeroValueTokens(!showZeroValueTokens)}
+                        rightIcon={
+                          <Text fontSize="xs">
+                            {showZeroValueTokens ? '▲' : '▼'}
+                          </Text>
+                        }
+                      >
+                        {showZeroValueTokens ? 'Hide' : 'Show'} $0 Tokens ({tokensWithZeroValue.length})
+                      </Button>
+                    )}
+                    {scamTokens.length > 0 && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        color={showScamTokens ? 'red.400' : 'gray.500'}
+                        _hover={{ color: showScamTokens ? 'red.300' : 'red.600' }}
+                        onClick={() => setShowScamTokens(!showScamTokens)}
+                        rightIcon={
+                          <Text fontSize="xs">
+                            {showScamTokens ? '▲' : '▼'}
+                          </Text>
+                        }
+                      >
+                        {showScamTokens ? 'Hide' : 'Show'} Scam Tokens ({scamTokens.length})
+                      </Button>
+                    )}
+                  </HStack>
                 </HStack>
                 
                 <VStack gap={4}>
-                  {tokenBalances.length === 0 ? (
+                  {showScamTokens && scamTokens.length > 0 && (
+                    <Box
+                      w="100%"
+                      p={4}
+                      borderRadius="xl"
+                      bg="red.950"
+                      border="2px solid"
+                      borderColor="red.600"
+                    >
+                      <Text fontSize="sm" fontWeight="bold" color="red.300">
+                        🚨 WARNING: These tokens are likely scams. Interacting may drain your wallet.
+                      </Text>
+                    </Box>
+                  )}
+                  {displayedTokens.length === 0 && !showZeroValueTokens && tokensWithZeroValue.length > 0 ? (
+                    // Empty state when hiding zero-value tokens
+                    <Box
+                      w="100%"
+                      p={6}
+                      borderRadius="2xl"
+                      borderWidth="2px"
+                      borderStyle="dashed"
+                      borderColor="orange.600"
+                      bg="orange.950"
+                      position="relative"
+                      transition="all 0.2s"
+                    >
+                      <VStack gap={3} py={4}>
+                        <Box
+                          borderRadius="full"
+                          p={3}
+                          bg="orange.900"
+                          color="orange.400"
+                        >
+                          <Text fontSize="2xl">⚠️</Text>
+                        </Box>
+                        <Text fontSize="md" color="orange.400" fontWeight="medium">
+                          {tokensWithZeroValue.length} Hidden $0 Token{tokensWithZeroValue.length !== 1 ? 's' : ''}
+                        </Text>
+                        <Text fontSize="sm" color="gray.400" textAlign="center" maxW="320px">
+                          Zero-value tokens are commonly used in scam attempts. Click "Show $0 Tokens" above to view them with caution.
+                        </Text>
+                      </VStack>
+                    </Box>
+                  ) : tokenBalances.length === 0 ? (
                     // Empty state when no tokens found
                     <Box
                       w="100%"
@@ -1314,29 +1598,58 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                             console.log('🔍 [Dashboard] User clicked refresh tokens');
                             setIsRefreshing(true);
                             try {
-                              if (app && typeof app.refresh === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.refresh()');
-                                await app.refresh();
-                              } else if (app && typeof app.sync === 'function') {
-                                console.log('🔄 [Dashboard] Calling app.sync()');
-                                await app.sync();
+                              const v2Enabled = isPioneerV2Enabled();
+
+                              // Only call v2 APIs if they're enabled
+                              if (v2Enabled) {
+                                if (app && typeof app.refresh === 'function') {
+                                  console.log('🔄 [Dashboard] Calling app.refresh()');
+                                  await app.refresh();
+                                } else if (app && typeof app.sync === 'function') {
+                                  console.log('🔄 [Dashboard] Calling app.sync()');
+                                  await app.sync();
+                                }
+                              } else {
+                                console.log('ℹ️ [Dashboard] Skipping v2 API calls (refresh/sync) - v2 APIs disabled');
+                                // For v1, we can call getBalances directly
+                                if (app && typeof app.getBalances === 'function') {
+                                  console.log('🔄 [Dashboard] Calling app.getBalances() (v1 fallback)');
+                                  await app.getBalances();
+                                }
                               }
-                              
+
                               // Also get charts/tokens (with error handling for staking position bug)
                               if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
                                 console.log('🔄 [Dashboard] Calling app.getCharts()');
                                 try {
                                   await app.getCharts();
-                                } catch (chartError) {
-                                  console.warn('⚠️ [Dashboard] getCharts failed (likely staking position parameter bug):', chartError);
-                                  // Don't throw - this is a known issue with the Pioneer SDK
+
+                                  // Verify tokens were loaded
+                                  const tokens = app.balances?.filter((b: any) => b.token === true) || [];
+                                  console.log('✅ [Dashboard] getCharts returned', tokens.length, 'tokens');
+
+                                  if (tokens.length === 0) {
+                                    console.warn('⚠️ [Dashboard] getCharts completed but returned 0 tokens');
+                                  }
+                                } catch (chartError: any) {
+                                  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                                  console.error('❌ [Dashboard] getCharts failed:', chartError);
+                                  console.error('Error details:', {
+                                    message: chartError?.message,
+                                    type: chartError?.constructor?.name,
+                                    pioneer: !!app?.pioneer,
+                                    pubkeys: app?.pubkeys?.length || 0
+                                  });
+                                  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                                 }
                               } else if (app && typeof app.getCharts === 'function') {
                                 console.log('⏭️ [Dashboard] Skipping getCharts - no pubkeys available (wallet not paired)');
                               }
-                              
-                              // Fetch dashboard data after refresh
-                              await fetchDashboard();
+
+                              // Fetch dashboard data after refresh (only if v2 enabled)
+                              if (v2Enabled) {
+                                await fetchDashboard();
+                              }
                               
                               console.log('✅ [Dashboard] Refresh completed');
                             } catch (error) {
@@ -1354,18 +1667,21 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                     </Box>
                   ) : (
                     // Show actual tokens when found
-                    tokenBalances.map((token: any, index: number) => {
+                    displayedTokens.map((token: any, index: number) => {
                     const { integer, largePart, smallPart } = formatBalance(token.balance);
                     const tokenValueUsd = parseFloat(token.valueUsd || 0);
+
+                    // Detect if token is a scam
+                    const scamDetection = detectScamToken(token);
 
                      // Get token color with better fallbacks
                      const assetInfo = app.assetsMap?.get(token.caip) || app.assetsMap?.get(token.caip.toLowerCase());
                      let tokenColor = assetInfo?.color || token.color;
 
-                     console.log('🔍 [Dashboard] Token info:', {
-                       caip: token.caip,
-                       color: tokenColor
-                     });
+                     // console.log('🔍 [Dashboard] Token info:', {
+                     //   caip: token.caip,
+                     //   color: tokenColor
+                     // });
 
                      // Determine token symbol and name
                      const tokenSymbol = token.symbol || token.ticker || 'TOKEN';
@@ -1385,14 +1701,14 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                      }
 
                      // Debug logging for token detection
-                     console.log('🪙 [Dashboard] Token detected:', {
-                       caip: token.caip,
-                       symbol: tokenSymbol,
-                       balance: token.balance,
-                       valueUsd: tokenValueUsd,
-                       type: token.type,
-                       iconSource: 'keepkey.info CDN (CAIP-based)'
-                     });
+                     // console.log('🪙 [Dashboard] Token detected:', {
+                     //   caip: token.caip,
+                     //   symbol: tokenSymbol,
+                     //   balance: token.balance,
+                     //   valueUsd: tokenValueUsd,
+                     //   type: token.type,
+                     //   iconSource: 'keepkey.info CDN (CAIP-based)'
+                     // });
 
                     return (
                       <Box
@@ -1400,11 +1716,19 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         w="100%"
                         p={5}
                         borderRadius="2xl"
-                        borderWidth="1px"
-                        borderColor={`${tokenColor}40`}
-                        boxShadow={`0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
+                        borderWidth="2px"
+                        borderColor={scamDetection.isScam
+                          ? (scamDetection.scamType === 'confirmed' ? 'red.500' : 'orange.500')
+                          : `${tokenColor}40`}
+                        boxShadow={scamDetection.isScam
+                          ? (scamDetection.scamType === 'confirmed'
+                              ? `0 4px 20px rgba(255, 0, 0, 0.3), inset 0 0 20px rgba(255, 0, 0, 0.1)`
+                              : `0 4px 20px rgba(255, 165, 0, 0.3), inset 0 0 20px rgba(255, 165, 0, 0.1)`)
+                          : `0 4px 20px ${tokenColor}20, inset 0 0 20px ${tokenColor}10`}
                         position="relative"
-                        bg={`${tokenColor}15`}
+                        bg={scamDetection.isScam
+                          ? (scamDetection.scamType === 'confirmed' ? 'red.950' : 'orange.950')
+                          : `${tokenColor}15`}
                         _before={{
                           content: '""',
                           position: "absolute",
@@ -1453,23 +1777,35 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                         }}
                         cursor="pointer"
                         onClick={() => {
+                          console.log('🪙 [Dashboard] Token clicked:', token);
+
+                          // Check if token is a scam
+                          if (scamDetection.isScam) {
+                            console.warn('🚨 [Dashboard] Scam token detected, showing warning:', {
+                              symbol: tokenSymbol,
+                              scamType: scamDetection.scamType,
+                              reason: scamDetection.reason
+                            });
+
+                            // Show scam warning modal
+                            setScamWarningToken(token);
+                            setPendingTokenAction(() => () => {
+                              // This will be executed after user confirms
+                              const caip = token.caip;
+                              setLoadingAssetCaip(caip);
+                              const encodedCaip = btoa(caip);
+                              startTransition(() => {
+                                router.push(`/asset/${encodedCaip}`);
+                              });
+                            });
+                            return;
+                          }
+
+                          // Normal navigation for non-scam tokens
                           console.log('🪙 [Dashboard] Navigating to token page:', token);
-
-                          // Use the token's CAIP for navigation
                           const caip = token.caip;
-
-                          console.log('🪙 [Dashboard] Using token CAIP for navigation:', caip);
-                          console.log('🪙 [Dashboard] Token object:', token);
-
-                          // Set loading state immediately for instant feedback
                           setLoadingAssetCaip(caip);
-
-                          // Use Base64 encoding for complex IDs to avoid URL encoding issues
                           const encodedCaip = btoa(caip);
-
-                          console.log('🪙 [Dashboard] Encoded token parameters:', { encodedCaip });
-
-                          // Navigate using startTransition for better perceived performance
                           startTransition(() => {
                             router.push(`/asset/${encodedCaip}`);
                           });
@@ -1538,9 +1874,24 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                               />
                             </Box>
                             <Stack gap={0.5}>
-                              <Text fontSize="md" fontWeight="bold" color={tokenColor}>
-                                {tokenSymbol}
-                              </Text>
+                              <HStack gap={2} align="center">
+                                <Text fontSize="md" fontWeight="bold" color={tokenColor}>
+                                  {tokenSymbol}
+                                </Text>
+                                {scamDetection.isScam && (
+                                  <Badge
+                                    colorScheme={scamDetection.scamType === 'confirmed' ? 'red' : 'orange'}
+                                    variant="solid"
+                                    fontSize="xs"
+                                    px={2}
+                                    py={0.5}
+                                    textTransform="uppercase"
+                                    fontWeight="bold"
+                                  >
+                                    {scamDetection.scamType === 'confirmed' ? '⚠️ SCAM' : '⚠️ POSSIBLE SCAM'}
+                                  </Badge>
+                                )}
+                              </HStack>
                               <Box
                                 fontSize="xs" 
                                 color="gray.400" 
@@ -1626,8 +1977,400 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
             );
           })()}
 
+          {/* Staking Positions Section - Always Show */}
+          {(() => {
+            // Filter staking positions from balances
+            let stakingPositions: any[] = [];
+            if (app?.balances) {
+              stakingPositions = app.balances.filter((balance: any) => {
+                const isStaking = balance.chart === 'staking';
+                const hasBalance = balance.balance && parseFloat(balance.balance) > 0;
+
+                // Debug logging
+                if (isStaking) {
+                  console.log('🔍 [Dashboard] Found staking balance:', {
+                    caip: balance.caip,
+                    chart: balance.chart,
+                    balance: balance.balance,
+                    valueUsd: balance.valueUsd,
+                    type: balance.type,
+                    ticker: balance.ticker
+                  });
+                }
+
+                return isStaking && hasBalance;
+              });
+
+              // Sort staking positions by USD value (highest first)
+              stakingPositions.sort((a: any, b: any) => {
+                const valueA = parseFloat(a.valueUsd || 0);
+                const valueB = parseFloat(b.valueUsd || 0);
+                return valueB - valueA; // Descending order
+              });
+
+              console.log('🏦 [Dashboard] Staking positions found:', stakingPositions.length);
+            }
+
+            return (
+              <Box w="100%">
+                <HStack justify="space-between" mb={5}>
+                  <HStack gap={2}>
+                    <Text fontSize="md" color="gray.400">Staking Positions</Text>
+                    <Text fontSize="xs" color="gray.600">
+                      ({stakingPositions.length})
+                    </Text>
+                    {stakingPositions.length > 0 && (
+                      <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                        • sorted by value
+                      </Text>
+                    )}
+                  </HStack>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    color={theme.gold}
+                    _hover={{ color: theme.goldHover }}
+                  >
+                    View All
+                  </Button>
+                </HStack>
+
+                <VStack gap={4}>
+                  {stakingPositions.length === 0 ? (
+                    // Empty state when no staking positions found
+                    <Box
+                      w="100%"
+                      p={6}
+                      borderRadius="2xl"
+                      borderWidth="2px"
+                      borderStyle="dashed"
+                      borderColor="gray.600"
+                      bg="gray.800"
+                      position="relative"
+                      _hover={{
+                        borderColor: theme.gold,
+                        bg: 'rgba(255, 215, 0, 0.05)',
+                      }}
+                      transition="all 0.2s"
+                      cursor="pointer"
+                    >
+                      <VStack gap={3} py={4}>
+                        <Box
+                          borderRadius="full"
+                          p={3}
+                          bg="gray.700"
+                          color="gray.400"
+                        >
+                          <Text fontSize="2xl">🏦</Text>
+                        </Box>
+                        <Text fontSize="md" color="gray.400" fontWeight="medium">
+                          No Staking Positions
+                        </Text>
+                        <Text fontSize="sm" color="gray.500" textAlign="center" maxW="320px">
+                          Delegations, rewards, and unbonding positions will appear here when you stake on Cosmos chains.
+                        </Text>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          color={theme.gold}
+                          borderColor={theme.gold}
+                          _hover={{
+                            bg: `${theme.gold}20`,
+                            borderColor: theme.goldHover,
+                            color: theme.goldHover
+                          }}
+                          onClick={async () => {
+                            console.log('🔍 [Dashboard] User clicked refresh staking');
+                            setIsRefreshing(true);
+                            try {
+                              if (app && typeof app.getCharts === 'function' && app.pubkeys && app.pubkeys.length > 0) {
+                                console.log('🔄 [Dashboard] Calling app.getCharts() for staking');
+                                try {
+                                  await app.getCharts();
+                                  console.log('✅ [Dashboard] getCharts completed for staking');
+                                } catch (chartError: any) {
+                                  console.error('❌ [Dashboard] getCharts failed:', chartError);
+                                }
+                              }
+                              await fetchDashboard();
+                            } catch (error) {
+                              console.error('❌ [Dashboard] Refresh failed:', error);
+                            } finally {
+                              setIsRefreshing(false);
+                            }
+                          }}
+                          loading={isRefreshing}
+                          loadingText="Refreshing..."
+                        >
+                          Refresh Staking
+                        </Button>
+                      </VStack>
+                    </Box>
+                  ) : (
+                    // Show actual staking positions when found
+                    stakingPositions.map((position: any, index: number) => {
+                    const { integer, largePart, smallPart } = formatBalance(position.balance);
+                    const stakingValueUsd = parseFloat(position.valueUsd || 0);
+
+                     // Get staking color
+                     const stakingColor = '#9333EA'; // Purple for staking positions
+
+                     // Determine position type and badge color
+                     const positionType = position.type || 'delegation';
+                     const badgeColorScheme =
+                       positionType === 'delegation' ? 'purple' :
+                       positionType === 'reward' ? 'green' :
+                       positionType === 'unbonding' ? 'yellow' : 'purple';
+
+                     // Determine ticker
+                     const positionTicker = position.ticker || position.symbol || 'ATOM';
+                     const positionName = position.name || `${positionTicker} Staking`;
+
+                    return (
+                      <Box
+                        key={`${position.caip}_${position.pubkey}_${index}`}
+                        w="100%"
+                        p={5}
+                        borderRadius="2xl"
+                        borderWidth="1px"
+                        borderColor={`${stakingColor}40`}
+                        boxShadow={`0 4px 20px ${stakingColor}20, inset 0 0 20px ${stakingColor}10`}
+                        position="relative"
+                        bg={`${stakingColor}15`}
+                        _before={{
+                          content: '""',
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: `linear-gradient(135deg, ${stakingColor}40 0%, ${stakingColor}20 100%)`,
+                          opacity: 0.6,
+                          borderRadius: "inherit",
+                          pointerEvents: "none",
+                        }}
+                        _after={{
+                          content: '""',
+                          position: "absolute",
+                          top: "-50%",
+                          left: "-50%",
+                          right: "-50%",
+                          bottom: "-50%",
+                          background: "radial-gradient(circle, transparent 30%, rgba(0,0,0,0.8) 100%)",
+                          opacity: 0.5,
+                          borderRadius: "inherit",
+                          pointerEvents: "none",
+                        }}
+                        _hover={{
+                          transform: 'translateY(-2px)',
+                          boxShadow: `0 8px 24px ${stakingColor}30, inset 0 0 30px ${stakingColor}20`,
+                          borderColor: stakingColor,
+                          bg: `${stakingColor}25`,
+                          _before: {
+                            opacity: 0.8,
+                            background: `linear-gradient(135deg, ${stakingColor}50 0%, ${stakingColor}30 100%)`,
+                          },
+                          _after: {
+                            opacity: 0.7,
+                          },
+                        }}
+                        _active={{
+                          transform: 'scale(0.98) translateY(-1px)',
+                          boxShadow: `0 2px 12px ${stakingColor}20`,
+                          transition: 'all 0.1s ease-in-out',
+                        }}
+                        _focus={{
+                          outline: 'none',
+                          boxShadow: `0 0 0 2px ${stakingColor}, 0 8px 24px ${stakingColor}30`,
+                        }}
+                        cursor="pointer"
+                        onClick={() => {
+                          console.log('🏦 [Dashboard] Navigating to staking asset page:', position);
+
+                          // Use the position's CAIP for navigation (the native asset CAIP, not a staking-specific one)
+                          const caip = position.caip;
+
+                          console.log('🏦 [Dashboard] Using position CAIP for navigation:', caip);
+
+                          // Set loading state
+                          setLoadingAssetCaip(caip);
+
+                          // Use Base64 encoding for complex IDs
+                          const encodedCaip = btoa(caip);
+
+                          // Navigate using startTransition
+                          startTransition(() => {
+                            router.push(`/asset/${encodedCaip}`);
+                          });
+                        }}
+                        role="button"
+                        aria-label={`Select ${positionTicker} ${positionType}`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            router.push(`/asset/${btoa(position.caip)}`);
+                          }
+                        }}
+                        transition="all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+                      >
+                        {/* Loading overlay with spinner */}
+                        {loadingAssetCaip === position.caip && (
+                          <Flex
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            right={0}
+                            bottom={0}
+                            align="center"
+                            justify="center"
+                            bg="rgba(0, 0, 0, 0.7)"
+                            borderRadius="xl"
+                            zIndex={3}
+                            backdropFilter="blur(4px)"
+                          >
+                            <Spinner
+                              size="lg"
+                              color={stakingColor}
+                              thickness="3px"
+                              speed="0.6s"
+                            />
+                          </Flex>
+                        )}
+                        <Flex align="center" justify="space-between" position="relative" zIndex={1}>
+                          <HStack gap={4}>
+                            <Box
+                              borderRadius="full"
+                              overflow="hidden"
+                              boxSize="44px"
+                              bg={stakingColor}
+                              boxShadow={`lg, inset 0 0 10px ${stakingColor}40`}
+                              position="relative"
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="center"
+                              _after={{
+                                content: '""',
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: `linear-gradient(135deg, ${stakingColor}40 0%, transparent 100%)`,
+                                opacity: 0.6,
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <Text fontSize="2xl">
+                                {positionType === 'delegation' ? '🔒' :
+                                 positionType === 'reward' ? '💰' :
+                                 positionType === 'unbonding' ? '⏳' : '🏦'}
+                              </Text>
+                            </Box>
+                            <Stack gap={0.5}>
+                              <HStack gap={2}>
+                                <Text fontSize="md" fontWeight="bold" color={stakingColor}>
+                                  {positionTicker}
+                                </Text>
+                                <Badge
+                                  colorScheme={badgeColorScheme}
+                                  variant="subtle"
+                                  fontSize="xs"
+                                  textTransform="uppercase"
+                                >
+                                  {positionType}
+                                </Badge>
+                              </HStack>
+                              {position.validatorAddress && (
+                                <Box
+                                  fontSize="xs"
+                                  color="gray.400"
+                                  mb={1}
+                                  title={position.validatorAddress}
+                                  cursor="help"
+                                  _hover={{
+                                    textDecoration: 'underline',
+                                    textDecorationStyle: 'dotted'
+                                  }}
+                                >
+                                  <Box
+                                    as="span"
+                                    display={{ base: 'inline', md: 'none' }}
+                                  >
+                                    {middleEllipsis(position.validatorAddress, 14)}
+                                  </Box>
+                                  <Box
+                                    as="span"
+                                    display={{ base: 'none', md: 'inline' }}
+                                  >
+                                    {position.validatorAddress}
+                                  </Box>
+                                </Box>
+                              )}
+                              <HStack gap={2} align="center">
+                                <Text fontSize="sm" color="gray.200" fontWeight="medium">
+                                  {integer}.{largePart}
+                                  <Text as="span" fontSize="xs" color="gray.300">
+                                    {smallPart}
+                                  </Text>
+                                </Text>
+                                <Text fontSize="xs" color={stakingColor} fontWeight="medium">
+                                  {positionTicker}
+                                </Text>
+                              </HStack>
+                            </Stack>
+                          </HStack>
+                          <Stack
+                            align="flex-end"
+                            gap={0.5}
+                            p={1}
+                            borderRadius="md"
+                            position="relative"
+                            zIndex={2}
+                            transition="all 0.15s ease-in-out"
+                            _hover={{
+                              bg: `${stakingColor}30`,
+                              boxShadow: `0 0 8px ${stakingColor}40`,
+                            }}
+                          >
+                            <Text
+                              fontSize="md"
+                              color={stakingColor}
+                              fontWeight="medium"
+                            >
+                              $<CountUp
+                                key={`staking-${position.caip}-${position.pubkey}-${index}-${lastSync}`}
+                                end={stakingValueUsd}
+                                decimals={2}
+                                duration={1.5}
+                                separator=","
+                              />
+                            </Text>
+                            <Text
+                              fontSize="xs"
+                              color={`${stakingColor}80`}
+                              fontWeight="medium"
+                              px={1}
+                              py={0.5}
+                              borderRadius="sm"
+                              bg={`${stakingColor}20`}
+                            >
+                              STAKING
+                            </Text>
+                          </Stack>
+                        </Flex>
+                      </Box>
+                    );
+                  })
+                  )}
+                </VStack>
+              </Box>
+            );
+          })()}
+
+          {/* TODO: Re-enable for custom networks feature */}
           {/* Add Network Button - Full Width */}
-          <Box
+          {/* <Box
             w="100%"
             p={6}
             borderRadius="2xl"
@@ -1667,15 +2410,37 @@ const Dashboard = ({ onSettingsClick, onAddNetworkClick }: DashboardProps) => {
                 Add Network
               </Button>
             </Flex>
-          </Box>
-          
+          </Box> */}
+
             {/* Add some padding at the bottom for better scrolling */}
             <Box height="20px" />
           </VStack>
         </Box>
       </Box>
     </Box>
+
+    {/* Scam Warning Modal */}
+    <ScamWarningModal
+      isOpen={scamWarningToken !== null}
+      onClose={() => {
+        setScamWarningToken(null);
+        setPendingTokenAction(null);
+      }}
+      onConfirm={() => {
+        if (pendingTokenAction) {
+          pendingTokenAction();
+        }
+        setScamWarningToken(null);
+        setPendingTokenAction(null);
+      }}
+      tokenSymbol={scamWarningToken?.symbol || scamWarningToken?.ticker || 'UNKNOWN'}
+      scamType={scamWarningToken ? detectScamToken(scamWarningToken).scamType || 'possible' : 'possible'}
+      reason={scamWarningToken ? detectScamToken(scamWarningToken).reason : ''}
+    />
+    </>
   );
-};
+});
+
+Dashboard.displayName = 'Dashboard';
 
 export default Dashboard; 

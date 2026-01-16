@@ -72,27 +72,43 @@ export const FeatureFlagToggle = () => {
           <ModalCloseButton color="white" />
           <ModalBody pb={6}>
             <VStack gap={4} align="stretch">
-              <Text color="gray.400" fontSize="sm">
-                Toggle features on/off. Page will reload after changes.
-              </Text>
-              
-              <HStack justify="space-between">
-                <Box>
-                  <Text color="white" fontWeight="bold">Swaps</Text>
-                  <Text color="gray.400" fontSize="sm">
-                    Enable THORChain swap functionality
+              {/* Swaps Feature Toggle */}
+              <HStack justify="space-between" p={3} bg="#1a1a1a" borderRadius="md">
+                <VStack align="start" gap={0}>
+                  <Text color="white" fontWeight="medium">
+                    Swaps
                   </Text>
-                </Box>
+                  <Text color="gray.400" fontSize="sm">
+                    Enable swap functionality
+                  </Text>
+                </VStack>
                 <Switch
-                  isChecked={flags.enableSwaps}
-                  onChange={(e) => handleToggle('enableSwaps', e.target.checked)}
-                  colorScheme="green"
+                  checked={flags.enableSwaps}
+                  onCheckedChange={(e) => handleToggle('enableSwaps', !!e.checked)}
+                  colorPalette="green"
+                />
+              </HStack>
+
+              {/* ZCash Feature Toggle */}
+              <HStack justify="space-between" p={3} bg="#1a1a1a" borderRadius="md">
+                <VStack align="start" gap={0}>
+                  <Text color="white" fontWeight="medium">
+                    ZCash (ZEC)
+                  </Text>
+                  <Text color="gray.400" fontSize="sm">
+                    Enable ZCash support (experimental)
+                  </Text>
+                </VStack>
+                <Switch
+                  checked={flags.enableZcash}
+                  onCheckedChange={(e) => handleToggle('enableZcash', !!e.checked)}
+                  colorPalette="green"
                 />
               </HStack>
 
               <Box pt={4} borderTop="1px solid" borderColor="#222222">
                 <Text color="gray.500" fontSize="xs">
-                  Note: These settings persist in localStorage and override environment variables.
+                  Changes require a page reload to take effect.
                 </Text>
               </Box>
             </VStack>

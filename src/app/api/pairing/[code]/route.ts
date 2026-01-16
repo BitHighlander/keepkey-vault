@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pairingStorage } from '@/lib/pairing/PairingStorage';
+import { TEST_CODE, isTestCode, TEST_PUBKEYS_DATA } from '@/lib/pairing/testPubkeys';
 
 // Rate limiting for pairing retrieval
 const retrievalRateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -39,7 +40,29 @@ export async function GET(
       );
     }
 
-    // Rate limiting
+    // Check for permanent TEST code (for app store submission testing)
+    if (isTestCode(code)) {
+      console.log('✅ TEST code accessed - returning test pubkeys for app store review');
+
+      // Get vault URL from request
+      const protocol = request.headers.get('x-forwarded-proto') || 'http';
+      const host = request.headers.get('host') || 'localhost:3000';
+      const vaultUrl = `${protocol}://${host}`;
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          version: 1,
+          deviceId: TEST_PUBKEYS_DATA.deviceInfo.deviceId,
+          label: TEST_PUBKEYS_DATA.deviceInfo.label,
+          timestamp: TEST_PUBKEYS_DATA.timestamp,
+          vaultUrl: vaultUrl,
+          pubkeys: TEST_PUBKEYS_DATA.pubkeys,
+        },
+      });
+    }
+
+    // Rate limiting (only for non-test codes)
     const ip = request.headers.get('x-forwarded-for') || 'unknown';
     if (!checkRetrievalRateLimit(ip)) {
       return NextResponse.json(

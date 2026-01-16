@@ -1,20 +1,34 @@
+import { isZcashEnabled, ZCASH_NETWORK_ID } from '@/config/features';
+
 // We'll define the mappings directly since the import might not be available
-const NetworkIdToChain: Record<string, string> = {
-  'bip122:000000000019d6689c085ae165831e93': 'bitcoin',
-  'bip122:000000000000000000651ef99cb9fcbe': 'bitcoincash',  // ✅ BCH genesis hash
-  'bip122:12a765e31ffd4059bada1e25190f6e98': 'litecoin',  // ✅ FIXED - LTC genesis hash
-  'bip122:00000000001a91e3dace36e2be3bf030': 'dogecoin',
-  'bip122:000007d91d1254d60e2dd1ae58038307': 'dash',      // ✅ FIXED - DASH genesis hash
-  'cosmos:mayachain-mainnet-v1': 'mayachain',
-  'cosmos:osmosis-1': 'osmosis',
-  'cosmos:cosmoshub-4': 'cosmos',
-  'cosmos:kaiyo-1': 'kujira',
-  'cosmos:thorchain-mainnet-v1': 'thorchain',
-  'eip155:1': 'ethereum',
-  'eip155:137': 'polygon',
-  'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'ripple',
-  'zcash:main': 'zcash',
+// Base mappings - ZCash conditionally included
+const getNetworkIdToChain = (): Record<string, string> => {
+  const baseMapping: Record<string, string> = {
+    'bip122:000000000019d6689c085ae165831e93': 'bitcoin',
+    'bip122:000000000000000000651ef99cb9fcbe': 'bitcoincash',  // ✅ BCH genesis hash
+    'bip122:12a765e31ffd4059bada1e25190f6e98': 'litecoin',  // ✅ FIXED - LTC genesis hash
+    'bip122:00000000001a91e3dace36e2be3bf030': 'dogecoin',
+    'bip122:000007d91d1254d60e2dd1ae58038307': 'dash',      // ✅ FIXED - DASH genesis hash
+    'bip122:4da631f2ac1bed857bd968c67c913978': 'digibyte',  // ✅ DGB genesis hash
+    'cosmos:mayachain-mainnet-v1': 'mayachain',
+    'cosmos:osmosis-1': 'osmosis',
+    'cosmos:cosmoshub-4': 'cosmos',
+    'cosmos:kaiyo-1': 'kujira',
+    'cosmos:thorchain-mainnet-v1': 'thorchain',
+    'eip155:1': 'ethereum',
+    'eip155:137': 'polygon',
+    'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'ripple',
+  };
+
+  // Add ZCash only if feature flag is enabled
+  if (isZcashEnabled()) {
+    baseMapping[ZCASH_NETWORK_ID] = 'zcash';
+  }
+
+  return baseMapping;
 };
+
+const NetworkIdToChain = getNetworkIdToChain();
 
 const COIN_MAP_KEEPKEY: Record<string, string> = {
   'bitcoin': 'Bitcoin',
@@ -23,6 +37,7 @@ const COIN_MAP_KEEPKEY: Record<string, string> = {
   'litecoin': 'Litecoin',
   'dogecoin': 'Dogecoin',
   'dash': 'Dash',
+  'digibyte': 'DigiByte',
   'ethereum': 'Ethereum',
   'polygon': 'Polygon',
   'ripple': 'Ripple',
@@ -35,24 +50,36 @@ const COIN_MAP_KEEPKEY: Record<string, string> = {
 };
 
 // Map network IDs to their types for KeepKey SDK
-export const networkIdToType: Record<string, string> = {
-  'bip122:000000000019d6689c085ae165831e93': 'UTXO', // Bitcoin mainnet
-  'bip122:000000000000000000651ef99cb9fcbe': 'UTXO', // Bitcoin Cash ✅ BCH
-  'bip122:12a765e31ffd4059bada1e25190f6e98': 'UTXO', // Litecoin ✅ FIXED
-  'bip122:00000000001a91e3dace36e2be3bf030': 'UTXO', // Dogecoin
-  'bip122:000007d91d1254d60e2dd1ae58038307': 'UTXO', // Dash ✅ FIXED
-  'cosmos:mayachain-mainnet-v1': 'MAYACHAIN',
-  'cosmos:osmosis-1': 'OSMOSIS',
-  'cosmos:cosmoshub-4': 'COSMOS',
-  'cosmos:kaiyo-1': 'COSMOS',
-  'cosmos:thorchain-mainnet-v1': 'THORCHAIN',
-  'eip155:1': 'EVM',      // Ethereum mainnet
-  'eip155:137': 'EVM',    // Polygon
-  'eip155:8453': 'EVM',   // BASE
-  'eip155:*': 'EVM',      // Catch-all for other EVM chains
-  'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
-  'zcash:main': 'UTXO',
+// ZCash conditionally included based on feature flag
+const getNetworkIdToType = (): Record<string, string> => {
+  const baseMapping: Record<string, string> = {
+    'bip122:000000000019d6689c085ae165831e93': 'UTXO', // Bitcoin mainnet
+    'bip122:000000000000000000651ef99cb9fcbe': 'UTXO', // Bitcoin Cash ✅ BCH
+    'bip122:12a765e31ffd4059bada1e25190f6e98': 'UTXO', // Litecoin ✅ FIXED
+    'bip122:00000000001a91e3dace36e2be3bf030': 'UTXO', // Dogecoin
+    'bip122:000007d91d1254d60e2dd1ae58038307': 'UTXO', // Dash ✅ FIXED
+    'bip122:4da631f2ac1bed857bd968c67c913978': 'UTXO', // DigiByte ✅ DGB
+    'cosmos:mayachain-mainnet-v1': 'MAYACHAIN',
+    'cosmos:osmosis-1': 'OSMOSIS',
+    'cosmos:cosmoshub-4': 'COSMOS',
+    'cosmos:kaiyo-1': 'COSMOS',
+    'cosmos:thorchain-mainnet-v1': 'THORCHAIN',
+    'eip155:1': 'EVM',      // Ethereum mainnet
+    'eip155:137': 'EVM',    // Polygon
+    'eip155:8453': 'EVM',   // BASE
+    'eip155:*': 'EVM',      // Catch-all for other EVM chains
+    'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
+  };
+
+  // Add ZCash only if feature flag is enabled
+  if (isZcashEnabled()) {
+    baseMapping[ZCASH_NETWORK_ID] = 'UTXO';
+  }
+
+  return baseMapping;
 };
+
+export const networkIdToType = getNetworkIdToType();
 
 // Convert BIP32 path to address_n array
 export function bip32ToAddressNList(path: string): number[] {
@@ -161,13 +188,13 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
   // UTXO: Bitcoin, Litecoin, Dogecoin, etc.
   const isAccountBased = networkType !== 'UTXO';
 
-  console.log('🔍 [KeepKey] Chain type:', {
-    networkType,
-    isAccountBased,
-    pathMaster,
-    receiveIndex,
-    willModifyPath: !isAccountBased
-  });
+  // console.log('🔍 [KeepKey] Chain type:', {
+  //   networkType,
+  //   isAccountBased,
+  //   pathMaster,
+  //   receiveIndex,
+  //   willModifyPath: !isAccountBased
+  // });
 
   // Build address info for KeepKey SDK
   const addressInfo: any = {
@@ -185,7 +212,7 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
     addressInfo.coin = coin;
   }
 
-  console.log('🔑 [KeepKey] Address info for device:', addressInfo);
+  //console.log('🔑 [KeepKey] Address info for device:', addressInfo);
 
   let address: string;
   
@@ -216,15 +243,15 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
       throw new Error(`Unsupported network type "${networkType}" for networkId: ${networkId}`);
   }
 
-  console.log('✅ [KeepKey] Device provided address:', address);
+  //console.log('✅ [KeepKey] Device provided address:', address);
 
   // Verify address matches if expected address is provided
   if (expectedAddress) {
-    console.log('🔍 [KeepKey] Expected address:', expectedAddress);
+    //console.log('🔍 [KeepKey] Expected address:', expectedAddress);
     if (address !== expectedAddress) {
       throw new Error(`Address verification failed! Device: ${address}, Expected: ${expectedAddress}`);
     }
-    console.log('✅ [KeepKey] Address verification successful!');
+    //console.log('✅ [KeepKey] Address verification successful!');
   }
 
   return address;

@@ -257,6 +257,161 @@ export const testCases: TestCase[] = [
       contains: ['balance', 'portfolio'],
     },
   },
+
+  // ==================== CAPABILITY QUERIES (GROUNDED) ====================
+  {
+    name: 'Capability - Solana (unsupported)',
+    userMessage: 'Does KeepKey support Solana?',
+    expectedIntent: 'query_capability',
+    expectedFunctions: ['getChainCapability'],
+    expectedResponse: {
+      contains: ['no', 'not', 'solana'],
+      notContains: ['yes', 'supports solana'],
+    },
+  },
+  {
+    name: 'Capability - Tron (unsupported)',
+    userMessage: 'Can I use Tron on KeepKey?',
+    expectedIntent: 'query_capability',
+    expectedFunctions: ['getChainCapability'],
+    expectedResponse: {
+      contains: ['no', 'not', 'tron'],
+      notContains: ['yes', 'supports tron'],
+    },
+  },
+  {
+    name: 'Capability - Taproot (partial)',
+    userMessage: 'Does KeepKey support Taproot?',
+    expectedIntent: 'query_capability',
+    expectedFunctions: ['getChainCapability'],
+    expectedResponse: {
+      contains: ['receive', 'taproot'],
+      notContains: ['fully supports', 'generate taproot'],
+    },
+  },
+  {
+    name: 'Capability - Bitcoin (supported)',
+    userMessage: 'Does KeepKey support Bitcoin?',
+    expectedIntent: 'query_capability',
+    expectedFunctions: ['getChainCapability'],
+    expectedResponse: {
+      contains: ['yes', 'bitcoin', 'btc'],
+    },
+  },
+  {
+    name: 'Capability - List all chains',
+    userMessage: 'What blockchains are supported?',
+    expectedIntent: 'query_capability',
+    expectedFunctions: ['getSupportedChains'],
+    expectedResponse: {
+      contains: ['bitcoin', 'ethereum', 'cosmos'],
+    },
+  },
+
+  // ==================== CAIP QUERIES ====================
+  {
+    name: 'CAIP - Bitcoin',
+    userMessage: "What's Bitcoin's CAIP?",
+    expectedIntent: 'query_caip',
+    expectedFunctions: ['getCAIPInfo'],
+    expectedResponse: {
+      contains: ['caip', 'bip122', 'bitcoin'],
+    },
+  },
+  {
+    name: 'CAIP - Ethereum',
+    userMessage: 'What is the CAIP for Ethereum?',
+    expectedIntent: 'query_caip',
+    expectedFunctions: ['getCAIPInfo'],
+    expectedResponse: {
+      contains: ['caip', 'eip155', 'ethereum'],
+    },
+  },
+  {
+    name: 'CAIP - Cosmos',
+    userMessage: 'Give me the CAIP identifier for ATOM',
+    expectedIntent: 'query_caip',
+    expectedFunctions: ['getCAIPInfo'],
+    expectedResponse: {
+      contains: ['caip', 'cosmos', 'atom'],
+    },
+  },
+
+  // ==================== DEVICE & STATUS QUERIES ====================
+  {
+    name: 'Device Info',
+    userMessage: 'What device am I using?',
+    expectedIntent: 'query_status',
+    expectedFunctions: ['getDeviceInfo'],
+    expectedResponse: {
+      contains: ['device', 'keepkey'],
+    },
+  },
+  {
+    name: 'Vault Status',
+    userMessage: "What's my vault status?",
+    expectedIntent: 'query_status',
+    expectedFunctions: ['getVaultStatus'],
+    expectedResponse: {
+      contains: ['vault', 'status'],
+    },
+  },
+  {
+    name: 'Device Firmware',
+    userMessage: 'What firmware version is my KeepKey running?',
+    expectedIntent: 'query_status',
+    expectedFunctions: ['getDeviceInfo'],
+    expectedResponse: {
+      contains: ['firmware'],
+    },
+  },
+
+  // ==================== PATH & PUBKEY INTELLIGENCE ====================
+  {
+    name: 'Path - List configured paths',
+    userMessage: 'What paths do I have configured?',
+    expectedIntent: 'query_path',
+    expectedFunctions: ['listConfiguredPaths'],
+    expectedResponse: {
+      contains: ['path', 'configured'],
+    },
+  },
+  {
+    name: 'Path - Bitcoin paths',
+    userMessage: 'Show me all Bitcoin paths',
+    expectedIntent: 'query_path',
+    expectedFunctions: ['getPathsForBlockchain'],
+    expectedResponse: {
+      contains: ['bitcoin', 'path'],
+    },
+  },
+  {
+    name: 'Path - Native segwit info',
+    userMessage: 'What is the Bitcoin native segwit path?',
+    expectedIntent: 'query_path',
+    expectedFunctions: ['getPathInfo'],
+    expectedResponse: {
+      contains: ['segwit', 'path'],
+    },
+  },
+  {
+    name: 'Path - Add new path suggestion',
+    userMessage: 'Help me add a new Bitcoin path',
+    expectedIntent: 'query_path',
+    expectedFunctions: ['suggestPathForBlockchain'],
+    expectedResponse: {
+      contains: ['path', 'bitcoin'],
+    },
+  },
+  {
+    name: 'Path - Configured Bitcoin paths',
+    userMessage: 'What Bitcoin paths are configured?',
+    expectedIntent: 'query_path',
+    expectedFunctions: ['listConfiguredPaths'],
+    expectedResponse: {
+      contains: ['bitcoin', 'path'],
+    },
+  },
 ];
 
 // Test cases organized by category
@@ -272,6 +427,10 @@ export const testCategories = {
   security: testCases.slice(18, 20),
   complex: testCases.slice(20, 22),
   edgeCases: testCases.slice(22, 25),
+  capabilityQueries: testCases.slice(25, 30), // NEW: Grounded capability tests
+  caipQueries: testCases.slice(30, 33), // NEW: CAIP intelligence tests
+  deviceStatus: testCases.slice(33, 36), // NEW: Device & vault status tests
+  pathIntelligence: testCases.slice(36, 41), // NEW: Path & pubkey intelligence tests
 };
 
 // Quick test - just the most important cases
@@ -281,4 +440,8 @@ export const quickTests: TestCase[] = [
   testCases[7], // Send intent
   testCases[11], // Swap intent
   testCases[18], // Security - private key
+  testCases[25], // Capability - Solana (unsupported) - NEW
+  testCases[30], // CAIP - Bitcoin - NEW
+  testCases[33], // Device Info - NEW
+  testCases[36], // Path - List configured paths - NEW
 ];

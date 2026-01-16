@@ -36,17 +36,25 @@ const theme = {
 };
 
 interface SignMessageDialogProps {
-  onSignMessage: (message: string) => Promise<{ address: string; signature: string }>;
+  onSignMessage: (message: string, selectedAddress?: string) => Promise<{ address: string; signature: string }>;
   isLoading?: boolean;
+  addresses?: Array<{ address: string; path: string; scriptType?: string }>;
+  showAddressSelector?: boolean;
 }
 
-export function SignMessageDialog({ onSignMessage, isLoading = false }: SignMessageDialogProps) {
+export function SignMessageDialog({
+  onSignMessage,
+  isLoading = false,
+  addresses = [],
+  showAddressSelector = false
+}: SignMessageDialogProps) {
   const [message, setMessage] = useState('');
   const [signature, setSignature] = useState<{ address: string; signature: string } | null>(null);
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<'address' | 'signature' | null>(null);
   const [open, setOpen] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<string>('');
 
   const handleSign = async () => {
     if (!message.trim()) {
@@ -54,10 +62,15 @@ export function SignMessageDialog({ onSignMessage, isLoading = false }: SignMess
       return;
     }
 
+    if (showAddressSelector && !selectedAddress) {
+      setError('Please select an address to sign with');
+      return;
+    }
+
     try {
       setSigning(true);
       setError(null);
-      const result = await onSignMessage(message);
+      const result = await onSignMessage(message, selectedAddress);
       setSignature(result);
     } catch (err: any) {
       console.error('Error signing message:', err);
@@ -81,6 +94,7 @@ export function SignMessageDialog({ onSignMessage, isLoading = false }: SignMess
     setMessage('');
     setSignature(null);
     setError(null);
+    setSelectedAddress('');
   };
 
   const handleOpenChange = (details: { open: boolean }) => {
@@ -129,6 +143,46 @@ export function SignMessageDialog({ onSignMessage, isLoading = false }: SignMess
           <VStack gap={6} align="stretch">
             {!signature ? (
               <>
+                {/* Address Selector - Only show if addresses provided */}
+                {showAddressSelector && addresses.length > 0 && (
+                  <Box>
+                    <Text color="gray.400" fontSize="sm" mb={2}>
+                      Select address to sign with:
+                    </Text>
+                    <Box
+                      as="select"
+                      value={selectedAddress}
+                      onChange={(e: any) => setSelectedAddress(e.target.value)}
+                      bg="rgba(0, 0, 0, 0.3)"
+                      borderColor={theme.border}
+                      borderWidth="1px"
+                      borderRadius="md"
+                      color="white"
+                      p={2}
+                      fontSize="sm"
+                      fontFamily="mono"
+                      width="100%"
+                      cursor="pointer"
+                      _hover={{
+                        borderColor: theme.gold
+                      }}
+                    >
+                      <option value="" style={{ background: '#000000' }}>
+                        -- Select Address --
+                      </option>
+                      {addresses.map((addr, index) => (
+                        <option
+                          key={`addr-${index}-${addr.address}`}
+                          value={addr.address}
+                          style={{ background: '#000000' }}
+                        >
+                          {addr.address} ({addr.path})
+                        </option>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
                 {/* Message Input */}
                 <Box>
                   <Text color="gray.400" fontSize="sm" mb={2}>
@@ -305,7 +359,12 @@ export function SignMessageDialog({ onSignMessage, isLoading = false }: SignMess
                 color="black"
                 _hover={{ bg: theme.goldHover }}
                 fontWeight="bold"
-                isDisabled={!message.trim() || signing || isLoading}
+                isDisabled={
+                  !message.trim() ||
+                  signing ||
+                  isLoading ||
+                  (showAddressSelector && !selectedAddress)
+                }
                 flex={1}
               >
                 Sign with KeepKey

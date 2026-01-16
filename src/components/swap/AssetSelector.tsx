@@ -143,7 +143,6 @@ export const AssetSelector = ({
               symbol={asset.symbol}
               alt={asset.name}
               boxSize="24px"
-              color="#FFD700"
             />
             <Text fontWeight="medium" color="white" fontSize="sm">{asset.symbol}</Text>
           </HStack>

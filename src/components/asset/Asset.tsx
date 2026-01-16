@@ -19,6 +19,10 @@ import {
 import { keyframes } from '@emotion/react';
 import { motion } from 'framer-motion';
 import { KeepKeyUiGlyph } from '@/components/logo/keepkey-ui-glyph';
+import { toaster } from '@/components/ui/toaster';
+import { usePioneerContext } from '@/components/providers/pioneer';
+import { theme } from '@/lib/theme';
+import { chachingSound, playSound } from '@/lib/audio';
 
 // Animated KeepKey logo pulse effect
 const pulseAnimation = keyframes`
@@ -31,42 +35,24 @@ const pulseAnimation = keyframes`
     opacity: 1;
   }
 `;
-
-// Add sound effect imports
-const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
-
-// Play sound utility function
-const playSound = (sound: HTMLAudioElement | null) => {
-  if (sound) {
-    sound.currentTime = 0; // Reset to start
-    sound.play().catch(err => console.error('Error playing sound:', err));
-  }
-};
-
-import { usePioneerContext } from '@/components/providers/pioneer';
-import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList } from 'react-icons/fa';
+import { FaTimes, FaChevronDown, FaChevronUp, FaPaperPlane, FaQrcode, FaExchangeAlt, FaFileExport, FaPlus, FaCopy, FaCheck, FaSync, FaCoins, FaList, FaPen } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import CountUp from 'react-countup';
 import { CosmosStaking } from './CosmosStaking';
-import { isFeatureEnabled } from '@/config/features';
+import { SignMessageDialog } from '@/components/receive/SignMessageDialog';
+import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
 import { BalanceDistribution } from '../balance/BalanceDistribution';
 import { aggregateBalances, AggregatedBalance } from '@/types/balance';
 import { ReportDialog } from './ReportDialog';
 import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
-import { DappStore } from './DappStore';
+// @ts-expect-error - Pioneer CAIP utilities
+import { networkIdToCaip } from '@pioneer-platform/pioneer-caip';
+import { TransactionHistory } from './TransactionHistory';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
 import { AssetIcon } from '@/components/ui/AssetIcon';
-
-// Theme colors - matching our dashboard theme
-const theme = {
-  bg: '#000000',
-  cardBg: '#111111',
-  gold: '#FFD700',
-  goldHover: '#FFE135',
-  border: '#222222',
-};
+import { isFeatureEnabled } from '@/config/features';
 
 // Create motion wrapper for Chakra components
 const MotionBox = motion(Box);
@@ -108,10 +94,38 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   const { customTokens, addCustomToken, removeCustomToken, refreshCustomTokens } = useCustomTokens();
   // Add state for tracking copied addresses/pubkeys
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
+
+  // Helper: Get native asset info for a network
+  const getNativeAssetInfo = (networkId: string, balances?: any[]) => {
+    try {
+      // Get the native CAIP using Pioneer's utility
+      const nativeCaip = networkIdToCaip(networkId);
+
+      // Find the native asset balance (if available)
+      const nativeBalance = balances?.find((b: any) => b.caip === nativeCaip);
+
+      return {
+        caip: nativeCaip,
+        symbol: nativeBalance?.symbol || nativeBalance?.ticker || 'GAS',
+        priceUsd: nativeBalance?.priceUsd || nativeBalance?.price || '0',
+        balance: nativeBalance?.balance || '0'
+      };
+    } catch (error) {
+      console.error('[getNativeAssetInfo] Error getting native asset info:', { networkId, error });
+      return {
+        caip: networkId,
+        symbol: 'GAS',
+        priceUsd: '0',
+        balance: '0'
+      };
+    }
+  };
   // Add state for refreshing charts
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Track which networks have been scanned to avoid duplicate token discovery
   const [scannedNetworks, setScannedNetworks] = useState<Set<string>>(new Set());
+  // Sign Message state
+  const [selectedSigningPubkey, setSelectedSigningPubkey] = useState<any>(null);
 
   // Access pioneer context in the same way as the Dashboard component
   const pioneer = usePioneerContext();
@@ -119,6 +133,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
   const { app } = state;
 
   const router = useRouter();
+  // Using toaster from Chakra UI v3
 
   // Calculate the price (moved up for use in useMemo)
   const priceUsd = assetContext?.priceUsd || 0;
@@ -252,34 +267,82 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         tokenNetworkId = parts[0];
       }
 
-      // Map network to native asset
-      const nativeAssetMap: { [key: string]: { caip: string, symbol: string } } = {
-        'cosmos:mayachain-mainnet-v1': { caip: 'cosmos:mayachain-mainnet-v1/slip44:931', symbol: 'CACAO' },
-        'cosmos:thorchain-mainnet-v1': { caip: 'cosmos:thorchain-mainnet-v1/slip44:931', symbol: 'RUNE' },
-        'cosmos:osmosis-1': { caip: 'cosmos:osmosis-1/slip44:118', symbol: 'OSMO' },
-        'eip155:1': { caip: 'eip155:1/slip44:60', symbol: 'ETH' },
-        'eip155:137': { caip: 'eip155:137/slip44:60', symbol: 'MATIC' },
-        'eip155:43114': { caip: 'eip155:43114/slip44:60', symbol: 'AVAX' },
-        'eip155:56': { caip: 'eip155:56/slip44:60', symbol: 'BNB' },
-        'eip155:8453': { caip: 'eip155:8453/slip44:60', symbol: 'ETH' },
-        'eip155:10': { caip: 'eip155:10/slip44:60', symbol: 'ETH' },
-        'eip155:42161': { caip: 'eip155:42161/slip44:60', symbol: 'ETH' },
-      };
-
-      const nativeAssetInfo = nativeAssetMap[tokenNetworkId];
+      // Find native asset by looking for balances that start with the network ID
+      // Native assets don't have contract addresses, just networkId/slip44:*
       let nativeBalance = '0';
-      let nativeSymbol = nativeAssetInfo?.symbol || 'GAS';
+      let nativeSymbol = 'GAS';
 
-      if (nativeAssetInfo) {
-        const nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === nativeAssetInfo.caip);
-        if (nativeAssetBalance) {
-          nativeBalance = nativeAssetBalance.balance;
+      console.log('🔍 [Asset] Looking for native gas balance:', {
+        tokenNetworkId,
+        tokenCaip: caip,
+        allBalances: app.balances?.map((b: any) => ({ caip: b.caip, symbol: b.symbol, balance: b.balance }))
+      });
+
+      // Debug: Find ALL ETH balances in the array
+      const allEthBalances = app.balances?.filter((b: any) =>
+        b.caip === 'eip155:1/slip44:60' || b.symbol === 'ETH'
+      );
+      console.log('🔍 [Asset] ALL ETH balances found:', allEthBalances);
+
+      // CRITICAL FIX: Match native gas balance to the SAME address/pubkey as the token
+      const tokenAddress = tokenBalance.address || tokenBalance.pubkey;
+      console.log('🔍 [Asset] Token address/pubkey:', tokenAddress);
+
+      // Find native asset balance - it's the one with CAIP starting with tokenNetworkId and no contract
+      // AND matches the same address/pubkey as the token
+      const nativeAssetBalance = app.balances?.find((balance: any) => {
+        // Must be on the same network
+        if (!balance.caip?.startsWith(tokenNetworkId)) {
+          console.log('❌ [Asset] Balance does not start with tokenNetworkId:', { balanceCaip: balance.caip, tokenNetworkId });
+          return false;
         }
+
+        // Native assets have format: networkId/slip44:* (no contract address after)
+        // Tokens have format: networkId/slip44:*/erc20:0x... or networkId/erc20:0x...
+        const parts = balance.caip.split('/');
+
+        // For EVM: native is "eip155:X/slip44:60", token is "eip155:X/erc20:0x..." or "eip155:X/slip44:60/erc20:0x..."
+        // For Cosmos: native is "cosmos:X/slip44:Y", token is "cosmos:X/slip44:Y/ibc:..." or similar
+        if (balance.caip.includes('/erc20:') || balance.caip.includes('/ibc:') || balance.caip.includes('/factory:')) {
+          console.log('❌ [Asset] Balance is a token, not native:', balance.caip);
+          return false; // This is a token, not native
+        }
+
+        // Should have exactly 2 parts (networkId/slip44:*)
+        const isNative = parts.length === 2 && parts[1].startsWith('slip44:');
+        console.log('🔍 [Asset] Checking if native:', {
+          caip: balance.caip,
+          parts,
+          partsLength: parts.length,
+          isNative,
+          symbol: balance.symbol,
+          balance: balance.balance
+        });
+        return isNative;
+      });
+
+      if (nativeAssetBalance) {
+        nativeBalance = nativeAssetBalance.balance || '0';
+        nativeSymbol = nativeAssetBalance.symbol || 'GAS';
+        console.log('✅ [Asset] Found native gas balance:', {
+          nativeBalance,
+          nativeSymbol,
+          nativeCaip: nativeAssetBalance.caip
+        });
+      } else {
+        console.warn('⚠️ [Asset] No native gas balance found for token:', {
+          tokenNetworkId,
+          tokenCaip: caip,
+          availableBalances: app.balances?.filter((b: any) => b.caip?.startsWith(tokenNetworkId)).map((b: any) => b.caip)
+        });
       }
 
       // Get explorer info from assetsMap or fallback to network-specific defaults
       const assetInfo = app.assetsMap?.get(caip);
       const networkAssetInfo = app.assetsMap?.get(tokenNetworkId);
+
+      // Get native asset info for fees
+      const nativeAsset = getNativeAssetInfo(tokenNetworkId, app.balances);
 
       // Set token asset context
       const tokenAssetContextData = {
@@ -300,6 +363,8 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         type: 'token',
         nativeBalance: nativeBalance,
         nativeSymbol: nativeSymbol,
+        // CRITICAL: Native asset info for fee calculations
+        nativeAsset: nativeAsset,
         explorer: assetInfo?.explorer || networkAssetInfo?.explorer,
         explorerAddressLink: assetInfo?.explorerAddressLink || networkAssetInfo?.explorerAddressLink,
         explorerTxLink: assetInfo?.explorerTxLink || networkAssetInfo?.explorerTxLink,
@@ -311,12 +376,17 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       setPreviousBalance(tokenAssetContextData.balance);
 
       // Set asset context in Pioneer SDK for Send/Receive/Swap components
-      if (app?.setAssetContext) {
-        app.setAssetContext(tokenAssetContextData).then(() => {
+      // Remove custom UI-only fields (nativeBalance, nativeSymbol) before passing to SDK
+      // CRITICAL FIX: Only call setAssetContext if pubkeys are loaded to prevent Pioneer SDK validation error
+      if (app?.setAssetContext && tokenAssetContextData.pubkeys && tokenAssetContextData.pubkeys.length > 0) {
+        const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = tokenAssetContextData;
+        app.setAssetContext(sdkContext).then(() => {
           console.log('✅ [Asset] Token asset context set in Pioneer SDK');
         }).catch((error: any) => {
           console.error('❌ [Asset] Error setting token asset context:', error);
         });
+      } else if (app?.setAssetContext) {
+        console.warn('⏳ [Asset] Skipping setAssetContext (token) - wallet not paired or no pubkeys loaded yet');
       }
 
       setLoading(false);
@@ -358,39 +428,115 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
     }
 
+    // CRITICAL FIX: If no balance found (zero balance case), create placeholder from assetsMap
     if (!nativeAssetBalance) {
-      console.error('⚠️ [Asset] Native asset not found:', caip);
-      setLoading(false);
-      return;
+      console.warn('⚠️ [Asset] Native asset not found in balances, creating zero-balance placeholder:', caip);
+
+      // Get asset metadata from assetsMap
+      const assetInfo = app.assetsMap?.get(caip) || app.assetsMap?.get(caip.toLowerCase());
+
+      if (!assetInfo) {
+        console.error('❌ [Asset] Asset metadata not found in assetsMap:', caip);
+        setLoading(false);
+        return;
+      }
+
+      // Create zero-balance placeholder with all required fields
+      nativeAssetBalance = {
+        caip: caip,
+        ...assetInfo,
+        balance: '0',
+        valueUsd: '0',
+        price: 0,
+        priceUsd: 0,
+        networkId: networkId,
+        identifier: `${caip}:zero-balance`,
+        isZeroBalance: true, // Flag to indicate this is a placeholder
+        fetchedAt: Date.now(),
+        fetchedAtISO: new Date().toISOString(),
+        isStale: false
+      };
+
+      console.log('✅ [Asset] Created zero-balance placeholder:', nativeAssetBalance);
     }
 
     // CRITICAL FIX: For CACAO, override symbol
     const isCacao = caip.includes('mayachain') && caip.includes('slip44:931');
 
+    console.log('🔍 [Asset] nativeAssetBalance source data:', nativeAssetBalance);
+    console.log('⏰ [Asset] Source timestamp fields:', {
+      fetchedAt: nativeAssetBalance.fetchedAt,
+      fetchedAtISO: nativeAssetBalance.fetchedAtISO,
+      isStale: nativeAssetBalance.isStale
+    });
+
+    // DEBUG: Check all app.pubkeys to see which ones match Ethereum
+    console.log('🔍 [DEBUG] All app.pubkeys:', app.pubkeys);
+    console.log('🔍 [DEBUG] Filtering for networkId:', networkId);
+    const filteredPubkeys = (app.pubkeys || []).filter((p: any) => {
+      if (!p.networks || !Array.isArray(p.networks)) {
+        return false;
+      }
+
+      // Exact match
+      if (p.networks.includes(networkId)) {
+        return true;
+      }
+
+      // For EVM chains, check if pubkey has eip155:* wildcard
+      if (networkId.startsWith('eip155:') && p.networks.includes('eip155:*')) {
+        return true;
+      }
+
+      // For Bitcoin chains, check if pubkey has bip122:* wildcard
+      if (networkId.startsWith('bip122:') && p.networks.includes('bip122:*')) {
+        return true;
+      }
+
+      return false;
+    });
+
+    // Get native asset info (for native assets, it's itself!)
+    const nativeAsset = getNativeAssetInfo(networkId, app.balances);
+
     const assetContextData = {
       ...nativeAssetBalance,
       caip: caip,
+      // Add color from balance, assetsMap, or fallback to gold
+      color: nativeAssetBalance.color || app.assetsMap?.get(caip)?.color || app.assetsMap?.get(caip.toLowerCase())?.color || '#FFD700',
       ...(isCacao && { symbol: 'CACAO' }),
       // CRITICAL FIX: Add pubkeys for balance aggregation across all addresses
-      pubkeys: (app.pubkeys || []).filter((p: any) => p.networks.includes(networkId))
+      pubkeys: filteredPubkeys,
+      // CRITICAL: Native asset info for fee calculations (itself for native assets)
+      nativeAsset: nativeAsset
     };
 
     console.log('✅ [Asset] Native asset data loaded:', assetContextData);
     console.log('🔑 [Asset] Pubkeys for aggregation:', assetContextData.pubkeys?.length || 0);
+    console.log('⏰ [Asset] Timestamp fields:', {
+      fetchedAt: assetContextData.fetchedAt,
+      fetchedAtISO: assetContextData.fetchedAtISO,
+      isStale: assetContextData.isStale
+    });
     setAssetContext(assetContextData);
     setPreviousBalance(assetContextData.balance);
 
     // Set asset context in Pioneer SDK for Send/Receive/Swap components
-    if (app?.setAssetContext) {
-      app.setAssetContext(assetContextData).then(() => {
+    // Remove custom UI-only fields before passing to SDK
+    // CRITICAL FIX: Only call setAssetContext if pubkeys are loaded to prevent Pioneer SDK validation error
+    if (app?.setAssetContext && assetContextData.pubkeys && assetContextData.pubkeys.length > 0) {
+      const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContextData;
+      app.setAssetContext(sdkContext).then(() => {
         console.log('✅ [Asset] Native asset context set in Pioneer SDK');
       }).catch((error: any) => {
         console.error('❌ [Asset] Error setting native asset context:', error);
       });
+    } else if (app?.setAssetContext) {
+      console.warn('⏳ [Asset] Skipping setAssetContext (native) - wallet not paired or no pubkeys loaded yet');
     }
 
     setLoading(false);
-  }, [caip, app]);
+  }, [caip, app?.balances, app?.pubkeys, app?.assetsMap]);
 
   // Set up interval to sync market data every 15 seconds
   // SKIP interval when custom token dialog is open to prevent state refresh from closing the dialog
@@ -424,12 +570,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
               increased: parseFloat(currentBalance) > parseFloat(prevBalance),
               isInitialLoad
             });
-
-            // Only play sound if this is not the initial load and balance actually increased
-            // if (!isInitialLoad && parseFloat(currentBalance) > parseFloat(prevBalance)) {
-            //   console.log("🎵 [Asset] Balance increased! Playing chaching sound");
-            //   playSound(chachingSound);
-            // }
 
             // Update previous balance for next comparison
             setPreviousBalance(currentBalance);
@@ -475,7 +615,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
     if (app?.setAssetContext && assetContext) {
       try {
-        await app.setAssetContext(assetContext);
+        // Remove custom UI-only fields before passing to SDK
+        const { nativeBalance: _nb, nativeSymbol: _ns, ...sdkContext } = assetContext;
+        await app.setAssetContext(sdkContext);
         console.log('✅ [Asset] Asset context confirmed set in Pioneer SDK before Send:', assetContext.symbol);
       } catch (error) {
         console.error('❌ [Asset] Error setting asset context before Send:', error);
@@ -517,25 +659,127 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       });
   };
 
-  // Refresh charts to discover tokens for the current network
+  // Force refresh balances with cache busting
   const handleRefreshCharts = async () => {
     if (!assetContext?.networkId) {
       console.error('❌ [Asset] No networkId available');
       return;
     }
 
-    console.log('🔄 [Asset] Refreshing charts for network:', assetContext.networkId);
+    console.log('🔄 [Asset] Force refreshing balances for network:', assetContext.networkId);
     setIsRefreshing(true);
     try {
-      if (app && typeof app.getCharts === 'function') {
-        console.log('🔄 [Asset] Calling app.getCharts() with networkId:', assetContext.networkId);
-        await app.getCharts([assetContext.networkId]);
-        console.log('✅ [Asset] Charts refresh completed for', assetContext.networkId);
+      if (app && typeof app.getBalances === 'function') {
+        console.log('🔄 [Asset] Calling app.getBalances(true) to force cache bust and refresh balances');
+        // Pass forceRefresh=true to bypass balance cache and get fresh blockchain data
+        await app.getBalances(true);
+        console.log('✅ [Asset] Balance refresh completed for', assetContext.networkId);
+
+        // Verify balances were updated
+        const assetBalance = app.balances?.find((b: any) =>
+          b.networkId === assetContext.networkId && b.isNative
+        );
+        console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
+
+        // Also refresh charts for token discovery (non-blocking)
+        if (typeof app.getCharts === 'function') {
+          console.log('🔄 [Asset] Also refreshing charts for token discovery...');
+          app.getCharts([assetContext.networkId]).catch((err: any) => {
+            console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
+          });
+        }
       }
-    } catch (error) {
-      console.error('❌ [Asset] Charts refresh failed:', error);
+    } catch (error: any) {
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('❌ [Asset] Balance refresh failed:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        type: error?.constructor?.name,
+        networkId: assetContext.networkId,
+        pioneer: !!app?.pioneer,
+        pubkeys: app?.pubkeys?.length || 0
+      });
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  // Handle Bitcoin message signing
+  const handleSignMessage = async (message: string, selectedAddress?: string): Promise<{ address: string; signature: string }> => {
+    if (!app) {
+      throw new Error('App not initialized');
+    }
+
+    if (!assetContext?.pubkeys || assetContext.pubkeys.length === 0) {
+      throw new Error('No addresses available');
+    }
+
+    // Find the pubkey to sign with - either from the parameter or the state
+    const pubkeyToUse = selectedAddress
+      ? assetContext.pubkeys.find((p: any) => p.address === selectedAddress)
+      : selectedSigningPubkey;
+
+    if (!pubkeyToUse) {
+      throw new Error('No address selected for signing');
+    }
+
+    console.log('🔐 [Asset SignMessage] Signing message with pubkey:', pubkeyToUse);
+
+    // Get the KeepKey wallet from the wallets array (same as Receive component)
+    const keepKeyWallet = app.wallets?.find((w: any) => w.wallet?.getVendor?.() === 'KeepKey')?.wallet;
+
+    if (!keepKeyWallet) {
+      throw new Error('KeepKey wallet not found in app.wallets');
+    }
+
+    console.log('✅ [Asset SignMessage] Found KeepKey wallet');
+
+    // Check if wallet supports Bitcoin message signing
+    if (typeof keepKeyWallet.btcSignMessage !== 'function') {
+      throw new Error('Wallet does not support Bitcoin message signing');
+    }
+
+    try {
+      // Convert BIP32 path to addressNList
+      const addressNList = bip32ToAddressNList(pubkeyToUse.path);
+
+      // Determine coin name based on networkId
+      const coinMap: Record<string, string> = {
+        'bip122:000000000019d6689c085ae165831e93': 'Bitcoin',
+        'bip122:000000000000000000651ef99cb9fcbe': 'BitcoinCash',
+        'bip122:12a765e31ffd4059bada1e25190f6e98': 'Litecoin',
+        'bip122:00000000001a91e3dace36e2be3bf030': 'Dogecoin',
+        'bip122:000007d91d1254d60e2dd1ae58038307': 'Dash',
+      };
+
+      const coin = coinMap[assetContext.networkId] || 'Bitcoin';
+
+      // Call btcSignMessage on the hdwallet instance
+      const signMessageParams = {
+        addressNList: addressNList,
+        coin: coin,
+        scriptType: pubkeyToUse.scriptType || 'p2pkh',
+        message: message
+      };
+
+      console.log('🔑 [Asset SignMessage] Calling btcSignMessage with params:', signMessageParams);
+
+      const result = await keepKeyWallet.btcSignMessage(signMessageParams);
+
+      console.log('✅ [Asset SignMessage] Message signed successfully:', result);
+
+      if (!result || !result.address || !result.signature) {
+        throw new Error('Invalid response from device');
+      }
+
+      return {
+        address: result.address,
+        signature: result.signature
+      };
+    } catch (error: any) {
+      console.error('❌ [Asset SignMessage] Failed to sign message:', error);
+      throw new Error(error?.message || 'Failed to sign message');
     }
   };
 
@@ -640,9 +884,25 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     );
   }
 
-  const formatBalance = (balance: string | number) => {
+  const formatBalance = (balance: string | number, customPrecision?: number) => {
     const numBalance = typeof balance === 'string' ? parseFloat(balance) : balance;
-    return numBalance.toFixed(8);
+
+    // Use custom precision if provided, otherwise REQUIRE SDK assetContext data
+    let decimals: number;
+    if (customPrecision !== undefined) {
+      decimals = customPrecision;
+    } else {
+      // CRITICAL: NEVER use fallbacks - fail fast if SDK data missing
+      decimals = assetContext.precision ?? assetContext.decimals;
+
+      if (decimals === undefined || decimals === null) {
+        const error = `CRITICAL: Asset ${assetContext.symbol || assetContext.caip || 'unknown'} has NO decimals/precision in assetContext! SDK data is missing.`;
+        console.error('❌', error, assetContext);
+        throw new Error(error);
+      }
+    }
+
+    return numBalance.toFixed(decimals);
   };
 
   // Calculate the USD value - use aggregated balance if available
@@ -656,66 +916,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         : 0;
 
   return (
-    <Box 
-      width="100%" 
-      position="relative"
-      pb={8} // Add bottom padding to ensure content doesn't get cut off
-    >
+    <>
       <Box
-        borderBottom="1px"
-        borderColor={theme.border}
-        p={4}
-        bg={theme.cardBg}
-        position="sticky"
-        top={0}
-        zIndex={10}
+        width="100%"
+        position="relative"
+        p={6}
       >
-        <HStack justify="space-between" align="center">
-          <MotionBox
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-          >
-            <Button
-              size="sm"
-              variant="ghost"
-              color={theme.gold}
-              onClick={handleBack}
-              isDisabled={isNavigatingBack}
-              _hover={{
-                color: theme.goldHover,
-                bg: 'rgba(255, 215, 0, 0.1)',
-                shadow: '0 0 20px rgba(255, 215, 0, 0.3)'
-              }}
-              _active={{
-                bg: 'rgba(255, 215, 0, 0.2)',
-                shadow: '0 0 30px rgba(255, 215, 0, 0.5)'
-              }}
-              transition="all 0.2s"
-            >
-              {isNavigatingBack ? (
-                <HStack gap={2}>
-                  <Spinner size="xs" color={theme.gold} />
-                  <Text>Going Back...</Text>
-                </HStack>
-              ) : (
-                <Text>Back</Text>
-              )}
-            </Button>
-          </MotionBox>
-          <Button
-            size="sm"
-            variant="ghost"
-            color={theme.gold}
-            onClick={handleClose}
-            _hover={{ color: theme.goldHover }}
-          >
-            <Text>Close</Text>
-          </Button>
-        </HStack>
-      </Box>
-      
-      <Box p={6}>
         <Flex
           direction={{ base: 'column', lg: isDetailsExpanded ? 'row' : 'column' }}
           gap={6}
@@ -731,31 +937,174 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
             mx={{ base: 'auto', lg: isDetailsExpanded ? '0' : 'auto' }}
           >
             {/* Asset Info Card */}
-            <Box 
-              bg={theme.cardBg} 
-              p={6} 
-              borderRadius="2xl" 
+            <Box
+              bg={theme.cardBg}
+              p={6}
+              borderRadius="2xl"
               boxShadow="lg"
               border="1px solid"
               borderColor={theme.border}
+              position="relative"
             >
+              {/* Last Updated - Top Left */}
+              {assetContext.fetchedAtISO && (
+                <Box
+                  position="absolute"
+                  top={4}
+                  left={4}
+                  zIndex={1}
+                >
+                  <VStack align="flex-start" gap={0}>
+                    <Text fontSize="2xs" color="gray.500" fontWeight="medium">
+                      Last Updated
+                    </Text>
+                    <HStack gap={1}>
+                      <Text fontSize="xs" color="gray.300" fontWeight="semibold">
+                        {new Date(assetContext.fetchedAtISO).toLocaleTimeString()}
+                      </Text>
+                      {assetContext.isStale ? (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="orange.900"
+                          color="orange.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="orange.700"
+                        >
+                          ⚠️
+                        </Box>
+                      ) : (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="green.900"
+                          color="green.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="green.700"
+                        >
+                          ✓
+                        </Box>
+                      )}
+                    </HStack>
+                  </VStack>
+                </Box>
+              )}
+
+              {/* Refresh Button - Top Right */}
+              <Button
+                size="sm"
+                variant="ghost"
+                position="absolute"
+                top={4}
+                right={4}
+                color={theme.gold}
+                leftIcon={<FaSync />}
+                _hover={{
+                  color: theme.goldHover,
+                  bg: 'rgba(255, 215, 0, 0.1)',
+                }}
+                onClick={async () => {
+                  console.log('🔄 [Asset] Force refresh clicked - using networkId pattern from integration test');
+                  setIsRefreshing(true);
+
+                  const startBalance = app?.balances?.find((b: any) =>
+                    b.networkId === assetContext.networkId && b.isNative
+                  )?.balance || '0';
+
+                  try {
+                    if (app && typeof app.getBalances === 'function' && assetContext?.networkId) {
+                      console.log(`🔄 [Asset] Calling app.getBalances({ networkId: "${assetContext.networkId}", forceRefresh: true })`);
+                      await app.getBalances({ networkId: assetContext.networkId, forceRefresh: true });
+                      console.log('✅ [Asset] Balance refresh completed');
+
+                      // Verify balance was updated
+                      const assetBalance = app.balances?.find((b: any) =>
+                        b.networkId === assetContext.networkId && b.isNative
+                      );
+                      const newBalance = assetBalance?.balance || '0';
+                      console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, newBalance);
+
+                      // Show success notification with balance info
+                      if (newBalance !== startBalance) {
+                        toaster.create({
+                          title: 'Balance Synced',
+                          description: `Updated ${assetContext.ticker || 'asset'} balance: ${newBalance}`,
+                          type: 'success',
+                          duration: 3000,
+                        });
+                      } else if (parseFloat(newBalance) === 0) {
+                        toaster.create({
+                          title: 'Balance Synced',
+                          description: `No ${assetContext.ticker || 'asset'} balance found on-chain`,
+                          type: 'info',
+                          duration: 3000,
+                        });
+                      } else {
+                        toaster.create({
+                          title: 'Balance Synced',
+                          description: 'Balance is up to date',
+                          type: 'success',
+                          duration: 2000,
+                        });
+                      }
+                    }
+                    // Only refresh charts for tokens on non-UTXO networks (EVM/Cosmos)
+                    // Native coins like BTC don't need chart/token discovery
+                    const isUtxoNetwork = assetContext?.networkId?.startsWith('bip122:');
+                    const shouldRefreshCharts = !isUtxoNetwork && assetContext?.isToken !== true && app && typeof app.getCharts === 'function';
+
+                    if (shouldRefreshCharts && assetContext?.networkId) {
+                      console.log('🔄 [Asset] Also refreshing charts for token discovery (EVM/Cosmos only)...');
+                      app.getCharts([assetContext.networkId]).catch((err: any) => {
+                        console.warn('⚠️ [Asset] Token discovery failed (non-critical):', err?.message);
+                      });
+                    } else if (isUtxoNetwork) {
+                      console.log('⏭️  [Asset] Skipping chart refresh - UTXO networks don\'t have tokens');
+                    }
+                  } catch (error: any) {
+                    console.error('❌ [Asset] Force refresh failed:', error);
+                    toaster.create({
+                      title: 'Sync Failed',
+                      description: error?.message || 'Failed to refresh balance. Please check your connection and try again.',
+                      type: 'error',
+                      duration: 5000,
+                    });
+                  } finally {
+                    setIsRefreshing(false);
+                  }
+                }}
+                isLoading={isRefreshing}
+                loadingText="Refreshing..."
+              >
+                Refresh
+              </Button>
               <VStack align="center" gap={4}>
                 {/* Compound Avatar for Tokens */}
                 {assetContext.isToken ? (
                   <Box position="relative">
                     {/* Main Network Icon */}
-                    <Box 
-                      borderRadius="full" 
-                      overflow="hidden" 
+                    <Box
+                      borderRadius="full"
+                      overflow="hidden"
                       boxSize="80px"
                       bg={theme.cardBg}
                       boxShadow="lg"
                       p={2}
                       borderWidth="1px"
                       borderColor={theme.border}
+                      opacity={isRefreshing ? 0.5 : 1}
+                      transition="opacity 0.3s"
                     >
                       {/* Get network icon based on networkId */}
-                      <Image 
+                      <Image
                         src={(() => {
                           // Map networkId to network icon
                           const networkId = assetContext.networkId;
@@ -777,7 +1126,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         objectFit="contain"
                       />
                     </Box>
-                    
+
                     {/* Token Icon as smaller overlay */}
                     <Box
                       position="absolute"
@@ -791,6 +1140,53 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
+                      opacity={isRefreshing ? 0.5 : 1}
+                      transition="opacity 0.3s"
+                    >
+                      <AssetIcon
+                        src={assetContext.icon}
+                        caip={assetContext.caip}
+                        symbol={assetContext.symbol}
+                        alt={`${assetContext.name} Icon`}
+                        boxSize="100%"
+                        color={assetContext.color || theme.gold}
+                        showNetworkBadge={true}
+                        networkId={assetContext.networkId}
+                      />
+                    </Box>
+
+                    {/* Spinner Overlay */}
+                    {isRefreshing && (
+                      <Box
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        transform="translate(-50%, -50%)"
+                        zIndex={10}
+                      >
+                        <Spinner
+                          size="xl"
+                          color={theme.gold}
+                          thickness="4px"
+                          speed="0.8s"
+                        />
+                      </Box>
+                    )}
+                  </Box>
+                ) : (
+                  /* Native Asset Icon */
+                  <Box position="relative">
+                    <Box
+                      borderRadius="full"
+                      overflow="hidden"
+                      boxSize="80px"
+                      bg={theme.cardBg}
+                      boxShadow="lg"
+                      p={2}
+                      borderWidth="1px"
+                      borderColor={assetContext.color || theme.border}
+                      opacity={isRefreshing ? 0.5 : 1}
+                      transition="opacity 0.3s"
                     >
                       <AssetIcon
                         src={assetContext.icon}
@@ -801,27 +1197,24 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         color={assetContext.color || theme.gold}
                       />
                     </Box>
-                  </Box>
-                ) : (
-                  /* Native Asset Icon */
-                  <Box
-                    borderRadius="full"
-                    overflow="hidden"
-                    boxSize="80px"
-                    bg={theme.cardBg}
-                    boxShadow="lg"
-                    p={2}
-                    borderWidth="1px"
-                    borderColor={assetContext.color || theme.border}
-                  >
-                    <AssetIcon
-                      src={assetContext.icon}
-                      caip={assetContext.caip}
-                      symbol={assetContext.symbol}
-                      alt={`${assetContext.name} Icon`}
-                      boxSize="100%"
-                      color={assetContext.color || theme.gold}
-                    />
+
+                    {/* Spinner Overlay */}
+                    {isRefreshing && (
+                      <Box
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        transform="translate(-50%, -50%)"
+                        zIndex={10}
+                      >
+                        <Spinner
+                          size="xl"
+                          color={theme.gold}
+                          thickness="4px"
+                          speed="0.8s"
+                        />
+                      </Box>
+                    )}
                   </Box>
                 )}
                 
@@ -830,48 +1223,84 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     {assetContext.name}
                   </Text>
                   <HStack gap={2} align="center">
-                    <Text fontSize="md" color="gray.400">
+                    <Text fontSize="md" color="gray.300">
                       {assetContext.symbol}
                     </Text>
                     {assetContext.isToken && (
-                      <Badge 
-                        colorScheme="purple" 
+                      <Badge
+                        colorScheme="purple"
                         variant="subtle"
                         fontSize="xs"
                       >
                         TOKEN
                       </Badge>
                     )}
+                    {assetContext.pubkeys && assetContext.pubkeys.length > 1 && (
+                      <Badge
+                        colorScheme="cyan"
+                        variant="subtle"
+                        fontSize="xs"
+                      >
+                        {assetContext.pubkeys.length} accounts
+                      </Badge>
+                    )}
                   </HStack>
                   
                   {/* Display CAIP in small text */}
-                  <Text fontSize="xs" color="gray.500" fontFamily="mono">
+                  <Text fontSize="xs" color="gray.400" fontFamily="mono">
                     {assetContext.caip}
                   </Text>
                   
                   <Text fontSize="3xl" fontWeight="bold" color={theme.gold}>
-                    $<CountUp 
+                    $<CountUp
                       key={`value-${lastSync}`}
-                      end={usdValue} 
+                      end={usdValue}
                       decimals={2}
                       duration={1.5}
                       separator=","
                     />
                   </Text>
-                  
-                  {/* Show if balance is aggregated from multiple addresses */}
-                  {aggregatedBalance && aggregatedBalance.balances.length > 1 && (
-                    <Badge
-                      colorScheme="blue"
-                      variant="subtle"
-                      fontSize="xs"
-                      px={2}
-                      py={1}
-                    >
-                      Summed from {aggregatedBalance.balances.length} pubkeys
-                    </Badge>
+
+                  {/* Balance Timestamp */}
+                  {assetContext.fetchedAtISO && (
+                    <HStack gap={1.5} fontSize="xs" color="gray.500" justify="center">
+                      <Text>
+                        Updated: {new Date(assetContext.fetchedAtISO).toLocaleTimeString()}
+                      </Text>
+                      {assetContext.isStale ? (
+                        <Box
+                          as="span"
+                          px={1.5}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="orange.900"
+                          color="orange.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="orange.700"
+                        >
+                          ⚠️ Stale
+                        </Box>
+                      ) : (
+                        <Box
+                          as="span"
+                          px={1.5}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="green.900"
+                          color="green.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                          border="1px solid"
+                          borderColor="green.700"
+                        >
+                          ✓ Fresh
+                        </Box>
+                      )}
+                    </HStack>
                   )}
-                  
+
                   {/* For tokens, show BOTH balances clearly */}
                   {assetContext.isToken ? (
                     <VStack gap={2}>
@@ -896,7 +1325,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         } : {}}
                       >
                         <Text fontSize="md" color={assetContext.nativeBalance && parseFloat(assetContext.nativeBalance) === 0 ? "red.400" : "gray.300"}>
-                          {assetContext.nativeBalance ? formatBalance(assetContext.nativeBalance) : '0'} {assetContext.nativeSymbol || 'GAS'}
+                          {assetContext.nativeBalance ? formatBalance(assetContext.nativeBalance, 18) : '0'} {assetContext.nativeSymbol || 'GAS'}
                         </Text>
                         <Text fontSize="xs" color="gray.500">Gas Balance</Text>
                         
@@ -1207,13 +1636,87 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   <HStack justify="space-between">
                     <Text color="gray.400">Price</Text>
                     <Text color="white">
-                      $<CountUp 
+                      $<CountUp
                         key={`price-${lastSync}`}
-                        end={priceUsd} 
+                        end={priceUsd}
                         decimals={2}
                         duration={1.5}
                         separator=","
                       />
+                    </Text>
+                  </HStack>
+                </VStack>
+
+                {/* Data Source Info */}
+                <VStack align="stretch" gap={3}>
+                  <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                    Data Source
+                  </Text>
+                  {assetContext.fetchedAtISO && (
+                    <HStack justify="space-between">
+                      <Text color="gray.400">Last Fetched</Text>
+                      <HStack gap={1}>
+                        <Text color="white" fontSize="sm">
+                          {new Date(assetContext.fetchedAtISO).toLocaleString()}
+                        </Text>
+                        {assetContext.isStale ? (
+                          <Box
+                            as="span"
+                            px={1}
+                            py={0.5}
+                            borderRadius="sm"
+                            bg="orange.900"
+                            color="orange.300"
+                            fontSize="2xs"
+                            fontWeight="medium"
+                          >
+                            Stale
+                          </Box>
+                        ) : (
+                          <Box
+                            as="span"
+                            px={1}
+                            py={0.5}
+                            borderRadius="sm"
+                            bg="green.900"
+                            color="green.300"
+                            fontSize="2xs"
+                            fontWeight="medium"
+                          >
+                            Fresh
+                          </Box>
+                        )}
+                      </HStack>
+                    </HStack>
+                  )}
+                  {assetContext.dataSource && (
+                    <HStack justify="space-between" align="flex-start">
+                      <Text color="gray.400">Blockchain Node</Text>
+                      <Text
+                        color="white"
+                        fontSize="xs"
+                        fontFamily="mono"
+                        textAlign="right"
+                        maxW="60%"
+                        wordBreak="break-all"
+                      >
+                        {(() => {
+                          // Mask any API keys in the URL
+                          const maskApiKeys = (url: string) => {
+                            return url
+                              .replace(/apikey=[^&]+/gi, 'apikey=***')
+                              .replace(/key=[^&]+/gi, 'key=***')
+                              .replace(/token=[^&]+/gi, 'token=***');
+                          };
+                          return maskApiKeys(assetContext.dataSource);
+                        })()}
+                      </Text>
+                    </HStack>
+                  )}
+                  <HStack justify="space-between" align="flex-start">
+                    <Text color="gray.400">Cache Status</Text>
+                    <Text color="white" fontSize="sm">
+                      {assetContext.isStale ? 'Needs Refresh' : 'Valid'}
                     </Text>
                   </HStack>
                 </VStack>
@@ -1305,18 +1808,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                       {isUtxo ? pubkey.pubkey : pubkey.address}
                                     </Text>
                                   </Box>
-                                  <IconButton
+                                  <Button
                                     aria-label="Copy to clipboard"
-                                    icon={copiedItems[`pubkey-${index}-main`] ? <FaCheck /> : <FaCopy />}
-                                    size="xs"
-                                    variant="ghost"
-                                    colorScheme={copiedItems[`pubkey-${index}-main`] ? "green" : "gray"}
+                                    size="sm"
+                                    minW="auto"
+                                    p={2}
+                                    bg={copiedItems[`pubkey-${index}-main`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       copyToClipboard(isUtxo ? pubkey.pubkey : pubkey.address, `pubkey-${index}-main`);
                                     }}
-                                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                  />
+                                    _hover={{
+                                      bg: copiedItems[`pubkey-${index}-main`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                    }}
+                                  >
+                                    {copiedItems[`pubkey-${index}-main`] ? (
+                                      <FaCheck color="white" size={14} />
+                                    ) : (
+                                      <FaCopy color="white" size={14} />
+                                    )}
+                                  </Button>
                                 </Flex>
                               </Box>
 
@@ -1342,18 +1853,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                         {pubkey.address}
                                       </Text>
                                     </Box>
-                                    <IconButton
+                                    <Button
                                       aria-label="Copy address to clipboard"
-                                      icon={copiedItems[`pubkey-${index}-address`] ? <FaCheck /> : <FaCopy />}
-                                      size="xs"
-                                      variant="ghost"
-                                      colorScheme={copiedItems[`pubkey-${index}-address`] ? "green" : "gray"}
+                                      size="sm"
+                                      minW="auto"
+                                      p={2}
+                                      bg={copiedItems[`pubkey-${index}-address`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         copyToClipboard(pubkey.address, `pubkey-${index}-address`);
                                       }}
-                                      _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                    />
+                                      _hover={{
+                                        bg: copiedItems[`pubkey-${index}-address`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                      }}
+                                    >
+                                      {copiedItems[`pubkey-${index}-address`] ? (
+                                        <FaCheck color="white" size={14} />
+                                      ) : (
+                                        <FaCopy color="white" size={14} />
+                                      )}
+                                    </Button>
                                   </Flex>
                                 </Box>
                               )}
@@ -1401,6 +1920,20 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       })}
                     </VStack>
                   </VStack>
+                )}
+
+                {/* Sign Message Section - Only for UTXO chains (Bitcoin, etc.) */}
+                {assetContext.networkId?.startsWith('bip122:') && assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
+                  <Box>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium" mb={2}>
+                      Message Signing
+                    </Text>
+                    <SignMessageDialog
+                      onSignMessage={handleSignMessage}
+                      addresses={assetContext.pubkeys}
+                      showAddressSelector={true}
+                    />
+                  </Box>
                 )}
 
                 {/* Add Path Button */}
@@ -1511,13 +2044,87 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                 <HStack justify="space-between">
                   <Text color="gray.400">Price</Text>
                   <Text color="white">
-                    $<CountUp 
+                    $<CountUp
                       key={`price-${lastSync}`}
-                      end={priceUsd} 
+                      end={priceUsd}
                       decimals={2}
                       duration={1.5}
                       separator=","
                     />
+                  </Text>
+                </HStack>
+              </VStack>
+
+              {/* Data Source Info */}
+              <VStack align="stretch" gap={3}>
+                <Text color="gray.400" fontSize="sm" fontWeight="medium">
+                  Data Source
+                </Text>
+                {assetContext.fetchedAtISO && (
+                  <HStack justify="space-between">
+                    <Text color="gray.400">Last Fetched</Text>
+                    <HStack gap={1}>
+                      <Text color="white" fontSize="sm">
+                        {new Date(assetContext.fetchedAtISO).toLocaleString()}
+                      </Text>
+                      {assetContext.isStale ? (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="orange.900"
+                          color="orange.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                        >
+                          Stale
+                        </Box>
+                      ) : (
+                        <Box
+                          as="span"
+                          px={1}
+                          py={0.5}
+                          borderRadius="sm"
+                          bg="green.900"
+                          color="green.300"
+                          fontSize="2xs"
+                          fontWeight="medium"
+                        >
+                          Fresh
+                        </Box>
+                      )}
+                    </HStack>
+                  </HStack>
+                )}
+                {assetContext.dataSource && (
+                  <HStack justify="space-between" align="flex-start">
+                    <Text color="gray.400">Blockchain Node</Text>
+                    <Text
+                      color="white"
+                      fontSize="xs"
+                      fontFamily="mono"
+                      textAlign="right"
+                      maxW="60%"
+                      wordBreak="break-all"
+                    >
+                      {(() => {
+                        // Mask any API keys in the URL
+                        const maskApiKeys = (url: string) => {
+                          return url
+                            .replace(/apikey=[^&]+/gi, 'apikey=***')
+                            .replace(/key=[^&]+/gi, 'key=***')
+                            .replace(/token=[^&]+/gi, 'token=***');
+                        };
+                        return maskApiKeys(assetContext.dataSource);
+                      })()}
+                    </Text>
+                  </HStack>
+                )}
+                <HStack justify="space-between" align="flex-start">
+                  <Text color="gray.400">Cache Status</Text>
+                  <Text color="white" fontSize="sm">
+                    {assetContext.isStale ? 'Needs Refresh' : 'Valid'}
                   </Text>
                 </HStack>
               </VStack>
@@ -1609,18 +2216,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                     {isUtxo ? pubkey.pubkey : pubkey.address}
                                   </Text>
                                 </Box>
-                                <IconButton
+                                <Button
                                   aria-label="Copy to clipboard"
-                                  icon={copiedItems[`pubkey-mobile-${index}-main`] ? <FaCheck /> : <FaCopy />}
-                                  size="xs"
-                                  variant="ghost"
-                                  colorScheme={copiedItems[`pubkey-mobile-${index}-main`] ? "green" : "gray"}
+                                  size="sm"
+                                  minW="auto"
+                                  p={2}
+                                  bg={copiedItems[`pubkey-mobile-${index}-main`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     copyToClipboard(isUtxo ? pubkey.pubkey : pubkey.address, `pubkey-mobile-${index}-main`);
                                   }}
-                                  _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                />
+                                  _hover={{
+                                    bg: copiedItems[`pubkey-mobile-${index}-main`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                  }}
+                                >
+                                  {copiedItems[`pubkey-mobile-${index}-main`] ? (
+                                    <FaCheck color="white" size={14} />
+                                  ) : (
+                                    <FaCopy color="white" size={14} />
+                                  )}
+                                </Button>
                               </Flex>
                             </Box>
 
@@ -1646,18 +2261,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                       {pubkey.address}
                                     </Text>
                                   </Box>
-                                  <IconButton
+                                  <Button
                                     aria-label="Copy address to clipboard"
-                                    icon={copiedItems[`pubkey-mobile-${index}-address`] ? <FaCheck /> : <FaCopy />}
-                                    size="xs"
-                                    variant="ghost"
-                                    colorScheme={copiedItems[`pubkey-mobile-${index}-address`] ? "green" : "gray"}
+                                    size="sm"
+                                    minW="auto"
+                                    p={2}
+                                    bg={copiedItems[`pubkey-mobile-${index}-address`] ? "green.500" : "rgba(255, 215, 0, 0.2)"}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       copyToClipboard(pubkey.address, `pubkey-mobile-${index}-address`);
                                     }}
-                                    _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                                  />
+                                    _hover={{
+                                      bg: copiedItems[`pubkey-mobile-${index}-address`] ? "green.600" : "rgba(255, 215, 0, 0.3)"
+                                    }}
+                                  >
+                                    {copiedItems[`pubkey-mobile-${index}-address`] ? (
+                                      <FaCheck color="white" size={14} />
+                                    ) : (
+                                      <FaCopy color="white" size={14} />
+                                    )}
+                                  </Button>
                                 </Flex>
                               </Box>
                             )}
@@ -1705,6 +2328,20 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                     })}
                   </VStack>
                 </VStack>
+              )}
+
+              {/* Sign Message Section - Mobile/Collapsed Version - Only for UTXO chains */}
+              {assetContext.networkId?.startsWith('bip122:') && assetContext.pubkeys && assetContext.pubkeys.length > 0 && (
+                <Box>
+                  <Text color="gray.400" fontSize="sm" fontWeight="medium" mb={2}>
+                    Message Signing
+                  </Text>
+                  <SignMessageDialog
+                    onSignMessage={handleSignMessage}
+                    addresses={assetContext.pubkeys}
+                    showAddressSelector={true}
+                  />
+                </Box>
               )}
 
               {/* Add Path Button - Mobile/Collapsed Version */}
@@ -1760,12 +2397,34 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
             return false;
           };
 
+          // DEBUG: Log all balances for current network
+          console.log('🔍 [Asset] DEBUG - Current networkId:', assetContext.networkId);
+          console.log('🔍 [Asset] DEBUG - Total balances:', app?.balances?.length || 0);
+          const networkBalances = app?.balances?.filter((b: any) => b.networkId === assetContext.networkId) || [];
+          console.log('🔍 [Asset] DEBUG - Balances for network:', networkBalances.length);
+          console.log('🔍 [Asset] DEBUG - Sample balances:', networkBalances.slice(0, 5).map((b: any) => ({
+            symbol: b.symbol,
+            type: b.type,
+            token: b.token,
+            isToken: b.isToken,
+            contract: b.contract,
+            balance: b.balance,
+            caip: b.caip
+          })));
+
           // Filter tokens for the current network from app.balances
           const networkTokens = app?.balances?.filter((balance: any) =>
             balance.networkId === assetContext.networkId &&
             isTokenBalance(balance) &&
             parseFloat(balance.balance || '0') > 0
           ) || [];
+
+          console.log('🔍 [Asset] DEBUG - Filtered tokens:', networkTokens.length);
+          console.log('🔍 [Asset] DEBUG - First 3 tokens:', networkTokens.slice(0, 3).map((t: any) => ({
+            symbol: t.symbol,
+            balance: t.balance,
+            valueUsd: t.valueUsd
+          })));
 
           // Sort by USD value
           networkTokens.sort((a: any, b: any) => {
@@ -1941,9 +2600,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           );
         })()}
 
-        {/* Dapps Section - Show for all networks that support dapps */}
-        {assetContext.networkId && (
-          <DappStore networkId={assetContext.networkId} />
+        {/* Transaction History Section */}
+        {assetContext.caip && (
+          <TransactionHistory
+            caip={assetContext.caip}
+            networkId={assetContext.networkId}
+            assetContext={assetContext}
+          />
         )}
       </Box>
 
@@ -1995,7 +2658,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           router.push(`/asset/${encodedCaip}`);
         }}
       />
-    </Box>
+    </>
   );
 };
 

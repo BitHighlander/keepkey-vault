@@ -1,10 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     // !! WARN !!
     // Dangerously allow production builds to successfully complete even if
@@ -12,13 +7,16 @@ const nextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
-  webpack: (config) => {
-    config.resolve.fallback = { 
+  // Turbopack is default in Next.js 16 - empty config to silence warning
+  turbopack: {},
+  webpack: (config, { isServer }) => {
+    config.resolve.fallback = {
       ...config.resolve.fallback,
       net: false,
       tls: false,
       fs: false,
     };
+
     return config;
   },
 };

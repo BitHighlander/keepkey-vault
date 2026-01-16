@@ -7,6 +7,7 @@ import { keyframes } from '@emotion/react';
 import { FaCheckCircle, FaExternalLinkAlt, FaEnvelope } from 'react-icons/fa';
 import Confetti from 'react-confetti';
 import { AssetIcon } from '@/components/ui/AssetIcon';
+import { MIDGARD_URL, THORCHAIN_TRACKER_URL } from '@/config/external-trackers';
 interface SwapSuccessProps {
   txid: string;
   fromAsset: any;
@@ -52,7 +53,7 @@ export const SwapSuccess = ({
         const decoded = Buffer.from(hexData, 'hex').toString('utf8');
         // THORChain memos are ASCII text, so this should work
         setDecodedMemo(decoded);
-        console.log('Decoded memo from tx data:', decoded);
+        //console.log('Decoded memo from tx data:', decoded);
       } catch (err) {
         console.error('Failed to decode memo from tx data:', err);
       }
@@ -68,11 +69,39 @@ export const SwapSuccess = ({
     ? txid.slice(2)
     : txid;
   const upperTxid = cleanTxid.toUpperCase();
-  const thorchainTrackerLink = `https://track.ninerealms.com/${upperTxid}?=${upperTxid}`;
+  const thorchainTrackerLink = `${THORCHAIN_TRACKER_URL}/${upperTxid}`;
 
   // Build Midgard API link for transaction details
   // Midgard provides full cross-chain swap tracking
-  const midgardApiLink = `https://midgard.ninerealms.com/v2/actions?txid=${upperTxid}`;
+  const midgardApiLink = `${MIDGARD_URL}/v2/actions?txid=${upperTxid}`;
+
+  // Get block explorer link from asset data
+  // ALL assets MUST have explorerTxLink from Pioneer Discovery
+  const getBlockExplorerLink = (): string | null => {
+    //console.log('🔍 getBlockExplorerLink - fromAsset:', fromAsset);
+
+    if (!fromAsset?.explorerTxLink) {
+      console.error('❌ Missing explorerTxLink in asset data:', {
+        symbol: fromAsset?.symbol,
+        networkId: fromAsset?.networkId,
+        caip: fromAsset?.caip,
+        allKeys: fromAsset ? Object.keys(fromAsset) : [],
+        message: 'This is a bug - Pioneer SDK should ALWAYS provide explorerTxLink'
+      });
+      return null;
+    }
+
+    // Build the full explorer URL
+    const baseUrl = fromAsset.explorerTxLink.endsWith('/')
+      ? fromAsset.explorerTxLink
+      : `${fromAsset.explorerTxLink}/`;
+
+    const explorerUrl = `${baseUrl}${txid}`;
+    //console.log('✅ Block explorer URL:', explorerUrl);
+    return explorerUrl;
+  };
+
+  const blockExplorerLink = getBlockExplorerLink();
 
   // Format transaction ID for display (show first and last characters)
   const formatTxid = (id: string) => {
@@ -151,7 +180,7 @@ export const SwapSuccess = ({
 
       if (response.ok) {
         setEmailStatus('success');
-        console.log('✅ Email sent successfully to:', userEmail);
+        //console.log('✅ Email sent successfully to:', userEmail);
         // Don't reset status for success - keep it visible
       } else {
         throw new Error('Failed to send email');
@@ -240,7 +269,7 @@ export const SwapSuccess = ({
           <HStack justify="center" align="center" gap={4}>
             {/* From */}
             <HStack gap={2}>
-              <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="24px" color="#FFD700" />
+              <AssetIcon src={fromAsset?.icon} caip={fromAsset?.caip} symbol={fromAsset?.symbol} alt={fromAsset?.name} boxSize="24px" />
               <Text fontSize="lg" fontWeight="semibold" color="gray.400">
                 {inputAmount} {fromAsset?.symbol}
               </Text>
@@ -253,7 +282,7 @@ export const SwapSuccess = ({
 
             {/* To */}
             <HStack gap={2}>
-              <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="24px" color="#FFD700" />
+              <AssetIcon src={toAsset?.icon} caip={toAsset?.caip} symbol={toAsset?.symbol} alt={toAsset?.name} boxSize="24px" />
               <Text fontSize="lg" fontWeight="semibold" color="green.400">
                 {outputAmount} {toAsset?.symbol}
               </Text>
@@ -266,29 +295,17 @@ export const SwapSuccess = ({
           <Text fontSize="sm" color="gray.500">
             Transaction ID
           </Text>
-          <Box 
-            bg="gray.900" 
-            borderRadius="lg" 
-            p={3} 
+          <Box
+            bg="gray.900"
+            borderRadius="lg"
+            p={3}
             width="full"
             borderWidth="1px"
             borderColor="gray.700"
           >
-            <HStack justify="center" gap={2}>
-              <Text fontSize="sm" fontFamily="mono" color="white" textTransform="uppercase">
-                {formatTxid(txid)}
-              </Text>
-              <Link
-                href={thorchainTrackerLink}
-                isExternal
-                target="_blank"
-                rel="noopener noreferrer"
-                color="blue.400"
-                _hover={{ color: 'blue.300' }}
-              >
-                <FaExternalLinkAlt size="14" />
-              </Link>
-            </HStack>
+            <Text fontSize="sm" fontFamily="mono" color="white" textTransform="uppercase" textAlign="center">
+              {formatTxid(txid)}
+            </Text>
           </Box>
         </VStack>
 
@@ -298,17 +315,17 @@ export const SwapSuccess = ({
             <Text fontSize="sm" color="gray.500">
               THORChain Memo
             </Text>
-            <Box 
-              bg="gray.900" 
-              borderRadius="lg" 
-              p={3} 
+            <Box
+              bg="gray.900"
+              borderRadius="lg"
+              p={3}
               width="full"
               borderWidth="1px"
               borderColor="gray.700"
             >
-              <Code 
-                fontSize="xs" 
-                bg="transparent" 
+              <Code
+                fontSize="xs"
+                bg="transparent"
                 color="cyan.400"
                 wordBreak="break-all"
               >
@@ -318,38 +335,6 @@ export const SwapSuccess = ({
           </VStack>
         )}
 
-        {/* View Swap Details on Midgard API */}
-        <Link href={midgardApiLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
-          <Button
-            variant="outline"
-            borderColor="#23DCC8"
-            color="#23DCC8"
-            _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
-            width="full"
-            height="48px"
-            borderRadius="xl"
-            rightIcon={<FaExternalLinkAlt />}
-          >
-            View Swap Details (Midgard API)
-          </Button>
-        </Link>
-
-        {/* Track THORChain Swap Button */}
-        <Link href={thorchainTrackerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
-          <Button
-            variant="outline"
-            borderColor="#23DCC8"
-            color="white"
-            _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
-            width="full"
-            height="48px"
-            borderRadius="xl"
-            rightIcon={<FaExternalLinkAlt />}
-          >
-            Track Swap Status
-          </Button>
-        </Link>
-
         {/* Email Swap Info Card */}
         <Box
           bg="gray.900"
@@ -357,18 +342,18 @@ export const SwapSuccess = ({
           p={5}
           width="full"
           borderWidth="1px"
-          borderColor={emailStatus === 'success' ? 'green.500' : emailStatus === 'error' ? 'red.500' : 'purple.600'}
+          borderColor={emailStatus === 'success' ? 'green.500' : emailStatus === 'error' ? 'red.500' : 'teal.600'}
           position="relative"
           overflow="hidden"
         >
-          {/* Purple gradient accent */}
+          {/* Teal gradient accent */}
           <Box
             position="absolute"
             top="0"
             left="0"
             right="0"
             height="2px"
-            bg="linear-gradient(90deg, #9F7AEA 0%, #805AD5 100%)"
+            bg="linear-gradient(90deg, #00dc82 0%, #00f094 100%)"
           />
           
           <VStack gap={3} width="full">
@@ -387,7 +372,7 @@ export const SwapSuccess = ({
             ) : (
               <>
                 <HStack gap={2} width="full" justify="center">
-                  <FaEnvelope size="20" color="#9F7AEA" />
+                  <FaEnvelope size="20" color="#00dc82" />
                   <Text fontSize="md" fontWeight="semibold" color="white">
                     Get Swap Details via Email
                   </Text>
@@ -406,8 +391,8 @@ export const SwapSuccess = ({
                     value={userEmail}
                     onChange={handleEmailChange}
                     borderColor={emailError ? 'red.500' : 'gray.600'}
-                    _hover={{ borderColor: emailError ? 'red.400' : 'purple.500' }}
-                    _focus={{ borderColor: emailError ? 'red.400' : 'purple.400', boxShadow: 'none' }}
+                    _hover={{ borderColor: emailError ? 'red.400' : 'teal.500' }}
+                    _focus={{ borderColor: emailError ? 'red.400' : 'teal.400', boxShadow: 'none' }}
                     bg="gray.800"
                     color="white"
                     borderRadius="lg"
@@ -425,10 +410,10 @@ export const SwapSuccess = ({
                 <Button
                   width="full"
                   height="40px"
-                  bg="purple.600"
+                  bg="teal.600"
                   color="white"
-                  _hover={{ bg: 'purple.500' }}
-                  _active={{ bg: 'purple.700' }}
+                  _hover={{ bg: 'teal.500' }}
+                  _active={{ bg: 'teal.700' }}
                   onClick={handleEmailSwapInfo}
                   isLoading={isSendingEmail}
                   loadingText="Sending Email..."
@@ -449,6 +434,61 @@ export const SwapSuccess = ({
             )}
           </VStack>
         </Box>
+
+        {/* View on Block Explorer Button - only show if we have a valid explorer link */}
+        {blockExplorerLink && (
+          <Link href={blockExplorerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+            <Button
+              variant="outline"
+              borderColor="blue.500"
+              color="blue.400"
+              _hover={{ bg: 'rgba(59, 130, 246, 0.1)', borderColor: 'blue.400' }}
+              width="full"
+              height="48px"
+              borderRadius="xl"
+              rightIcon={<FaExternalLinkAlt />}
+            >
+              View on Block Explorer
+            </Button>
+          </Link>
+        )}
+
+        {/* View Swap Details on Midgard API */}
+        <Link href={midgardApiLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+          <Button
+            variant="outline"
+            borderColor="#23DCC8"
+            color="#23DCC8"
+            _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
+            width="full"
+            height="48px"
+            borderRadius="xl"
+            rightIcon={<FaExternalLinkAlt />}
+          >
+            View Swap Details (Midgard API)
+          </Button>
+        </Link>
+
+        {/* Track THORChain Swap Button */}
+        <VStack gap={2} width="full">
+          <Link href={thorchainTrackerLink} isExternal target="_blank" rel="noopener noreferrer" width="full">
+            <Button
+              variant="outline"
+              borderColor="#23DCC8"
+              color="white"
+              _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: '#1FC4B3' }}
+              width="full"
+              height="48px"
+              borderRadius="xl"
+              rightIcon={<FaExternalLinkAlt />}
+            >
+              Track Swap Status
+            </Button>
+          </Link>
+          <Text fontSize="xs" color="gray.500" textAlign="center">
+            Note: Status will not load until at least 1 confirmation on input transaction
+          </Text>
+        </VStack>
 
         {/* Done Button */}
         <Button

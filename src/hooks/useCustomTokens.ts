@@ -34,8 +34,6 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🔍 Fetching custom tokens via Pioneer SDK for:', userAddress);
-      console.log('🔍 Checking if GetCustomTokens method exists:', typeof app.pioneer.GetCustomTokens);
 
       // The Pioneer SDK auto-generates methods from swagger spec
       // If this fails, the SDK was initialized with wrong spec URL
@@ -47,13 +45,11 @@ export const useCustomTokens = () => {
         userAddress
       });
 
-      console.log('📦 Custom tokens response:', response);
 
       // Handle nested response structure: response.data.data.tokens
       const tokens = response?.data?.data?.tokens || response?.data?.tokens || response?.tokens || [];
       setCustomTokens(tokens);
 
-      console.log(`✅ Loaded ${tokens.length} custom tokens from server`);
     } catch (err: any) {
       console.error('Error fetching custom tokens:', err);
       setError(err.message || 'Failed to fetch custom tokens');
@@ -69,8 +65,6 @@ export const useCustomTokens = () => {
     hasBalance: boolean;
     balance?: string;
   }> => {
-    console.log('📝 addCustomToken called with:', token);
-    console.log('User address:', userAddress);
 
     if (!userAddress || !app?.pioneer) {
       const errorMsg = 'No user address or Pioneer SDK available';
@@ -83,8 +77,6 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🌐 Adding custom token via Pioneer SDK');
-      console.log('🔍 Checking if AddCustomToken method exists:', typeof app.pioneer.AddCustomToken);
 
       // The Pioneer SDK auto-generates methods from swagger spec
       // If this fails, the SDK was initialized with wrong spec URL
@@ -106,20 +98,16 @@ export const useCustomTokens = () => {
         }
       });
 
-      console.log('✅ AddCustomToken response:', response);
 
       // Handle nested response structure: response.data.success or response.success
       const isSuccess = response?.success || response?.data?.success;
-      console.log('✅ AddCustomToken success status:', isSuccess);
 
       if (response && isSuccess) {
         // Refresh the token list from the server
         await fetchCustomTokens();
 
-        console.log('✅ Token added successfully!');
 
         // Check token balance using the dedicated endpoint with retry logic
-        console.log('💰 Checking custom token balance for:', token.caip);
 
         // Helper function to check balance with retry
         const checkBalanceWithRetry = async (retries = 3, delay = 800): Promise<{
@@ -129,7 +117,6 @@ export const useCustomTokens = () => {
         }> => {
           for (let attempt = 1; attempt <= retries; attempt++) {
             try {
-              console.log(`💰 Balance check attempt ${attempt}/${retries}`);
 
               // Add delay before retry attempts (but not the first attempt)
               if (attempt > 1) {
@@ -142,7 +129,6 @@ export const useCustomTokens = () => {
                 address: userAddress
               });
 
-              console.log('💰 Custom token balance result:', balanceResult);
 
               // Handle nested response structure
               const balanceTokens = balanceResult?.data?.data?.tokens || balanceResult?.data?.tokens || balanceResult?.tokens || [];
@@ -165,7 +151,6 @@ export const useCustomTokens = () => {
 
               if (tokenBalance) {
                 const balance = tokenBalance.token?.balance || tokenBalance.balance || '0';
-                console.log(`✅ Token has balance (attempt ${attempt}):`, balance);
 
                 return {
                   success: true,
@@ -173,9 +158,7 @@ export const useCustomTokens = () => {
                   balance
                 };
               } else if (attempt < retries) {
-                console.log(`⚠️ No balance found on attempt ${attempt}, retrying...`);
               } else {
-                console.log('⚠️ Token added but no balance found after all retries');
                 return {
                   success: true,
                   hasBalance: false
@@ -202,7 +185,6 @@ export const useCustomTokens = () => {
         return await checkBalanceWithRetry();
       }
 
-      console.warn('⚠️ API call succeeded but unexpected response format');
       return { success: false, hasBalance: false };
     } catch (err: any) {
       console.error('❌ Error adding custom token:', err);
@@ -224,7 +206,6 @@ export const useCustomTokens = () => {
       setIsLoading(true);
       setError(null);
 
-      console.log('🗑️ Removing custom token:', networkId, tokenAddress);
 
       // Call the server API to remove the token
       const response = await app.pioneer.RemoveCustomToken({
@@ -233,12 +214,10 @@ export const useCustomTokens = () => {
         tokenAddress,
       });
 
-      console.log('✅ RemoveCustomToken response:', response);
 
       if (response && (response.success || response?.data?.success)) {
         // Refresh the token list from the server
         await fetchCustomTokens();
-        console.log('✅ Token removed successfully!');
         return true;
       }
 

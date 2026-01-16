@@ -2,11 +2,18 @@
 /**
  * THORChain Pool Fetcher
  *
+ * ⚠️ DEPRECATED: This script is being phased out in favor of Pioneer API
+ * Migration Date: 2025-12-29
+ * New Source: Pioneer server /api/v1/swap/available-assets endpoint
+ *
  * Fetches all active pools from THORChain Midgard API and transforms them into
  * CAIP format with proper networkIds for use in the swap interface.
  *
  * Usage: node scripts/fetch-thorchain-pools.js
  * Output: src/config/thorchain-pools.ts
+ *
+ * NOTE: Kept for reference and emergency fallback purposes only.
+ * Do not use for production configuration.
  */
 
 const https = require('https');
@@ -36,6 +43,9 @@ const CHAIN_TO_NETWORK_ID = {
   'GAIA': 'cosmos:cosmoshub-4',
   'THOR': 'cosmos:thorchain-mainnet-v1',
   'MAYA': 'cosmos:mayachain-mainnet-v1',
+
+  // XRP Ledger
+  'XRP': 'ripple:4109c6f2045fc7eff4cde8f9905d19c2',
 };
 
 /**
@@ -53,6 +63,7 @@ const CHAIN_TO_SLIP44 = {
   'GAIA': '118',
   'THOR': '931',
   'MAYA': '931',
+  'XRP': '144',
 };
 
 /**
@@ -69,6 +80,7 @@ const CHAIN_METADATA = {
   'GAIA': { name: 'Cosmos', icon: 'https://pioneers.dev/coins/cosmos.png' },
   'THOR': { name: 'THORChain', icon: 'https://pioneers.dev/coins/thorchain.png' },
   'MAYA': { name: 'Maya Protocol', icon: 'https://pioneers.dev/coins/mayaprotocol.png' },
+  'XRP': { name: 'XRP', icon: 'https://pioneers.dev/coins/ripple.png' },
 };
 
 /**
@@ -241,12 +253,13 @@ async function fetchAndTransformPools() {
         continue;
       }
 
+      // DO NOT include icon - icons come from Pioneer SDK assetData
       const item = {
         asset: pool.asset, // THORChain format (e.g., "BTC.BTC")
         chain: parsed.chain,
         symbol,
         name: parsed.contract ? `${symbol} (${metadata.name})` : metadata.name,
-        icon: metadata.icon,
+        // icon removed - use Pioneer SDK assetData instead
         caip,
         networkId: CHAIN_TO_NETWORK_ID[parsed.chain],
         isNative: !parsed.contract,
@@ -305,6 +318,8 @@ function generateConfigFile(pools) {
  *
  * This file contains all active THORChain pools mapped to CAIP format.
  * DO NOT EDIT MANUALLY - regenerate using: node scripts/fetch-thorchain-pools.js
+ * 
+ * NOTE: Icons are NOT stored here. Use Pioneer SDK assetData for icon URLs.
  */
 
 export interface ThorchainPool {
@@ -316,9 +331,7 @@ export interface ThorchainPool {
   symbol: string;
   /** Display name */
   name: string;
-  /** Icon URL */
-  icon: string;
-  /** CAIP identifier */
+  /** CAIP identifier - use this to lookup icons in Pioneer SDK assetData */
   caip: string;
   /** Network ID (CAIP-2 format) */
   networkId: string;

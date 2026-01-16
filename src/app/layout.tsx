@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Provider } from './provider';
+import { MaintenanceWrapper } from '@/components/maintenance/MaintenanceWrapper';
+import { Provider as ChakraProvider } from "@/components/ui/provider";
+import { GlobalHeader } from '@/components/layout/GlobalHeader';
+import { HeaderProvider } from '@/contexts/HeaderContext';
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -86,8 +90,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <Provider>{children}</Provider>
+      <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+        <ChakraProvider>
+          <MaintenanceWrapper>
+            <Provider>
+              <HeaderProvider>
+                <GlobalHeader />
+                <div style={{ paddingTop: '72px' }}>
+                  {children}
+                </div>
+              </HeaderProvider>
+            </Provider>
+          </MaintenanceWrapper>
+        </ChakraProvider>
       </body>
     </html>
   );

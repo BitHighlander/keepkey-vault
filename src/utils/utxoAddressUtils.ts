@@ -86,7 +86,7 @@ export const fetchUTXOAddressUsageInfo = async (
     // Map network ID to chain symbol for API
     const chain = getChainSymbolFromNetwork(network);
 
-    console.log(`🔍 [UTXO Utils] Fetching address usage info for ${chain} xpub:`, pubkey.substring(0, 20) + '...');
+    //console.log(`🔍 [UTXO Utils] Fetching address usage info for ${chain} xpub:`, pubkey.substring(0, 20) + '...');
 
     // Call Pioneer API to get pubkey info with used addresses
     const response = await fetch(`${apiUrl}/api/v1/utxo/pubkey-info/${chain}/${pubkey}?tokens=used`);

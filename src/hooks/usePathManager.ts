@@ -150,20 +150,30 @@ export const usePathManager = ({ assetContext, app }: UsePathManagerProps) => {
         networks,
       };
 
-      console.log('🔧 [usePathManager] Adding path:', pathConfig);
+      //console.log('🔧 [usePathManager] Adding path:', pathConfig);
 
       // Add path to Pioneer SDK
       const result = await app.addPath(pathConfig);
 
-      console.log('✅ [usePathManager] Path added to SDK:', result);
+      //console.log('✅ [usePathManager] Path added to SDK:', result);
 
       // Save to localStorage for persistence across sessions
       try {
         const savedPath = saveCustomPath(pathConfig);
-        console.log('✅ [usePathManager] Path persisted to localStorage:', savedPath.id);
+        //console.log('✅ [usePathManager] Path persisted to localStorage:', savedPath.id);
       } catch (storageError: any) {
         console.warn('⚠️ [usePathManager] Failed to persist path to localStorage:', storageError);
         // Don't throw - the path is still added to the current session
+      }
+
+      // Trigger balance refresh to subscribe new addresses to chainWatcher
+      //console.log('🔄 [usePathManager] Refreshing balances to subscribe new custom path addresses...');
+      try {
+        await app.refresh(true); // Force refresh to fetch balances for new path
+        //console.log('✅ [usePathManager] Balances refreshed - new addresses subscribed to chainWatcher');
+      } catch (refreshError: any) {
+        console.warn('⚠️ [usePathManager] Failed to refresh balances:', refreshError);
+        // Don't throw - the path is still added, balance will be fetched on next sync
       }
 
       // Reset form

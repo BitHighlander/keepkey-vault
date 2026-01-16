@@ -19,7 +19,7 @@ export class ReportGeneratorFactory {
     // Find the first generator that supports this asset
     for (const generator of this.generators) {
       if (generator.isSupported(assetContext)) {
-        console.log(`Using ${generator.constructor.name} for ${assetContext.symbol}`);
+        //console.log(`Using ${generator.constructor.name} for ${assetContext.symbol}`);
         return generator;
       }
     }

@@ -69,12 +69,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           <Text fontWeight="medium" fontSize="xs" color="white">
             {activeItem.name}
           </Text>
-          <Text fontSize="xs" color={activeItem.color} fontWeight="bold">
+          <Text fontSize="xs" color="white" fontWeight="bold">
             {percent}%
           </Text>
           <Text fontSize="xs" color="gray.300">
-            $<CountUp 
-              end={activeItem.value} 
+            $<CountUp
+              end={activeItem.value}
               decimals={2}
               duration={1}
               separator=","

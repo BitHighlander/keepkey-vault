@@ -1,11 +1,22 @@
 /**
  * THORChain Supported Pools Configuration
  *
+ * ⚠️ DEPRECATED: This static configuration is being migrated to dynamic API-driven configuration
+ * Migration Date: 2025-12-29
+ * New Source: Pioneer server /api/v1/swap/available-assets endpoint
+ *
  * Auto-generated from THORChain Midgard API
- * Generated: 2025-10-23T05:25:56.844Z
+ * Generated: 2025-11-13T23:04:57.223Z
  *
  * This file contains all active THORChain pools mapped to CAIP format.
  * DO NOT EDIT MANUALLY - regenerate using: node scripts/fetch-thorchain-pools.js
+ *
+ * NOTE: Icons are NOT stored here. Use Pioneer SDK assetData for icon URLs.
+ *
+ * Migration Status:
+ * - ✅ Swap.tsx: Now fetches from Pioneer API
+ * - ⏳ Asset.tsx: Still uses getPoolByCAIP helper
+ * - Interface and helpers will be kept for backward compatibility
  */
 
 export interface ThorchainPool {
@@ -17,9 +28,7 @@ export interface ThorchainPool {
   symbol: string;
   /** Display name */
   name: string;
-  /** Icon URL */
-  icon: string;
-  /** CAIP identifier */
+  /** CAIP identifier - use this to lookup icons in Pioneer SDK assetData */
   caip: string;
   /** Network ID (CAIP-2 format) */
   networkId: string;
@@ -31,7 +40,7 @@ export interface ThorchainPool {
 
 /**
  * All supported THORChain pools
- * Total: 30 pools
+ * Total: 35 pools (updated with DASH, BASE, ARB, OP, MATIC + fixed DOGE/LTC CAIPs)
  */
 export const THORCHAIN_POOLS: ThorchainPool[] = [
   {
@@ -39,7 +48,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "AVAX",
     "symbol": "AVAX",
     "name": "Avalanche",
-    "icon": "https://pioneers.dev/coins/avalanche.png",
     "caip": "eip155:43114/slip44:60",
     "networkId": "eip155:43114",
     "isNative": true
@@ -49,7 +57,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "AVAX",
     "symbol": "SOL",
     "name": "SOL (Avalanche)",
-    "icon": "https://pioneers.dev/coins/avalanche.png",
     "caip": "eip155:43114/erc20:0xfe6b19286885a4f7f55adad09c3cd1f906d2478f",
     "networkId": "eip155:43114",
     "isNative": false,
@@ -60,7 +67,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "AVAX",
     "symbol": "USDC",
     "name": "USDC (Avalanche)",
-    "icon": "https://pioneers.dev/coins/avalanche.png",
     "caip": "eip155:43114/erc20:0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
     "networkId": "eip155:43114",
     "isNative": false,
@@ -71,7 +77,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "AVAX",
     "symbol": "USDT",
     "name": "USDT (Avalanche)",
-    "icon": "https://pioneers.dev/coins/avalanche.png",
     "caip": "eip155:43114/erc20:0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
     "networkId": "eip155:43114",
     "isNative": false,
@@ -82,7 +87,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BCH",
     "symbol": "BCH",
     "name": "Bitcoin Cash",
-    "icon": "https://pioneers.dev/coins/bitcoincash.png",
     "caip": "bip122:000000000000000000651ef99cb9fcbe/slip44:145",
     "networkId": "bip122:000000000000000000651ef99cb9fcbe",
     "isNative": true
@@ -92,7 +96,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "BNB",
     "name": "BNB Chain",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/slip44:60",
     "networkId": "eip155:56",
     "isNative": true
@@ -102,7 +105,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "BTCB",
     "name": "BTCB (BNB Chain)",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/erc20:0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
     "networkId": "eip155:56",
     "isNative": false,
@@ -113,7 +115,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "BUSD",
     "name": "BUSD (BNB Chain)",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/erc20:0xe9e7cea3dedca5984780bafc599bd69add087d56",
     "networkId": "eip155:56",
     "isNative": false,
@@ -124,7 +125,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "ETH",
     "name": "ETH (BNB Chain)",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/erc20:0x2170ed0880ac9a755fd29b2688956bd959f933f8",
     "networkId": "eip155:56",
     "isNative": false,
@@ -135,7 +135,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "TWT",
     "name": "TWT (BNB Chain)",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/erc20:0x4b0f1812e5df2a09796481ff14017e6005508003",
     "networkId": "eip155:56",
     "isNative": false,
@@ -146,7 +145,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "USDC",
     "name": "USDC (BNB Chain)",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/erc20:0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
     "networkId": "eip155:56",
     "isNative": false,
@@ -157,7 +155,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BSC",
     "symbol": "USDT",
     "name": "USDT (BNB Chain)",
-    "icon": "https://pioneers.dev/coins/binance.png",
     "caip": "eip155:56/erc20:0x55d398326f99059ff775485246999027b3197955",
     "networkId": "eip155:56",
     "isNative": false,
@@ -168,7 +165,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "BTC",
     "symbol": "BTC",
     "name": "Bitcoin",
-    "icon": "https://pioneers.dev/coins/bitcoin.png",
     "caip": "bip122:000000000019d6689c085ae165831e93/slip44:0",
     "networkId": "bip122:000000000019d6689c085ae165831e93",
     "isNative": true
@@ -178,9 +174,8 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "DOGE",
     "symbol": "DOGE",
     "name": "Dogecoin",
-    "icon": "https://pioneers.dev/coins/dogecoin.png",
-    "caip": "bip122:000000000000000000000000000000001/slip44:3",
-    "networkId": "bip122:000000000000000000000000000000001",
+    "caip": "bip122:00000000001a91e3dace36e2be3bf030/slip44:3",
+    "networkId": "bip122:00000000001a91e3dace36e2be3bf030",
     "isNative": true
   },
   {
@@ -188,7 +183,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "ETH",
     "name": "Ethereum",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/slip44:60",
     "networkId": "eip155:1",
     "isNative": true
@@ -198,7 +192,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "AAVE",
     "name": "AAVE (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9",
     "networkId": "eip155:1",
     "isNative": false,
@@ -209,29 +202,16 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "DAI",
     "name": "DAI (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x6b175474e89094c44da98b954eedeac495271d0f",
     "networkId": "eip155:1",
     "isNative": false,
     "contract": "0X6B175474E89094C44DA98B954EEDEAC495271D0F"
   },
   {
-    "asset": "ETH.DPI-0X1494CA1F11D487C2BBE4543E90080AEBA4BA3C2B",
-    "chain": "ETH",
-    "symbol": "DPI",
-    "name": "DPI (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
-    "caip": "eip155:1/erc20:0x1494ca1f11d487c2bbe4543e90080aeba4ba3c2b",
-    "networkId": "eip155:1",
-    "isNative": false,
-    "contract": "0X1494CA1F11D487C2BBE4543E90080AEBA4BA3C2B"
-  },
-  {
     "asset": "ETH.FOX-0XC770EEFAD204B5180DF6A14EE197D99D808EE52D",
     "chain": "ETH",
     "symbol": "FOX",
     "name": "FOX (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0xc770eefad204b5180df6a14ee197d99d808ee52d",
     "networkId": "eip155:1",
     "isNative": false,
@@ -242,7 +222,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "GUSD",
     "name": "GUSD (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x056fd409e1d7a124bd7017459dfea2f387b6d5cd",
     "networkId": "eip155:1",
     "isNative": false,
@@ -253,7 +232,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "LINK",
     "name": "LINK (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x514910771af9ca656af840dff83e8264ecf986ca",
     "networkId": "eip155:1",
     "isNative": false,
@@ -264,7 +242,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "LUSD",
     "name": "LUSD (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x5f98805a4e8be255a32880fdec7f6728c6568ba0",
     "networkId": "eip155:1",
     "isNative": false,
@@ -275,7 +252,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "USDC",
     "name": "USDC (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     "networkId": "eip155:1",
     "isNative": false,
@@ -286,7 +262,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "USDP",
     "name": "USDP (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x8e870d67f660d95d5be530380d0ec0bd388289e1",
     "networkId": "eip155:1",
     "isNative": false,
@@ -297,7 +272,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "USDT",
     "name": "USDT (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0xdac17f958d2ee523a2206206994597c13d831ec7",
     "networkId": "eip155:1",
     "isNative": false,
@@ -308,18 +282,25 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "ETH",
     "symbol": "WBTC",
     "name": "WBTC (Ethereum)",
-    "icon": "https://pioneers.dev/coins/ethereum.png",
     "caip": "eip155:1/erc20:0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
     "networkId": "eip155:1",
     "isNative": false,
     "contract": "0X2260FAC5E5542A773AA44FBCFEDF7C193BC2C599"
   },
   {
+    "asset": "DASH.DASH",
+    "chain": "DASH",
+    "symbol": "DASH",
+    "name": "Dash",
+    "caip": "bip122:000007d91d1254d60e2dd1ae58038307/slip44:5",
+    "networkId": "bip122:000007d91d1254d60e2dd1ae58038307",
+    "isNative": true
+  },
+  {
     "asset": "GAIA.ATOM",
     "chain": "GAIA",
     "symbol": "ATOM",
     "name": "Cosmos",
-    "icon": "https://pioneers.dev/coins/cosmos.png",
     "caip": "cosmos:cosmoshub-4/slip44:118",
     "networkId": "cosmos:cosmoshub-4",
     "isNative": true
@@ -329,9 +310,44 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "LTC",
     "symbol": "LTC",
     "name": "Litecoin",
-    "icon": "https://pioneers.dev/coins/litecoin.png",
-    "caip": "bip122:00000000000000000000000000000000/slip44:2",
-    "networkId": "bip122:00000000000000000000000000000000",
+    "caip": "bip122:12a765e31ffd4059bada1e25190f6e98/slip44:2",
+    "networkId": "bip122:12a765e31ffd4059bada1e25190f6e98",
+    "isNative": true
+  },
+  {
+    "asset": "BASE.ETH",
+    "chain": "BASE",
+    "symbol": "ETH",
+    "name": "Base",
+    "caip": "eip155:8453/slip44:60",
+    "networkId": "eip155:8453",
+    "isNative": true
+  },
+  {
+    "asset": "ARB.ETH",
+    "chain": "ARB",
+    "symbol": "ETH",
+    "name": "Arbitrum",
+    "caip": "eip155:42161/slip44:60",
+    "networkId": "eip155:42161",
+    "isNative": true
+  },
+  {
+    "asset": "OP.ETH",
+    "chain": "OP",
+    "symbol": "ETH",
+    "name": "Optimism",
+    "caip": "eip155:10/slip44:60",
+    "networkId": "eip155:10",
+    "isNative": true
+  },
+  {
+    "asset": "MATIC.MATIC",
+    "chain": "MATIC",
+    "symbol": "MATIC",
+    "name": "Polygon",
+    "caip": "eip155:137/slip44:60",
+    "networkId": "eip155:137",
     "isNative": true
   },
   {
@@ -339,7 +355,6 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "THOR",
     "symbol": "RUJI",
     "name": "THORChain",
-    "icon": "https://pioneers.dev/coins/thorchain.png",
     "caip": "cosmos:thorchain-mainnet-v1/slip44:931",
     "networkId": "cosmos:thorchain-mainnet-v1",
     "isNative": true
@@ -349,24 +364,25 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "chain": "THOR",
     "symbol": "TCY",
     "name": "THORChain",
-    "icon": "https://pioneers.dev/coins/thorchain.png",
     "caip": "cosmos:thorchain-mainnet-v1/slip44:931",
     "networkId": "cosmos:thorchain-mainnet-v1",
+    "isNative": true
+  },
+  {
+    "asset": "XRP.XRP",
+    "chain": "XRP",
+    "symbol": "XRP",
+    "name": "XRP",
+    "caip": "ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144",
+    "networkId": "ripple:4109c6f2045fc7eff4cde8f9905d19c2",
     "isNative": true
   }
 ];
 
 /**
  * Get pool by symbol
- * Prioritizes native assets over tokens (e.g., ETH.ETH over BSC.ETH)
  */
-export function getPoolBySymbol(symbol: string, preferNative: boolean = true): ThorchainPool | undefined {
-  if (preferNative) {
-    // First try to find native asset
-    const nativePool = THORCHAIN_POOLS.find(pool => pool.symbol === symbol && pool.isNative);
-    if (nativePool) return nativePool;
-  }
-  // Fall back to any matching symbol
+export function getPoolBySymbol(symbol: string): ThorchainPool | undefined {
   return THORCHAIN_POOLS.find(pool => pool.symbol === symbol);
 }
 
