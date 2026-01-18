@@ -4,10 +4,8 @@
  * Celebration view displayed when swap completes successfully
  */
 
-import { useState, useEffect } from 'react';
 import { VStack, Box, Text, Link, Code } from '@chakra-ui/react';
 import { FaExternalLinkAlt } from 'react-icons/fa';
-import Confetti from 'react-confetti';
 import { formatTime } from './swap-timing-utils';
 
 interface Asset {
@@ -37,26 +35,35 @@ interface SuccessViewProps {
 }
 
 export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: SuccessViewProps) {
-  const [showConfetti, setShowConfetti] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowConfetti(false), 5000);
-    return () => clearTimeout(timer);
-  }, []);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[SuccessView] 🎉 SUCCESS VIEW RENDERED');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[SuccessView] Swap Status:', swapStatus);
+  console.log('[SuccessView] From Asset:', fromAsset.symbol);
+  console.log('[SuccessView] To Asset:', toAsset.symbol);
+  console.log('[SuccessView] Input Tx Hash:', inputTxHash);
 
   // Get transaction hashes
   const inboundTx = swapStatus.thorchainData?.inboundTxHash || inputTxHash;
   const outboundTx = swapStatus.thorchainData?.outboundTxHash;
 
+  console.log('[SuccessView] Inbound Tx:', inboundTx);
+  console.log('[SuccessView] Outbound Tx:', outboundTx);
+
+  // Validation
+  if (!outboundTx) {
+    console.error('[SuccessView] ❌ VALIDATION WARNING: No outbound tx hash available');
+    console.error('[SuccessView] ThorchainData:', swapStatus.thorchainData);
+  }
+
+  if (!swapStatus.timingData) {
+    console.warn('[SuccessView] ⚠️ No timing data available for completed swap');
+  }
+
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
   return (
     <VStack gap={6} py={8}>
-      {showConfetti && (
-        <Confetti
-          recycle={false}
-          numberOfPieces={200}
-          style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%' }}
-        />
-      )}
 
       <VStack gap={2}>
         <Text fontSize="6xl">🎉</Text>

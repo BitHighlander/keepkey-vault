@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   VStack,
@@ -143,8 +143,10 @@ export const SwapProgress = ({
   const [swapStatus, setSwapStatus] = useState<SwapStatus | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const hasShownConfettiRef = useRef(false);
   const [lastEventTime, setLastEventTime] = useState<number>(Date.now());
   const [swapStartTime, setSwapStartTime] = useState<number | null>(null);
+  const [isForceRefreshing, setIsForceRefreshing] = useState(false);
 
   // REST API data (normalized from sellAsset/buyAsset → fromAsset/toAsset)
   const [restData, setRestData] = useState<{
@@ -288,13 +290,30 @@ export const SwapProgress = ({
           }
 
           // Set stage based on status
+          console.log('[SwapProgress] 🎯 INITIAL LOAD: Determining stage from status:', swap.status);
+
           if (swap.status === 'output_confirmed' || swap.status === 'completed') {
+            console.log('[SwapProgress] ✅ INITIAL LOAD: Swap already completed!');
             setCurrentStage(3);
             setIsComplete(true);
+
+            // Show confetti ONCE when swap completes
+            if (!hasShownConfettiRef.current) {
+              console.log('[SwapProgress] 🎉 INITIAL LOAD: Showing confetti');
+              setShowConfetti(true);
+              hasShownConfettiRef.current = true;
+              setTimeout(() => setShowConfetti(false), 5000);
+            }
           } else if (swap.status === 'output_detected' || swap.status === 'output_confirming') {
+            console.log('[SwapProgress] 📥 INITIAL LOAD: Output stage detected');
+            console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
             setCurrentStage(3);
           } else if (swap.status === 'confirming') {
+            console.log('[SwapProgress] 📤 INITIAL LOAD: Input confirming');
             setCurrentStage(1);
+          } else {
+            console.log('[SwapProgress] 🚀 INITIAL LOAD: Pending/Unknown status');
+            console.log('[SwapProgress] Status:', swap.status);
           }
         } else {
           // Swap is in "processing" state - protocol APIs don't have asset data yet
@@ -332,10 +351,58 @@ export const SwapProgress = ({
     }
 
     const handleSwapEvent = (event: any) => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[SwapProgress] 🔔 WEBSOCKET EVENT RECEIVED');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[SwapProgress] Full event:', JSON.stringify(event, null, 2));
 
       // Only handle events for this swap
       if (event.txHash !== txid && event.transaction?.txid !== txid) {
+        console.warn('[SwapProgress] ⚠️ Event txHash mismatch - ignoring');
+        console.warn('[SwapProgress] Event txHash:', event.txHash);
+        console.warn('[SwapProgress] Expected txHash:', txid);
         return;
+      }
+
+      // ============================================
+      // VALIDATION LAYER - Fail fast on invalid data
+      // ============================================
+
+      // Validate event structure
+      if (!event.type && !event.status) {
+        console.error('[SwapProgress] ❌ VALIDATION FAILED: Missing event.type AND event.status');
+        console.error('[SwapProgress] Event keys:', Object.keys(event));
+        console.error('[SwapProgress] This event cannot be processed - no status indicator');
+      }
+
+      const eventType = event.type || event.status;
+      console.log('[SwapProgress] 📍 Event Type:', eventType);
+      console.log('[SwapProgress] 📊 Current State BEFORE Update:', {
+        currentStage,
+        isComplete,
+        hasShownConfetti: hasShownConfettiRef.current
+      });
+
+      // Validate confirmation data
+      if (eventType.includes('confirming') || eventType.includes('output_detected')) {
+        if (event.confirmations === undefined) {
+          console.error('[SwapProgress] ❌ VALIDATION FAILED: Event type suggests confirming but confirmations is undefined');
+          console.error('[SwapProgress] Event type:', eventType);
+          console.error('[SwapProgress] Confirmations:', event.confirmations);
+        }
+        if (event.requiredConfirmations === undefined) {
+          console.error('[SwapProgress] ❌ VALIDATION FAILED: Missing requiredConfirmations for confirmation stage');
+        }
+      }
+
+      // Validate outbound data
+      if (eventType.includes('output')) {
+        if (!event.outboundTxHash && !event.thorchainData?.outboundTxHash) {
+          console.error('[SwapProgress] ❌ VALIDATION FAILED: Output stage but no outboundTxHash');
+          console.error('[SwapProgress] Event type:', eventType);
+          console.error('[SwapProgress] outboundTxHash:', event.outboundTxHash);
+          console.error('[SwapProgress] thorchainData:', event.thorchainData);
+        }
       }
 
       setLastEventTime(Date.now());
@@ -343,7 +410,7 @@ export const SwapProgress = ({
       // Update swap status from event
       const updatedStatus: SwapStatus = {
         txHash: txid,
-        status: event.type || event.status || 'pending',
+        status: eventType,
         confirmations: event.confirmations,
         requiredConfirmations: event.requiredConfirmations,
         outboundConfirmations: event.outboundConfirmations,
@@ -354,28 +421,91 @@ export const SwapProgress = ({
         error: event.error
       };
 
+      console.log('[SwapProgress] 📝 Updated Status Object:', {
+        status: updatedStatus.status,
+        confirmations: updatedStatus.confirmations,
+        requiredConfirmations: updatedStatus.requiredConfirmations,
+        outboundConfirmations: updatedStatus.outboundConfirmations,
+        outboundRequiredConfirmations: updatedStatus.outboundRequiredConfirmations,
+        hasOutboundTx: !!updatedStatus.thorchainData?.outboundTxHash
+      });
 
       setSwapStatus(updatedStatus);
 
-      // Determine current stage based on event type
-      const eventType = event.type || event.status;
+      // ============================================
+      // STAGE PROGRESSION - Determine next stage
+      // ============================================
 
+      // COMPLETION CHECK
       if (eventType === 'swap:output_confirmed' || eventType === 'swap:completed' || eventType === 'output_confirmed' || eventType === 'completed') {
+        console.log('[SwapProgress] ✅ COMPLETION EVENT DETECTED');
+        console.log('[SwapProgress] Event type matched:', eventType);
+        console.log('[SwapProgress] Setting stage to 3 and isComplete to true');
+
         setCurrentStage(3);
         setIsComplete(true);
-        // Confetti disabled - was triggering repeatedly on already completed swaps
-        // setShowConfetti(true);
-        // setTimeout(() => setShowConfetti(false), 5000);
+
+        // Show confetti ONCE when swap completes
+        if (!hasShownConfettiRef.current) {
+          console.log('[SwapProgress] 🎉 SHOWING CONFETTI (first time)');
+          setShowConfetti(true);
+          hasShownConfettiRef.current = true;
+          setTimeout(() => setShowConfetti(false), 5000);
+        } else {
+          console.log('[SwapProgress] 🎉 Confetti already shown, skipping');
+        }
 
         onComplete();
-      } else if (eventType === 'swap:output_detected' || eventType === 'swap:output_confirming' || eventType === 'output_detected' || eventType === 'output_confirming') {
-        setCurrentStage(3);
-      } else if (eventType === 'swap:confirming' || eventType === 'confirming') {
-        setCurrentStage(1);
-      } else if (eventType === 'swap:initiated' || eventType === 'pending') {
-        setCurrentStage(1);
-      } else {
       }
+      // OUTPUT STAGE (Stage 3 - not complete)
+      else if (eventType === 'swap:output_detected' || eventType === 'swap:output_confirming' || eventType === 'output_detected' || eventType === 'output_confirming') {
+        console.log('[SwapProgress] 📥 OUTPUT STAGE DETECTED');
+        console.log('[SwapProgress] Event type matched:', eventType);
+        console.log('[SwapProgress] Setting stage to 3 (output confirming)');
+        console.log('[SwapProgress] Outbound confirmations:', event.outboundConfirmations, '/', event.outboundRequiredConfirmations);
+
+        // Check if we should already be complete
+        if (event.outboundConfirmations && event.outboundRequiredConfirmations) {
+          if (event.outboundConfirmations >= event.outboundRequiredConfirmations) {
+            console.error('[SwapProgress] ❌ LOGIC ERROR: Confirmations show complete but event type is not completed');
+            console.error('[SwapProgress] Event type:', eventType);
+            console.error('[SwapProgress] Outbound confirmations:', event.outboundConfirmations);
+            console.error('[SwapProgress] Required confirmations:', event.outboundRequiredConfirmations);
+            console.error('[SwapProgress] This swap should be completed but status says otherwise!');
+          }
+        }
+
+        setCurrentStage(3);
+      }
+      // INPUT CONFIRMING (Stage 1)
+      else if (eventType === 'swap:confirming' || eventType === 'confirming') {
+        console.log('[SwapProgress] 📤 INPUT CONFIRMING STAGE');
+        console.log('[SwapProgress] Event type matched:', eventType);
+        console.log('[SwapProgress] Setting stage to 1');
+        console.log('[SwapProgress] Input confirmations:', event.confirmations, '/', event.requiredConfirmations);
+        setCurrentStage(1);
+      }
+      // INITIATED/PENDING (Stage 1)
+      else if (eventType === 'swap:initiated' || eventType === 'pending') {
+        console.log('[SwapProgress] 🚀 SWAP INITIATED/PENDING');
+        console.log('[SwapProgress] Event type matched:', eventType);
+        console.log('[SwapProgress] Setting stage to 1');
+        setCurrentStage(1);
+      }
+      // UNKNOWN EVENT TYPE
+      else {
+        console.error('[SwapProgress] ❌ UNKNOWN EVENT TYPE');
+        console.error('[SwapProgress] Event type:', eventType);
+        console.error('[SwapProgress] Full event:', event);
+        console.error('[SwapProgress] This event type is not handled - swap progress may be stuck!');
+      }
+
+      console.log('[SwapProgress] 📊 Current State AFTER Update:', {
+        currentStage,
+        isComplete,
+        hasShownConfetti: hasShownConfettiRef.current
+      });
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // Handle errors
       if (event.error) {
@@ -412,6 +542,10 @@ export const SwapProgress = ({
     const pollingInterval = hasWebSocket ? 60000 : 30000;
     const pollingMode = hasWebSocket ? 'BACKUP' : 'PRIMARY';
 
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`[SwapProgress] 🔄 POLLING SETUP: ${pollingMode} mode (${pollingInterval/1000}s interval)`);
+    console.log(`[SwapProgress] WebSocket available: ${hasWebSocket}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     if (!app?.pioneer?.GetPendingSwap) {
       console.error('[SwapProgress] ❌ GetPendingSwap not available - cannot set up polling');
@@ -420,25 +554,58 @@ export const SwapProgress = ({
 
     // Polling function
     const pollSwapStatus = async () => {
+      const pollTimestamp = new Date().toISOString();
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`[SwapProgress] 🔄 ${pollingMode} POLLING TRIGGERED at ${pollTimestamp}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       try {
         // STEP 1: Trigger server-side status check (POST)
         // This forces the backend to query THORChain/Maya APIs for latest status
         if (app.pioneer.CheckPendingSwap && typeof app.pioneer.CheckPendingSwap === 'function') {
           try {
-            await app.pioneer.CheckPendingSwap({ txHash: txid });
+            console.log('[SwapProgress] 📤 STEP 1: Triggering force check (POST)...');
+            const checkResponse = await app.pioneer.CheckPendingSwap({ txHash: txid });
+            console.log('[SwapProgress] ✅ CheckPendingSwap response:', JSON.stringify(checkResponse, null, 2));
           } catch (checkErr) {
             console.warn('[SwapProgress] ⚠️ CheckPendingSwap failed, continuing with GET:', checkErr);
             // Continue to GET even if POST fails - better to have stale data than no data
           }
+        } else {
+          console.warn('[SwapProgress] ⚠️ CheckPendingSwap not available, skipping force check');
         }
 
         // STEP 2: Fetch updated swap data (GET)
+        console.log('[SwapProgress] 📥 STEP 2: Fetching swap data (GET)...');
         const response = await app.pioneer.GetPendingSwap({ txHash: txid });
+
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('[SwapProgress] 📦 FULL POLLING REST API RESPONSE:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(JSON.stringify(response, null, 2));
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         const swap = response?.data || response;
 
         if (swap) {
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log(`[SwapProgress] 🔄 ${pollingMode} POLLING UPDATE`);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('[SwapProgress] Polled status:', swap.status);
+          console.log('[SwapProgress] Confirmations:', swap.confirmations, '/', swap.requiredConfirmations);
+          console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
+          console.log('[SwapProgress] Has outbound tx:', !!swap.thorchainData?.outboundTxHash);
+
+          // VALIDATION: Check for data inconsistencies
+          if (!swap.status) {
+            console.error('[SwapProgress] ❌ POLLING VALIDATION FAILED: No status in response');
+            console.error('[SwapProgress] Response:', swap);
+          }
+
+          if (swap.status === 'output_detected' && !swap.thorchainData?.outboundTxHash) {
+            console.error('[SwapProgress] ❌ POLLING DATA INCONSISTENCY: Status is output_detected but no outboundTxHash');
+            console.error('[SwapProgress] ThorchainData:', swap.thorchainData);
+          }
 
           // Update state with polling data
           const polledStatus: SwapStatus = {
@@ -459,14 +626,44 @@ export const SwapProgress = ({
 
           // Update stage based on polled status
           if (swap.status === 'output_confirmed' || swap.status === 'completed') {
+            console.log('[SwapProgress] ✅ POLLING: Swap completed');
             setCurrentStage(3);
             setIsComplete(true);
+
+            // Show confetti ONCE when swap completes
+            if (!hasShownConfettiRef.current) {
+              console.log('[SwapProgress] 🎉 POLLING: Showing confetti');
+              setShowConfetti(true);
+              hasShownConfettiRef.current = true;
+              setTimeout(() => setShowConfetti(false), 5000);
+            }
           } else if (swap.status === 'output_detected' || swap.status === 'output_confirming') {
+            console.log('[SwapProgress] 📥 POLLING: Output stage detected');
+            console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
+
+            // Check if should be complete
+            if (swap.outboundConfirmations && swap.outboundRequiredConfirmations &&
+                swap.outboundConfirmations >= swap.outboundRequiredConfirmations) {
+              console.error('[SwapProgress] ❌ POLLING LOGIC ERROR: Outbound confirmations complete but status not updated');
+              console.error('[SwapProgress] Status:', swap.status);
+              console.error('[SwapProgress] Confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
+            }
+
             setCurrentStage(3);
           } else if (swap.status === 'confirming') {
+            console.log('[SwapProgress] 📤 POLLING: Input confirming');
             setCurrentStage(1);
           }
+
+          console.log('[SwapProgress] 📊 State after polling:', {
+            currentStage,
+            isComplete,
+            status: swap.status
+          });
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         } else {
+          console.error('[SwapProgress] ❌ POLLING FAILED: No swap data in response');
+          console.error('[SwapProgress] Response:', response);
         }
       } catch (err) {
         console.error('[SwapProgress] ❌ Polling failed:', err);
@@ -491,13 +688,110 @@ export const SwapProgress = ({
   // This ensures swap monitoring works even if WebSocket fails or events are missed
   // See: SWAP_MONITORING_AUDIT.md for full architecture details
 
-  // Log swap status changes
+  // Log swap status changes and state transitions
   useEffect(() => {
     if (!swapStatus) {
       return;
     }
 
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[SwapProgress] 🔄 STATE CHANGE DETECTED');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[SwapProgress] Current Stage:', currentStage);
+    console.log('[SwapProgress] Is Complete:', isComplete);
+    console.log('[SwapProgress] Swap Status:', swapStatus.status);
+    console.log('[SwapProgress] Has shown confetti:', hasShownConfettiRef.current);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
   }, [swapStatus, currentStage, isComplete]);
+
+  // ============================================
+  // FORCE REFRESH FUNCTION - Manually trigger status check
+  // ============================================
+  const handleForceRefresh = async () => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[SwapProgress] 🔄 FORCE REFRESH TRIGGERED BY USER');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    if (!app?.pioneer) {
+      console.error('[SwapProgress] ❌ Pioneer SDK not available');
+      return;
+    }
+
+    setIsForceRefreshing(true);
+
+    try {
+      // STEP 1: Force backend to check status (POST)
+      if (app.pioneer.CheckPendingSwap && typeof app.pioneer.CheckPendingSwap === 'function') {
+        console.log('[SwapProgress] 📤 Triggering force check (POST)...');
+        const checkResponse = await app.pioneer.CheckPendingSwap({ txHash: txid });
+        console.log('[SwapProgress] ✅ CheckPendingSwap response:');
+        console.log(JSON.stringify(checkResponse, null, 2));
+      }
+
+      // STEP 2: Fetch updated data (GET)
+      console.log('[SwapProgress] 📥 Fetching updated swap data (GET)...');
+      const response = await app.pioneer.GetPendingSwap({ txHash: txid });
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[SwapProgress] 📦 FORCE REFRESH - FULL REST API RESPONSE:');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(JSON.stringify(response, null, 2));
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      const swap = response?.data || response;
+
+      if (swap) {
+        // Update state with new data
+        const updatedStatus: SwapStatus = {
+          txHash: txid,
+          status: swap.status || 'pending',
+          confirmations: swap.confirmations,
+          requiredConfirmations: swap.requiredConfirmations,
+          outboundConfirmations: swap.outboundConfirmations,
+          outboundRequiredConfirmations: swap.outboundRequiredConfirmations,
+          outputDetectedAt: swap.outputDetectedAt,
+          thorchainData: swap.thorchainData,
+          timingData: swap.timingData,
+          error: swap.error
+        };
+
+        console.log('[SwapProgress] ✅ Updating state with force-refreshed data');
+        console.log('[SwapProgress] New status:', swap.status);
+        console.log('[SwapProgress] Confirmations:', swap.confirmations, '/', swap.requiredConfirmations);
+        console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
+
+        setSwapStatus(updatedStatus);
+        setLastEventTime(Date.now());
+
+        // Update stage based on status
+        if (swap.status === 'output_confirmed' || swap.status === 'completed') {
+          console.log('[SwapProgress] ✅ Swap completed!');
+          setCurrentStage(3);
+          setIsComplete(true);
+
+          if (!hasShownConfettiRef.current) {
+            setShowConfetti(true);
+            hasShownConfettiRef.current = true;
+            setTimeout(() => setShowConfetti(false), 5000);
+          }
+        } else if (swap.status === 'output_detected' || swap.status === 'output_confirming') {
+          console.log('[SwapProgress] 📥 Output stage detected');
+          setCurrentStage(3);
+        } else if (swap.status === 'confirming') {
+          console.log('[SwapProgress] 📤 Input confirming');
+          setCurrentStage(1);
+        }
+      }
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    } catch (err) {
+      console.error('[SwapProgress] ❌ Force refresh failed:', err);
+      console.error('[SwapProgress] Error details:', err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsForceRefreshing(false);
+    }
+  };
 
   // ============================================
   // LOCAL TIMER - Increment elapsed seconds every second
@@ -594,8 +888,8 @@ export const SwapProgress = ({
       p={8}
       boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.5)"
     >
-      {/* Confetti - Disabled temporarily to prevent repeated triggers */}
-      {/* {showConfetti && isComplete && (
+      {/* Confetti - Shows ONCE when swap completes */}
+      {showConfetti && isComplete && (
         <Box
           position="fixed"
           top="0"
@@ -611,7 +905,7 @@ export const SwapProgress = ({
             recycle={false}
             numberOfPieces={200}
             gravity={0.1}
-            colors={['#3B82F6', '#2563EB', '#1D4ED8', '#1E40AF', '#1E3A8A']}
+            colors={['#10B981', '#059669', '#047857', '#065F46', '#064E3B']}
             style={{
               position: 'fixed',
               top: 0,
@@ -622,7 +916,7 @@ export const SwapProgress = ({
             }}
           />
         </Box>
-      )} */}
+      )}
 
       <VStack gap={8} width="full" align="stretch" position="relative">
         {/* Header */}
@@ -666,6 +960,7 @@ export const SwapProgress = ({
           }}
           inputTxHash={txid}
           onClose={onClose}
+          onForceRefresh={handleForceRefresh}
         />
 
         {/* Error Display */}
