@@ -442,6 +442,17 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
       return;
     }
 
+    // FIX: buyAsset.amount is "0" for pending swaps - use quote.raw.buyAmount as fallback
+    let outputAmount = swap.buyAsset.amount;
+    if (!outputAmount || outputAmount === '0' || parseFloat(outputAmount) === 0) {
+      // Try to get expected amount from quote
+      outputAmount = (swap.quote as any)?.raw?.buyAmount ||
+                    (swap.quote as any)?.raw?.amountOut ||
+                    (swap.quote as any)?.expectedAmountOut ||
+                    '0';
+      console.log('💡 [PendingSwapsPopup] buyAsset.amount is 0, using quote amount:', outputAmount);
+    }
+
     // Dispatch event to reopen global SwapProgress dialog
     window.dispatchEvent(new CustomEvent('swap:reopen', {
       detail: {
@@ -459,7 +470,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
           icon: swap.buyAsset.icon
         },
         inputAmount: swap.sellAsset.amount,
-        outputAmount: swap.buyAsset.amount,
+        outputAmount: outputAmount,
         memo: swap.quote?.memo
       }
     }));

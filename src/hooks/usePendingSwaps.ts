@@ -27,6 +27,11 @@ export interface PendingSwap {
   outputDetectedAt?: string;
   quote?: {
     memo?: string;
+    raw?: {
+      buyAmount?: string;
+      amountOut?: string;
+    };
+    expectedAmountOut?: string;
   };
   error?: {
     type?: string;
@@ -86,6 +91,17 @@ export const usePendingSwaps = () => {
 
       // Handle the new SDK response format
       if (response?.success && response?.swaps) {
+        // AUDIT: Log each swap's buyAsset.amount
+        response.swaps.forEach((swap: any, index: number) => {
+          console.log(`🔍 AUDIT [usePendingSwaps] Swap ${index}:`, {
+            txHash: swap.txHash,
+            status: swap.status,
+            sellAmount: swap.sellAsset?.amount,
+            buyAmount: swap.buyAsset?.amount,
+            buyAmountType: typeof swap.buyAsset?.amount
+          });
+        });
+
         setPendingSwaps(Array.isArray(response.swaps) ? response.swaps : []);
         console.log(`[usePendingSwaps] Found ${response.swaps.length} pending swap(s)`);
       } else if (response?.error) {

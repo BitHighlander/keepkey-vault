@@ -271,6 +271,18 @@ export const SwapProgress = ({
           // Normalize and store REST API data (sellAsset/buyAsset → fromAsset/toAsset)
           if (swap.sellAsset && swap.buyAsset) {
             console.log('[SwapProgress] ✅ Normalizing REST data for display');
+
+            // FIX: buyAsset.amount is "0" for pending swaps - use quote.raw.buyAmount as fallback
+            let outputAmount = swap.buyAsset.amount;
+            if (!outputAmount || outputAmount === '0' || parseFloat(outputAmount) === 0) {
+              // Try to get expected amount from quote
+              outputAmount = swap.quote?.raw?.buyAmount ||
+                           swap.quote?.raw?.amountOut ||
+                           swap.quote?.expectedAmountOut ||
+                           '0';
+              console.log('[SwapProgress] 💡 buyAsset.amount is 0, using quote amount:', outputAmount);
+            }
+
             setRestData({
               fromAsset: {
                 caip: swap.sellAsset.caip,
@@ -285,7 +297,7 @@ export const SwapProgress = ({
                 icon: swap.buyAsset.icon
               },
               inputAmount: swap.sellAsset.amount,
-              outputAmount: swap.buyAsset.amount
+              outputAmount: outputAmount
             });
           }
 

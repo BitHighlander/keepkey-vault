@@ -43,8 +43,8 @@ const StatusBadge = ({ status }: { status: PendingSwap['status'] }) => {
   const Icon = config.icon;
 
   return (
-    <Badge 
-      colorScheme={config.color}
+    <Badge
+      colorPalette={config.color}
       display="flex"
       alignItems="center"
       gap={1}
@@ -83,6 +83,21 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
     }
     // Can be extended for other integrations
     return `https://viewblock.io/thorchain/tx/${txHash}`;
+  };
+
+  // Get display amount with fallback to quote data for pending swaps
+  const getOutputAmount = (swap: PendingSwap): string => {
+    let amount = swap.buyAsset.amount;
+
+    // If amount is 0 or empty, try to get from quote (for pending swaps)
+    if (!amount || amount === '0' || parseFloat(amount) === 0) {
+      amount = (swap.quote as any)?.raw?.buyAmount ||
+               (swap.quote as any)?.raw?.amountOut ||
+               (swap.quote as any)?.expectedAmountOut ||
+               '~';
+    }
+
+    return amount;
   };
 
   return (
@@ -154,8 +169,12 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
           </HStack>
           <HStack justify="space-between" width="100%">
             <Text fontSize="sm" color="gray.400">Receiving:</Text>
-            <Text fontSize="sm" color="white" fontWeight="medium">
-              {swap.buyAsset.amount} {swap.buyAsset.symbol}
+            <Text
+              fontSize="sm"
+              color={swap.status === 'completed' || swap.status === 'output_confirmed' ? 'green.400' : 'white'}
+              fontWeight="medium"
+            >
+              {getOutputAmount(swap)} {swap.buyAsset.symbol}
             </Text>
           </HStack>
         </VStack>
@@ -200,7 +219,7 @@ const SwapHistoryItem = ({ swap }: { swap: PendingSwap }) => {
               {/* Integration */}
               <HStack justify="space-between" width="100%">
                 <Text fontSize="sm" color="gray.400">Integration:</Text>
-                <Badge colorScheme="teal">{swap.integration}</Badge>
+                <Badge colorPalette="teal">{swap.integration}</Badge>
               </HStack>
 
               {/* Confirmations */}
