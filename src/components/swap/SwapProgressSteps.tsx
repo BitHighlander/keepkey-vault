@@ -182,15 +182,18 @@ export function SwapProgressSteps({
           <Button
             size="sm"
             variant="outline"
-            leftIcon={<FaSync />}
             onClick={handleForceRefresh}
-            isLoading={isRefreshing}
-            loadingText="Checking..."
+            loading={isRefreshing}
             colorScheme="teal"
             borderColor="teal.500"
             _hover={{ bg: 'teal.900', borderColor: 'teal.400' }}
           >
-            Force Refresh Status
+            {isRefreshing ? 'Checking...' : (
+              <>
+                <FaSync style={{ marginRight: '0.5rem' }} />
+                Force Refresh Status
+              </>
+            )}
           </Button>
         </HStack>
       )}
