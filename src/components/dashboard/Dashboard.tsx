@@ -237,8 +237,6 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
   const { app } = state;
   const router = useRouter();
 
-  // Track if we've done the initial auto-refresh
-  const hasAutoRefreshed = useRef(false);
 
   // Pending swaps - using same pattern as other working hooks
   const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
@@ -337,20 +335,6 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
     }
   }, [app?.assetContext]);
 
-  // Auto-refresh balances once after dashboard loads (debugging aid for sync issues)
-  useEffect(() => {
-    if (!loading && dashboard && app && !hasAutoRefreshed.current) {
-      console.log('🔄 [Dashboard] Auto-refreshing balances after dashboard load (one-time)');
-      hasAutoRefreshed.current = true;
-
-      // Use a small delay to ensure dashboard is fully rendered
-      const timeoutId = setTimeout(() => {
-        handlePortfolioRefresh(true);
-      }, 500);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [loading, dashboard, app]);
 
   // Run path diagnostics to detect duplicate paths (can cause double-counting)
   useEffect(() => {
