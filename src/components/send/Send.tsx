@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { theme } from '@/lib/theme';
 import { wooshSound, chachingSound, playSound } from '@/lib/audio';
 import {
@@ -1375,13 +1375,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   };
 
   // Step navigation functions
-  const nextStep = () => {
+  const nextStep = useCallback(() => {
     if (currentStep < 3) setCurrentStep((currentStep + 1) as 1 | 2 | 3);
-  };
+  }, [currentStep]);
 
-  const prevStep = () => {
+  const prevStep = useCallback(() => {
     if (currentStep > 1) setCurrentStep((currentStep - 1) as 1 | 2 | 3);
-  };
+  }, [currentStep]);
 
   const goToStep = (step: 1 | 2 | 3) => {
     setCurrentStep(step);
@@ -2303,13 +2303,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Network supports memo
   const supportsMemo = TENDERMINT_SUPPORT.includes(assetContext.assetId) || OTHER_SUPPORT.includes(assetContext.assetId);
 
-  // Debug: Log current transaction state
-  console.log('🔄 [SEND] Current state:', {
-    transactionStep,
-    showConfirmation,
-    txHash: txHash ? txHash.substring(0, 10) + '...' : null,
-    confirmationStatus
-  });
+  // Debug: Log current transaction state (commented out to prevent console spam)
+  // console.log('🔄 [SEND] Current state:', {
+  //   transactionStep,
+  //   showConfirmation,
+  //   txHash: txHash ? txHash.substring(0, 10) + '...' : null,
+  //   confirmationStatus
+  // });
 
   // Render confirmation overlay if needed
   if (showConfirmation) {

@@ -48,6 +48,7 @@ import { AddPathDialog } from './AddPathDialog';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { useCustomTokens } from '@/hooks/useCustomTokens';
 import { networkIdToCaip } from '@pioneer-platform/pioneer-caip';
+import { detectScamToken } from '@/utils/scamDetection';
 import { TransactionHistory } from './TransactionHistory';
 import { getPoolByCAIP } from '@/config/thorchain-pools';
 import { AssetIcon } from '@/components/ui/AssetIcon';
@@ -2408,14 +2409,26 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           })));
 
           // Filter tokens for the current network from app.balances
-          const networkTokens = app?.balances?.filter((balance: any) =>
+          const allNetworkTokens = app?.balances?.filter((balance: any) =>
             balance.networkId === assetContext.networkId &&
             isTokenBalance(balance) &&
             parseFloat(balance.balance || '0') > 0
           ) || [];
 
+          // Filter out scam tokens (same logic as Dashboard)
+          const networkTokens = allNetworkTokens.filter((t: any) => !detectScamToken(t).isScam);
+          const scamTokensFiltered = allNetworkTokens.filter((t: any) => detectScamToken(t).isScam);
+
           console.log('🔍 [Asset] DEBUG - Filtered tokens:', networkTokens.length);
-          console.log('🔍 [Asset] DEBUG - First 3 tokens:', networkTokens.slice(0, 3).map((t: any) => ({
+          console.log('🔍 [Asset] DEBUG - Scam tokens filtered:', scamTokensFiltered.length);
+          if (scamTokensFiltered.length > 0) {
+            console.log('🚨 [Asset] Scam tokens detected:', scamTokensFiltered.map((t: any) => ({
+              symbol: t.symbol,
+              valueUsd: t.valueUsd,
+              reason: detectScamToken(t).reason
+            })));
+          }
+          console.log('🔍 [Asset] DEBUG - First 3 clean tokens:', networkTokens.slice(0, 3).map((t: any) => ({
             symbol: t.symbol,
             balance: t.balance,
             valueUsd: t.valueUsd

@@ -5,7 +5,7 @@ const DEBUG_VERBOSE = false;
 const DEBUG_USD = true; // Keep USD debugging on
 let assetsMapLogged = false;
 
-import React, { useState, useEffect, useTransition, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useTransition, forwardRef, useImperativeHandle, useRef } from 'react';
 import {
   Box,
   Flex,
@@ -35,6 +35,7 @@ import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
 import { detectScamToken, type ScamDetectionResult } from '@/utils/scamDetection';
+import { logPathAnalysis, hasDuplicatePaths } from '@/utils/pathDiagnostics';
 
 // Add sound effect imports
 const chachingSound = typeof Audio !== 'undefined' ? new Audio('/sounds/chaching.mp3') : null;
@@ -236,6 +237,9 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
   const { app } = state;
   const router = useRouter();
 
+  // Track if we've done the initial auto-refresh
+  const hasAutoRefreshed = useRef(false);
+
   // Pending swaps - using same pattern as other working hooks
   const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
 
@@ -332,6 +336,37 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
       fetchDashboard();
     }
   }, [app?.assetContext]);
+
+  // Auto-refresh balances once after dashboard loads (debugging aid for sync issues)
+  useEffect(() => {
+    if (!loading && dashboard && app && !hasAutoRefreshed.current) {
+      console.log('🔄 [Dashboard] Auto-refreshing balances after dashboard load (one-time)');
+      hasAutoRefreshed.current = true;
+
+      // Use a small delay to ensure dashboard is fully rendered
+      const timeoutId = setTimeout(() => {
+        handlePortfolioRefresh(true);
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [loading, dashboard, app]);
+
+  // Run path diagnostics to detect duplicate paths (can cause double-counting)
+  useEffect(() => {
+    if (app?.pubkeys && Array.isArray(app.pubkeys) && app.pubkeys.length > 0) {
+      // Check for Bitcoin duplicates specifically
+      const bitcoinNetworkId = 'bip122:000000000019d6689c085ae165831e93';
+      const hasDuplicates = hasDuplicatePaths(app.pubkeys, bitcoinNetworkId);
+
+      if (hasDuplicates) {
+        console.warn('⚠️ [Dashboard] Duplicate derivation paths detected! This will cause balance double-counting.');
+        logPathAnalysis(app.pubkeys, bitcoinNetworkId);
+      } else if (DEBUG_VERBOSE) {
+        console.log('✅ [Dashboard] No duplicate paths detected');
+      }
+    }
+  }, [app?.pubkeys]);
 
   // Set up interval to sync market data every 15 seconds
   useEffect(() => {

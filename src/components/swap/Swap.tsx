@@ -400,6 +400,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
   const [vaultVerified, setVaultVerified] = useState(false);
   const [memoValid, setMemoValid] = useState<boolean | null>(null);
   const [isExecutingSwap, setIsExecutingSwap] = useState(false);
+  const [isBuildingTx, setIsBuildingTx] = useState(false);
+  const [isSigningTx, setIsSigningTx] = useState(false);
 
   // State for dynamically loaded swap assets
   const [supportedSwapAssets, setSupportedSwapAssets] = useState<ThorchainPool[]>([]);
@@ -1624,7 +1626,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
     setShowDeviceVerificationDialog(true);
     setIsVerifyingOnDevice(true);
     setDeviceVerificationError(null);
-    console.log('✅ Execution guard active, states set, dialog should be showing');
+    setIsBuildingTx(true);
+    setIsSigningTx(false);
+    console.log('✅ Execution guard active, states set, showing building tx dialog');
   };
 
   // Handle the actual swap in useEffect when pendingSwap is true
@@ -1825,6 +1829,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setPendingSwap(false);
           setError(`Approval failed: ${approvalError.message}`);
           setShowDeviceVerificationDialog(false);
+          setIsBuildingTx(false);
+          setIsSigningTx(false);
           return; // Stop swap execution
         }
       }
@@ -2091,6 +2097,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             throw new Error('Failed to build unsigned transaction');
           }
 
+          // Update state: transaction built, now ready for device signing
+          setIsBuildingTx(false);
+          setIsSigningTx(true);
+
           // STEP 2: Sign transaction with device
           console.log('🔐 Step 2: Signing transaction on KeepKey device...');
           console.log('⚠️  Please confirm the transaction on your KeepKey device!');
@@ -2245,14 +2255,18 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               const sellPrecision = app.assetContext.precision || 18; // Default to 18 for EVM
               const buyPrecision = app.outboundAssetContext.precision || 18;
 
+              // Prepare pending swap data matching API schema
+              // CRITICAL: Only include fields defined in CreatePendingSwapRequest schema
+              // Extra fields like 'name' and 'icon' cause 400 Bad Request validation errors
               const pendingSwapData = {
                 txHash: String(txid),
+                userId: app.username || undefined,  // For querying swaps by user
+                apiKey: app.keepkeyApiKey || undefined,  // For querying swaps by API key
                 addresses: [userAddress],
                 sellAsset: {
                   caip: app.assetContext.caip,
                   symbol: app.assetContext.symbol || getAssetDisplay(true)?.symbol || 'UNKNOWN',
-                  name: app.assetContext.name,
-                  icon: app.assetContext.icon,
+                  // Removed: name, icon - not in API schema
                   amount: inputAmount,
                   networkId: caipToNetworkId(app.assetContext.caip),
                   address: userAddress,
@@ -2261,21 +2275,24 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 buyAsset: {
                   caip: app.outboundAssetContext.caip,
                   symbol: app.outboundAssetContext.symbol || getAssetDisplay(false)?.symbol || 'UNKNOWN',
-                  name: app.outboundAssetContext.name,
-                  icon: app.outboundAssetContext.icon,
+                  // Removed: name, icon - not in API schema
                   amount: outputAmount,
                   networkId: caipToNetworkId(app.outboundAssetContext.caip),
                   address: userAddress, // Required by API schema
                   amountBaseUnits: convertToBaseUnits(outputAmount, buyPrecision)
                 },
-                quote: quote ? {
-                  memo: quote.memo,
-                  slippage: quote.slippageBps ? quote.slippageBps / 100 : 3,
-                  fees: quote.fees || {},
+                quote: {
+                  id: quote?.quoteId || quote?.id || `quote_${Date.now()}`,  // REQUIRED
+                  integration: 'thorchain' as const,  // REQUIRED
+                  expectedAmountOut: outputAmount,  // REQUIRED
+                  minimumAmountOut: quote?.expected || quote?.minimumAmountOut || '0',  // REQUIRED
+                  memo: quote?.memo || '',
+                  slippage: quote?.slippageBps ? quote.slippageBps / 100 : 3,
+                  fees: quote?.fees || {},
                   raw: quote
-                } : undefined,
+                },
                 integration: 'thorchain',
-                status: 'pending'
+                invocationId: quote?.invocationId || `swap_${Date.now()}`
               };
 
               console.log('💾 Pending swap data prepared:', pendingSwapData);
@@ -2301,6 +2318,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setVaultVerified(false);      // ← Safe now
           setMemoValid(null);
           setVerificationStep('destination');
+          setIsBuildingTx(false);
+          setIsSigningTx(false);
 
           // 1. Prepare swap data for global SwapProgress dialog
           const swapData = {
@@ -2390,6 +2409,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setIsLoading(false);
           setIsExecutingSwap(false);  // Reset guard
           setPendingSwap(false);
+          setIsBuildingTx(false);
+          setIsSigningTx(false);
 
           // Don't throw - let user see error and close dialog
           return;
@@ -2397,6 +2418,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setIsLoading(false);
           setIsExecutingSwap(false);  // Reset guard
           setPendingSwap(false);
+          setIsBuildingTx(false);
+          setIsSigningTx(false);
         }
       } // End of if (vaultVerified && typeof app.swap === 'function')
     } catch (error: any) {
@@ -2405,6 +2428,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       setIsExecutingSwap(false);  // Reset guard
       // Only reset pendingSwap on actual error (not when waiting for user)
       setPendingSwap(false);
+      setIsBuildingTx(false);
+      setIsSigningTx(false);
     } finally {
       setIsLoading(false);
       // DO NOT reset pendingSwap here - it needs to stay true while waiting for user confirmation
@@ -2487,16 +2512,18 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 setVerificationStep('destination');
                 setVaultVerified(false);
                 setMemoValid(null);
+                setIsBuildingTx(false);
+                setIsSigningTx(false);
               }
             }}
           />
-          
+
           {/* Modal Content */}
           <Box
             position="fixed"
-            top="50%"
+            top="10%"
             left="50%"
-            transform="translate(-50%, -50%)"
+            transform="translateX(-50%)"
             zIndex={1001}
             maxW="md"
             width="90%"
@@ -2699,6 +2726,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         setVerificationStep('destination');
                         setVaultVerified(false);
                         setMemoValid(null);
+                        setIsBuildingTx(false);
+                        setIsSigningTx(false);
                       }}
                       flex={1}
                       disabled={isVerifyingOnDevice}
@@ -2810,24 +2839,45 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                   </Box>
                   
                   {/* Device Confirmation Prompt */}
-                  <Box 
-                    bg="blue.900/50" 
-                    borderWidth="2px" 
-                    borderColor="blue.500" 
-                    borderRadius="lg" 
+                  <Box
+                    bg="blue.900/50"
+                    borderWidth="2px"
+                    borderColor="blue.500"
+                    borderRadius="lg"
                     p={6}
                     boxShadow="0 0 20px rgba(59, 130, 246, 0.5)"
                   >
                     <VStack gap={3}>
-                      <Text fontSize="lg" fontWeight="bold" color="white">
-                        Confirm on your KeepKey device!
-                      </Text>
-                      <Text fontSize="sm" color="gray.300" textAlign="center">
-                        Please review and confirm the swap transaction on your device
-                      </Text>
-                      <Text fontSize="xs" color="gray.400" textAlign="center">
-                        This will send {inputAmount} {app?.assetContext?.symbol} to THORChain for swapping
-                      </Text>
+                      {isBuildingTx ? (
+                        <>
+                          <Spinner
+                            size="lg"
+                            color="blue.500"
+                            thickness="3px"
+                          />
+                          <Text fontSize="lg" fontWeight="bold" color="white">
+                            Building transaction...
+                          </Text>
+                          <Text fontSize="sm" color="gray.300" textAlign="center">
+                            Preparing your swap transaction with optimal fees
+                          </Text>
+                          <Text fontSize="xs" color="gray.400" textAlign="center">
+                            This will send {inputAmount} {app?.assetContext?.symbol} to THORChain for swapping
+                          </Text>
+                        </>
+                      ) : isSigningTx ? (
+                        <>
+                          <Text fontSize="lg" fontWeight="bold" color="white">
+                            Confirm on your KeepKey device!
+                          </Text>
+                          <Text fontSize="sm" color="gray.300" textAlign="center">
+                            Please review and confirm the swap transaction on your device
+                          </Text>
+                          <Text fontSize="xs" color="gray.400" textAlign="center">
+                            This will send {inputAmount} {app?.assetContext?.symbol} to THORChain for swapping
+                          </Text>
+                        </>
+                      ) : null}
                       {/* Show decoded memo if available from transaction data */}
                       {app?.unsignedTx?.data && (
                         <Box width="full" mt={2}>
@@ -2965,6 +3015,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       setVaultVerified(false);
                       setMemoValid(null);
                       setConfirmMode(false); // Return to quote view
+                      setIsBuildingTx(false);
+                      setIsSigningTx(false);
                     }}
                   >
                     Cancel
@@ -2986,13 +3038,14 @@ export const Swap = ({ onBackClick }: SwapProps) => {
         </>
       )}
 
-      {/* Main Swap Content - Centered vertically */}
+      {/* Main Swap Content */}
       <Flex
-        align="center"
+        align="flex-start"
         justify="center"
         minH="100vh"
         px={4}
-        py={20}
+        pt={8}
+        pb={20}
       >
         <Box maxW="480px" width="full">
           <Card.Root

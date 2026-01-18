@@ -104,13 +104,64 @@ export const clearCustomPaths = (): void => {
 
 /**
  * Check if a path already exists (by comparing addressNList)
+ * @param addressNList - The addressNList array to check
+ * @param appPubkeys - Optional array of existing pubkeys from Pioneer SDK (includes both default and custom paths)
  */
-export const isPathDuplicate = (addressNList: number[]): boolean => {
+export const isPathDuplicate = (addressNList: number[], appPubkeys?: any[]): boolean => {
+  // Check against custom paths in localStorage
   const existingPaths = getCustomPaths();
-  return existingPaths.some(path =>
+  const isDuplicateCustom = existingPaths.some(path =>
     JSON.stringify(path.addressNList) === JSON.stringify(addressNList)
   );
+
+  if (isDuplicateCustom) return true;
+
+  // Check against ALL existing pubkeys (includes default paths from pioneer-coins)
+  if (appPubkeys && Array.isArray(appPubkeys)) {
+    const isDuplicateInApp = appPubkeys.some(pubkey => {
+      // Convert both to strings for comparison
+      const pubkeyPath = pubkey.addressNList || pubkey.path;
+      if (!pubkeyPath) return false;
+
+      // Handle both array and string path formats
+      if (Array.isArray(pubkeyPath)) {
+        return JSON.stringify(pubkeyPath) === JSON.stringify(addressNList);
+      }
+
+      // If path is a string like "m/84'/0'/0'/0/0", convert addressNList to string for comparison
+      if (typeof pubkeyPath === 'string') {
+        const pathStr = convertAddressNListToPath(addressNList);
+        return pubkeyPath === pathStr;
+      }
+
+      return false;
+    });
+
+    if (isDuplicateInApp) return true;
+  }
+
+  return false;
 };
+
+/**
+ * Convert addressNList array to BIP44 path string
+ * Example: [0x80000054, 0x80000000, 0x80000000, 0, 0] => "m/84'/0'/0'/0/0"
+ */
+function convertAddressNListToPath(addressNList: number[]): string {
+  if (!Array.isArray(addressNList) || addressNList.length === 0) return '';
+
+  const parts = addressNList.map((num, index) => {
+    // Check if hardened (bit 31 is set)
+    const isHardened = (num & 0x80000000) !== 0;
+    // Remove hardening bit to get actual value
+    const value = num & 0x7FFFFFFF;
+
+    // First 3 components are typically hardened
+    return isHardened ? `${value}'` : `${value}`;
+  });
+
+  return `m/${parts.join('/')}`;
+}
 
 /**
  * Get custom paths for a specific network

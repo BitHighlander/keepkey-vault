@@ -3,12 +3,18 @@
  *
  * Provides network/chain icon URLs and color coding for multi-chain assets.
  * Uses CAIP networkId format (e.g., "eip155:1", "bip122:000...")
+ *
+ * **Data Source**: @pioneer-platform/pioneer-discovery
+ * All network metadata (names, colors, icons) is derived from native asset data.
  */
+
+// @ts-expect-error - No type definitions available for pioneer-discovery
+import { assetData } from '@pioneer-platform/pioneer-discovery';
 
 export interface NetworkConfig {
   /** Network display name */
   name: string;
-  /** Icon URL from KeepKey CDN */
+  /** Icon URL */
   icon: string;
   /** Brand color for UI theming */
   color: string;
@@ -17,154 +23,102 @@ export interface NetworkConfig {
 }
 
 /**
- * Network configurations mapped by CAIP networkId
- * Icons are served from KeepKey CDN using CAIP-encoded filenames
+ * Cache of native assets indexed by chainId
+ * Built from pioneer-discovery assetData on first access
  */
-export const NETWORK_CONFIGS: Record<string, NetworkConfig> = {
-  // Ethereum Mainnet
-  'eip155:1': {
-    name: 'Ethereum',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjEvc2xpcDQ0OjYw.png', // eip155:1/slip44:60
-    color: '#627EEA',
-    sortOrder: 1,
-  },
-  // BNB Chain (BSC)
-  'eip155:56': {
-    name: 'BNB Chain',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjU2L3NsaXA0NDo2MA==.png', // eip155:56/slip44:60
-    color: '#F3BA2F',
-    sortOrder: 2,
-  },
-  // Avalanche C-Chain
-  'eip155:43114': {
-    name: 'Avalanche',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjQzMTE0L3NsaXA0NDo2MA==.png', // eip155:43114/slip44:60
-    color: '#E84142',
-    sortOrder: 3,
-  },
-  // Arbitrum
-  'eip155:42161': {
-    name: 'Arbitrum',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjQyMTYxL3NsaXA0NDo2MA==.png', // eip155:42161/slip44:60
-    color: '#2D374B',
-    sortOrder: 4,
-  },
-  // Optimism
-  'eip155:10': {
-    name: 'Optimism',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjEwL3NsaXA0NDo2MA==.png', // eip155:10/slip44:60
-    color: '#FF0420',
-    sortOrder: 5,
-  },
-  // Polygon
-  'eip155:137': {
-    name: 'Polygon',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjEzNy9zbGlwNDQ6NjA=.png', // eip155:137/slip44:60
-    color: '#8247E5',
-    sortOrder: 6,
-  },
-  // Bitcoin
-  'bip122:000000000019d6689c085ae165831e93': {
-    name: 'Bitcoin',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/YmlwMTIyOjAwMDAwMDAwMDAxOWQ2Njg5YzA4NWFlMTY1ODMxZTkzL3NsaXA0NDow.png', // bip122:000.../slip44:0
-    color: '#F7931A',
-    sortOrder: 0, // Bitcoin first
-  },
-  // Bitcoin Cash
-  'bip122:000000000000000000651ef99cb9fcbe': {
-    name: 'Bitcoin Cash',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/YmlwMTIyOjAwMDAwMDAwMDAwMDAwMDAwMDY1MWVmOTljYjlmY2JlL3NsaXA0NDoxNDU=.png', // bch caip
-    color: '#8DC351',
-    sortOrder: 7,
-  },
-  // Litecoin (WRONG networkId from THORChain - all zeros)
-  'bip122:00000000000000000000000000000000': {
-    name: 'Litecoin',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/YmlwMTIyOjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwL3NsaXA0NDoy.png', // Wrong hash
-    color: '#345D9D',
-    sortOrder: 8,
-  },
-  // Litecoin (CORRECT networkId)
-  'bip122:12a765e31ffd4059bada1e25190f6e98': {
-    name: 'Litecoin',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/YmlwMTIyOjEyYTc2NWUzMWZmZDQwNTliYWRhMWUyNTE5MGY2ZTk4L3NsaXA0NDoy.png',
-    color: '#345D9D',
-    sortOrder: 8,
-  },
-  // Dogecoin (WRONG networkId from THORChain - all zeros + 1)
-  'bip122:000000000000000000000000000000001': {
-    name: 'Dogecoin',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/YmlwMTIyOjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEvhc2xpcDQ0OjM=.png', // Wrong hash
-    color: '#C2A633',
-    sortOrder: 9,
-  },
-  // Dogecoin (CORRECT networkId)
-  'bip122:1a91e3dace36e2be3bf030a65679fe82': {
-    name: 'Dogecoin',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/YmlwMTIyOjFhOTFlM2RhY2UzNmUyYmUzYmYwMzBhNjU2NzlmZTgyL3NsaXA0NDoz.png',
-    color: '#C2A633',
-    sortOrder: 9,
-  },
-  // Cosmos Hub
-  'cosmos:cosmoshub-4': {
-    name: 'Cosmos',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/Y29zbW9zOmNvc21vc2h1Yi00L3NsaXA0NDoxMTg=.png', // cosmos caip
-    color: '#2E3148',
-    sortOrder: 10,
-  },
-  // THORChain
-  'cosmos:thorchain-1': {
-    name: 'THORChain',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/Y29zbW9zOnRob3JjaGFpbi0xL3NsaXA0NDo5MzE=.png', // thorchain caip
-    color: '#00CCFF',
-    sortOrder: 11,
-  },
-  // Monad (eip155:41454) - High performance EVM L1
-  'eip155:41454': {
-    name: 'Monad',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjQxNDU0L3NsaXA0NDo2MA==.png', // eip155:41454/slip44:60
-    color: '#6B46C1', // Purple brand color
-    sortOrder: 12,
-  },
-  // Hyperliquid/HyperEVM (eip155:2868)
-  'eip155:2868': {
-    name: 'Hyperliquid',
-    icon: 'https://keepkey.sfo3.cdn.digitaloceanspaces.com/coins/ZWlwMTU1OjI4Njgvhc2xpcDQ0OjYw.png', // eip155:2868/slip44:60
-    color: '#00D4AA', // Teal/cyan brand color
-    sortOrder: 13,
-  },
+let nativeAssetCache: Map<string, any> | null = null;
+
+/**
+ * Build cache of native assets by chainId
+ * Native assets define the network's name, icon, and color
+ */
+const buildNativeAssetCache = (): Map<string, any> => {
+  if (nativeAssetCache) return nativeAssetCache;
+
+  nativeAssetCache = new Map();
+
+  // Find all native assets in assetData
+  Object.values(assetData).forEach((asset: any) => {
+    if (asset.isNative === true && asset.chainId) {
+      nativeAssetCache!.set(asset.chainId, asset);
+    }
+  });
+
+  return nativeAssetCache;
+};
+
+/**
+ * Get native asset for a given chainId
+ */
+const getNativeAsset = (chainId: string): any | null => {
+  const cache = buildNativeAssetCache();
+  return cache.get(chainId) || null;
+};
+
+/**
+ * Network sort order for consistent grouping
+ * Bitcoin first, then major EVM chains, then others
+ */
+const NETWORK_SORT_ORDER: Record<string, number> = {
+  // Bitcoin family first
+  'bip122:000000000019d6689c085ae165831e93': 0, // BTC
+  'bip122:000000000000000000651ef99cb9fcbe': 1, // BCH
+  'bip122:12a765e31ffd4059bada1e25190f6e98': 2, // LTC
+  'bip122:00000000001a91e3dace36e2be3bf030': 3, // DOGE
+  'bip122:000007d91d1254d60e2dd1ae58038307': 4, // DASH
+
+  // Major EVM chains
+  'eip155:1': 10,     // Ethereum
+  'eip155:8453': 11,  // Base
+  'eip155:56': 12,    // BNB Chain
+  'eip155:137': 13,   // Polygon
+  'eip155:43114': 14, // Avalanche
+  'eip155:42161': 15, // Arbitrum
+  'eip155:10': 16,    // Optimism
+
+  // Cosmos ecosystem
+  'cosmos:cosmoshub-4': 20,  // Cosmos
+  'cosmos:thorchain-1': 21,  // THORChain
+  'cosmos:mayachain-mainnet-v1': 22, // MayaChain
+
+  // Newer chains
+  'eip155:41454': 30, // Monad
+  'eip155:2868': 31,  // Hyperliquid
 };
 
 /**
  * Get network icon URL from networkId (CAIP format)
+ * Returns icon from native asset for that chain
  */
 export const getNetworkIconUrl = (networkId: string): string | null => {
-  const config = NETWORK_CONFIGS[networkId];
-  return config?.icon || null;
+  const nativeAsset = getNativeAsset(networkId);
+  return nativeAsset?.icon || null;
 };
 
 /**
  * Get network color from networkId (CAIP format)
+ * Returns color from native asset for that chain
  */
 export const getNetworkColor = (networkId: string): string => {
-  const config = NETWORK_CONFIGS[networkId];
-  return config?.color || '#666666'; // Default gray
+  const nativeAsset = getNativeAsset(networkId);
+  return nativeAsset?.color || '#666666'; // Default gray
 };
 
 /**
  * Get network name from networkId (CAIP format)
+ * Returns name from native asset for that chain
  */
 export const getNetworkName = (networkId: string): string => {
-  const config = NETWORK_CONFIGS[networkId];
-  return config?.name || 'Unknown';
+  const nativeAsset = getNativeAsset(networkId);
+  return nativeAsset?.name || 'Unknown';
 };
 
 /**
  * Get network sort order for grouping assets by chain
+ * Returns predefined sort order or 999 for unknown chains
  */
 export const getNetworkSortOrder = (networkId: string): number => {
-  const config = NETWORK_CONFIGS[networkId];
-  return config?.sortOrder ?? 999; // Unknown networks go to the end
+  return NETWORK_SORT_ORDER[networkId] ?? 999; // Unknown networks go to the end
 };
 
 /**

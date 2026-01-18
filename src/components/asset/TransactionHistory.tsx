@@ -1,15 +1,14 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Text, VStack, HStack, Spinner, Badge } from '@chakra-ui/react';
+import { Box, Text, VStack, Spinner } from '@chakra-ui/react';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { TransactionDetailDialog } from './TransactionDetailDialog';
 import { TransactionGroup, TransactionTableHeader } from './TransactionGroup';
 import { TransactionRow } from './TransactionRow';
-import { SwapTransactionRow } from './SwapTransactionRow';
 import { SwapProgress } from '@/components/swap/SwapProgress';
 import { DialogRoot, DialogContent, DialogBody } from '@/components/ui/dialog';
-import { networkIdToSymbol, getSwapStatusColorScheme } from '@/utils/transactionUtils';
+import { networkIdToSymbol } from '@/utils/transactionUtils';
 // @ts-expect-error - No type definitions available for pioneer-discovery
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 
@@ -71,7 +70,7 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
     });
   };
 
-  // Get and filter transactions
+  // Get and filter transactions (excluding swaps - use pendingswap button provider instead)
   const transactions = useMemo(() => {
     if (!app?.transactions) return [];
 
@@ -79,28 +78,21 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
 
     if (networkId) {
       txs = txs.filter((tx: any) =>
-        tx.networkId === networkId ||
-        // Also include swaps where this asset is the source or destination
-        (tx.swapMetadata?.fromAsset && tx.swapMetadata.fromAsset.includes(networkId)) ||
-        (tx.swapMetadata?.toAsset && tx.swapMetadata.toAsset.includes(networkId))
+        tx.networkId === networkId &&
+        !tx.swapMetadata?.isSwap // Exclude swap transactions
       );
     } else if (caip) {
       let filtered = txs.filter((tx: any) =>
-        tx.caip === caip ||
-        // Also include swaps where this asset is the source or destination
-        tx.swapMetadata?.fromAsset === caip ||
-        tx.swapMetadata?.toAsset === caip
+        (tx.caip === caip) &&
+        !tx.swapMetadata?.isSwap // Exclude swap transactions
       );
 
       if (filtered.length === 0 && caip.includes('/')) {
         const networkPart = caip.split('/')[0];
         filtered = txs.filter(
           (tx: any) =>
-            tx.networkId === networkPart ||
-            tx.caip?.startsWith(networkPart) ||
-            // Also check if fromAsset or toAsset matches this network
-            (tx.swapMetadata?.fromAsset && tx.swapMetadata.fromAsset.startsWith(networkPart)) ||
-            (tx.swapMetadata?.toAsset && tx.swapMetadata.toAsset.startsWith(networkPart))
+            (tx.networkId === networkPart || tx.caip?.startsWith(networkPart)) &&
+            !tx.swapMetadata?.isSwap // Exclude swap transactions
         );
       }
 
@@ -129,21 +121,8 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
     return grouped;
   }, [transactions]);
 
-  // Filter swap transactions
-  const swapTransactions = useMemo(() => {
-    const swaps = transactions.filter((tx: any) => tx.swapMetadata?.isSwap);
-
-    const grouped: { [key: string]: any[] } = {};
-    swaps.forEach((tx: any) => {
-      const status = tx.swapMetadata.status || 'UNKNOWN';
-      if (!grouped[status]) {
-        grouped[status] = [];
-      }
-      grouped[status].push(tx);
-    });
-
-    return grouped;
-  }, [transactions]);
+  // Swap transactions are now handled by the pendingswap button provider
+  // No need to display them in transaction history
 
   useEffect(() => {
     if (app) {
@@ -192,8 +171,6 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
       </Box>
     );
   }
-
-  const statusOrder = ['PENDING', 'CONFIRMING', 'COMPLETED', 'FAILED', 'REFUNDED', 'UNKNOWN'];
 
   return (
     <Box mt={6}>
@@ -265,84 +242,7 @@ export const TransactionHistory = ({ caip, networkId, assetContext }: Transactio
           );
         })}
 
-      {/* Swap Transactions */}
-      {Object.keys(swapTransactions).length > 0 && (
-        <TransactionGroup
-          groupId="SWAPS"
-          title="Swap Transactions"
-          subtitle={`${transactions.filter((tx: any) => tx.swapMetadata?.isSwap).length} total`}
-          isExpanded={expandedGroups.has('SWAPS')}
-          onToggle={() => toggleGroup('SWAPS')}
-          useSwapIcon={true}
-        >
-          {statusOrder.map(status => {
-            const statusSwaps = swapTransactions[status];
-            if (!statusSwaps || statusSwaps.length === 0) return null;
-
-            return (
-              <Box key={status}>
-                <Box p={3} bg="rgba(17, 17, 17, 0.4)" borderBottom="1px" borderColor={theme.border}>
-                  <HStack gap={3}>
-                    <Badge
-                      colorPalette={getSwapStatusColorScheme(status)}
-                      fontSize="xs"
-                      px={3}
-                      py={1}
-                      fontWeight="semibold"
-                      textTransform="uppercase"
-                    >
-                      {status}
-                    </Badge>
-                    <Text color="gray.500" fontSize="xs">
-                      {statusSwaps.length} swap{statusSwaps.length !== 1 ? 's' : ''}
-                    </Text>
-                  </HStack>
-                </Box>
-
-                <Box p={4}>
-                  <TransactionTableHeader
-                    columns={['From Asset', 'To Asset', 'Protocol', 'Status', 'Amount', 'Inbound TxID', 'Outbound TxID', 'Date']}
-                    templateColumns="1.5fr 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr"
-                  />
-
-                  <VStack gap={1} align="stretch">
-                    {statusSwaps.map((tx: any, index: number) => {
-                      // Get asset identifiers from swap metadata
-                      const fromAsset = tx.swapMetadata?.fromAsset || '';
-                      const toAsset = tx.swapMetadata?.toAsset || '';
-
-                      // Check if these are CAIP strings (contain ':' or '/')
-                      const isFromAssetCAIP = fromAsset.includes(':') || fromAsset.includes('/');
-                      const isToAssetCAIP = toAsset.includes(':') || toAsset.includes('/');
-
-                      // Look up icons from assetData only if we have CAIP strings
-                      // @ts-ignore - assetData is a JSON object indexed by CAIP
-                      const fromAssetInfo = isFromAssetCAIP
-                        ? (assetData[fromAsset] || assetData[fromAsset?.toLowerCase()])
-                        : null;
-                      // @ts-ignore
-                      const toAssetInfo = isToAssetCAIP
-                        ? (assetData[toAsset] || assetData[toAsset?.toLowerCase()])
-                        : null;
-
-                      return (
-                        <SwapTransactionRow
-                          key={`${tx.txid}-${index}`}
-                          transaction={tx}
-                          status={status}
-                          fromIconUrl={fromAssetInfo?.icon}
-                          toIconUrl={toAssetInfo?.icon}
-                          onClick={handleTransactionClick}
-                        />
-                      );
-                    })}
-                  </VStack>
-                </Box>
-              </Box>
-            );
-          })}
-        </TransactionGroup>
-      )}
+      {/* Swap Transactions section removed - using pendingswap button provider instead */}
 
       {/* Show SwapProgress for swap transactions */}
       <DialogRoot

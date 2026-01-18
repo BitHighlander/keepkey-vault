@@ -40,7 +40,7 @@ export interface ThorchainPool {
 
 /**
  * All supported THORChain pools
- * Total: 35 pools (updated with DASH, BASE, ARB, OP, MATIC + fixed DOGE/LTC CAIPs)
+ * Total: 37 pools (updated with RUNE, CACAO + DASH, BASE, ARB, OP, MATIC + fixed DOGE/LTC CAIPs)
  */
 export const THORCHAIN_POOLS: ThorchainPool[] = [
   {
@@ -351,6 +351,15 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "isNative": true
   },
   {
+    "asset": "THOR.RUNE",
+    "chain": "THOR",
+    "symbol": "RUNE",
+    "name": "THORChain",
+    "caip": "cosmos:thorchain-mainnet-v1/slip44:931",
+    "networkId": "cosmos:thorchain-mainnet-v1",
+    "isNative": true
+  },
+  {
     "asset": "THOR.RUJI",
     "chain": "THOR",
     "symbol": "RUJI",
@@ -366,6 +375,15 @@ export const THORCHAIN_POOLS: ThorchainPool[] = [
     "name": "THORChain",
     "caip": "cosmos:thorchain-mainnet-v1/slip44:931",
     "networkId": "cosmos:thorchain-mainnet-v1",
+    "isNative": true
+  },
+  {
+    "asset": "MAYA.CACAO",
+    "chain": "MAYA",
+    "symbol": "CACAO",
+    "name": "MayaChain",
+    "caip": "cosmos:mayachain-mainnet-v1/slip44:931",
+    "networkId": "cosmos:mayachain-mainnet-v1",
     "isNative": true
   },
   {

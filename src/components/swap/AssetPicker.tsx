@@ -87,30 +87,31 @@ export const AssetPicker = ({
     onClose();
   };
 
-  // Sort assets by network first, then by USD value within each network
+  // Sort assets by USD value (descending) - highest on the left
   const sortedAssets = [...assets].sort((a, b) => {
-    // Primary sort: by network (Bitcoin first, then ETH, BSC, AVAX, etc.)
-    const aNetworkId = a.networkId || extractNetworkId(a.caip);
-    const bNetworkId = b.networkId || extractNetworkId(b.caip);
-    const aNetworkOrder = getNetworkSortOrder(aNetworkId);
-    const bNetworkOrder = getNetworkSortOrder(bNetworkId);
-
-    if (aNetworkOrder !== bNetworkOrder) {
-      return aNetworkOrder - bNetworkOrder;
-    }
-
-    // Secondary sort: by USD value (descending) within same network
     const aUsd = a.balanceUsd ? (typeof a.balanceUsd === 'number' ? a.balanceUsd : parseFloat(a.balanceUsd.toString())) : 0;
     const bUsd = b.balanceUsd ? (typeof b.balanceUsd === 'number' ? b.balanceUsd : parseFloat(b.balanceUsd.toString())) : 0;
-    return bUsd - aUsd; // Descending order
+    return bUsd - aUsd; // Descending order - highest first
   });
 
-  // Filter assets based on search query only
-  // Always show all assets (including zero balance) - disabled assets will be greyed out
-  let filteredAssets = sortedAssets.filter(asset =>
-    asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    asset.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter assets based on search query and balance (for FROM selection)
+  // For FROM selection: only show assets with balance > 0 (can't swap what you don't have)
+  // For TO selection: show all assets
+  let filteredAssets = sortedAssets.filter(asset => {
+    // Search filter
+    const matchesSearch = asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      asset.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // Balance filter (only for FROM/input selection)
+    if (isFromSelection) {
+      const balance = asset.balance ? parseFloat(asset.balance.toString()) : 0;
+      return balance > 0;
+    }
+
+    return true;
+  });
 
   // Count assets with balance
   const assetsWithBalance = sortedAssets.filter(asset => {
@@ -142,7 +143,9 @@ export const AssetPicker = ({
   return (
     <DialogRoot open={isOpen} onOpenChange={({ open }) => !open && onClose()}>
       <DialogContent
-        maxWidth="800px"
+        maxWidth="90vw"
+        maxHeight="90vh"
+        width="fit-content"
         bg="rgba(17, 17, 17, 0.98)"
         borderColor="#23DCC8"
         borderWidth="2px"
@@ -273,13 +276,17 @@ export const AssetPicker = ({
 
             {/* Asset Grid */}
             <Grid
-              templateColumns="repeat(auto-fit, minmax(160px, 1fr))"
-              gap={3}
-              maxH="500px"
+              templateColumns={{
+                base: "repeat(2, 1fr)",
+                md: "repeat(3, 1fr)",
+                lg: "repeat(4, 1fr)",
+                xl: "repeat(5, 1fr)",
+                "2xl": "repeat(6, 1fr)"
+              }}
+              gap={1.5}
+              maxH="75vh"
               overflowY="auto"
               pr={2}
-              justifyContent="center"
-              justifyItems="center"
               css={{
                 '&::-webkit-scrollbar': {
                   width: '8px',
@@ -304,6 +311,8 @@ export const AssetPicker = ({
                 const networkColor = getNetworkColor(networkId);
                 const networkName = getNetworkName(networkId);
                 const isDisabled = asset.isDisabled || false;
+                const balanceUsdNum = asset.balanceUsd ? (typeof asset.balanceUsd === 'number' ? asset.balanceUsd : parseFloat(asset.balanceUsd.toString())) : 0;
+                const isLowBalance = balanceUsdNum < 10;
 
                 return (
                   <Box
@@ -320,9 +329,9 @@ export const AssetPicker = ({
                     borderColor={isSelected ? '#23DCC8' : 'rgba(255, 255, 255, 0.1)'}
                     borderTopColor={networkColor}
                     borderTopWidth="3px"
-                    p={4}
-                    opacity={isDisabled ? 0.4 : 1}
-                    filter={isDisabled ? 'grayscale(50%)' : 'none'}
+                    p={6}
+                    opacity={isDisabled ? 0.4 : (isLowBalance && isFromSelection ? 0.5 : 1)}
+                    filter={isDisabled || (isLowBalance && isFromSelection) ? 'grayscale(50%)' : 'none'}
                     _hover={isDisabled ? {} : {
                       bg: isSelected ? 'rgba(35, 220, 200, 0.2)' : 'rgba(35, 220, 200, 0.1)',
                       borderColor: '#23DCC8',
@@ -335,47 +344,47 @@ export const AssetPicker = ({
                     {isSelected && (
                       <Box
                         position="absolute"
-                        top={2}
-                        left={2}
+                        top={3}
+                        left={3}
                         bg="#23DCC8"
                         borderRadius="full"
-                        boxSize="10px"
+                        boxSize="12px"
                       />
                     )}
 
-                    {/* Balance Badge (if has balance) - Show USD value */}
-                    {hasBalance && asset.balanceUsd && (
-                      <Box
-                        position="absolute"
-                        top={2}
-                        right={2}
-                        bg="rgba(35, 220, 200, 0.2)"
-                        borderRadius="full"
-                        px={2}
-                        py={0.5}
-                      >
-                        <Text fontSize="10px" color="#23DCC8" fontWeight="bold">
-                          {formatUsdBalance(asset.balanceUsd)}
-                        </Text>
-                      </Box>
-                    )}
-
-                    <VStack gap={2} align="center">
+                    <VStack gap={3} align="center">
                       {/* Asset Icon with Network Badge */}
-                      <AssetIcon
-                        src={asset.icon}
-                        caip={asset.caip}
-                        symbol={asset.symbol}
-                        alt={asset.name}
-                        boxSize="48px"
-                        color="#FFD700"
-                        showNetworkBadge={true}
-                        networkId={networkId}
-                      />
+                      <Box
+                        animation={hoveredAsset === asset.caip ? 'hoverPulse 1s ease-in-out infinite' : 'none'}
+                        transition="all 0.3s ease"
+                        css={{
+                          '@keyframes hoverPulse': {
+                            '0%, 100%': {
+                              transform: 'scale(1) rotate(0deg)',
+                              filter: 'drop-shadow(0 0 12px rgba(35, 220, 200, 0.7))',
+                            },
+                            '50%': {
+                              transform: 'scale(1.1) rotate(5deg)',
+                              filter: 'drop-shadow(0 0 20px rgba(35, 220, 200, 1))',
+                            },
+                          },
+                        }}
+                      >
+                        <AssetIcon
+                          src={asset.icon}
+                          caip={asset.caip}
+                          symbol={asset.symbol}
+                          alt={asset.name}
+                          boxSize="72px"
+                          color="#FFD700"
+                          showNetworkBadge={true}
+                          networkId={networkId}
+                        />
+                      </Box>
 
                       {/* Asset Symbol */}
                       <Text
-                        fontSize="sm"
+                        fontSize="lg"
                         fontWeight="bold"
                         color={isSelected ? '#23DCC8' : 'white'}
                         textAlign="center"
@@ -390,12 +399,12 @@ export const AssetPicker = ({
                         bg={`${networkColor}20`}
                         borderRadius="md"
                         px={2}
-                        py={0.5}
+                        py={1}
                         borderWidth="1px"
                         borderColor={`${networkColor}60`}
                       >
                         <Text
-                          fontSize="9px"
+                          fontSize="xs"
                           color={networkColor}
                           fontWeight="semibold"
                           textTransform="uppercase"
@@ -405,10 +414,45 @@ export const AssetPicker = ({
                         </Text>
                       </Box>
 
+                      {/* Balance Display */}
+                      {hasBalance && (
+                        <VStack gap={1} width="full" mt={1}>
+                          <Text
+                            fontSize="md"
+                            fontWeight="bold"
+                            color={(isLowBalance && isFromSelection) ? 'gray.500' : '#23DCC8'}
+                            textAlign="center"
+                            width="full"
+                          >
+                            {formatBalance(asset.balance!)}
+                          </Text>
+                          {asset.balanceUsd && (
+                            <Box
+                              bg={(isLowBalance && isFromSelection) ? 'rgba(150, 150, 150, 0.15)' : 'rgba(35, 220, 200, 0.25)'}
+                              borderRadius="md"
+                              px={3}
+                              py={1}
+                              borderWidth="1px"
+                              borderColor={(isLowBalance && isFromSelection) ? 'rgba(150, 150, 150, 0.3)' : 'rgba(35, 220, 200, 0.5)'}
+                            >
+                              <Text
+                                fontSize="md"
+                                fontWeight="bold"
+                                color={(isLowBalance && isFromSelection) ? 'gray.500' : '#23DCC8'}
+                                textAlign="center"
+                                letterSpacing="tight"
+                              >
+                                {formatUsdBalance(asset.balanceUsd)}
+                              </Text>
+                            </Box>
+                          )}
+                        </VStack>
+                      )}
+
                       {/* Asset Name */}
                       <Text
                         fontSize="xs"
-                        color="gray.400"
+                        color="gray.500"
                         textAlign="center"
                         lineClamp={2}
                         width="full"
@@ -424,11 +468,11 @@ export const AssetPicker = ({
                         textAlign="center"
                         width="full"
                         fontFamily="monospace"
-                        mt={1}
+                        overflow="hidden"
+                        textOverflow="ellipsis"
+                        whiteSpace="nowrap"
                       >
-                        {hoveredAsset === asset.caip
-                          ? asset.caip
-                          : middleEllipsis(asset.caip, 12)}
+                        {middleEllipsis(asset.caip, 12)}
                       </Text>
                     </VStack>
                   </Box>

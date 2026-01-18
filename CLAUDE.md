@@ -530,6 +530,40 @@ export const colors = {
 - **NEVER** create mock portfolios with $1234.56 USD or similar fake data
 - If something isn't implemented, return proper error status or loading state
 
+### NEVER USE FETCH() FOR PIONEER API
+- **NEVER** use `fetch()` to call Pioneer API endpoints
+- **NEVER** use `fetch()` for `/api/v1/*` endpoints
+- **ALWAYS** use Pioneer SDK methods (`app.pioneer.*`)
+- **ONLY EXCEPTION**: External third-party APIs (THORChain, Maya, CoinGecko, etc.)
+
+**Why this matters:**
+- `fetch()` bypasses Pioneer SDK's authentication, caching, and error handling
+- `fetch()` breaks the SDK's event system and state management
+- `fetch()` creates maintenance burden when API contracts change
+- `fetch()` makes code harder to test and mock
+
+**Correct patterns:**
+```typescript
+// ❌ WRONG - Direct fetch to Pioneer API
+const response = await fetch(`${apiUrl}/api/v1/swaps/pending/${txHash}`);
+const data = await response.json();
+
+// ✅ CORRECT - Use Pioneer SDK
+const response = await app.pioneer.GetPendingSwap({ txHash });
+const data = response?.data;
+
+// ❌ WRONG - Direct POST to check endpoint
+await fetch(`${apiUrl}/api/v1/swaps/pending/${txHash}/check`, {
+  method: 'POST'
+});
+
+// ✅ CORRECT - Use SDK method
+await app.pioneer.CheckPendingSwap({ txHash });
+
+// ✅ ACCEPTABLE - External third-party API
+const thorchainData = await fetch('https://thornode.ninerealms.com/thorchain/tx/status/${txHash}');
+```
+
 ### Pioneer SDK Integration
 - ALL blockchain operations go through Pioneer SDK
 - Use services in `src/services/` for API calls

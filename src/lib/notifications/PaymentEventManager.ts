@@ -1,8 +1,17 @@
 /**
  * Payment Notification System - Payment Event Manager
  *
- * Orchestrates payment event detection, deduplication, and coordination
- * with sound and toast notification systems.
+ * Phase 3 Cleanup: Pure event relay system
+ *
+ * Responsibilities:
+ * - Listen to server events from pioneer-server via WebSocket
+ * - Relay events to registered listeners
+ * - Maintain event history for deduplication
+ *
+ * REMOVED (moved to server):
+ * - Balance-based event detection
+ * - Sound management
+ * - Toast notifications
  */
 
 import type { PaymentEvent, EventHistory } from '@/types/events'
@@ -13,8 +22,6 @@ import {
   saveEventHistory,
   createBalancesMap,
 } from './eventDetection'
-import { soundManager } from './SoundManager'
-import { paymentToastManager } from './PaymentToastManager'
 import { isEventsEnabled } from '@/config/features'
 
 /**
@@ -121,7 +128,9 @@ class PaymentEventManager {
   /**
    * Handle a unique payment event
    *
-   * Adds to history, emits to listeners, plays sound, and logs the event.
+   * Phase 3: Simplified to pure event relay
+   * Adds to history and emits to listeners only
+   * NO sound or toast logic (listeners handle that)
    *
    * @param event - PaymentEvent to handle
    */
@@ -140,17 +149,7 @@ class PaymentEventManager {
         `on ${event.networkId}`
       )
 
-      // Play sound based on event type
-      if (event.type === 'payment_received') {
-        soundManager.play('payment_received')
-      } else if (event.type === 'balance_updated') {
-        soundManager.play('payment_sent')
-      }
-
-      // Show toast notification
-      paymentToastManager.showPaymentToast(event)
-
-      // Emit to all registered listeners
+      // Emit to all registered listeners (they handle sound/toast)
       this.emitEvent(event)
     } catch (error) {
       console.error('[PaymentEventManager] Error handling event:', error)

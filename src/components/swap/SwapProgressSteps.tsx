@@ -148,20 +148,6 @@ export function SwapProgressSteps({
                 transition="all 0.3s"
                 animation={index === currentStep ? `${pulseGlow} 2s ease-in-out infinite` : undefined}
                 position="relative"
-                _before={index === currentStep ? {
-                  content: '""',
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: 'full',
-                  border: '2px solid',
-                  borderColor: 'teal.400',
-                  transform: 'translate(-50%, -50%)',
-                  animation: `${pulseGlow} 2s ease-in-out infinite`,
-                  zIndex: -1
-                } : undefined}
               >
                 {index < currentStep ? <FaCheckCircle /> : <StepIcon />}
               </Box>

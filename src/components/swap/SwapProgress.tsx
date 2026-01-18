@@ -144,6 +144,7 @@ export const SwapProgress = ({
   const [isComplete, setIsComplete] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [lastEventTime, setLastEventTime] = useState<number>(Date.now());
+  const [swapStartTime, setSwapStartTime] = useState<number | null>(null);
 
   // REST API data (normalized from sellAsset/buyAsset → fromAsset/toAsset)
   const [restData, setRestData] = useState<{
@@ -180,13 +181,18 @@ export const SwapProgress = ({
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 
-        // Extract swap data from new API response format
-        // New format: {data: {status, message, details, swap: {...}}}
-        // Old format: {data: {txHash, status, sellAsset, buyAsset, ...}}
+        // Extract swap data from API response
+        // Response formats:
+        // 1. Swap in DB: {data: {txHash, status, sellAsset, buyAsset, ...}}
+        // 2. Swap found with assets: {data: {status, message, details, sellAsset, buyAsset, ...}}
+        // 3. Swap processing (no asset data yet): {data: {status, message, details}} <- NO sellAsset/buyAsset
         const apiData = response?.data || response;
         const swap = apiData?.swap || apiData;
 
-        if (swap) {
+        // Check if we have complete swap data with assets
+        const hasSwapData = swap && swap.sellAsset && swap.buyAsset;
+
+        if (hasSwapData) {
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           console.log('[SwapProgress] ✅ SWAP DATA EXTRACTED FROM RESPONSE:');
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -200,7 +206,6 @@ export const SwapProgress = ({
           console.log('[SwapProgress] ThorChain data:', swap.thorchainData);
           console.log('[SwapProgress] Outbound txHash:', swap.thorchainData?.outboundTxHash);
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
 
           // Calculate timing data if not provided by API
           let timingData = swap.timingData;
@@ -256,6 +261,11 @@ export const SwapProgress = ({
           setSwapStatus(initialStatus);
           setLastEventTime(Date.now());
 
+          // Set swap start time if we have createdAt
+          if (swap.createdAt && !swapStartTime) {
+            setSwapStartTime(new Date(swap.createdAt).getTime());
+          }
+
           // Normalize and store REST API data (sellAsset/buyAsset → fromAsset/toAsset)
           if (swap.sellAsset && swap.buyAsset) {
             console.log('[SwapProgress] ✅ Normalizing REST data for display');
@@ -287,6 +297,19 @@ export const SwapProgress = ({
             setCurrentStage(1);
           }
         } else {
+          // Swap is in "processing" state - protocol APIs don't have asset data yet
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('[SwapProgress] ⏳ SWAP IN EARLY PROCESSING STATE:');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('[SwapProgress] Status:', apiData.status);
+          console.log('[SwapProgress] Message:', apiData.message);
+          console.log('[SwapProgress] Details:', apiData.details);
+          console.log('[SwapProgress] NOTE: Asset data not available yet - swap just broadcast or confirming');
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+          // Continue polling - asset data will be available once protocol observes the tx
+          // Don't update UI state yet to preserve initial swap details
+          return;
         }
       } catch (err) {
         console.error('[SwapProgress] ❌ Failed to fetch initial swap status via REST');
@@ -399,6 +422,18 @@ export const SwapProgress = ({
     const pollSwapStatus = async () => {
 
       try {
+        // STEP 1: Trigger server-side status check (POST)
+        // This forces the backend to query THORChain/Maya APIs for latest status
+        if (app.pioneer.CheckPendingSwap && typeof app.pioneer.CheckPendingSwap === 'function') {
+          try {
+            await app.pioneer.CheckPendingSwap({ txHash: txid });
+          } catch (checkErr) {
+            console.warn('[SwapProgress] ⚠️ CheckPendingSwap failed, continuing with GET:', checkErr);
+            // Continue to GET even if POST fails - better to have stale data than no data
+          }
+        }
+
+        // STEP 2: Fetch updated swap data (GET)
         const response = await app.pioneer.GetPendingSwap({ txHash: txid });
 
         const swap = response?.data || response;
@@ -463,6 +498,60 @@ export const SwapProgress = ({
     }
 
   }, [swapStatus, currentStage, isComplete]);
+
+  // ============================================
+  // LOCAL TIMER - Increment elapsed seconds every second
+  // ============================================
+  useEffect(() => {
+    // Only run timer if swap is active (not complete) and we have initial timing data
+    if (isComplete || !swapStatus?.timingData) {
+      return;
+    }
+
+    // Set up interval to update elapsed seconds every second
+    const intervalId = setInterval(() => {
+      setSwapStatus(prevStatus => {
+        if (!prevStatus?.timingData) return prevStatus;
+
+        // Calculate new elapsed seconds based on swap start time
+        const now = Date.now();
+        let newElapsedSeconds: number;
+
+        if (swapStartTime) {
+          // Use swap start time if available (most accurate)
+          newElapsedSeconds = Math.floor((now - swapStartTime) / 1000);
+        } else {
+          // Fallback: increment from current elapsed seconds
+          newElapsedSeconds = (prevStatus.timingData.elapsedSeconds || 0) + 1;
+        }
+
+        // Calculate remaining time
+        const stageExpected = prevStatus.timingData.stageExpectedSeconds || 300;
+        const stageElapsed = prevStatus.timingData.stageElapsedSeconds || newElapsedSeconds;
+        const remaining = Math.max(0, stageExpected - stageElapsed);
+
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        const remainingFormatted = minutes > 0
+          ? `${minutes}m ${seconds}s`
+          : `${seconds}s`;
+
+        return {
+          ...prevStatus,
+          timingData: {
+            ...prevStatus.timingData,
+            elapsedSeconds: newElapsedSeconds,
+            remainingFormatted: remaining > 0 ? `${remainingFormatted}` : 'Completing...',
+            reassuranceMessage: remaining > 0
+              ? prevStatus.timingData.reassuranceMessage || 'Transaction is being processed.'
+              : 'Almost there! Finalizing your swap...'
+          }
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isComplete, swapStatus?.timingData, swapStartTime]);
 
   // Detect when Stage 2 should be active (input complete, waiting for output detection)
   useEffect(() => {

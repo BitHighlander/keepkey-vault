@@ -133,9 +133,9 @@ export const usePathManager = ({ assetContext, app }: UsePathManagerProps) => {
 
       const addressNList = generateAddressNList();
 
-      // Check for duplicate paths before adding
-      if (isPathDuplicate(addressNList)) {
-        throw new Error('This derivation path already exists');
+      // Check for duplicate paths before adding (checks both localStorage and existing pubkeys)
+      if (isPathDuplicate(addressNList, app?.pubkeys)) {
+        throw new Error('This derivation path already exists (either as a custom path or a default path from pioneer-coins)');
       }
 
       const networks = assetContext?.networks || [networkId];
