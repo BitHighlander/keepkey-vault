@@ -171,6 +171,8 @@ export function SwapProgressSteps({
       <SwapHeader
         fromAsset={fromAsset}
         toAsset={toAsset}
+        confirmations={swapStatus.confirmations}
+        requiredConfirmations={swapStatus.requiredConfirmations}
         onClose={onClose}
       />
 

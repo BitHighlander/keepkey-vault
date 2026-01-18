@@ -2853,7 +2853,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                           <Spinner
                             size="lg"
                             color="blue.500"
-                            thickness="3px"
                           />
                           <Text fontSize="lg" fontWeight="bold" color="white">
                             Building transaction...

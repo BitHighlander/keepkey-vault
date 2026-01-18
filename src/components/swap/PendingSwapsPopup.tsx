@@ -22,6 +22,7 @@ import {
   DialogFooter,
   DialogCloseTrigger,
 } from '@/components/ui/dialog';
+import { SwapHistory } from './SwapHistory';
 import { keyframes } from '@emotion/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
@@ -250,6 +251,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
   const [signingSwaps, setSigningSwaps] = useState<PendingSwap[]>([]);
   const [showConfetti, setShowConfetti] = useState(false);
   const [completedSwaps, setCompletedSwaps] = useState<Map<string, number>>(new Map());
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const confettiRef = useRef<HTMLDivElement>(null);
 
   const { pendingSwaps, isLoading, refreshPendingSwaps } = usePendingSwaps();
@@ -465,8 +467,8 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     // Don't open detail modal - let Dashboard handle showing SwapProgress
   };
 
-  // Don't render if no active swaps
-  if (activeSwaps.length === 0) return null;
+  // Button should ALWAYS be visible, even when no active swaps
+  // This allows users to access swap history at any time
 
   return (
     <>
@@ -482,7 +484,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
         />
       )} */}
 
-      {/* Floating Button - Bottom Left */}
+      {/* Floating Button - Bottom Left - ALWAYS visible */}
       {!isOpen && (
         <Box position="fixed" bottom="24px" left="24px" zIndex={1000}>
           <Box position="relative">
@@ -631,9 +633,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
               variant="plain"
               color={theme.teal}
               onClick={() => {
-                // TODO: Navigate to full SwapHistory view
-                // This would use router.push('/swap-history') or similar
-                console.log('Navigate to full swap history');
+                setShowHistoryDialog(true);
               }}
               _hover={{ color: theme.tealHover }}
             >
@@ -642,6 +642,35 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
           </Flex>
         </Box>
       )}
+
+      {/* Full Swap History Dialog */}
+      <DialogRoot
+        open={showHistoryDialog}
+        onOpenChange={(e) => setShowHistoryDialog(e.open)}
+        size="xl"
+      >
+        <DialogContent
+          maxW="900px"
+          maxH="90vh"
+          bg={theme.bg}
+          borderColor={theme.teal}
+          borderWidth="1px"
+        >
+          <DialogHeader
+            borderBottom="1px solid"
+            borderColor={theme.border}
+            pb={4}
+          >
+            <Text fontSize="xl" fontWeight="bold" color={theme.teal}>
+              Swap History
+            </Text>
+          </DialogHeader>
+          <DialogCloseTrigger color={theme.teal} />
+          <DialogBody p={0} overflow="hidden">
+            <SwapHistory />
+          </DialogBody>
+        </DialogContent>
+      </DialogRoot>
     </>
   );
 };

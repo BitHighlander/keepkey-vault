@@ -66,15 +66,15 @@ export const usePendingSwaps = () => {
       //console.log('⏭️ [usePendingSwaps] Skipping fetch:', { userAddress, hasPioneer: !!app?.pioneer });
       return;
     }
-    
-    //console.log('🔍 [usePendingSwaps] Fetching for address:', userAddress);
+
+    console.log('🔍 [usePendingSwaps] Fetching for address:', userAddress);
 
     try {
       setIsLoading(true);
       setError(null);
 
       if (typeof app.pioneer.GetAddressPendingSwaps !== 'function') {
-        //console.log('⚠️ GetAddressPendingSwaps not available');
+        console.warn('⚠️ GetAddressPendingSwaps not available on Pioneer SDK');
         return;
       }
 
@@ -82,8 +82,21 @@ export const usePendingSwaps = () => {
         address: userAddress
       });
 
-      const swaps = response?.data || response?.swaps || [];
-      setPendingSwaps(Array.isArray(swaps) ? swaps : []);
+      console.log('[usePendingSwaps] Response:', response);
+
+      // Handle the new SDK response format
+      if (response?.success && response?.swaps) {
+        setPendingSwaps(Array.isArray(response.swaps) ? response.swaps : []);
+        console.log(`[usePendingSwaps] Found ${response.swaps.length} pending swap(s)`);
+      } else if (response?.error) {
+        console.error('[usePendingSwaps] Error from SDK:', response.error);
+        setError(response.error);
+        setPendingSwaps([]);
+      } else {
+        // Fallback to old format for backward compatibility
+        const swaps = response?.data || response?.swaps || [];
+        setPendingSwaps(Array.isArray(swaps) ? swaps : []);
+      }
 
     } catch (err: any) {
       console.error('Error fetching pending swaps:', err);

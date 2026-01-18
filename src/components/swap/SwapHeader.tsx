@@ -2,9 +2,10 @@
  * SwapHeader Component
  *
  * Compact header showing swap asset details with close button
+ * Shows confirmations badge on input asset during confirmation stage
  */
 
-import { HStack, VStack, Text, IconButton } from '@chakra-ui/react';
+import { HStack, VStack, Text, IconButton, Box } from '@chakra-ui/react';
 import { FaArrowRight, FaTimes } from 'react-icons/fa';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 
@@ -17,15 +18,53 @@ interface Asset {
 interface SwapHeaderProps {
   fromAsset: Asset;
   toAsset: Asset;
+  confirmations?: number;
+  requiredConfirmations?: number;
   onClose: () => void;
 }
 
-export function SwapHeader({ fromAsset, toAsset, onClose }: SwapHeaderProps) {
+export function SwapHeader({
+  fromAsset,
+  toAsset,
+  confirmations,
+  requiredConfirmations,
+  onClose
+}: SwapHeaderProps) {
   return (
     <HStack justify="center" mb={8} position="relative" width="full">
       <HStack gap={8}>
         <VStack gap={2}>
-          <AssetIcon caip={fromAsset.caip} boxSize="160px" alt={fromAsset.symbol} />
+          <Box position="relative">
+            <AssetIcon caip={fromAsset.caip} boxSize="160px" alt={fromAsset.symbol} />
+            {/* Confirmations Badge - Top Right */}
+            {confirmations !== undefined && requiredConfirmations !== undefined && (
+              <Box
+                position="absolute"
+                top="0"
+                right="0"
+                bg="teal.500"
+                borderRadius="full"
+                minW="40px"
+                px={2}
+                py={1}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                border="2px solid rgba(255, 255, 255, 0.3)"
+                boxShadow="0 2px 8px rgba(0, 0, 0, 0.3)"
+                zIndex={10}
+              >
+                <Text
+                  fontSize="xs"
+                  fontWeight="bold"
+                  color="white"
+                  whiteSpace="nowrap"
+                >
+                  {confirmations}/{requiredConfirmations}
+                </Text>
+              </Box>
+            )}
+          </Box>
           <Text fontWeight="bold" fontSize="2xl">
             {fromAsset.amount} {fromAsset.symbol}
           </Text>
