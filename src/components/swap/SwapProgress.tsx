@@ -1079,23 +1079,25 @@ export const SwapProgress = ({
         transition="opacity 0.2s"
       >
         {/* THORChain Logo */}
-        <Box
-          as="img"
+        <img
           src="/images/logos/thorchain.jpeg"
           alt="THORChain"
-          height="24px"
-          width="24px"
-          borderRadius="full"
-          objectFit="cover"
+          style={{
+            height: '24px',
+            width: '24px',
+            borderRadius: '50%',
+            objectFit: 'cover'
+          }}
         />
         {/* KeepKey Logo */}
-        <Box
-          as="img"
+        <img
           src="/images/logos/keepkey_logo.png"
           alt="KeepKey"
-          height="20px"
-          width="auto"
-          objectFit="contain"
+          style={{
+            height: '20px',
+            width: 'auto',
+            objectFit: 'contain'
+          }}
         />
       </HStack>
     </Box>
