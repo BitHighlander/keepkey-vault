@@ -176,11 +176,11 @@ export const SwapProgress = ({
         const response = await app.pioneer.GetPendingSwap({ txHash: txid });
 
         // Log complete REST API response for debugging
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('[SwapProgress] 📦 FULL REST API RESPONSE:');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(JSON.stringify(response, null, 2));
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // console.log('[SwapProgress] 📦 FULL REST API RESPONSE:');
+        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // console.log(JSON.stringify(response, null, 2));
+        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 
         // Extract swap data from API response
@@ -195,19 +195,19 @@ export const SwapProgress = ({
         const hasSwapData = swap && swap.sellAsset && swap.buyAsset;
 
         if (hasSwapData) {
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('[SwapProgress] ✅ SWAP DATA EXTRACTED FROM RESPONSE:');
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('[SwapProgress] Status:', swap.status);
-          console.log('[SwapProgress] Sell Asset (FROM):', swap.sellAsset);
-          console.log('[SwapProgress] Buy Asset (TO):', swap.buyAsset);
-          console.log('[SwapProgress] Sell Amount:', swap.sellAsset?.amount);
-          console.log('[SwapProgress] Buy Amount:', swap.buyAsset?.amount);
-          console.log('[SwapProgress] Confirmations:', swap.confirmations);
-          console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations);
-          console.log('[SwapProgress] ThorChain data:', swap.thorchainData);
-          console.log('[SwapProgress] Outbound txHash:', swap.thorchainData?.outboundTxHash);
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('[SwapProgress] ✅ SWAP DATA EXTRACTED FROM RESPONSE:');
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('[SwapProgress] Status:', swap.status);
+          // console.log('[SwapProgress] Sell Asset (FROM):', swap.sellAsset);
+          // console.log('[SwapProgress] Buy Asset (TO):', swap.buyAsset);
+          // console.log('[SwapProgress] Sell Amount:', swap.sellAsset?.amount);
+          // console.log('[SwapProgress] Buy Amount:', swap.buyAsset?.amount);
+          // console.log('[SwapProgress] Confirmations:', swap.confirmations);
+          // console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations);
+          // console.log('[SwapProgress] ThorChain data:', swap.thorchainData);
+          // console.log('[SwapProgress] Outbound txHash:', swap.thorchainData?.outboundTxHash);
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
           // Calculate timing data if not provided by API
           let timingData = swap.timingData;
@@ -302,41 +302,41 @@ export const SwapProgress = ({
           }
 
           // Set stage based on status
-          console.log('[SwapProgress] 🎯 INITIAL LOAD: Determining stage from status:', swap.status);
+          // console.log('[SwapProgress] 🎯 INITIAL LOAD: Determining stage from status:', swap.status);
 
           if (swap.status === 'output_confirmed' || swap.status === 'completed') {
-            console.log('[SwapProgress] ✅ INITIAL LOAD: Swap already completed!');
+            // console.log('[SwapProgress] ✅ INITIAL LOAD: Swap already completed!');
             setCurrentStage(3);
             setIsComplete(true);
 
             // Show confetti ONCE when swap completes
             if (!hasShownConfettiRef.current) {
-              console.log('[SwapProgress] 🎉 INITIAL LOAD: Showing confetti');
+              // console.log('[SwapProgress] 🎉 INITIAL LOAD: Showing confetti');
               setShowConfetti(true);
               hasShownConfettiRef.current = true;
               setTimeout(() => setShowConfetti(false), 5000);
             }
           } else if (swap.status === 'output_detected' || swap.status === 'output_confirming') {
-            console.log('[SwapProgress] 📥 INITIAL LOAD: Output stage detected');
-            console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
+            // console.log('[SwapProgress] 📥 INITIAL LOAD: Output stage detected');
+            // console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
             setCurrentStage(3);
           } else if (swap.status === 'confirming') {
-            console.log('[SwapProgress] 📤 INITIAL LOAD: Input confirming');
+            // console.log('[SwapProgress] 📤 INITIAL LOAD: Input confirming');
             setCurrentStage(1);
           } else {
-            console.log('[SwapProgress] 🚀 INITIAL LOAD: Pending/Unknown status');
-            console.log('[SwapProgress] Status:', swap.status);
+            // console.log('[SwapProgress] 🚀 INITIAL LOAD: Pending/Unknown status');
+            // console.log('[SwapProgress] Status:', swap.status);
           }
         } else {
           // Swap is in "processing" state - protocol APIs don't have asset data yet
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('[SwapProgress] ⏳ SWAP IN EARLY PROCESSING STATE:');
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('[SwapProgress] Status:', apiData.status);
-          console.log('[SwapProgress] Message:', apiData.message);
-          console.log('[SwapProgress] Details:', apiData.details);
-          console.log('[SwapProgress] NOTE: Asset data not available yet - swap just broadcast or confirming');
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('[SwapProgress] ⏳ SWAP IN EARLY PROCESSING STATE:');
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('[SwapProgress] Status:', apiData.status);
+          // console.log('[SwapProgress] Message:', apiData.message);
+          // console.log('[SwapProgress] Details:', apiData.details);
+          // console.log('[SwapProgress] NOTE: Asset data not available yet - swap just broadcast or confirming');
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
           // Continue polling - asset data will be available once protocol observes the tx
           // Don't update UI state yet to preserve initial swap details
@@ -363,10 +363,10 @@ export const SwapProgress = ({
     }
 
     const handleSwapEvent = (event: any) => {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[SwapProgress] 🔔 WEBSOCKET EVENT RECEIVED');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('[SwapProgress] Full event:', JSON.stringify(event, null, 2));
+      // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // console.log('[SwapProgress] 🔔 WEBSOCKET EVENT RECEIVED');
+      // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // console.log('[SwapProgress] Full event:', JSON.stringify(event, null, 2));
 
       // Only handle events for this swap
       if (event.txHash !== txid && event.transaction?.txid !== txid) {
@@ -512,12 +512,12 @@ export const SwapProgress = ({
         console.error('[SwapProgress] This event type is not handled - swap progress may be stuck!');
       }
 
-      console.log('[SwapProgress] 📊 Current State AFTER Update:', {
-        currentStage,
-        isComplete,
-        hasShownConfetti: hasShownConfettiRef.current
-      });
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // console.log('[SwapProgress] 📊 Current State AFTER Update:', {
+      //   currentStage,
+      //   isComplete,
+      //   hasShownConfetti: hasShownConfettiRef.current
+      // });
+      // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // Handle errors
       if (event.error) {
@@ -554,10 +554,10 @@ export const SwapProgress = ({
     const pollingInterval = hasWebSocket ? 60000 : 30000;
     const pollingMode = hasWebSocket ? 'BACKUP' : 'PRIMARY';
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`[SwapProgress] 🔄 POLLING SETUP: ${pollingMode} mode (${pollingInterval/1000}s interval)`);
-    console.log(`[SwapProgress] WebSocket available: ${hasWebSocket}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // console.log(`[SwapProgress] 🔄 POLLING SETUP: ${pollingMode} mode (${pollingInterval/1000}s interval)`);
+    // console.log(`[SwapProgress] WebSocket available: ${hasWebSocket}`);
+    // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     if (!app?.pioneer?.GetPendingSwap) {
       console.error('[SwapProgress] ❌ GetPendingSwap not available - cannot set up polling');
@@ -567,9 +567,9 @@ export const SwapProgress = ({
     // Polling function
     const pollSwapStatus = async () => {
       const pollTimestamp = new Date().toISOString();
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`[SwapProgress] 🔄 ${pollingMode} POLLING TRIGGERED at ${pollTimestamp}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // console.log(`[SwapProgress] 🔄 ${pollingMode} POLLING TRIGGERED at ${pollTimestamp}`);
+      // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       try {
         // STEP 1: Trigger server-side status check (POST)
@@ -588,25 +588,25 @@ export const SwapProgress = ({
         }
 
         // STEP 2: Fetch updated swap data (GET)
-        console.log('[SwapProgress] 📥 STEP 2: Fetching swap data (GET)...');
+        // console.log('[SwapProgress] 📥 STEP 2: Fetching swap data (GET)...');
         const response = await app.pioneer.GetPendingSwap({ txHash: txid });
 
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('[SwapProgress] 📦 FULL POLLING REST API RESPONSE:');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(JSON.stringify(response, null, 2));
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // console.log('[SwapProgress] 📦 FULL POLLING REST API RESPONSE:');
+        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // console.log(JSON.stringify(response, null, 2));
+        // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         const swap = response?.data || response;
 
         if (swap) {
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log(`[SwapProgress] 🔄 ${pollingMode} POLLING UPDATE`);
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          console.log('[SwapProgress] Polled status:', swap.status);
-          console.log('[SwapProgress] Confirmations:', swap.confirmations, '/', swap.requiredConfirmations);
-          console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
-          console.log('[SwapProgress] Has outbound tx:', !!swap.thorchainData?.outboundTxHash);
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log(`[SwapProgress] 🔄 ${pollingMode} POLLING UPDATE`);
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('[SwapProgress] Polled status:', swap.status);
+          // console.log('[SwapProgress] Confirmations:', swap.confirmations, '/', swap.requiredConfirmations);
+          // console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
+          // console.log('[SwapProgress] Has outbound tx:', !!swap.thorchainData?.outboundTxHash);
 
           // VALIDATION: Check for data inconsistencies
           if (!swap.status) {
@@ -667,12 +667,12 @@ export const SwapProgress = ({
             setCurrentStage(1);
           }
 
-          console.log('[SwapProgress] 📊 State after polling:', {
-            currentStage,
-            isComplete,
-            status: swap.status
-          });
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          // console.log('[SwapProgress] 📊 State after polling:', {
+          //   currentStage,
+          //   isComplete,
+          //   status: swap.status
+          // });
+          // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         } else {
           console.error('[SwapProgress] ❌ POLLING FAILED: No swap data in response');
           console.error('[SwapProgress] Response:', response);
@@ -706,14 +706,14 @@ export const SwapProgress = ({
       return;
     }
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[SwapProgress] 🔄 STATE CHANGE DETECTED');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[SwapProgress] Current Stage:', currentStage);
-    console.log('[SwapProgress] Is Complete:', isComplete);
-    console.log('[SwapProgress] Swap Status:', swapStatus.status);
-    console.log('[SwapProgress] Has shown confetti:', hasShownConfettiRef.current);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // console.log('[SwapProgress] 🔄 STATE CHANGE DETECTED');
+    // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // console.log('[SwapProgress] Current Stage:', currentStage);
+    // console.log('[SwapProgress] Is Complete:', isComplete);
+    // console.log('[SwapProgress] Swap Status:', swapStatus.status);
+    // console.log('[SwapProgress] Has shown confetti:', hasShownConfettiRef.current);
+    // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   }, [swapStatus, currentStage, isComplete]);
 
@@ -889,16 +889,66 @@ export const SwapProgress = ({
     }
   };
 
+  // Get asset color for border (extract from icon or use default based on chain)
+  const getAssetBorderColor = (caip: string) => {
+    // Extract chain from CAIP (format: eip155:1/slip44:60)
+    const chainPart = caip.split('/')[0] || caip.split(':')[0];
+
+    // Chain color mapping
+    const chainColors: Record<string, string> = {
+      'eip155': '#627EEA',     // Ethereum blue
+      'bip122': '#F7931A',     // Bitcoin orange
+      'cosmos': '#2E3148',     // Cosmos dark blue
+      'solana': '#14F195',     // Solana green
+      'base': '#0052FF',       // Base blue
+      'arbitrum': '#28A0F0',   // Arbitrum blue
+      'optimism': '#FF0420',   // Optimism red
+      'polygon': '#8247E5',    // Polygon purple
+      'avalanche': '#E84142',  // Avalanche red
+      'bsc': '#F3BA2F',        // BSC yellow
+    };
+
+    // Check for specific chain names in CAIP
+    for (const [chain, color] of Object.entries(chainColors)) {
+      if (chainPart.toLowerCase().includes(chain) || caip.toLowerCase().includes(chain)) {
+        return color;
+      }
+    }
+
+    // Default to teal if not found
+    return '#14B8A6';
+  };
+
+  const borderColor = getAssetBorderColor(fromAssetInfo.caip);
+  const borderGlow = borderColor + '60'; // Add transparency for glow effect
+
   return (
     <Box
       position="relative"
       width="full"
       bg={swapTheme.bg}
+      backgroundImage="url(/images/backgrounds/splash-bg.png)"
+      backgroundSize="cover"
+      backgroundPosition="center"
+      backgroundRepeat="no-repeat"
       borderRadius="2xl"
-      borderWidth="2px"
-      borderColor={swapTheme.border}
+      borderWidth="3px"
+      borderColor={borderColor}
       p={8}
-      boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.5)"
+      boxShadow={`0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px ${borderGlow}, inset 0 0 20px rgba(0, 0, 0, 0.3)`}
+      _before={{
+        content: '""',
+        position: 'absolute',
+        top: '-3px',
+        left: '-3px',
+        right: '-3px',
+        bottom: '-3px',
+        borderRadius: '2xl',
+        background: `linear-gradient(135deg, ${borderColor}, ${borderColor}80, ${borderColor})`,
+        zIndex: -1,
+        opacity: 0.6,
+        filter: 'blur(8px)',
+      }}
     >
       {/* Confetti - Shows ONCE when swap completes */}
       {showConfetti && isComplete && (
@@ -1017,6 +1067,37 @@ export const SwapProgress = ({
           </VStack>
         )}
       </VStack>
+
+      {/* Bottom Right Logos - THORChain and KeepKey */}
+      <HStack
+        position="absolute"
+        bottom={4}
+        right={4}
+        gap={3}
+        opacity={0.4}
+        _hover={{ opacity: 0.7 }}
+        transition="opacity 0.2s"
+      >
+        {/* THORChain Logo */}
+        <Box
+          as="img"
+          src="/images/logos/thorchain.jpeg"
+          alt="THORChain"
+          height="24px"
+          width="24px"
+          borderRadius="full"
+          objectFit="cover"
+        />
+        {/* KeepKey Logo */}
+        <Box
+          as="img"
+          src="/images/logos/keepkey_logo.png"
+          alt="KeepKey"
+          height="20px"
+          width="auto"
+          objectFit="contain"
+        />
+      </HStack>
     </Box>
   );
 };

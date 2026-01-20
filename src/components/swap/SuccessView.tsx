@@ -63,17 +63,43 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return (
-    <VStack gap={6} py={8}>
+    <>
+      <style>
+        {`
+          @keyframes pulseZoom {
+            0%, 100% {
+              transform: scale(1);
+            }
+            50% {
+              transform: scale(1.05);
+            }
+          }
+        `}
+      </style>
+      <VStack gap={6} py={8}>
 
-      <VStack gap={2}>
-        <Text fontSize="6xl">🎉</Text>
-        <Text fontSize="2xl" fontWeight="bold" color="green.400">
-          Swap Complete!
-        </Text>
-        <Text fontSize="sm" color="gray.400">
-          Your {toAsset.symbol} has been received
-        </Text>
-      </VStack>
+        {/* Celebration Box with Green Border and Pulse Animation */}
+        <Box
+          bg="rgba(16, 185, 129, 0.1)"
+          border="3px solid"
+          borderColor="green.500"
+          borderRadius="xl"
+          p={6}
+          boxShadow="0 0 30px rgba(16, 185, 129, 0.3)"
+          style={{
+            animation: 'pulseZoom 2s ease-in-out infinite',
+          }}
+        >
+        <VStack gap={2}>
+          <Text fontSize="6xl">🎉</Text>
+          <Text fontSize="2xl" fontWeight="bold" color="green.400">
+            Swap Complete!
+          </Text>
+          <Text fontSize="sm" color="gray.400">
+            Your {toAsset.symbol} has been received
+          </Text>
+        </VStack>
+      </Box>
 
       {swapStatus.timingData && (
         <Box
@@ -167,6 +193,7 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
           View on Explorer <FaExternalLinkAlt />
         </Link>
       )}
-    </VStack>
+      </VStack>
+    </>
   );
 }
