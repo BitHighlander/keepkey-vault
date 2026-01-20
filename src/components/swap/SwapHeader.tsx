@@ -91,7 +91,7 @@ export function SwapHeader({
             size="sm"
             variant="ghost"
             onClick={onForceRefresh}
-            isLoading={isRefreshing}
+            loading={isRefreshing}
             colorScheme="teal"
             _hover={{ bg: 'teal.900' }}
           >
