@@ -84,7 +84,14 @@ export function GlobalSwapProgress() {
       open={showSwapProgress}
       onOpenChange={(e) => {
         if (!e.open) {
+          console.log('🚫 GlobalSwapProgress dialog closed');
           setShowSwapProgress(false);
+
+          // If user closes while signing (no real txid yet), dispatch cancel event
+          if (swapProgressData?.txHash?.startsWith('signing-')) {
+            console.log('🚫 Closing during signing phase - dispatching swap:cancel event');
+            window.dispatchEvent(new CustomEvent('swap:cancel'));
+          }
         }
       }}
       size="xl"

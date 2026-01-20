@@ -4,8 +4,9 @@
  * Time-focused display with prominent timing information and expandable diagnostic details
  */
 
-import { Box, VStack, HStack, Text, Button, Badge, Collapsible, Progress, Code } from '@chakra-ui/react';
-import { FaChevronDown, FaChevronUp, FaLightbulb, FaExclamationTriangle } from 'react-icons/fa';
+import { useState } from 'react';
+import { Box, VStack, HStack, Text, Button, Badge, Collapsible, Progress, Code, IconButton } from '@chakra-ui/react';
+import { FaChevronDown, FaChevronUp, FaLightbulb, FaExclamationTriangle, FaCopy, FaCheck } from 'react-icons/fa';
 import {
   formatTime,
   calculatePercentage,
@@ -65,6 +66,9 @@ export function TimingDisplay({
   inputTxHash,
   thorchainData
 }: TimingDisplayProps) {
+  // Copy state - track which txid was copied
+  const [copiedTx, setCopiedTx] = useState<'input' | 'output' | null>(null);
+
   // Format timing data
   const elapsed = formatTime(timingData?.elapsedSeconds || 0);
   const remaining = timingData?.remainingFormatted || 'Calculating...';
@@ -76,6 +80,18 @@ export function TimingDisplay({
   // Get transaction hashes
   const inboundTx = thorchainData?.inboundTxHash || inputTxHash;
   const outboundTx = thorchainData?.outboundTxHash;
+
+  // Copy to clipboard function
+  const handleCopy = async (text: string, txType: 'input' | 'output') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTx(txType);
+      // Reset after 2 seconds
+      setTimeout(() => setCopiedTx(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   return (
     <Box
@@ -169,9 +185,21 @@ export function TimingDisplay({
             {/* Input Transaction */}
             {inboundTx && (
               <Box>
-                <Text fontSize="xs" color="gray.400" mb={1} fontWeight="medium">
-                  Input Transaction
-                </Text>
+                <HStack justify="space-between" align="center" mb={1}>
+                  <Text fontSize="xs" color="gray.400" fontWeight="medium">
+                    Input Transaction
+                  </Text>
+                  <IconButton
+                    aria-label="Copy input transaction"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => handleCopy(inboundTx, 'input')}
+                    color={copiedTx === 'input' ? 'green.400' : 'gray.400'}
+                    _hover={{ color: copiedTx === 'input' ? 'green.300' : 'teal.300' }}
+                  >
+                    {copiedTx === 'input' ? <FaCheck /> : <FaCopy />}
+                  </IconButton>
+                </HStack>
                 <Code
                   fontSize="xs"
                   bg="gray.900"
@@ -188,9 +216,23 @@ export function TimingDisplay({
 
             {/* Output Transaction */}
             <Box>
-              <Text fontSize="xs" color="gray.400" mb={1} fontWeight="medium">
-                Output Transaction
-              </Text>
+              <HStack justify="space-between" align="center" mb={1}>
+                <Text fontSize="xs" color="gray.400" fontWeight="medium">
+                  Output Transaction
+                </Text>
+                {outboundTx && (
+                  <IconButton
+                    aria-label="Copy output transaction"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => handleCopy(outboundTx, 'output')}
+                    color={copiedTx === 'output' ? 'green.400' : 'gray.400'}
+                    _hover={{ color: copiedTx === 'output' ? 'green.300' : 'green.300' }}
+                  >
+                    {copiedTx === 'output' ? <FaCheck /> : <FaCopy />}
+                  </IconButton>
+                )}
+              </HStack>
               {outboundTx ? (
                 <Code
                   fontSize="xs"

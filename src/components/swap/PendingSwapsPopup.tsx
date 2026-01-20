@@ -425,6 +425,19 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     return () => window.removeEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
   }, [refreshPendingSwaps]);
 
+  // Listen for swap cancel events (user closed signing dialog)
+  useEffect(() => {
+    const handleSwapCancel = () => {
+      console.log('🚫 Swap signing cancelled - clearing signing swaps');
+
+      // Clear signing swaps
+      setSigningSwaps([]);
+    };
+
+    window.addEventListener('swap:cancel', handleSwapCancel as EventListener);
+    return () => window.removeEventListener('swap:cancel', handleSwapCancel as EventListener);
+  }, []);
+
   // Handle refresh button click
   const handleRefresh = async () => {
     setIsRefreshing(true);

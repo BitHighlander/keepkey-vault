@@ -557,6 +557,8 @@ export function Provider({ children }: ProviderProps) {
           appName: 'KeepKey Portfolio',
           appIcon: 'https://pioneers.dev/coins/keepkey.png',
           wss: PIONEER_WSS,
+          // Force HTTPS for Pioneer API to prevent mixed content errors
+          pioneerUrl: 'https://api.keepkey.info/api/v1',
           keepkeyApiKey,
           paths,
           blockchains,

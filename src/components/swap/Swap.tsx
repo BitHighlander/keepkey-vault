@@ -1776,6 +1776,11 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setShowDeviceVerificationDialog(false);
           setIsBuildingTx(false);
           setIsSigningTx(false);
+
+          // Dispatch cancel event to clear signing swap from PendingSwapsPopup
+          console.log('🚫 Approval failed - dispatching swap:cancel event');
+          window.dispatchEvent(new CustomEvent('swap:cancel'));
+
           return; // Stop swap execution
         }
       }
@@ -2461,6 +2466,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                 setMemoValid(null);
                 setIsBuildingTx(false);
                 setIsSigningTx(false);
+
+                // Dispatch cancel event to clear signing swap from PendingSwapsPopup
+                console.log('🚫 User cancelled signing - dispatching swap:cancel event');
+                window.dispatchEvent(new CustomEvent('swap:cancel'));
               }
             }}
           />
@@ -2675,6 +2684,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                         setMemoValid(null);
                         setIsBuildingTx(false);
                         setIsSigningTx(false);
+
+                        // Dispatch cancel event to clear signing swap from PendingSwapsPopup
+                        console.log('🚫 User clicked Cancel - dispatching swap:cancel event');
+                        window.dispatchEvent(new CustomEvent('swap:cancel'));
                       }}
                       flex={1}
                       disabled={isVerifyingOnDevice}
@@ -2963,6 +2976,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
                       setConfirmMode(false); // Return to quote view
                       setIsBuildingTx(false);
                       setIsSigningTx(false);
+
+                      // Dispatch cancel event to clear signing swap from PendingSwapsPopup
+                      console.log('🚫 User cancelled after error - dispatching swap:cancel event');
+                      window.dispatchEvent(new CustomEvent('swap:cancel'));
                     }}
                   >
                     Cancel
