@@ -1087,132 +1087,36 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                 Refresh
               </Button>
               <VStack align="center" gap={4}>
-                {/* Compound Avatar for Tokens */}
-                {assetContext.isToken ? (
-                  <Box position="relative">
-                    {/* Main Network Icon */}
-                    <Box
-                      borderRadius="full"
-                      overflow="hidden"
-                      boxSize="80px"
-                      bg={theme.cardBg}
-                      boxShadow="lg"
-                      p={2}
-                      borderWidth="1px"
-                      borderColor={theme.border}
-                      opacity={isRefreshing ? 0.5 : 1}
-                      transition="opacity 0.3s"
-                    >
-                      {/* Get network icon based on networkId */}
-                      <Image
-                        src={(() => {
-                          // Map networkId to network icon
-                          const networkId = assetContext.networkId;
-                          if (networkId.includes('mayachain')) return 'https://pioneers.dev/coins/maya.png';
-                          if (networkId.includes('thorchain')) return 'https://pioneers.dev/coins/thorchain.png';
-                          if (networkId.includes('osmosis')) return 'https://pioneers.dev/coins/osmosis.png';
-                          if (networkId.includes('eip155:1')) return 'https://pioneers.dev/coins/ethereum.png';
-                          if (networkId.includes('eip155:137')) return 'https://pioneers.dev/coins/polygon.png';
-                          if (networkId.includes('eip155:43114')) return 'https://pioneers.dev/coins/avalanche.png';
-                          if (networkId.includes('eip155:56')) return 'https://pioneers.dev/coins/binance.png';
-                          if (networkId.includes('eip155:8453')) return 'https://pioneers.dev/coins/base.png';
-                          if (networkId.includes('eip155:10')) return 'https://pioneers.dev/coins/optimism.png';
-                          if (networkId.includes('eip155:42161')) return 'https://pioneers.dev/coins/arbitrum.png';
-                          // Default network icon
-                          return 'https://pioneers.dev/coins/pioneer.png';
-                        })()}
-                        alt="Network Icon"
-                        boxSize="100%"
-                        objectFit="contain"
-                      />
-                    </Box>
+                {/* Unified Asset Icon with Network Badge */}
+                <Box position="relative">
+                  <AssetIcon
+                    src={assetContext.icon}
+                    caip={assetContext.caip}
+                    symbol={assetContext.symbol}
+                    alt={`${assetContext.name} Icon`}
+                    boxSize="120px"
+                    color={assetContext.color || theme.gold}
+                    showNetworkBadge={assetContext.isToken}
+                    networkId={assetContext.networkId}
+                    badgeSize="35%"
+                  />
 
-                    {/* Token Icon as smaller overlay */}
+                  {/* Spinner Overlay */}
+                  {isRefreshing && (
                     <Box
                       position="absolute"
-                      bottom="-4"
-                      right="-4"
-                      boxSize="48px"
-                      bg="rgba(255, 255, 255, 0.1)"
-                      borderRadius="md"
-                      boxShadow="0 0 0 3px #000000, 0 0 0 4px rgba(255, 255, 255, 0.2)"
-                      p="4px"
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      opacity={isRefreshing ? 0.5 : 1}
-                      transition="opacity 0.3s"
+                      top="50%"
+                      left="50%"
+                      transform="translate(-50%, -50%)"
+                      zIndex={10}
                     >
-                      <AssetIcon
-                        src={assetContext.icon}
-                        caip={assetContext.caip}
-                        symbol={assetContext.symbol}
-                        alt={`${assetContext.name} Icon`}
-                        boxSize="100%"
-                        color={assetContext.color || theme.gold}
-                        showNetworkBadge={true}
-                        networkId={assetContext.networkId}
+                      <Spinner
+                        size="xl"
+                        color={theme.gold}
                       />
                     </Box>
-
-                    {/* Spinner Overlay */}
-                    {isRefreshing && (
-                      <Box
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        transform="translate(-50%, -50%)"
-                        zIndex={10}
-                      >
-                        <Spinner
-                          size="xl"
-                          color={theme.gold}
-                        />
-                      </Box>
-                    )}
-                  </Box>
-                ) : (
-                  /* Native Asset Icon */
-                  <Box position="relative">
-                    <Box
-                      borderRadius="full"
-                      overflow="hidden"
-                      boxSize="80px"
-                      bg={theme.cardBg}
-                      boxShadow="lg"
-                      p={2}
-                      borderWidth="1px"
-                      borderColor={assetContext.color || theme.border}
-                      opacity={isRefreshing ? 0.5 : 1}
-                      transition="opacity 0.3s"
-                    >
-                      <AssetIcon
-                        src={assetContext.icon}
-                        caip={assetContext.caip}
-                        symbol={assetContext.symbol}
-                        alt={`${assetContext.name} Icon`}
-                        boxSize="100%"
-                        color={assetContext.color || theme.gold}
-                      />
-                    </Box>
-
-                    {/* Spinner Overlay */}
-                    {isRefreshing && (
-                      <Box
-                        position="absolute"
-                        top="50%"
-                        left="50%"
-                        transform="translate(-50%, -50%)"
-                        zIndex={10}
-                      >
-                        <Spinner
-                          size="xl"
-                          color={theme.gold}
-                        />
-                      </Box>
-                    )}
-                  </Box>
-                )}
+                  )}
+                </Box>
                 
                 <Stack align="center" gap={1}>
                   <Text fontSize="2xl" fontWeight="bold" color="white">
@@ -1746,6 +1650,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                           pubkey.pubkey === selectedAddress
                         );
 
+                        // Find the balance for this pubkey from aggregatedBalance
+                        const pubkeyBalance = aggregatedBalance?.balances?.find((b: any) =>
+                          b.address === pubkey.address ||
+                          b.pubkey === pubkey.pubkey ||
+                          b.address === pubkey.pubkey
+                        );
+
                         return (
                           <Box
                             key={`pubkey-${index}-${pubkey.pubkey || pubkey.address}`}
@@ -1792,6 +1703,51 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                   </Badge>
                                 )}
                               </Flex>
+
+                              {/* Balance Information */}
+                              {pubkeyBalance && (
+                                <Box
+                                  p={2}
+                                  bg="rgba(255, 215, 0, 0.08)"
+                                  borderRadius="md"
+                                  borderWidth="1px"
+                                  borderColor="rgba(255, 215, 0, 0.2)"
+                                >
+                                  <VStack align="stretch" gap={1}>
+                                    <Flex justify="space-between" align="center">
+                                      <Text color="gray.400" fontSize="xs">
+                                        Balance
+                                      </Text>
+                                      {pubkeyBalance.percentage !== undefined && pubkeyBalance.percentage > 0 && (
+                                        <Badge colorScheme="yellow" fontSize="xs" variant="subtle">
+                                          {pubkeyBalance.percentage.toFixed(1)}%
+                                        </Badge>
+                                      )}
+                                    </Flex>
+                                    <Text color={theme.gold} fontSize="sm" fontWeight="bold" fontFamily="mono">
+                                      {parseFloat(pubkeyBalance.balance).toFixed(8)} {assetContext.symbol}
+                                    </Text>
+                                    {pubkeyBalance.valueUsd > 0 && (
+                                      <Text color="gray.400" fontSize="xs">
+                                        ${formatUsd(pubkeyBalance.valueUsd)} USD
+                                      </Text>
+                                    )}
+                                  </VStack>
+                                </Box>
+                              )}
+                              {!pubkeyBalance && (
+                                <Box
+                                  p={2}
+                                  bg="rgba(128, 128, 128, 0.08)"
+                                  borderRadius="md"
+                                  borderWidth="1px"
+                                  borderColor="rgba(128, 128, 128, 0.2)"
+                                >
+                                  <Text color="gray.500" fontSize="xs">
+                                    No balance detected
+                                  </Text>
+                                </Box>
+                              )}
 
                               {/* Pubkey or Address */}
                               <Box position="relative">
@@ -2154,6 +2110,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         pubkey.pubkey === selectedAddress
                       );
 
+                      // Find the balance for this pubkey from aggregatedBalance
+                      const pubkeyBalance = aggregatedBalance?.balances?.find((b: any) =>
+                        b.address === pubkey.address ||
+                        b.pubkey === pubkey.pubkey ||
+                        b.address === pubkey.pubkey
+                      );
+
                       return (
                         <Box
                           key={`pubkey-mobile-${index}-${pubkey.pubkey || pubkey.address}`}
@@ -2200,6 +2163,51 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                                 </Badge>
                               )}
                             </Flex>
+
+                            {/* Balance Information */}
+                            {pubkeyBalance && (
+                              <Box
+                                p={2}
+                                bg="rgba(255, 215, 0, 0.08)"
+                                borderRadius="md"
+                                borderWidth="1px"
+                                borderColor="rgba(255, 215, 0, 0.2)"
+                              >
+                                <VStack align="stretch" gap={1}>
+                                  <Flex justify="space-between" align="center">
+                                    <Text color="gray.400" fontSize="xs">
+                                      Balance
+                                    </Text>
+                                    {pubkeyBalance.percentage !== undefined && pubkeyBalance.percentage > 0 && (
+                                      <Badge colorScheme="yellow" fontSize="xs" variant="subtle">
+                                        {pubkeyBalance.percentage.toFixed(1)}%
+                                      </Badge>
+                                    )}
+                                  </Flex>
+                                  <Text color={theme.gold} fontSize="sm" fontWeight="bold" fontFamily="mono">
+                                    {parseFloat(pubkeyBalance.balance).toFixed(8)} {assetContext.symbol}
+                                  </Text>
+                                  {pubkeyBalance.valueUsd > 0 && (
+                                    <Text color="gray.400" fontSize="xs">
+                                      ${formatUsd(pubkeyBalance.valueUsd)} USD
+                                    </Text>
+                                  )}
+                                </VStack>
+                              </Box>
+                            )}
+                            {!pubkeyBalance && (
+                              <Box
+                                p={2}
+                                bg="rgba(128, 128, 128, 0.08)"
+                                borderRadius="md"
+                                borderWidth="1px"
+                                borderColor="rgba(128, 128, 128, 0.2)"
+                              >
+                                <Text color="gray.500" fontSize="xs">
+                                  No balance detected
+                                </Text>
+                              </Box>
+                            )}
 
                             {/* Pubkey or Address */}
                             <Box position="relative">

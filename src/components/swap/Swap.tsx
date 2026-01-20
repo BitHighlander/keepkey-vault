@@ -921,13 +921,6 @@ export const Swap = ({ onBackClick }: SwapProps) => {
 
   // Fetch quote from Pioneer SDK
   const fetchQuote = async (amount: string, fromSymbol: string, toSymbol: string) => {
-    // Prevent fetching quote for same asset
-    if (fromSymbol === toSymbol) {
-      console.log(`[SWAP-DEBUG] ⚠️ Skipping quote - same asset: ${fromSymbol}`);
-      setError('Cannot swap the same asset');
-      return;
-    }
-
     setIsLoadingQuote(true);
     setError('');
 
@@ -953,7 +946,9 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           toSymbol,
           caip: app.assetContext.caip
         });
-        throw new Error(`Cannot swap - both assets have the same CAIP (${app.assetContext.caip}). This indicates USDT has wrong CAIP.`);
+        setError('Cannot swap the same asset');
+        setIsLoadingQuote(false);
+        return;
       }
 
       // Validate CAIP identifiers exist
@@ -1121,96 +1116,46 @@ export const Swap = ({ onBackClick }: SwapProps) => {
       const maxUsdValue = parseFloat(maxBalance) * priceUsd;
       console.log(`💰 MAX calculation: balance=${maxBalance} ${app.assetContext.symbol}, USD=$${maxUsdValue.toFixed(2)}`);
 
-      // Apply $100 cap: use max or $100, whichever is less
-      const targetUsdValue = Math.min(maxUsdValue, 100);
-      const targetAmount = targetUsdValue / priceUsd;
-      console.log(`🎯 Target: $${targetUsdValue.toFixed(2)} = ${targetAmount.toFixed(decimals)} ${app.assetContext.symbol}`);
+      // CRITICAL FIX: When isMax=true, let Pioneer SDK handle gas deduction
+      // Don't manually deduct gas here to avoid double-deduction bug
 
-      // Check if this is a native gas asset that pays its own gas fees
-      const isGasAsset = isNativeGasAsset(app.assetContext.caip);
-      console.log(`🔍 Asset type: ${isGasAsset ? 'Native gas asset' : 'Token'} (${app.assetContext.caip})`);
+      let finalAmountStr: string;
+      let finalUsdValue: string;
+      let useIsMax: boolean;
 
-      // Get quote to determine actual gas fees needed
-      console.log('🔍 Getting quote to calculate gas fees...');
-      const testQuote = await getSwapQuote(app, {
-        caipIn: app.assetContext.caip,
-        caipOut: app.outboundAssetContext.caip,
-        amount: targetAmount.toString(),
-        slippagePercentage: 3,
-        isMax: true, // Set isMax=true to get accurate gas estimation from SDK
-      });
-
-      // Parse network gas fees from quote
-      const networkFee = testQuote.quote?.fees?.network ? parseFloat(testQuote.quote.fees.network) : 0;
-      console.log(`⛽ Network gas fee from quote: ${networkFee} ${app.assetContext.symbol}`);
-
-      // For native gas assets, use a conservative gas estimate if quote doesn't provide one
-      const conservativeGasEstimate = isGasAsset ? 0.001 : 0; // ~$3-5 worth of gas at typical prices
-      const finalGasReserve = Math.max(networkFee, conservativeGasEstimate);
-
-      if (isGasAsset && finalGasReserve > 0) {
-        console.log(`⛽ Using gas reserve: ${finalGasReserve} ${app.assetContext.symbol} (quote: ${networkFee}, conservative: ${conservativeGasEstimate})`);
-      }
-
-      // CRITICAL FIX: Check if this is a native token that pays its own gas
-      const isNativeToken = isGasAsset;
-
-      let finalAmount: number;
-
-      if (isNativeToken) {
-        // For native gas assets, subtract gas from the amount
-        finalAmount = targetAmount - finalGasReserve;
-
-        if (finalAmount <= 0) {
-          throw new Error(
-            `Insufficient balance for gas fees. ` +
-            `Balance: ${targetAmount.toFixed(decimals)} ${app.assetContext.symbol}, ` +
-            `Need: ${finalGasReserve.toFixed(decimals)} ${app.assetContext.symbol} for gas.`
-          );
-        }
-
-        console.log(`🔧 Adjusted for gas: ${finalAmount.toFixed(decimals)} ${app.assetContext.symbol} (reserved ${finalGasReserve.toFixed(decimals)} for gas)`);
+      if (maxUsdValue <= 100) {
+        // Balance is <= $100: Use isMax=true and let SDK deduct gas automatically
+        console.log(`✅ Using isMax=true: Balance $${maxUsdValue.toFixed(2)} <= $100 cap`);
+        finalAmountStr = maxBalance;
+        finalUsdValue = maxUsdValue.toFixed(2);
+        useIsMax = true;
+        console.log(`🎯 Will swap MAX amount: ${finalAmountStr} ${app.assetContext.symbol} (SDK will deduct gas)`);
       } else {
-        // For tokens (ERC20, etc.), verify there's enough native token for gas
-        // Extract the chain ID from CAIP to find the native gas asset
-        const chainPrefix = app.assetContext.caip.split('/')[0]; // e.g., 'eip155:1'
-        const gasAssetCaip = `${chainPrefix}/slip44:60`; // Native ETH on this chain
-        const gasBalance = getUserBalance(gasAssetCaip);
-        const gasBalanceNum = gasBalance ? parseFloat(gasBalance) : 0;
-
-        console.log(`🔍 Checking gas balance on chain ${chainPrefix}: ${gasBalanceNum} (need ${finalGasReserve})`);
-
-        if (gasBalanceNum < finalGasReserve) {
-          throw new Error(
-            `Insufficient native token for gas on this chain. ` +
-            `Need ${finalGasReserve} but only have ${gasBalanceNum}. ` +
-            `Please add native tokens to cover gas fees.`
-          );
-        }
-
-        // For tokens, use full target amount (gas comes from separate native balance)
-        finalAmount = targetAmount;
-        console.log(`✅ Sufficient gas balance: ${gasBalanceNum} available, ${finalGasReserve} needed`);
+        // Balance is > $100: Cap at $100 and use regular swap (not isMax)
+        console.log(`⚠️ Using $100 cap: Balance $${maxUsdValue.toFixed(2)} > $100 limit`);
+        const amountFor100 = 100 / priceUsd;
+        finalAmountStr = amountFor100.toFixed(decimals);
+        finalUsdValue = '100.00';
+        useIsMax = false;
+        console.log(`🎯 Will swap capped amount: ${finalAmountStr} ${app.assetContext.symbol} (no isMax)`);
       }
 
       // Set the final amount
-      const finalAmountStr = finalAmount.toFixed(decimals);
       setInputAmount(finalAmountStr);
-      setIsMaxAmount(true); // Always true when MAX button clicked
-      console.log('💰 MAX button clicked - setting isMax flag to true');
+      setIsMaxAmount(useIsMax);
+      console.log(`💰 MAX button: isMax=${useIsMax}, amount=${finalAmountStr}`);
 
       // Calculate and set USD value
-      const finalUsdValue = (finalAmount * priceUsd).toFixed(2);
       setInputUSDValue(finalUsdValue);
 
-      // Clear output and get fresh quote with adjusted amount
+      // Clear output and get fresh quote
       setOutputAmount('');
       setOutputUSDValue('');
       setQuote(null);
 
       console.log(`🟢 MAX BUTTON COMPLETE: ${finalAmountStr} ${app.assetContext.symbol} = $${finalUsdValue}`);
 
-      // Fetch final quote with gas-adjusted amount
+      // Fetch final quote
       await fetchQuote(finalAmountStr, app.assetContext.symbol, app.outboundAssetContext.symbol);
 
     } catch (err: any) {
@@ -2078,11 +2023,13 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             swapPayloadBefore: { ...swapPayload }
           });
           if (isMaxAmount) {
-            console.log('🔥 MAX swap detected - setting isMax: true in payload');
+            console.log('🔥 MAX swap detected - setting isMax: true in payload (SDK will calculate max and deduct gas)');
             swapPayload.isMax = true;
-            swapPayload.amount = inputAmount;
+            // CRITICAL FIX: When isMax=true, let SDK calculate the amount (don't pass inputAmount to avoid double gas deduction)
+            // The inputAmount is set to full balance in handleMaxClick, SDK will deduct gas automatically
+            swapPayload.amount = inputAmount; // Pass full balance, SDK will adjust for gas
           } else {
-            console.log('📊 Regular swap - providing amount in payload');
+            console.log('📊 Regular swap - providing exact amount in payload');
             swapPayload.amount = inputAmount;
           }
 

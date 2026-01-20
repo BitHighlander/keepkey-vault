@@ -1,10 +1,11 @@
 'use client'
 
 import React from 'react';
-import { Box, HStack, Text, Button } from '@chakra-ui/react';
+import { Box, HStack, Text, Button, VStack } from '@chakra-ui/react';
 import { FaChevronDown } from 'react-icons/fa';
 import CountUp from 'react-countup';
 import { AssetIcon } from '@/components/ui/AssetIcon';
+import { extractNetworkId, getNetworkColor, getNetworkName } from '@/lib/utils/networkIcons';
 
 interface AssetSelectorProps {
   asset: any;
@@ -63,6 +64,11 @@ export const AssetSelector = ({
     if (num < 0.01) return '< $0.01';
     return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+
+  // Extract network information
+  const networkId = asset.networkId || extractNetworkId(asset.caip);
+  const networkColor = getNetworkColor(networkId);
+  const networkName = getNetworkName(networkId);
 
   return (
     <Box>
@@ -135,18 +141,57 @@ export const AssetSelector = ({
         borderColor="rgba(255, 255, 255, 0.1)"
         _hover={{ bg: 'rgba(35, 220, 200, 0.1)', borderColor: 'rgba(35, 220, 200, 0.3)' }}
       >
-        <HStack justify="space-between" width="full">
-          <HStack gap={2}>
+        <HStack justify="space-between" width="full" gap={2}>
+          {/* Left side: Icon + Symbol + Network Badge */}
+          <HStack gap={2} minW="fit-content">
             <AssetIcon
               src={asset.icon}
               caip={asset.caip}
               symbol={asset.symbol}
               alt={asset.name}
-              boxSize="24px"
+              boxSize="32px"
+              showNetworkBadge={true}
+              networkId={networkId}
             />
-            <Text fontWeight="medium" color="white" fontSize="sm">{asset.symbol}</Text>
+            <Text fontWeight="medium" color="white" fontSize="md">{asset.symbol}</Text>
+            <Box
+              bg={`${networkColor}20`}
+              borderRadius="sm"
+              px={1.5}
+              py={0.5}
+              borderWidth="1px"
+              borderColor={`${networkColor}40`}
+            >
+              <Text
+                fontSize="2xs"
+                color={networkColor}
+                fontWeight="semibold"
+                textTransform="uppercase"
+                letterSpacing="wide"
+              >
+                {networkName}
+              </Text>
+            </Box>
           </HStack>
-          <FaChevronDown color="gray" size={12} />
+
+          {/* Center: CAIP */}
+          <Box flex="1" display="flex" justifyContent="center" minW="0">
+            <Text
+              fontSize="2xs"
+              color="gray.500"
+              fontFamily="mono"
+              overflow="hidden"
+              textOverflow="ellipsis"
+              whiteSpace="nowrap"
+            >
+              {asset.caip}
+            </Text>
+          </Box>
+
+          {/* Right side: Chevron */}
+          <Box minW="fit-content">
+            <FaChevronDown color="gray" size={12} />
+          </Box>
         </HStack>
       </Button>
     </Box>

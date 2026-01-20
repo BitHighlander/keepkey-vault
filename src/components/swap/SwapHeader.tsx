@@ -6,7 +6,7 @@
  */
 
 import { HStack, VStack, Text, IconButton, Box } from '@chakra-ui/react';
-import { FaArrowRight, FaTimes } from 'react-icons/fa';
+import { FaArrowRight, FaTimes, FaSync } from 'react-icons/fa';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 
 interface Asset {
@@ -21,6 +21,9 @@ interface SwapHeaderProps {
   confirmations?: number;
   requiredConfirmations?: number;
   onClose: () => void;
+  onForceRefresh?: () => Promise<void>;
+  isRefreshing?: boolean;
+  isComplete?: boolean;
 }
 
 export function SwapHeader({
@@ -28,7 +31,10 @@ export function SwapHeader({
   toAsset,
   confirmations,
   requiredConfirmations,
-  onClose
+  onClose,
+  onForceRefresh,
+  isRefreshing,
+  isComplete
 }: SwapHeaderProps) {
   return (
     <HStack justify="center" mb={8} position="relative" width="full">
@@ -77,17 +83,31 @@ export function SwapHeader({
           </Text>
         </VStack>
       </HStack>
-      <IconButton
-        aria-label="Close swap progress"
-        size="sm"
-        variant="ghost"
-        onClick={onClose}
-        position="absolute"
-        right={0}
-        top={0}
-      >
-        <FaTimes />
-      </IconButton>
+      <HStack position="absolute" right={0} top={0} gap={1}>
+        {onForceRefresh && !isComplete && (
+          <IconButton
+            aria-label="Refresh swap status"
+            title="Refresh Status"
+            size="sm"
+            variant="ghost"
+            onClick={onForceRefresh}
+            isLoading={isRefreshing}
+            colorScheme="teal"
+            _hover={{ bg: 'teal.900' }}
+          >
+            <FaSync />
+          </IconButton>
+        )}
+        <IconButton
+          aria-label="Close swap progress"
+          title="Close"
+          size="sm"
+          variant="ghost"
+          onClick={onClose}
+        >
+          <FaTimes />
+        </IconButton>
+      </HStack>
     </HStack>
   );
 }

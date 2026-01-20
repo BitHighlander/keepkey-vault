@@ -17,11 +17,11 @@ import { getStageIcon, getStageDescription } from './swap-timing-utils';
 // Keyframe animations for active step
 const pulseGlow = keyframes`
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(0, 220, 130, 0.7);
+    box-shadow: 0 4px 14px rgba(20, 184, 166, 0.5), 0 0 0 0 rgba(20, 184, 166, 0.7), inset 0 -2px 10px rgba(0, 0, 0, 0.3);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 20px 8px rgba(0, 220, 130, 0.4);
+    box-shadow: 0 4px 20px rgba(20, 184, 166, 0.6), 0 0 25px 10px rgba(20, 184, 166, 0.5), inset 0 -2px 10px rgba(0, 0, 0, 0.3);
     transform: scale(1.05);
   }
 `;
@@ -120,34 +120,34 @@ export function SwapProgressSteps({
   const isComplete = swapStatus.status === 'completed' || swapStatus.status === 'output_confirmed';
 
   // VALIDATION LOGGING
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('[SwapProgressSteps] 🎨 RENDER');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('[SwapProgressSteps] Status:', swapStatus.status);
-  console.log('[SwapProgressSteps] Current Stage:', swapStatus.currentStage);
-  console.log('[SwapProgressSteps] Current Step (0-indexed):', currentStep);
-  console.log('[SwapProgressSteps] Is Complete:', isComplete);
-  console.log('[SwapProgressSteps] Confirmations:', swapStatus.confirmations, '/', swapStatus.requiredConfirmations);
-  console.log('[SwapProgressSteps] Outbound Confirmations:', swapStatus.outboundConfirmations, '/', swapStatus.outboundRequiredConfirmations);
+  // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  // console.log('[SwapProgressSteps] 🎨 RENDER');
+  // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  // console.log('[SwapProgressSteps] Status:', swapStatus.status);
+  // console.log('[SwapProgressSteps] Current Stage:', swapStatus.currentStage);
+  // console.log('[SwapProgressSteps] Current Step (0-indexed):', currentStep);
+  // console.log('[SwapProgressSteps] Is Complete:', isComplete);
+  // console.log('[SwapProgressSteps] Confirmations:', swapStatus.confirmations, '/', swapStatus.requiredConfirmations);
+  // console.log('[SwapProgressSteps] Outbound Confirmations:', swapStatus.outboundConfirmations, '/', swapStatus.outboundRequiredConfirmations);
 
   // Validation checks
-  if (!swapStatus.status) {
-    console.error('[SwapProgressSteps] ❌ VALIDATION FAILED: No status provided');
-  }
+  // if (!swapStatus.status) {
+  //   console.error('[SwapProgressSteps] ❌ VALIDATION FAILED: No status provided');
+  // }
 
-  if (!swapStatus.currentStage || swapStatus.currentStage < 1 || swapStatus.currentStage > 3) {
-    console.error('[SwapProgressSteps] ❌ VALIDATION FAILED: Invalid currentStage:', swapStatus.currentStage);
-  }
+  // if (!swapStatus.currentStage || swapStatus.currentStage < 1 || swapStatus.currentStage > 3) {
+  //   console.error('[SwapProgressSteps] ❌ VALIDATION FAILED: Invalid currentStage:', swapStatus.currentStage);
+  // }
 
-  if (swapStatus.status === 'completed' && !isComplete) {
-    console.error('[SwapProgressSteps] ❌ LOGIC ERROR: Status is completed but isComplete is false');
-  }
+  // if (swapStatus.status === 'completed' && !isComplete) {
+  //   console.error('[SwapProgressSteps] ❌ LOGIC ERROR: Status is completed but isComplete is false');
+  // }
 
-  if (swapStatus.status === 'output_confirmed' && !isComplete) {
-    console.error('[SwapProgressSteps] ❌ LOGIC ERROR: Status is output_confirmed but isComplete is false');
-  }
+  // if (swapStatus.status === 'output_confirmed' && !isComplete) {
+  //   console.error('[SwapProgressSteps] ❌ LOGIC ERROR: Status is output_confirmed but isComplete is false');
+  // }
 
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   // Handle force refresh
   const handleForceRefresh = async () => {
@@ -174,29 +174,11 @@ export function SwapProgressSteps({
         confirmations={swapStatus.confirmations}
         requiredConfirmations={swapStatus.requiredConfirmations}
         onClose={onClose}
+        onForceRefresh={onForceRefresh}
+        isRefreshing={isRefreshing}
+        isComplete={isComplete}
       />
 
-      {/* Force Refresh Button - For debugging */}
-      {onForceRefresh && !isComplete && (
-        <HStack justify="center">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleForceRefresh}
-            loading={isRefreshing}
-            colorScheme="teal"
-            borderColor="teal.500"
-            _hover={{ bg: 'teal.900', borderColor: 'teal.400' }}
-          >
-            {isRefreshing ? 'Checking...' : (
-              <>
-                <FaSync style={{ marginRight: '0.5rem' }} />
-                Force Refresh Status
-              </>
-            )}
-          </Button>
-        </HStack>
-      )}
 
       {/* Steps progress bar */}
       <HStack justify="space-between" position="relative" px={4}>
@@ -206,25 +188,47 @@ export function SwapProgressSteps({
           const isStepComplete = isComplete ? true : index < currentStep;
           const isStepActive = !isComplete && index === currentStep;
 
+          // Step colors
+          const stepColors = {
+            complete: {
+              bg: 'linear-gradient(135deg, #10B981, #059669)',
+              border: '#10B981',
+              glow: 'rgba(16, 185, 129, 0.5)'
+            },
+            active: {
+              bg: 'linear-gradient(135deg, #14B8A6, #0D9488)',
+              border: '#14B8A6',
+              glow: 'rgba(20, 184, 166, 0.5)'
+            },
+            pending: {
+              bg: 'linear-gradient(135deg, #374151, #1F2937)',
+              border: '#4B5563',
+              glow: 'rgba(75, 85, 99, 0.3)'
+            }
+          };
+
+          const currentColors = isStepComplete ? stepColors.complete : isStepActive ? stepColors.active : stepColors.pending;
+
           return (
             <VStack key={index} flex={1} gap={2} position="relative">
               {/* Step indicator */}
               <Box
-                width="40px"
-                height="40px"
+                width="50px"
+                height="50px"
                 borderRadius="full"
-                bg={isStepComplete ? 'green.500' : isStepActive ? 'teal.500' : 'gray.700'}
-                borderWidth="2px"
-                borderColor={isStepComplete ? 'green.400' : isStepActive ? 'teal.400' : 'gray.600'}
+                background={currentColors.bg}
+                borderWidth="3px"
+                borderColor={currentColors.border}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
-                fontSize="lg"
+                fontSize="xl"
                 fontWeight="bold"
                 color="white"
                 transition="all 0.3s"
                 animation={isStepActive ? `${pulseGlow} 2s ease-in-out infinite` : undefined}
                 position="relative"
+                boxShadow={`0 4px 14px ${currentColors.glow}, inset 0 -2px 10px rgba(0, 0, 0, 0.3)`}
               >
                 {isStepComplete ? <FaCheckCircle /> : <StepIcon />}
               </Box>
@@ -232,8 +236,8 @@ export function SwapProgressSteps({
             {/* Step title */}
             <Text
               fontSize="sm"
-              fontWeight={isStepActive ? 'bold' : 'normal'}
-              color={isStepComplete ? 'green.400' : isStepActive ? 'teal.400' : 'gray.500'}
+              fontWeight={isStepActive ? 'bold' : 'medium'}
+              color={isStepComplete ? '#10B981' : isStepActive ? '#14B8A6' : '#9CA3AF'}
               textAlign="center"
             >
               {step.title}
@@ -243,12 +247,21 @@ export function SwapProgressSteps({
             {index < steps.length - 1 && (
               <Box
                 position="absolute"
-                top="20px"
+                top="25px"
                 left="50%"
                 width="full"
-                height="2px"
-                bg={isComplete || index < currentStep ? 'green.500' : 'gray.700'}
+                height="3px"
+                background={
+                  isComplete || index < currentStep
+                    ? 'linear-gradient(90deg, #10B981, #059669)'
+                    : 'linear-gradient(90deg, #374151, #1F2937)'
+                }
                 zIndex={-1}
+                boxShadow={
+                  isComplete || index < currentStep
+                    ? '0 0 10px rgba(16, 185, 129, 0.4)'
+                    : 'none'
+                }
               />
             )}
           </VStack>

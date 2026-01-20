@@ -110,14 +110,14 @@ export function Provider({ children }: ProviderProps) {
 
   // Timeout mechanism - fail if init takes too long
   useEffect(() => {
-    const INIT_TIMEOUT = 45000; // 45 seconds
+    const INIT_TIMEOUT = 120000; // 2 minutes (120 seconds)
 
     const timeoutId = setTimeout(() => {
       if (isLoading && !pioneerSdk) {
-        console.error('[INIT] ❌ Initialization timeout after 45 seconds');
+        console.error('[INIT] ❌ Initialization timeout after 2 minutes');
         setInitError({
           phase: initPhase,
-          error: new Error('Initialization timeout - Pioneer SDK not responding'),
+          error: new Error('Initialization timeout - Pioneer SDK not responding after 2 minutes'),
           timestamp: Date.now(),
           recoverable: true
         });
@@ -143,6 +143,35 @@ export function Provider({ children }: ProviderProps) {
       console.log('🔥 [INIT] Starting Pioneer SDK initialization');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       PIONEER_INITIALIZED = true;
+
+      // 🕐 PERFORMANCE BENCHMARKING - Track initialization phases
+      const perfTimers: Record<string, { start: number; end?: number; duration?: number }> = {};
+      const startTimer = (label: string) => {
+        perfTimers[label] = { start: performance.now() };
+        console.log(`⏱️ [PERF] START: ${label}`);
+      };
+      const endTimer = (label: string) => {
+        if (perfTimers[label]) {
+          perfTimers[label].end = performance.now();
+          perfTimers[label].duration = perfTimers[label].end! - perfTimers[label].start;
+          console.log(`⏱️ [PERF] END: ${label} - Duration: ${perfTimers[label].duration!.toFixed(2)}ms (${(perfTimers[label].duration! / 1000).toFixed(2)}s)`);
+        }
+      };
+      const logPerfSummary = () => {
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📊 [PERF] INITIALIZATION PERFORMANCE SUMMARY');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        Object.entries(perfTimers).forEach(([label, timer]) => {
+          if (timer.duration !== undefined) {
+            const seconds = (timer.duration / 1000).toFixed(2);
+            const percentage = ((timer.duration / perfTimers['Total Initialization']?.duration!) * 100).toFixed(1);
+            console.log(`⏱️ ${label.padEnd(40)}: ${timer.duration.toFixed(2).padStart(10)}ms (${seconds.padStart(6)}s) ${percentage ? `[${percentage}%]` : ''}`);
+          }
+        });
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      };
+
+      startTimer('Total Initialization');
 
       // Detect if mobile app
       const isOnMobile = isMobileApp();
@@ -394,7 +423,8 @@ export function Provider({ children }: ProviderProps) {
         // Add debug check for KKAPI availability before SDK init
         console.log('🔍 [KKAPI DEBUG] Checking if vault endpoints are available...');
         let detectedKeeperEndpoint = undefined;
-        
+
+        startTimer('Vault Endpoint Detection');
         // Try multiple endpoints to find the vault
         // swagger.json is the most reliable as it doesn't require auth
         const vaultEndpoints = [
@@ -402,7 +432,7 @@ export function Provider({ children }: ProviderProps) {
           'http://127.0.0.1:1646/spec/swagger.json',
           'http://localhost:1646/auth/pair' // This should return 400 if running
         ];
-        
+
         for (const endpoint of vaultEndpoints) {
           console.log(`🔍 [KKAPI DEBUG] Trying ${endpoint}...`);
           try {
@@ -432,12 +462,14 @@ export function Provider({ children }: ProviderProps) {
             console.log(`❌ [KKAPI DEBUG] Failed to reach ${endpoint}:`, error?.message || error);
           }
         }
-        
+        endTimer('Vault Endpoint Detection');
+
         if (!detectedKeeperEndpoint) {
           console.log('⚠️ [KKAPI DEBUG] Vault not detected - continuing in view-only mode');
           // Don't return - continue with initialization in view-only mode
         }
 
+        startTimer('Load Cached Pubkeys');
         // Load cached pubkeys from localStorage (always try to load, regardless of vault detection)
         let cachedPubkeys: any[] | null = null;
         if (!detectedKeeperEndpoint) {
@@ -470,6 +502,7 @@ export function Provider({ children }: ProviderProps) {
             console.log('📂 [CACHE] Step 2: No cached data found in localStorage');
           }
         }
+        endTimer('Load Cached Pubkeys');
 
         // Validate we have either vault connection OR cached pubkeys
         if (!detectedKeeperEndpoint && (!cachedPubkeys || cachedPubkeys.length === 0)) {
@@ -515,6 +548,7 @@ export function Provider({ children }: ProviderProps) {
           platform: isOnMobile ? 'Mobile' : 'Desktop'
         });
 
+        startTimer('SDK Config Creation');
         // Build SDK config matching the test configuration exactly
         const sdkConfig: any = {
           username,
@@ -556,8 +590,11 @@ export function Provider({ children }: ProviderProps) {
           // Pass vault endpoint when available
           sdkConfig.keepkeyEndpoint = detectedKeeperEndpoint;
         }
+        endTimer('SDK Config Creation');
 
+        startTimer('SDK Instance Creation (new SDK())');
         const appInit = new SDK(PIONEER_URL, sdkConfig);
+        endTimer('SDK Instance Creation (new SDK())');
 
         console.log('🔧 Pioneer SDK instance created with config:', {
           mode: detectedKeeperEndpoint ? 'LOCAL DEV (Vault REST)' : 'LEGACY (Desktop REST)',
@@ -575,7 +612,8 @@ export function Provider({ children }: ProviderProps) {
         });
 
         console.log('🔧 Calling init...');
-        
+
+        startTimer('Setup network filtering');
         // Add network filtering to prevent unsupported networks from being processed
         const originalGetBalances = appInit.getBalances?.bind(appInit);
         if (originalGetBalances) {
@@ -603,7 +641,8 @@ export function Provider({ children }: ProviderProps) {
             return result;
           };
         }
-        
+        endTimer('Setup network filtering');
+
         // Add progress tracking
         const progressInterval = setInterval(() => {
           console.log('⏳ Still initializing...', {
@@ -622,7 +661,9 @@ export function Provider({ children }: ProviderProps) {
           console.log('[INIT] Phase 1: Initializing Pioneer SDK');
           setInitPhase('sdk_init');
 
+          startTimer('app.init() - CRITICAL PHASE');
           const resultInit = await appInit.init({}, { skipSync: false });
+          endTimer('app.init() - CRITICAL PHASE');
 
           clearInterval(progressInterval);
 
@@ -681,7 +722,9 @@ export function Provider({ children }: ProviderProps) {
           console.log('[INIT] Phase 2: Fetching balances');
           setInitPhase('get_balances');
 
+          startTimer('getBalances()');
           await appInit.getBalances();
+          endTimer('getBalances()');
           console.log('[INIT] ✅ Phase 2 complete - Balances loaded:', appInit.balances?.length || 0);
           
         } catch (initError: any) {
@@ -765,7 +808,9 @@ export function Provider({ children }: ProviderProps) {
               console.log('📊 Balances before getCharts:', appInit.balances.length);
 
               try {
+                startTimer('getCharts() - Initial Load');
                 await appInit.getCharts();
+                endTimer('getCharts() - Initial Load');
                 console.log('[INIT] ✅ Phase 3 complete - Charts fetched');
                 console.log('📊 Balances after getCharts:', appInit.balances.length);
 
@@ -831,9 +876,11 @@ export function Provider({ children }: ProviderProps) {
           } else {
             console.log('🔑 Attempting to connect to KeepKey...');
             console.log('🔑 KeepKey SDK before pairing:', !!appInit.keepKeySdk);
-          
+
           try {
+            startTimer('pairWallet(KEEPKEY)');
             const keepkeyConnected = await appInit.pairWallet('KEEPKEY');
+            endTimer('pairWallet(KEEPKEY)');
             console.log('🔑 KeepKey connection result:', keepkeyConnected);
             console.log('🔑 KeepKey SDK after pairing:', !!appInit.keepKeySdk);
             
@@ -909,7 +956,9 @@ export function Provider({ children }: ProviderProps) {
                   } else {
                     console.log('📊 Fetching charts after wallet pairing...');
                     try {
+                      startTimer('getCharts() - After Pairing');
                       await appInit.getCharts();
+                      endTimer('getCharts() - After Pairing');
                       console.log('✅ Chart data fetched successfully after pairing');
                     } catch (getChartsError: any) {
                       // Fallback error handling just in case
@@ -1145,6 +1194,9 @@ export function Provider({ children }: ProviderProps) {
         PIONEER_INITIALIZED = false; // Reset flag on error
         setError(e as Error);
       } finally {
+        endTimer('Total Initialization');
+        logPerfSummary();
+
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('🏁 [INIT] Finally block: Setting isLoading to FALSE');
         console.log('🏁 [INIT] This will hide loading screen regardless of success/failure');
