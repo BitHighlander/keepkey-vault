@@ -14,7 +14,6 @@ import { FaExternalLinkAlt, FaTimes } from 'react-icons/fa';
 import Confetti from 'react-confetti';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { THORCHAIN_TRACKER_URL, MIDGARD_URL } from '@/config/external-trackers';
-// @ts-expect-error - pioneer-discovery doesn't have TypeScript declarations
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 
 // Import sub-components
@@ -321,11 +320,15 @@ export const SwapProgress = ({
             // console.log('[SwapProgress] Outbound confirmations:', swap.outboundConfirmations, '/', swap.outboundRequiredConfirmations);
             setCurrentStage(3);
           } else if (swap.status === 'confirming') {
-            // console.log('[SwapProgress] 📤 INITIAL LOAD: Input confirming');
-            setCurrentStage(1);
+            // console.log('[SwapProgress] ⚡ INITIAL LOAD: Protocol processing');
+            setCurrentStage(2);  // FIX: 'confirming' means protocol is processing the swap (Stage 2)
+          } else if (swap.status === 'pending') {
+            // console.log('[SwapProgress] 📤 INITIAL LOAD: Input pending confirmation');
+            setCurrentStage(1);  // Input transaction stage
           } else {
-            // console.log('[SwapProgress] 🚀 INITIAL LOAD: Pending/Unknown status');
+            // console.log('[SwapProgress] 🚀 INITIAL LOAD: Unknown status, defaulting to input stage');
             // console.log('[SwapProgress] Status:', swap.status);
+            setCurrentStage(1);  // Default to input stage for unknown statuses
           }
         } else {
           // Swap is in "processing" state - protocol APIs don't have asset data yet
@@ -489,13 +492,13 @@ export const SwapProgress = ({
 
         setCurrentStage(3);
       }
-      // INPUT CONFIRMING (Stage 1)
+      // PROTOCOL PROCESSING (Stage 2)
       else if (eventType === 'swap:confirming' || eventType === 'confirming') {
-        console.log('[SwapProgress] 📤 INPUT CONFIRMING STAGE');
+        console.log('[SwapProgress] ⚡ PROTOCOL PROCESSING STAGE');
         console.log('[SwapProgress] Event type matched:', eventType);
-        console.log('[SwapProgress] Setting stage to 1');
+        console.log('[SwapProgress] Setting stage to 2 (protocol processing)');
         console.log('[SwapProgress] Input confirmations:', event.confirmations, '/', event.requiredConfirmations);
-        setCurrentStage(1);
+        setCurrentStage(2);  // FIX: 'confirming' means protocol is processing the swap
       }
       // INITIATED/PENDING (Stage 1)
       else if (eventType === 'swap:initiated' || eventType === 'pending') {
@@ -663,8 +666,8 @@ export const SwapProgress = ({
 
             setCurrentStage(3);
           } else if (swap.status === 'confirming') {
-            console.log('[SwapProgress] 📤 POLLING: Input confirming');
-            setCurrentStage(1);
+            console.log('[SwapProgress] ⚡ POLLING: Protocol processing');
+            setCurrentStage(2);  // FIX: 'confirming' means protocol is processing the swap
           }
 
           // console.log('[SwapProgress] 📊 State after polling:', {
@@ -791,8 +794,8 @@ export const SwapProgress = ({
           console.log('[SwapProgress] 📥 Output stage detected');
           setCurrentStage(3);
         } else if (swap.status === 'confirming') {
-          console.log('[SwapProgress] 📤 Input confirming');
-          setCurrentStage(1);
+          console.log('[SwapProgress] ⚡ Protocol processing');
+          setCurrentStage(2);  // FIX: 'confirming' means protocol is processing the swap
         }
       }
 
@@ -934,7 +937,7 @@ export const SwapProgress = ({
       borderRadius="2xl"
       borderWidth="3px"
       borderColor={borderColor}
-      p={8}
+      p={4}
       boxShadow={`0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px ${borderGlow}, inset 0 0 20px rgba(0, 0, 0, 0.3)`}
       _before={{
         content: '""',
@@ -980,16 +983,16 @@ export const SwapProgress = ({
         </Box>
       )}
 
-      <VStack gap={8} width="full" align="stretch" position="relative">
+      <VStack gap={4} width="full" align="stretch" position="relative">
         {/* Header */}
         <HStack justify="space-between" width="full">
-          <Text fontSize="2xl" fontWeight="bold" color={swapTheme.text}>
+          <Text fontSize="lg" fontWeight="bold" color={swapTheme.text}>
             {isComplete ? 'Swap Completed!' : 'Swap in Progress'}
           </Text>
           <Button
             variant="ghost"
             onClick={onClose}
-            size="sm"
+            size="xs"
             color={swapTheme.textMuted}
             _hover={{ color: swapTheme.text, bg: swapTheme.cardBg }}
           >
@@ -1049,22 +1052,19 @@ export const SwapProgress = ({
 
         {/* Action Buttons - Only show Done button when complete */}
         {isComplete && (
-          <VStack gap={4} width="full">
-            {/* Done Button */}
-            <Button
-              size="lg"
-              bg={swapTheme.accent}
-              color="white"
-              _hover={{ bg: swapTheme.accentHover }}
-              onClick={onClose}
-              width="full"
-              height="52px"
-              borderRadius="xl"
-              fontWeight="semibold"
-            >
-              Done
-            </Button>
-          </VStack>
+          <Button
+            size="md"
+            bg={swapTheme.accent}
+            color="white"
+            _hover={{ bg: swapTheme.accentHover }}
+            onClick={onClose}
+            width="full"
+            height="40px"
+            borderRadius="md"
+            fontWeight="semibold"
+          >
+            Done
+          </Button>
         )}
       </VStack>
 

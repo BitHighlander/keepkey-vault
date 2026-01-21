@@ -9,7 +9,6 @@ import { TransactionRow } from './TransactionRow';
 import { SwapProgress } from '@/components/swap/SwapProgress';
 import { DialogRoot, DialogContent, DialogBody } from '@/components/ui/dialog';
 import { networkIdToSymbol } from '@/utils/transactionUtils';
-// @ts-expect-error - No type definitions available for pioneer-discovery
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 
 const theme = {

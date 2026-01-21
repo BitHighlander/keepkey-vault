@@ -8,7 +8,6 @@
  * All network metadata (names, colors, icons) is derived from native asset data.
  */
 
-// @ts-expect-error - No type definitions available for pioneer-discovery
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 
 export interface NetworkConfig {

@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/dialog';
 import { InputGroup } from '@/components/ui/input-group';
 import { FaSearch, FaPlus, FaTimes, FaCheck, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
-// @ts-expect-error - No type definitions available for pioneer-discovery
 import { assetData } from '@pioneer-platform/pioneer-discovery';
 import { usePioneerContext } from '@/components/providers/pioneer';
 import { CustomToken } from '@/hooks/useCustomTokens';

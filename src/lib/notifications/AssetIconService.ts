@@ -11,7 +11,6 @@
  */
 
 import type { IconCache, IconCacheEntry } from '@/types/events'
-// @ts-expect-error - pioneer-discovery doesn't have TypeScript declarations
 import { assetData } from '@pioneer-platform/pioneer-discovery'
 
 const ICON_CACHE_KEY = 'payment_icon_cache'
