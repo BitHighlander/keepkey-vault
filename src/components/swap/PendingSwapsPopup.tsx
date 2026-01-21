@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   Flex,
@@ -257,22 +257,25 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
   const { pendingSwaps, isLoading, refreshPendingSwaps } = usePendingSwaps();
 
   // Filter active swaps (including signing state and recent completed swaps)
-  const now = Date.now();
-  const activeSwaps = [
-    ...signingSwaps,
-    ...pendingSwaps.filter(s => {
-      // Always show pending/confirming
-      if (s.status === 'pending' || s.status === 'confirming') return true;
+  // Memoize to prevent infinite re-renders
+  const activeSwaps = useMemo(() => {
+    const now = Date.now();
+    return [
+      ...signingSwaps,
+      ...pendingSwaps.filter(s => {
+        // Always show pending/confirming
+        if (s.status === 'pending' || s.status === 'confirming') return true;
 
-      // Show completed swaps for 60 seconds
-      if (s.status === 'completed') {
-        const completedAt = completedSwaps.get(s.txHash);
-        if (completedAt && (now - completedAt) < 60000) return true;
-      }
+        // Show completed swaps for 60 seconds
+        if (s.status === 'completed') {
+          const completedAt = completedSwaps.get(s.txHash);
+          if (completedAt && (now - completedAt) < 60000) return true;
+        }
 
-      return false;
-    })
-  ];
+        return false;
+      })
+    ];
+  }, [signingSwaps, pendingSwaps, completedSwaps]);
 
   // Check if there are any swaps actively in progress (not completed/failed)
   const hasActiveSwaps = activeSwaps.some(s =>
@@ -292,7 +295,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
     }, isOpen ? 30000 : 60000);
 
     return () => clearInterval(interval);
-  }, [isOpen, activeSwaps.length, refreshPendingSwaps]);
+  }, [isOpen, activeSwaps.length]); // Remove refreshPendingSwaps to prevent loops
 
   // New swap detection
   useEffect(() => {
@@ -423,7 +426,7 @@ export const PendingSwapsPopup: React.FC<PendingSwapsPopupProps> = ({ app }) => 
 
     window.addEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
     return () => window.removeEventListener('swap:broadcast', handleSwapBroadcast as EventListener);
-  }, [refreshPendingSwaps]);
+  }, []); // Remove refreshPendingSwaps dependency to prevent loops
 
   // Listen for swap cancel events (user closed signing dialog)
   useEffect(() => {
