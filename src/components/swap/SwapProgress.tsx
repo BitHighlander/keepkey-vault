@@ -208,41 +208,77 @@ export const SwapProgress = ({
           // console.log('[SwapProgress] Outbound txHash:', swap.thorchainData?.outboundTxHash);
           // console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-          // Calculate timing data if not provided by API
+          // Calculate timing data using API timeEstimate or fallback calculation
           let timingData = swap.timingData;
-          if (!timingData && swap.createdAt) {
-            const createdAt = new Date(swap.createdAt);
-            const now = new Date();
-            const elapsedSeconds = Math.floor((now.getTime() - createdAt.getTime()) / 1000);
+          
+          // ALWAYS ensure we have timing data for proper countdown display
+          if (!timingData || !timingData.remainingFormatted) {
+            console.log('[SwapProgress] 🔧 Creating timing data - API timingData missing or incomplete');
+            console.log('[SwapProgress] Existing timingData:', timingData);
+            console.log('[SwapProgress] Has createdAt:', !!swap.createdAt);
+            
+            if (swap.createdAt) {
+              const createdAt = new Date(swap.createdAt);
+              const now = new Date();
+              const elapsedSeconds = Math.floor((now.getTime() - createdAt.getTime()) / 1000);
 
-            // Estimate total time based on stage
-            const stageEstimates = {
-              pending: 180,        // 3 minutes for confirmation
-              confirming: 180,     // 3 minutes
-              processing: 120,     // 2 minutes for protocol
-              completed: 0
-            };
-            const estimatedTotal = stageEstimates[swap.status as keyof typeof stageEstimates] || 300;
-            const remaining = Math.max(0, estimatedTotal - elapsedSeconds);
+              // Use API timeEstimate data if available, otherwise use fallback estimates
+              const timeEstimate = swap.timeEstimate;
+              let totalSwapSeconds = 300; // 5 minutes default
+              let stageExpectedSeconds = 300;
 
-            const minutes = Math.floor(remaining / 60);
-            const seconds = remaining % 60;
-            const remainingFormatted = minutes > 0
-              ? `${minutes}m ${seconds}s`
-              : `${seconds}s`;
+              if (timeEstimate) {
+                // Use API timing estimates - these are more accurate than hardcoded values
+                totalSwapSeconds = timeEstimate.total_swap_seconds || timeEstimate.inbound_confirmation_seconds || 600;
+                
+                // Determine stage-specific expected time based on current status
+                if (swap.status === 'pending') {
+                  // Stage 1: Input confirmation
+                  stageExpectedSeconds = timeEstimate.inbound_confirmation_seconds || totalSwapSeconds;
+                } else if (swap.status === 'confirming') {
+                  // Stage 2: Protocol processing
+                  stageExpectedSeconds = totalSwapSeconds - (timeEstimate.inbound_confirmation_seconds || 0);
+                } else {
+                  // Stage 3: Output confirmation
+                  stageExpectedSeconds = timeEstimate.outbound_delay_seconds || 60;
+                }
+              } else {
+                // Fallback to hardcoded estimates
+                const stageEstimates = {
+                  pending: 600,        // 10 minutes for confirmation (Bitcoin can be slow)
+                  confirming: 180,     // 3 minutes for protocol processing
+                  processing: 120,     // 2 minutes for protocol
+                  completed: 0
+                };
+                stageExpectedSeconds = stageEstimates[swap.status as keyof typeof stageEstimates] || 300;
+                totalSwapSeconds = stageExpectedSeconds;
+              }
 
-            timingData = {
-              elapsedSeconds,
-              currentStage: swap.status || 'pending',
-              stageElapsedSeconds: elapsedSeconds,
-              stageExpectedSeconds: estimatedTotal,
-              actualVsEstimate: remaining > 0 ? 'on-track' : 'delayed',
-              remainingFormatted: remaining > 0 ? `~${remainingFormatted}` : 'Completing...',
-              reassuranceMessage: remaining > 0
-                ? 'Transaction is being processed. This typically takes a few minutes.'
-                : 'Almost there! Finalizing your swap...'
-            };
+              const remaining = Math.max(0, stageExpectedSeconds - elapsedSeconds);
+              const minutes = Math.floor(remaining / 60);
+              const seconds = remaining % 60;
+              const remainingFormatted = minutes > 0
+                ? `${minutes}m ${seconds}s`
+                : `${seconds}s`;
 
+              timingData = {
+                elapsedSeconds,
+                currentStage: swap.status || 'pending',
+                stageElapsedSeconds: elapsedSeconds,
+                stageExpectedSeconds,
+                actualVsEstimate: remaining > 0 ? 'on-track' : 'delayed',
+                remainingFormatted: remaining > 0 ? `~${remainingFormatted}` : 'Completing...',
+                reassuranceMessage: remaining > 0
+                  ? (timeEstimate 
+                     ? `This swap typically takes ${Math.ceil(totalSwapSeconds / 60)} minutes. Please be patient.`
+                     : 'Transaction is being processed. This typically takes a few minutes.')
+                  : 'Almost there! Finalizing your swap...'
+              };
+              
+              console.log('[SwapProgress] ✅ Created timing data:', timingData);
+            } else {
+              console.warn('[SwapProgress] ⚠️ No createdAt timestamp - cannot create accurate timing data');
+            }
           }
 
           // Update state with REST data
@@ -264,7 +300,9 @@ export const SwapProgress = ({
 
           // Set swap start time if we have createdAt
           if (swap.createdAt && !swapStartTime) {
-            setSwapStartTime(new Date(swap.createdAt).getTime());
+            const startTime = new Date(swap.createdAt).getTime();
+            setSwapStartTime(startTime);
+            console.log('[SwapProgress] ⏰ Set swap start time from createdAt:', new Date(startTime).toISOString());
           }
 
           // Normalize and store REST API data (sellAsset/buyAsset → fromAsset/toAsset)
@@ -834,9 +872,12 @@ export const SwapProgress = ({
           newElapsedSeconds = (prevStatus.timingData.elapsedSeconds || 0) + 1;
         }
 
-        // Calculate remaining time
+        // Calculate remaining time based on stage and total elapsed time
         const stageExpected = prevStatus.timingData.stageExpectedSeconds || 300;
-        const stageElapsed = prevStatus.timingData.stageElapsedSeconds || newElapsedSeconds;
+        
+        // For calculating remaining time in current stage, use stage elapsed time
+        // This gives more accurate remaining time for the current stage
+        const stageElapsed = newElapsedSeconds; // Use total elapsed time for stage calculations
         const remaining = Math.max(0, stageExpected - stageElapsed);
 
         const minutes = Math.floor(remaining / 60);
@@ -850,6 +891,7 @@ export const SwapProgress = ({
           timingData: {
             ...prevStatus.timingData,
             elapsedSeconds: newElapsedSeconds,
+            stageElapsedSeconds: newElapsedSeconds, // Update stage elapsed time too
             remainingFormatted: remaining > 0 ? `${remainingFormatted}` : 'Completing...',
             reassuranceMessage: remaining > 0
               ? prevStatus.timingData.reassuranceMessage || 'Transaction is being processed.'

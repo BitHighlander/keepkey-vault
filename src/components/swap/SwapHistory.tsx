@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -16,8 +16,24 @@ import {
   Stack,
   Collapsible,
   Container,
+  Input,
+  Select,
+  InputGroup,
+  InputLeftElement,
 } from '@chakra-ui/react';
-import { FaExternalLinkAlt, FaChevronDown, FaChevronUp, FaSync, FaExclamationTriangle, FaCheckCircle, FaClock } from 'react-icons/fa';
+import { 
+  FaExternalLinkAlt, 
+  FaChevronDown, 
+  FaChevronUp, 
+  FaSync, 
+  FaExclamationTriangle, 
+  FaCheckCircle, 
+  FaClock,
+  FaSearch,
+  FaFilter,
+  FaChevronLeft,
+  FaChevronRight
+} from 'react-icons/fa';
 import { usePendingSwaps, PendingSwap } from '@/hooks/usePendingSwaps';
 import { AssetIcon } from '@/components/ui/AssetIcon';
 import { getAssetIconUrl } from '@/lib/utils/assetIcons';
@@ -25,6 +41,19 @@ import { getAssetIconUrl } from '@/lib/utils/assetIcons';
 interface SwapHistoryProps {
   onBackClick?: () => void;
 }
+
+// Theme colors matching swap dialog
+const theme = {
+  bg: '#000000',           // Black background
+  cardBg: '#111111',       // Dark card background
+  teal: '#00dc82',         // THORChain teal (primary)
+  tealHover: '#00f094',    // Lighter teal (hover)
+  tealBright: '#33e9a6',   // Bright teal (accents)
+  border: '#222222',       // Dark border
+};
+
+// Pagination constants
+const ITEMS_PER_PAGE = 10;
 
 const StatusBadge = ({ status }: { status: PendingSwap['status'] }) => {
   const statusConfig = {

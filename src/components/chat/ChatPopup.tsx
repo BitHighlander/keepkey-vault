@@ -63,6 +63,7 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasNewPageMessage, setHasNewPageMessage] = useState(false);
   const [previousPathname, setPreviousPathname] = useState<string>('');
+  const [monitoredSwaps, setMonitoredSwaps] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Tutorial system integration
@@ -184,6 +185,96 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
     }
   }, [isOpen, hasNewPageMessage]);
 
+  // WebSocket monitoring for real-time swap updates
+  useEffect(() => {
+    if (!app?.events) return;
+
+    const handleSwapUpdate = (eventData: any) => {
+      try {
+        const { type, txHash, status, data } = eventData;
+        
+        // Only process swap events for transactions we're monitoring
+        if (!txHash || !monitoredSwaps.includes(txHash)) {
+          return;
+        }
+
+        console.log('🔄 [Chat] Swap event received:', { type, txHash, status });
+
+        let notificationMessage = '';
+        let shouldNotify = false;
+
+        switch (type) {
+          case 'swap:updated':
+          case 'swap:completed':
+            if (status === 'completed') {
+              notificationMessage = `🎉 **Swap Complete!**\n\nYour ${data?.sellAsset?.symbol || 'swap'} → ${data?.buyAsset?.symbol || 'tokens'} swap has finished!\n\n📄 Tx: ${txHash.substring(0, 10)}...\n\nCheck your wallet to see your new tokens! 🚀`;
+              shouldNotify = true;
+              // Remove from monitoring list
+              setMonitoredSwaps(prev => prev.filter(tx => tx !== txHash));
+            } else if (status === 'confirming' || status === 'output_detected') {
+              notificationMessage = `🔄 **Swap Progress Update**\n\nYour swap is progressing! Status: ${status}\n\n📄 Tx: ${txHash.substring(0, 10)}...\n\nI'll let you know when it completes!`;
+              shouldNotify = true;
+            }
+            break;
+
+          case 'swap:failed':
+          case 'swap:refunded':
+            notificationMessage = `⚠️ **Swap ${status === 'failed' ? 'Failed' : 'Refunded'}**\n\nYour swap has ${status === 'failed' ? 'failed' : 'been refunded'}.\n\n📄 Tx: ${txHash.substring(0, 10)}...\n\nAsk me "Why did my swap fail?" for details.`;
+            shouldNotify = true;
+            // Remove from monitoring list
+            setMonitoredSwaps(prev => prev.filter(tx => tx !== txHash));
+            break;
+        }
+
+        if (shouldNotify) {
+          const swapUpdateMessage: Message = {
+            id: `swap-update-${Date.now()}`,
+            role: 'assistant',
+            content: notificationMessage,
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, swapUpdateMessage]);
+
+          // Set notification badge if chat is closed
+          if (!isOpen) {
+            setHasNewPageMessage(true);
+          }
+
+          // Auto-scroll to new message
+          setTimeout(scrollToBottom, 100);
+        }
+
+      } catch (error) {
+        console.error('Error handling swap event:', error);
+      }
+    };
+
+    // Listen for swap events
+    app.events.on('swap:event', handleSwapUpdate);
+    app.events.on('swap:updated', handleSwapUpdate);
+    app.events.on('swap:completed', handleSwapUpdate);
+    app.events.on('swap:failed', handleSwapUpdate);
+    app.events.on('swap:refunded', handleSwapUpdate);
+
+    return () => {
+      // Cleanup event listeners
+      app.events.off('swap:event', handleSwapUpdate);
+      app.events.off('swap:updated', handleSwapUpdate);
+      app.events.off('swap:completed', handleSwapUpdate);
+      app.events.off('swap:failed', handleSwapUpdate);
+      app.events.off('swap:refunded', handleSwapUpdate);
+    };
+  }, [app?.events, monitoredSwaps, isOpen]);
+
+  // Add swap to monitoring when user queries swap status
+  const addSwapToMonitoring = (txHash: string) => {
+    if (txHash && !monitoredSwaps.includes(txHash)) {
+      console.log('📊 [Chat] Adding swap to monitoring:', txHash.substring(0, 10));
+      setMonitoredSwaps(prev => [...prev, txHash]);
+    }
+  };
+
   // Process user input and generate responses
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isProcessing) return;
@@ -205,6 +296,16 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
 
       // Parse user intent and call appropriate Pioneer functions
       const response = await processUserIntent(inputValue, app, currentPage?.description);
+
+      // Auto-monitor swaps when user queries swap status
+      if (response.functionCall?.result?.txHash && 
+          (response.functionCall.name.includes('getSwapStatus') || 
+           response.functionCall.name.includes('checkSwapProgress'))) {
+        const txHash = response.functionCall.result.txHash;
+        if (txHash && typeof txHash === 'string') {
+          addSwapToMonitoring(txHash);
+        }
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -566,7 +667,7 @@ Available Features: ${currentPage?.keyFeatures?.slice(0, 3).join(', ') || 'N/A'}
 
 Analyze the user's message and return JSON:
 {
-  "intent": "query_balance|query_network|action_send|action_receive|action_swap|navigation|query_help|query_page|general",
+  "intent": "query_balance|query_network|action_send|action_receive|action_swap|query_swap|monitor_swap|explain_swap_error|navigation|query_help|query_page|general",
   "functions": ["functionName1", "functionName2"],
   "parameters": {"key": "value"},
   "content": "friendly response text"
@@ -575,15 +676,21 @@ Analyze the user's message and return JSON:
 Available functions:
 - Navigation: navigateToAsset, navigateToSend, navigateToReceive, navigateToSwap, navigateToDashboard
 - Queries: getBalances, searchAssets, getNetworks, getAddress
+- Swap Queries: getSwapStatus, getMyPendingSwaps, checkSwapProgress, explainSwapError
 - Actions: refreshPortfolio
 - Tutorials: startTutorial, getPageHelp, highlightElement, explainElement, getProjectInfo
 
 **IMPORTANT Navigation Rules**:
 - For "How do I send X?" → use searchAssets + navigateToSend to open the send page for that asset
 - For "Show me how to receive X" → use searchAssets + navigateToReceive to open the receive page
-- For "I want to swap X" → use searchAssets + navigateToSwap to open the swap page
+- For "I want to swap X" → use searchAssets + navigateToSwap to open the swap page (sets asset context FIRST, then opens swap)
 - For "Show me X" → use searchAssets + navigateToAsset to open the asset details page
 - Always search for the asset first, then navigate with the CAIP identifier
+
+**CRITICAL SWAP FLOW**:
+Swap navigation requires TWO steps:
+1. Set asset context (via searchAssets)
+2. Navigate to asset page with swap action (navigateToSwap)
 
 Examples:
 User: "How do I send Bitcoin?"
@@ -594,6 +701,28 @@ User: "Show me my Ethereum"
 
 User: "How do I receive BTC?"
 → {"intent": "action_receive", "functions": ["searchAssets", "navigateToReceive"], "parameters": {"query": "bitcoin"}, "content": "I'll show you your Bitcoin receiving address with a QR code..."}
+
+User: "I want to swap Bitcoin"
+→ {"intent": "action_swap", "functions": ["searchAssets", "navigateToSwap"], "parameters": {"query": "bitcoin"}, "content": "I'll open the Bitcoin page and start a swap for you..."}
+
+User: "Start swap" or "Open swap"
+→ {"intent": "action_swap", "functions": ["navigateToSwap"], "parameters": {}, "content": "Opening the swap interface for your current asset..."}
+
+**IMPORTANT Swap Query Rules**:
+- For "What's the status of my swap 0xabc123?" → use getSwapStatus with txHash parameter
+- For "How many swaps have I done?" or "Show my pending swaps" → use getMyPendingSwaps
+- For "Check my swap abc123" → use checkSwapProgress to force immediate status check
+- For "Why did my swap fail?" → use explainSwapError (if swap data available) or getSwapStatus first
+
+Swap Examples:
+User: "What's the status of my swap 0xabc123def456?"
+→ {"intent": "query_swap", "functions": ["getSwapStatus"], "parameters": {"txHash": "0xabc123def456"}, "content": "Let me check the current status of your swap..."}
+
+User: "Show me my pending swaps"
+→ {"intent": "query_swap", "functions": ["getMyPendingSwaps"], "parameters": {}, "content": "I'll show you all your pending swap transactions..."}
+
+User: "Force check swap 0xdef789"
+→ {"intent": "monitor_swap", "functions": ["checkSwapProgress"], "parameters": {"txHash": "0xdef789"}, "content": "Forcing an immediate status check for your swap..."}
 
 Be helpful, conversational, and context-aware based on the current page.`;
 
@@ -696,6 +825,60 @@ function fallbackProcessUserIntent(input: string, app: any, currentPage?: any): 
     return { content: response };
   }
 
+  // Swap queries
+  if (lowerInput.includes('swap') && (lowerInput.includes('status') || lowerInput.includes('0x') || lowerInput.includes('pending'))) {
+    // Extract transaction hash if present
+    const hashMatch = input.match(/0x[a-fA-F0-9]{40,66}/);
+    
+    if (hashMatch) {
+      const txHash = hashMatch[0];
+      return {
+        content: 'Checking your swap status...',
+        functionCall: {
+          name: 'getSwapStatus',
+          arguments: { txHash },
+          result: { success: true, txHash }
+        }
+      };
+    } else if (lowerInput.includes('pending') || lowerInput.includes('my swap')) {
+      return {
+        content: 'Looking up your pending swaps...',
+        functionCall: {
+          name: 'getMyPendingSwaps',
+          arguments: {},
+          result: { success: true }
+        }
+      };
+    }
+    
+    return { 
+      content: 'To check a swap status, provide the transaction hash (0x...) or ask "Show me my pending swaps"' 
+    };
+  }
+
+  // Handle basic swap requests
+  if (lowerInput.includes('swap') && (lowerInput.includes('bitcoin') || lowerInput.includes('btc'))) {
+    return {
+      content: 'Opening Bitcoin swap interface...',
+      functionCall: {
+        name: 'searchAssets, navigateToSwap',
+        arguments: { query: 'bitcoin' },
+        result: { success: true, action: 'swap' }
+      }
+    };
+  }
+  
+  if (lowerInput.includes('swap') && (lowerInput.includes('ethereum') || lowerInput.includes('eth'))) {
+    return {
+      content: 'Opening Ethereum swap interface...',
+      functionCall: {
+        name: 'searchAssets, navigateToSwap',
+        arguments: { query: 'ethereum' },
+        result: { success: true, action: 'swap' }
+      }
+    };
+  }
+
   // Default response
   return {
     content: `I can help you with:
@@ -703,8 +886,11 @@ function fallbackProcessUserIntent(input: string, app: any, currentPage?: any): 
 • Viewing your networks and blockchains
 • Navigating to assets (e.g., "Show me Bitcoin")
 • Opening send/receive pages
+• Starting swaps (e.g., "I want to swap Bitcoin")
+• Checking swap status ("Status of 0xabc123...")
+• Viewing pending swaps ("Show my pending swaps")
 • Refreshing your portfolio data
 
-Try asking: "What's my balance?" or "Show me my Bitcoin"`,
+Try asking: "What's my balance?", "Show me my Bitcoin", "I want to swap Bitcoin", or "Check my pending swaps"`,
   };
 }

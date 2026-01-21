@@ -57,6 +57,85 @@ import { isFeatureEnabled } from '@/config/features';
 // Create motion wrapper for Chakra components
 const MotionBox = motion(Box);
 
+// Reusable PubkeyBalance component to eliminate duplication
+interface PubkeyBalanceProps {
+  pubkeyBalance: any;
+  assetContext: any;
+  theme: any;
+  formatUsd: (value: number) => string;
+}
+
+// Balance utility functions to consolidate data access patterns
+const findBalanceByCaip = (balances: any[], caip: string) => {
+  return balances?.find((balance: any) => balance.caip === caip) || null;
+};
+
+const findNativeBalanceForNetwork = (balances: any[], networkId: string) => {
+  return balances?.find((b: any) => 
+    b.networkId === networkId && b.isNative
+  ) || null;
+};
+
+const findTokenBalance = (balances: any[], caip: string) => {
+  return balances?.find((balance: any) => balance.caip === caip) || null;
+};
+
+const findNativeAssetBalance = (balances: any[], caip: string, isEthMainnet = false) => {
+  if (isEthMainnet) {
+    return balances?.find((balance: any) =>
+      balance.caip === caip &&
+      balance.name !== 'eETH' &&
+      balance.appId !== 'ether-fi' &&
+      (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
+    );
+  }
+  
+  return balances?.find((balance: any) =>
+    balance.caip === caip &&
+    (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
+  ) || balances?.find((balance: any) => balance.caip === caip);
+};
+
+const filterBalancesByNetwork = (balances: any[], networkId: string, symbol?: string) => {
+  if (symbol) {
+    return balances?.filter((balance: any) => 
+      balance.networkId === networkId && balance.symbol === symbol
+    ) || [];
+  }
+  return balances?.filter((balance: any) => balance.networkId === networkId) || [];
+};
+
+const PubkeyBalance = ({ pubkeyBalance, assetContext, theme, formatUsd }: PubkeyBalanceProps) => (
+  <Box
+    p={2}
+    bg="rgba(255, 215, 0, 0.08)"
+    borderRadius="md"
+    borderWidth="1px"
+    borderColor="rgba(255, 215, 0, 0.2)"
+  >
+    <VStack align="stretch" gap={1}>
+      <Flex justify="space-between" align="center">
+        <Text color="gray.400" fontSize="xs">
+          Balance
+        </Text>
+        {pubkeyBalance.percentage !== undefined && pubkeyBalance.percentage > 0 && (
+          <Badge colorScheme="yellow" fontSize="xs" variant="subtle">
+            {pubkeyBalance.percentage.toFixed(1)}%
+          </Badge>
+        )}
+      </Flex>
+      <Text color={theme.gold} fontSize="sm" fontWeight="bold" fontFamily="mono">
+        {parseFloat(pubkeyBalance.balance).toFixed(8)} {assetContext.symbol}
+      </Text>
+      {pubkeyBalance.valueUsd > 0 && (
+        <Text color="gray.400" fontSize="xs">
+          ${formatUsd(pubkeyBalance.valueUsd)} USD
+        </Text>
+      )}
+    </VStack>
+  </Box>
+);
+
 interface AssetProps {
   caip: string; // The CAIP identifier for this asset
   onBackClick?: () => void;
@@ -146,11 +225,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     const networkPubkeys = assetContext.pubkeys || [];
     if (networkPubkeys.length === 0) return null; // Only return null if no pubkeys at all
     
-    // Get balances for this asset
-    const assetBalances = app?.balances?.filter((balance: any) => 
-      balance.networkId === assetContext.networkId && 
-      balance.symbol === assetContext.symbol
-    ) || [];
+    // Get balances for this asset using utility function
+    const assetBalances = filterBalancesByNetwork(
+      app?.balances || [], 
+      assetContext.networkId, 
+      assetContext.symbol
+    );
     
     // Create a comprehensive list that includes all pubkeys, even those with 0 balance
     const allPubkeyBalances = networkPubkeys.map((pubkey: any) => {
@@ -243,7 +323,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     if (isToken) {
       // Handle token case
       console.log('🪙 [Asset] Loading token data');
-      const tokenBalance = app.balances?.find((balance: any) => balance.caip === caip);
+      const tokenBalance = findTokenBalance(app.balances || [], caip);
 
       if (!tokenBalance) {
         console.error('⚠️ [Asset] Token not found:', caip);
@@ -406,27 +486,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
       assetType = parts[1];
     }
 
-    // Find the balance
-    let nativeAssetBalance = null;
-
-    // Special case for ETH
-    if (caip === 'eip155:1/slip44:60') {
-      nativeAssetBalance = app.balances?.find((balance: any) =>
-        balance.caip === caip &&
-        balance.name !== 'eETH' &&
-        balance.appId !== 'ether-fi' &&
-        (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
-      );
-    } else {
-      nativeAssetBalance = app.balances?.find((balance: any) =>
-        balance.caip === caip &&
-        (!balance.appId || balance.appId === 'native' || balance.appId === 'ethereum')
-      );
-    }
-
-    if (!nativeAssetBalance) {
-      nativeAssetBalance = app.balances?.find((balance: any) => balance.caip === caip);
-    }
+    // Find the balance using utility function
+    let nativeAssetBalance = findNativeAssetBalance(
+      app.balances || [], 
+      caip, 
+      caip === 'eip155:1/slip44:60' // isEthMainnet
+    );
 
     // CRITICAL FIX: If no balance found (zero balance case), create placeholder from assetsMap
     if (!nativeAssetBalance) {
@@ -583,7 +648,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [app, previousBalance, isInitialLoad, isCustomTokenDialogOpen]);
+  }, [app, isInitialLoad, isCustomTokenDialogOpen]);
 
   const handleBack = () => {
     // Set loading state
@@ -676,8 +741,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
         console.log('✅ [Asset] Balance refresh completed for', assetContext.networkId);
 
         // Verify balances were updated
-        const assetBalance = app.balances?.find((b: any) =>
-          b.networkId === assetContext.networkId && b.isNative
+        const assetBalance = findNativeBalanceForNetwork(
+          app.balances || [], 
+          assetContext.networkId
         );
         console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, assetBalance?.balance || '0');
 
@@ -1014,9 +1080,11 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                   console.log('🔄 [Asset] Force refresh clicked - using networkId pattern from integration test');
                   setIsRefreshing(true);
 
-                  const startBalance = app?.balances?.find((b: any) =>
-                    b.networkId === assetContext.networkId && b.isNative
-                  )?.balance || '0';
+                  const startBalanceObj = findNativeBalanceForNetwork(
+                    app?.balances || [], 
+                    assetContext.networkId
+                  );
+                  const startBalance = startBalanceObj?.balance || '0';
 
                   try {
                     if (app && typeof app.getBalances === 'function' && assetContext?.networkId) {
@@ -1025,8 +1093,9 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       console.log('✅ [Asset] Balance refresh completed');
 
                       // Verify balance was updated
-                      const assetBalance = app.balances?.find((b: any) =>
-                        b.networkId === assetContext.networkId && b.isNative
+                      const assetBalance = findNativeBalanceForNetwork(
+                        app.balances || [], 
+                        assetContext.networkId
                       );
                       const newBalance = assetBalance?.balance || '0';
                       console.log(`✅ [Asset] Updated balance for ${assetContext.networkId}:`, newBalance);
@@ -1706,34 +1775,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
                               {/* Balance Information */}
                               {pubkeyBalance && (
-                                <Box
-                                  p={2}
-                                  bg="rgba(255, 215, 0, 0.08)"
-                                  borderRadius="md"
-                                  borderWidth="1px"
-                                  borderColor="rgba(255, 215, 0, 0.2)"
-                                >
-                                  <VStack align="stretch" gap={1}>
-                                    <Flex justify="space-between" align="center">
-                                      <Text color="gray.400" fontSize="xs">
-                                        Balance
-                                      </Text>
-                                      {pubkeyBalance.percentage !== undefined && pubkeyBalance.percentage > 0 && (
-                                        <Badge colorScheme="yellow" fontSize="xs" variant="subtle">
-                                          {pubkeyBalance.percentage.toFixed(1)}%
-                                        </Badge>
-                                      )}
-                                    </Flex>
-                                    <Text color={theme.gold} fontSize="sm" fontWeight="bold" fontFamily="mono">
-                                      {parseFloat(pubkeyBalance.balance).toFixed(8)} {assetContext.symbol}
-                                    </Text>
-                                    {pubkeyBalance.valueUsd > 0 && (
-                                      <Text color="gray.400" fontSize="xs">
-                                        ${formatUsd(pubkeyBalance.valueUsd)} USD
-                                      </Text>
-                                    )}
-                                  </VStack>
-                                </Box>
+                                <PubkeyBalance 
+                                  pubkeyBalance={pubkeyBalance}
+                                  assetContext={assetContext}
+                                  theme={theme}
+                                  formatUsd={formatUsd}
+                                />
                               )}
                               {!pubkeyBalance && (
                                 <Box
@@ -2166,34 +2213,12 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
 
                             {/* Balance Information */}
                             {pubkeyBalance && (
-                              <Box
-                                p={2}
-                                bg="rgba(255, 215, 0, 0.08)"
-                                borderRadius="md"
-                                borderWidth="1px"
-                                borderColor="rgba(255, 215, 0, 0.2)"
-                              >
-                                <VStack align="stretch" gap={1}>
-                                  <Flex justify="space-between" align="center">
-                                    <Text color="gray.400" fontSize="xs">
-                                      Balance
-                                    </Text>
-                                    {pubkeyBalance.percentage !== undefined && pubkeyBalance.percentage > 0 && (
-                                      <Badge colorScheme="yellow" fontSize="xs" variant="subtle">
-                                        {pubkeyBalance.percentage.toFixed(1)}%
-                                      </Badge>
-                                    )}
-                                  </Flex>
-                                  <Text color={theme.gold} fontSize="sm" fontWeight="bold" fontFamily="mono">
-                                    {parseFloat(pubkeyBalance.balance).toFixed(8)} {assetContext.symbol}
-                                  </Text>
-                                  {pubkeyBalance.valueUsd > 0 && (
-                                    <Text color="gray.400" fontSize="xs">
-                                      ${formatUsd(pubkeyBalance.valueUsd)} USD
-                                    </Text>
-                                  )}
-                                </VStack>
-                              </Box>
+                              <PubkeyBalance 
+                                pubkeyBalance={pubkeyBalance}
+                                assetContext={assetContext}
+                                theme={theme}
+                                formatUsd={formatUsd}
+                              />
                             )}
                             {!pubkeyBalance && (
                               <Box

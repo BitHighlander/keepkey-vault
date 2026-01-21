@@ -120,6 +120,19 @@ async function executeFunction(
       case 'suggestPathForBlockchain':
         return await fn(parameters.blockchain || parameters.query || '', parameters.accountNumber || 0);
 
+      // Swap functions
+      case 'getSwapStatus':
+        return await fn(parameters.txHash || parameters.hash || parameters.transaction || '', app);
+
+      case 'getMyPendingSwaps':
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
+
+      case 'checkSwapProgress':
+        return await fn(parameters.txHash || parameters.hash || parameters.transaction || '', app);
+
+      case 'explainSwapError':
+        return await (fn as (swap: any) => Promise<FunctionResult>)(parameters.swap || parameters.data);
+
       default:
         return {
           success: false,
@@ -310,6 +323,18 @@ export function formatExecutionResponse(
     case 'query_path':
       // For these intents, the function result message IS the complete response
       // Replace the AI placeholder with the actual function result
+      if (executionResult.results && executionResult.results.length > 0) {
+        const functionResult = executionResult.results[0].result;
+        if (functionResult.message) {
+          response = functionResult.message;
+        }
+      }
+      break;
+
+    case 'query_swap':
+    case 'monitor_swap':
+    case 'explain_swap_error':
+      // For swap-related intents, use the function result message directly
       if (executionResult.results && executionResult.results.length > 0) {
         const functionResult = executionResult.results[0].result;
         if (functionResult.message) {

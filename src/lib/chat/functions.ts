@@ -367,47 +367,75 @@ export async function navigateToSwap(caip: string | undefined, app: any): Promis
       targetCaip = assetContext.caip;
     }
 
-    // Find the asset in balances to set context
-    asset = app?.balances?.find((b: any) => b.caip === targetCaip);
-
-    if (asset) {
-      // Set asset context before navigation
-      const assetContext: AssetContextState = {
-        networkId: asset.networkId,
-        chainId: asset.chainId,
-        assetId: asset.assetId,
-        caip: asset.caip,
-        name: asset.name,
-        networkName: asset.networkName,
-        symbol: asset.symbol,
-        icon: asset.icon,
-        color: asset.color,
-        balance: asset.balance || '0',
-        value: parseFloat(asset.valueUsd || '0'),
-        precision: asset.precision || 18,
-        priceUsd: asset.priceUsd,
-        pubkeys: asset.pubkeys || [],
-      };
-
-      if (typeof app.setAssetContext === 'function') {
-        app.setAssetContext(assetContext);
-      }
+    // Use Pioneer SDK to find the exact asset with proper CAIP
+    // Prioritize assetData from pioneer-discovery (comprehensive asset registry)
+    if (app?.pioneer?.assetData && Array.isArray(app.pioneer.assetData)) {
+      asset = app.pioneer.assetData.find((a: any) => a.caip === targetCaip);
+    }
+    
+    // Fallback to balance data if not found in assetData
+    if (!asset && app?.balances && Array.isArray(app.balances)) {
+      asset = app.balances.find((b: any) => b.caip === targetCaip);
     }
 
-    // Encode CAIP for URL
-    const encodedCaip = btoa(targetCaip!);
+    if (!asset) {
+      return {
+        success: false,
+        message: `Asset not found with CAIP: ${targetCaip}`,
+      };
+    }
 
-    // Use router for client-side navigation if available
+    // Ensure targetCaip is defined at this point
+    if (!targetCaip) {
+      return {
+        success: false,
+        message: 'Invalid asset CAIP identifier',
+      };
+    }
+
+    // Set asset context before navigation using the exact Pioneer SDK asset data
+    const assetContext: AssetContextState = {
+      networkId: asset.networkId,
+      chainId: asset.chainId, 
+      assetId: asset.assetId,
+      caip: asset.caip, // Use exact CAIP from Pioneer SDK
+      name: asset.name,
+      networkName: asset.networkName,
+      symbol: asset.symbol,
+      icon: asset.icon,
+      color: asset.color,
+      balance: asset.balance || '0',
+      value: parseFloat(asset.valueUsd || '0'),
+      precision: asset.precision || asset.decimals || 18,
+      priceUsd: asset.priceUsd,
+      pubkeys: asset.pubkeys || [],
+    };
+
+    if (typeof app.setAssetContext === 'function') {
+      app.setAssetContext(assetContext);
+    }
+
+    // Encode CAIP for URL (Base64) - same as navigateToAsset
+    const encodedCaip = btoa(targetCaip);
+    const assetUrl = `/asset/${encodeURIComponent(encodedCaip)}?view=swap`;
+    
     if (app.navigate) {
-      app.navigate(`/asset/${encodeURIComponent(encodedCaip)}?view=swap`);
+      app.navigate(assetUrl);
     } else if (typeof window !== 'undefined') {
       // Fallback to window.location for tests
-      window.location.href = `/asset/${encodeURIComponent(encodedCaip)}?view=swap`;
+      window.location.href = assetUrl;
     }
 
     return {
       success: true,
-      message: `Opening swap page${asset ? ` for ${asset.symbol}` : ''}...`,
+      message: `Navigating to ${asset.symbol} page and opening swap...`,
+      data: { 
+        asset: asset.symbol, 
+        view: 'swap', 
+        url: assetUrl, 
+        caip: targetCaip,
+        encodedCaip: encodedCaip
+      }
     };
   } catch (error: any) {
     return {
@@ -963,6 +991,392 @@ export async function getSupportedChains(app: any): Promise<FunctionResult> {
 }
 
 // ============================================================================
+// 5. SWAP FUNCTIONS
+// ============================================================================
+
+/**
+ * Swap Status Explanations - Maps technical states to user-friendly explanations
+ */
+const SWAP_STATUS_EXPLANATIONS = {
+  pending: {
+    title: 'Transaction Broadcasting',
+    description: 'Your swap transaction is broadcast and waiting for confirmations',
+    icon: '⏳',
+    timeframe: 'Usually takes 1-3 minutes'
+  },
+  confirming: {
+    title: 'Processing Swap',
+    description: 'Transaction confirmed! Protocol is processing your swap',
+    icon: '🔄',
+    timeframe: 'Usually takes 3-8 minutes'
+  },
+  output_detected: {
+    title: 'Output Detected',
+    description: 'Your new tokens are being confirmed',
+    icon: '👀',
+    timeframe: 'Usually takes 1-2 minutes'
+  },
+  completed: {
+    title: 'Swap Complete',
+    description: 'Success! You should see your new tokens in your wallet',
+    icon: '✅',
+    timeframe: 'Complete'
+  },
+  failed: {
+    title: 'Swap Failed',
+    description: 'Something went wrong with your swap',
+    icon: '❌',
+    timeframe: 'Immediate'
+  },
+  refunded: {
+    title: 'Swap Refunded',
+    description: 'Protocol refunded your swap due to market conditions',
+    icon: '🔄',
+    timeframe: 'Complete'
+  }
+};
+
+/**
+ * Swap Error Explanations - Translates technical errors to user guidance
+ */
+const SWAP_ERROR_EXPLANATIONS = {
+  tx_reverted: {
+    message: 'Your transaction failed on the blockchain',
+    action: 'Check if you have enough gas fees and try again',
+    severity: 'error'
+  },
+  protocol_refund: {
+    message: 'The protocol automatically refunded your swap',
+    action: 'This happens when market conditions change. Your original tokens should be back in your wallet',
+    severity: 'warning'
+  },
+  insufficient_liquidity: {
+    message: 'Not enough liquidity in the trading pool',
+    action: 'Try a smaller amount or different trading pair',
+    severity: 'warning'
+  },
+  min_output_not_met: {
+    message: 'Slippage was higher than your limit',
+    action: 'Market moved unfavorably. Try again with higher slippage tolerance',
+    severity: 'warning'
+  },
+  monitoring_timeout: {
+    message: 'Swap took too long to complete',
+    action: 'Check the blockchain explorer or contact support if funds are missing',
+    severity: 'error'
+  },
+  api_error_permanent: {
+    message: 'Unable to track this transaction',
+    action: 'The swap may still be processing. Check your wallet balance or try manual verification',
+    severity: 'warning'
+  }
+};
+
+/**
+ * Get detailed status for a specific swap transaction
+ */
+export async function getSwapStatus(txHash: string, app: any): Promise<FunctionResult> {
+  try {
+    if (!app?.pioneer?.GetPendingSwap) {
+      return {
+        success: false,
+        message: 'Swap tracking is not available. Make sure Pioneer SDK is connected.',
+      };
+    }
+
+    // Use Pioneer SDK method (NEVER fetch())
+    const response = await app.pioneer.GetPendingSwap({ txHash });
+    
+    if (!response?.data) {
+      return {
+        success: false,
+        message: `No swap found with transaction hash: ${txHash.substring(0, 10)}...`,
+      };
+    }
+
+    const swap = response.data;
+    
+    // If it's a lookup status (not in DB), handle differently
+    if (typeof swap.status === 'string' && swap.message) {
+      return {
+        success: true,
+        message: `📡 **Blockchain Lookup Results**\n\n${swap.message}`,
+        data: { 
+          lookup: true,
+          status: swap.status,
+          txHash,
+          confirmations: swap.confirmations || 0,
+          details: swap.details
+        }
+      };
+    }
+
+    const statusInfo = SWAP_STATUS_EXPLANATIONS[swap.status as keyof typeof SWAP_STATUS_EXPLANATIONS] || SWAP_STATUS_EXPLANATIONS.pending;
+    
+    // Format detailed explanation
+    const explanation = formatSwapExplanation(swap, statusInfo);
+    
+    return {
+      success: true,
+      message: explanation,
+      data: { 
+        swap,
+        explanation: statusInfo,
+        txHash
+      }
+    };
+
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Unable to check swap status: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Get all pending swaps for current user
+ */
+export async function getMyPendingSwaps(app: any): Promise<FunctionResult> {
+  try {
+    if (!app?.pioneer?.GetPendingSwaps) {
+      return {
+        success: false,
+        message: 'Swap tracking is not available. Make sure Pioneer SDK is connected.',
+      };
+    }
+
+    // Get user addresses from current context
+    const addresses = app?.addressContext || [];
+    
+    if (addresses.length === 0) {
+      return {
+        success: false,
+        message: 'No wallet addresses available. Connect your KeepKey device first.',
+      };
+    }
+
+    // Check pending swaps for all user addresses
+    let allSwaps = [];
+    
+    for (const addressInfo of addresses) {
+      try {
+        const response = await app.pioneer.GetPendingSwapsByAddress({ 
+          address: addressInfo.address 
+        });
+        
+        if (response?.data) {
+          allSwaps.push(...response.data);
+        }
+      } catch (error) {
+        console.warn('Failed to get swaps for address:', addressInfo.address, error);
+      }
+    }
+
+    if (allSwaps.length === 0) {
+      return {
+        success: true,
+        message: '✨ **No Pending Swaps**\n\nYou currently have no pending swap transactions. All your swaps are complete!',
+        data: { swaps: [], count: 0 }
+      };
+    }
+
+    // Format response
+    let message = `🔄 **Your Pending Swaps** (${allSwaps.length})\n\n`;
+    
+    allSwaps.forEach((swap, i) => {
+      const statusInfo = SWAP_STATUS_EXPLANATIONS[swap.status as keyof typeof SWAP_STATUS_EXPLANATIONS] || SWAP_STATUS_EXPLANATIONS.pending;
+      const sellAmount = parseFloat(swap.sellAsset?.amount || '0');
+      const buyAmount = parseFloat(swap.buyAsset?.amount || '0');
+      
+      message += `**${i + 1}.** ${swap.sellAsset?.symbol} → ${swap.buyAsset?.symbol}\n`;
+      message += `${statusInfo.icon} ${statusInfo.title}\n`;
+      message += `💰 ${sellAmount.toFixed(6)} ${swap.sellAsset?.symbol}`;
+      
+      if (buyAmount > 0) {
+        message += ` → ${buyAmount.toFixed(6)} ${swap.buyAsset?.symbol}`;
+      }
+      
+      message += `\n📄 Tx: ${swap.txHash.substring(0, 10)}...\n\n`;
+    });
+    
+    message += '💡 Ask: "Check status of 0xabc123..." for detailed status of any swap';
+
+    return {
+      success: true,
+      message,
+      data: { swaps: allSwaps, count: allSwaps.length }
+    };
+
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Unable to get your pending swaps: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Force immediate status check for a swap
+ */
+export async function checkSwapProgress(txHash: string, app: any): Promise<FunctionResult> {
+  try {
+    if (!app?.pioneer?.CheckPendingSwap) {
+      return {
+        success: false,
+        message: 'Manual swap checking is not available.',
+      };
+    }
+
+    // Trigger immediate check
+    const response = await app.pioneer.CheckPendingSwap({ txHash });
+    
+    if (!response?.data) {
+      return {
+        success: false,
+        message: `Unable to manually check swap: ${txHash.substring(0, 10)}...`,
+      };
+    }
+
+    const result = response.data;
+    
+    if (result.success) {
+      return {
+        success: true,
+        message: `🔍 **Manual Check Complete**\n\n${result.message}`,
+        data: result
+      };
+    } else {
+      return {
+        success: false,
+        message: `Manual check failed: ${result.message}`,
+      };
+    }
+
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to check swap progress: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Explain swap error in user-friendly terms
+ */
+export async function explainSwapError(swap: any): Promise<FunctionResult> {
+  try {
+    if (!swap?.error) {
+      return {
+        success: false,
+        message: 'No error information available for this swap.',
+      };
+    }
+
+    const error = swap.error;
+    const errorExplanation = SWAP_ERROR_EXPLANATIONS[error.type as keyof typeof SWAP_ERROR_EXPLANATIONS];
+    
+    let message = `❌ **Swap Error Explanation**\n\n`;
+    
+    if (errorExplanation) {
+      message += `**What happened:** ${errorExplanation.message}\n\n`;
+      message += `**What to do:** ${errorExplanation.action}\n\n`;
+    } else {
+      message += `**Error:** ${error.message}\n\n`;
+      message += `**Details:** ${error.userMessage || 'No additional details available'}\n\n`;
+    }
+    
+    if (error.actionable) {
+      message += `**Next Steps:** ${error.actionable}\n\n`;
+    }
+    
+    message += `**Error Code:** ${error.code || error.type}\n`;
+    message += `**When:** ${error.timestamp ? new Date(error.timestamp).toLocaleString() : 'Unknown'}`;
+
+    return {
+      success: true,
+      message,
+      data: { error, explanation: errorExplanation }
+    };
+
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Unable to explain error: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Format comprehensive swap status explanation
+ */
+function formatSwapExplanation(swap: any, statusInfo: any): string {
+  const sellAmount = parseFloat(swap.sellAsset?.amount || '0');
+  const buyAmount = parseFloat(swap.buyAsset?.amount || '0');
+  const confirmations = swap.confirmations || 0;
+  const requiredConfirmations = swap.requiredConfirmations || 1;
+  
+  let message = `${statusInfo.icon} **${statusInfo.title}**\n\n`;
+  message += `${statusInfo.description}\n\n`;
+  
+  // Swap details
+  message += `💰 **Swap Details:**\n`;
+  message += `• ${sellAmount.toFixed(6)} ${swap.sellAsset?.symbol} → `;
+  
+  if (buyAmount > 0) {
+    message += `${buyAmount.toFixed(6)} ${swap.buyAsset?.symbol}\n`;
+  } else {
+    message += `${swap.buyAsset?.symbol} (calculating...)\n`;
+  }
+  
+  // Progress information
+  if (swap.status === 'pending' || swap.status === 'confirming') {
+    message += `📊 **Progress:**\n`;
+    message += `• Confirmations: ${confirmations}/${requiredConfirmations}\n`;
+    
+    if (confirmations < requiredConfirmations) {
+      const remaining = requiredConfirmations - confirmations;
+      message += `• Waiting for ${remaining} more confirmation${remaining > 1 ? 's' : ''}\n`;
+    }
+  }
+  
+  // Time estimate
+  message += `⏱️ **Timeline:** ${statusInfo.timeframe}\n`;
+  
+  // Protocol specific info
+  if (swap.integration) {
+    const protocolName = swap.integration.charAt(0).toUpperCase() + swap.integration.slice(1);
+    message += `🌐 **Protocol:** ${protocolName}\n`;
+  }
+  
+  // Transaction hash
+  message += `📄 **Transaction:** ${swap.txHash.substring(0, 10)}...${swap.txHash.substring(58)}\n`;
+  
+  // Output transaction if available
+  if (swap.thorchainData?.outboundTxHash || swap.mayachainData?.outboundTxHash) {
+    const outboundTx = swap.thorchainData?.outboundTxHash || swap.mayachainData?.outboundTxHash;
+    message += `📤 **Output Tx:** ${outboundTx.substring(0, 10)}...${outboundTx.substring(58)}\n`;
+  }
+  
+  // Error information
+  if (swap.error) {
+    message += `\n⚠️ **Issue:** ${swap.error.userMessage || swap.error.message}`;
+    if (swap.error.actionable) {
+      message += `\n🔧 **Action:** ${swap.error.actionable}`;
+    }
+  }
+  
+  // Next steps
+  if (swap.status === 'pending') {
+    message += `\n💡 **Next:** I'll monitor this swap and notify you when it progresses!`;
+  } else if (swap.status === 'completed') {
+    message += `\n🎉 **Done:** Check your wallet to see your new tokens!`;
+  }
+  
+  return message;
+}
+
+// ============================================================================
 // FUNCTION REGISTRY
 // ============================================================================
 
@@ -995,6 +1409,12 @@ export const FUNCTION_REGISTRY = {
 
   // Actions
   refreshPortfolio,
+
+  // Swap Functions
+  getSwapStatus,
+  getMyPendingSwaps,
+  checkSwapProgress,
+  explainSwapError,
 
   // Tutorials & Help
   startTutorial,
