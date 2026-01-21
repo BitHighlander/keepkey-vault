@@ -1,6 +1,6 @@
 {
   "name": "keepkey-vault",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "packageManager": "pnpm@10.18.1",
   "engines": {
@@ -26,8 +26,8 @@
     "@emotion/react": "^11.14.0",
     "@pioneer-platform/pioneer-caip": "^9.21.0",
     "@pioneer-platform/pioneer-coins": "^9.20.0",
-    "@pioneer-platform/pioneer-discovery": "^8.41.0",
-    "@pioneer-platform/pioneer-sdk": "^8.41.0",
+    "@pioneer-platform/pioneer-discovery": "^8.44.0",
+    "@pioneer-platform/pioneer-sdk": "^8.44.0",
     "@pioneer-platform/pioneer-types": "^8.19.3",
     "@sendgrid/mail": "^8.1.6",
     "@types/d3": "^7.4.3",
@@ -69,7 +69,7 @@
   "pnpm": {
     "overrides": {
       "punycode": "2.1.1",
-      "@pioneer-platform/pioneer-client": "9.16.0",
+      "@pioneer-platform/pioneer-client": "9.21.0",
       "elliptic": "^6.6.1",
       "ws": "^7.5.10",
       "js-yaml": "^4.1.1"
