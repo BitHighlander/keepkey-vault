@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.18.1",
   "engines": {
-    "node": ">=22.0.0",
+    "node": "22.x",
     "pnpm": ">=8.0.0"
   },
   "scripts": {
@@ -69,7 +69,7 @@
   "pnpm": {
     "overrides": {
       "punycode": "2.1.1",
-      "@pioneer-platform/pioneer-client": "9.21.0",
+      "@pioneer-platform/pioneer-client": "9.16.0",
       "elliptic": "^6.6.1",
       "ws": "^7.5.10",
       "js-yaml": "^4.1.1"
