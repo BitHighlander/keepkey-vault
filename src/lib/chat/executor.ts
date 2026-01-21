@@ -133,6 +133,23 @@ async function executeFunction(
       case 'explainSwapError':
         return await (fn as (swap: any) => Promise<FunctionResult>)(parameters.swap || parameters.data);
 
+      // Swap Control functions
+      case 'setSwapAmount':
+        return await fn(parameters.amount || parameters.query || '', app);
+
+      case 'setSwapMaxAmount':
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
+
+      case 'selectSwapFromAsset':
+      case 'selectSwapToAsset':
+        return await fn(parameters.asset || parameters.query || '', app);
+
+      case 'getSwapAvailableAssets':
+        return await (fn as (app: any) => Promise<FunctionResult>)(app);
+
+      case 'checkSwapSupport':
+        return await fn(parameters.asset || parameters.query || '', app);
+
       default:
         return {
           success: false,

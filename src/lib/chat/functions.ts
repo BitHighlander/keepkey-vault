@@ -991,7 +991,7 @@ export async function getSupportedChains(app: any): Promise<FunctionResult> {
 }
 
 // ============================================================================
-// 5. SWAP FUNCTIONS
+// 5. SWAP FUNCTIONS (Status, Monitoring & Control)
 // ============================================================================
 
 /**
@@ -1376,6 +1376,362 @@ function formatSwapExplanation(swap: any, statusInfo: any): string {
   return message;
 }
 
+/**
+ * Set swap input amount 
+ */
+export async function setSwapAmount(amount: string, app: any): Promise<FunctionResult> {
+  try {
+    // Set the input amount in the swap component
+    if (typeof app.setSwapInputAmount === 'function') {
+      app.setSwapInputAmount(amount);
+      return {
+        success: true,
+        message: `Amount set to ${amount}`,
+        data: { amount }
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Swap amount control not available. Make sure you are on the swap page.',
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to set amount: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Set maximum available balance as swap input amount
+ */
+export async function setSwapMaxAmount(app: any): Promise<FunctionResult> {
+  try {
+    if (typeof app.setSwapMaxAmount === 'function') {
+      const result = app.setSwapMaxAmount();
+      return {
+        success: true,
+        message: `Set to maximum available balance: ${result?.amount || 'max'}`,
+        data: { amount: result?.amount, symbol: result?.symbol }
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Max amount control not available. Make sure you are on the swap page.',
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to set max amount: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Select input asset for swap (FROM asset)
+ */
+export async function selectSwapFromAsset(query: string, app: any): Promise<FunctionResult> {
+  try {
+    // Find asset using Pioneer SDK assetData
+    let targetAsset = null;
+    
+    if (app?.pioneer?.assetData) {
+      // Search by symbol or name (case insensitive)
+      targetAsset = app.pioneer.assetData.find((a: any) => 
+        a.symbol?.toLowerCase() === query.toLowerCase() ||
+        a.name?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    // Fallback to balance data
+    if (!targetAsset && app?.balances) {
+      targetAsset = app.balances.find((b: any) => 
+        b.symbol?.toLowerCase() === query.toLowerCase() ||
+        b.name?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    if (!targetAsset) {
+      return {
+        success: false,
+        message: `Asset "${query}" not found. Available assets: ${app?.balances?.map((b: any) => b.symbol).join(', ') || 'none'}`,
+      };
+    }
+
+    // Check if asset is supported for swapping
+    if (typeof app.selectSwapFromAsset === 'function') {
+      const result = await app.selectSwapFromAsset(targetAsset);
+      return {
+        success: true,
+        message: `Selected ${targetAsset.symbol} as input asset`,
+        data: { 
+          asset: targetAsset.symbol, 
+          caip: targetAsset.caip,
+          balance: targetAsset.balance || '0'
+        }
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Asset selection not available. Make sure you are on the swap page.',
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to select input asset: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Select output asset for swap (TO asset)
+ */
+export async function selectSwapToAsset(query: string, app: any): Promise<FunctionResult> {
+  try {
+    // Find asset using Pioneer SDK assetData
+    let targetAsset = null;
+    
+    if (app?.pioneer?.assetData) {
+      // Search by symbol or name (case insensitive)
+      targetAsset = app.pioneer.assetData.find((a: any) => 
+        a.symbol?.toLowerCase() === query.toLowerCase() ||
+        a.name?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    if (!targetAsset) {
+      return {
+        success: false,
+        message: `Asset "${query}" not found or not available for swapping.`,
+      };
+    }
+
+    // Select the asset
+    if (typeof app.selectSwapToAsset === 'function') {
+      const result = await app.selectSwapToAsset(targetAsset);
+      return {
+        success: true,
+        message: `Selected ${targetAsset.symbol} as output asset`,
+        data: { 
+          asset: targetAsset.symbol, 
+          caip: targetAsset.caip 
+        }
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Asset selection not available. Make sure you are on the swap page.',
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to select output asset: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Get available assets for swapping with clear limitations
+ */
+export async function getSwapAvailableAssets(app: any): Promise<FunctionResult> {
+  try {
+    let availableAssets: any[] = [];
+    let supportedCount = 0;
+    
+    // Get assets from Pioneer SDK if available
+    if (app?.pioneer?.GetAvailableAssets) {
+      try {
+        const response = await app.pioneer.GetAvailableAssets();
+        const assets = response?.data?.data?.assets;
+        if (Array.isArray(assets)) {
+          availableAssets = assets;
+          supportedCount = assets.length;
+        }
+      } catch (error) {
+        console.warn('Failed to get available assets from Pioneer SDK:', error);
+      }
+    }
+
+    // Fallback to static THORCHAIN_POOLS if no dynamic data
+    if (availableAssets.length === 0) {
+      const { THORCHAIN_POOLS } = await import('@/config/thorchain-pools');
+      availableAssets = THORCHAIN_POOLS;
+      supportedCount = THORCHAIN_POOLS.length;
+    }
+
+    // Create user-friendly message with limitations
+    let message = `**Available Swap Assets**\n\n`;
+    
+    if (availableAssets.length === 0) {
+      message += `❌ No swap assets currently available.\n\n`;
+      message += `**Why this happens:**\n`;
+      message += `- THORChain network may be down\n`;
+      message += `- Pioneer server connection issues\n\n`;
+      message += `**What you can do:**\n`;
+      message += `- Try again in a few minutes\n`;
+      message += `- Use **ShapeShift** for more tokens and chains: https://app.shapeshift.com\n`;
+      
+      return {
+        success: false,
+        message,
+        data: { availableAssets: [], supportedCount: 0 }
+      };
+    }
+
+    // Group assets by type
+    const nativeAssets = availableAssets.filter(a => a.isNative);
+    const tokenAssets = availableAssets.filter(a => !a.isNative);
+
+    message += `✅ **${supportedCount} assets available** (via THORChain)\n\n`;
+    
+    message += `**🪙 Native Assets (${nativeAssets.length}):**\n`;
+    nativeAssets.slice(0, 10).forEach(asset => {
+      message += `• ${asset.symbol} (${asset.name})\n`;
+    });
+    if (nativeAssets.length > 10) {
+      message += `• ...and ${nativeAssets.length - 10} more\n`;
+    }
+
+    if (tokenAssets.length > 0) {
+      message += `\n**🪙 Tokens (${tokenAssets.length}):**\n`;
+      tokenAssets.slice(0, 8).forEach(asset => {
+        message += `• ${asset.symbol} (${asset.chain})\n`;
+      });
+      if (tokenAssets.length > 8) {
+        message += `• ...and ${tokenAssets.length - 8} more\n`;
+      }
+    }
+
+    message += `\n**⚠️ Important Limitations:**\n`;
+    message += `• Only THORChain supported assets can be swapped\n`;
+    message += `• No support for most ERC-20 tokens\n`;
+    message += `• No support for newer chains like Solana, Cardano, etc.\n\n`;
+    
+    message += `**💡 For more options:**\n`;
+    message += `• **ShapeShift** supports 1000+ tokens across 12+ chains\n`;
+    message += `• Visit: https://app.shapeshift.com\n`;
+
+    return {
+      success: true,
+      message,
+      data: { 
+        availableAssets: availableAssets.map(a => ({
+          symbol: a.symbol,
+          name: a.name,
+          chain: a.chain || 'Native',
+          caip: a.caip,
+          isNative: a.isNative
+        })), 
+        supportedCount 
+      }
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to get available swap assets: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Check if a specific asset can be swapped and provide guidance
+ */
+export async function checkSwapSupport(assetQuery: string, app: any): Promise<FunctionResult> {
+  try {
+    let availableAssets: any[] = [];
+    
+    // Get available swap assets
+    if (app?.pioneer?.GetAvailableAssets) {
+      try {
+        const response = await app.pioneer.GetAvailableAssets();
+        const assets = response?.data?.data?.assets;
+        if (Array.isArray(assets)) {
+          availableAssets = assets;
+        }
+      } catch (error) {
+        console.warn('Failed to get available assets:', error);
+      }
+    }
+
+    // Fallback to static pools
+    if (availableAssets.length === 0) {
+      const { THORCHAIN_POOLS } = await import('@/config/thorchain-pools');
+      availableAssets = THORCHAIN_POOLS;
+    }
+
+    // Search for the asset
+    const foundAsset = availableAssets.find(a => 
+      a.symbol?.toLowerCase() === assetQuery.toLowerCase() ||
+      a.name?.toLowerCase().includes(assetQuery.toLowerCase())
+    );
+
+    let message = `**${assetQuery.toUpperCase()} Swap Support**\n\n`;
+
+    if (foundAsset) {
+      message += `✅ **${foundAsset.symbol} can be swapped!**\n\n`;
+      message += `**Details:**\n`;
+      message += `• Name: ${foundAsset.name}\n`;
+      message += `• Chain: ${foundAsset.chain || 'Native'}\n`;
+      message += `• Type: ${foundAsset.isNative ? 'Native Asset' : 'Token'}\n\n`;
+      message += `You can swap ${foundAsset.symbol} with any other supported asset on THORChain.`;
+
+      return {
+        success: true,
+        message,
+        data: { 
+          supported: true,
+          asset: foundAsset,
+          canSwap: true
+        }
+      };
+    } else {
+      message += `❌ **${assetQuery.toUpperCase()} cannot be swapped**\n\n`;
+      message += `**Why?**\n`;
+      message += `• Not supported by THORChain\n`;
+      message += `• Only ${availableAssets.length} assets are available\n\n`;
+      
+      // Suggest similar assets
+      const similarAssets = availableAssets.filter(a => 
+        a.symbol?.toLowerCase().includes(assetQuery.toLowerCase()) ||
+        a.name?.toLowerCase().includes(assetQuery.toLowerCase())
+      ).slice(0, 3);
+
+      if (similarAssets.length > 0) {
+        message += `**Similar assets you CAN swap:**\n`;
+        similarAssets.forEach(asset => {
+          message += `• ${asset.symbol} (${asset.name})\n`;
+        });
+        message += `\n`;
+      }
+
+      message += `**💡 Alternative Solutions:**\n`;
+      message += `• **ShapeShift**: Supports 1000+ tokens including ${assetQuery}\n`;
+      message += `• Visit: https://app.shapeshift.com\n`;
+      message += `• Supports Ethereum, Polygon, Arbitrum, BSC, and more\n`;
+
+      return {
+        success: true,
+        message,
+        data: { 
+          supported: false,
+          query: assetQuery,
+          canSwap: false,
+          alternatives: similarAssets
+        }
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Failed to check swap support: ${error.message}`,
+    };
+  }
+}
+
 // ============================================================================
 // FUNCTION REGISTRY
 // ============================================================================
@@ -1415,6 +1771,13 @@ export const FUNCTION_REGISTRY = {
   getMyPendingSwaps,
   checkSwapProgress,
   explainSwapError,
+  // Swap Control Functions
+  setSwapAmount,
+  setSwapMaxAmount,
+  selectSwapFromAsset,
+  selectSwapToAsset,
+  getSwapAvailableAssets,
+  checkSwapSupport,
 
   // Tutorials & Help
   startTutorial,
