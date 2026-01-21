@@ -166,7 +166,7 @@ export function SwapProgressSteps({
   };
 
   return (
-    <VStack width="full" align="stretch" gap={6} p={4}>
+    <VStack width="full" align="stretch" gap={3} p={3}>
       {/* Header with asset info and close button */}
       <SwapHeader
         fromAsset={fromAsset}
@@ -179,9 +179,8 @@ export function SwapProgressSteps({
         isComplete={isComplete}
       />
 
-
       {/* Steps progress bar */}
-      <HStack justify="space-between" position="relative" px={4}>
+      <HStack justify="space-between" position="relative" px={2}>
         {steps.map((step, index) => {
           const StepIcon = step.Icon;
           // When complete, show all steps as checked
@@ -210,35 +209,36 @@ export function SwapProgressSteps({
           const currentColors = isStepComplete ? stepColors.complete : isStepActive ? stepColors.active : stepColors.pending;
 
           return (
-            <VStack key={index} flex={1} gap={2} position="relative">
+            <VStack key={index} flex={1} gap={1} position="relative">
               {/* Step indicator */}
               <Box
-                width="50px"
-                height="50px"
+                width="32px"
+                height="32px"
                 borderRadius="full"
                 background={currentColors.bg}
-                borderWidth="3px"
+                borderWidth="2px"
                 borderColor={currentColors.border}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
-                fontSize="xl"
+                fontSize="sm"
                 fontWeight="bold"
                 color="white"
                 transition="all 0.3s"
                 animation={isStepActive ? `${pulseGlow} 2s ease-in-out infinite` : undefined}
                 position="relative"
-                boxShadow={`0 4px 14px ${currentColors.glow}, inset 0 -2px 10px rgba(0, 0, 0, 0.3)`}
+                boxShadow={`0 2px 8px ${currentColors.glow}, inset 0 -1px 4px rgba(0, 0, 0, 0.3)`}
               >
                 {isStepComplete ? <FaCheckCircle /> : <StepIcon />}
               </Box>
 
             {/* Step title */}
             <Text
-              fontSize="sm"
+              fontSize="xs"
               fontWeight={isStepActive ? 'bold' : 'medium'}
               color={isStepComplete ? '#10B981' : isStepActive ? '#14B8A6' : '#9CA3AF'}
               textAlign="center"
+              lineHeight="1.2"
             >
               {step.title}
             </Text>
@@ -247,10 +247,10 @@ export function SwapProgressSteps({
             {index < steps.length - 1 && (
               <Box
                 position="absolute"
-                top="25px"
+                top="16px"
                 left="50%"
                 width="full"
-                height="3px"
+                height="2px"
                 background={
                   isComplete || index < currentStep
                     ? 'linear-gradient(90deg, #10B981, #059669)'
@@ -259,7 +259,7 @@ export function SwapProgressSteps({
                 zIndex={-1}
                 boxShadow={
                   isComplete || index < currentStep
-                    ? '0 0 10px rgba(16, 185, 129, 0.4)'
+                    ? '0 0 6px rgba(16, 185, 129, 0.4)'
                     : 'none'
                 }
               />

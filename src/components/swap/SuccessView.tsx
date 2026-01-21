@@ -4,7 +4,7 @@
  * Celebration view displayed when swap completes successfully
  */
 
-import { VStack, Box, Text, Link, Code } from '@chakra-ui/react';
+import { VStack, HStack, Box, Text, Link, Code } from '@chakra-ui/react';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 import { formatTime } from './swap-timing-utils';
 
@@ -76,108 +76,127 @@ export function SuccessView({ swapStatus, fromAsset, toAsset, inputTxHash }: Suc
           }
         `}
       </style>
-      <VStack gap={6} py={8}>
+      <VStack gap={3} py={4}>
 
-        {/* Celebration Box with Green Border and Pulse Animation */}
-        <Box
+        {/* Compact Celebration Header */}
+        <HStack
           bg="rgba(16, 185, 129, 0.1)"
-          border="3px solid"
+          border="2px solid"
           borderColor="green.500"
-          borderRadius="xl"
-          p={6}
-          boxShadow="0 0 30px rgba(16, 185, 129, 0.3)"
+          borderRadius="lg"
+          p={3}
+          boxShadow="0 0 20px rgba(16, 185, 129, 0.3)"
           style={{
             animation: 'pulseZoom 2s ease-in-out infinite',
           }}
+          justify="center"
+          gap={3}
         >
-        <VStack gap={2}>
-          <Text fontSize="6xl">🎉</Text>
-          <Text fontSize="2xl" fontWeight="bold" color="green.400">
-            Swap Complete!
-          </Text>
-          <Text fontSize="sm" color="gray.400">
-            Your {toAsset.symbol} has been received
-          </Text>
-        </VStack>
-      </Box>
+          <Text fontSize="2xl">🎉</Text>
+          <VStack gap={0} align="start">
+            <Text fontSize="lg" fontWeight="bold" color="green.400">
+              Swap Complete!
+            </Text>
+            <Text fontSize="xs" color="gray.400">
+              Your {toAsset.symbol} has been received
+            </Text>
+          </VStack>
+        </HStack>
 
-      {swapStatus.timingData && (
+        {/* Compact timing and transaction info */}
+        <HStack gap={3} width="full">
+          {/* Timing display */}
+          {swapStatus.timingData && (
+            <Box
+              bg="gray.900"
+              p={2}
+              borderRadius="md"
+              border="1px solid"
+              borderColor="green.700"
+              flex={1}
+            >
+              <VStack gap={0}>
+                <Text fontSize="sm" fontWeight="bold">
+                  {formatTime(swapStatus.timingData.elapsedSeconds)}
+                </Text>
+                <Text fontSize="2xs" color="gray.500">
+                  Total Time
+                </Text>
+              </VStack>
+            </Box>
+          )}
+
+          {/* Transaction count */}
+          <Box
+            bg="gray.900"
+            p={2}
+            borderRadius="md"
+            border="1px solid"
+            borderColor="green.700"
+            flex={1}
+          >
+            <VStack gap={0}>
+              <Text fontSize="sm" fontWeight="bold" color="green.400">
+                {(inboundTx ? 1 : 0) + (outboundTx ? 1 : 0)}
+              </Text>
+              <Text fontSize="2xs" color="gray.500">
+                Transactions
+              </Text>
+            </VStack>
+          </Box>
+        </HStack>
+
+        {/* Compact Transaction IDs */}
         <Box
-          bg="gray.900"
-          p={4}
+          bg="gray.800"
           borderRadius="md"
+          p={2}
           border="1px solid"
           borderColor="green.700"
           w="full"
-          maxW="300px"
         >
-          <VStack gap={2}>
-            <Text fontSize="sm" color="gray.400">
-              Total Time
-            </Text>
-            <Text fontSize="2xl" fontWeight="bold">
-              {formatTime(swapStatus.timingData.elapsedSeconds)}
-            </Text>
-            {swapStatus.timingData.expectedTotalSeconds && (
-              <Text fontSize="xs" color="gray.500">
-                Expected: {formatTime(swapStatus.timingData.expectedTotalSeconds)}
-              </Text>
+          <VStack gap={2} align="stretch">
+            {/* Input Transaction */}
+            {inboundTx && (
+              <Box>
+                <Text fontSize="2xs" color="gray.400" mb={1} fontWeight="medium">
+                  Input Transaction
+                </Text>
+                <Code
+                  fontSize="2xs"
+                  bg="gray.900"
+                  color="teal.300"
+                  p={1}
+                  borderRadius="sm"
+                  display="block"
+                  wordBreak="break-all"
+                >
+                  {inboundTx}
+                </Code>
+              </Box>
+            )}
+
+            {/* Output Transaction */}
+            {outboundTx && (
+              <Box>
+                <Text fontSize="2xs" color="gray.400" mb={1} fontWeight="medium">
+                  Output Transaction
+                </Text>
+                <Code
+                  fontSize="2xs"
+                  bg="gray.900"
+                  color="green.300"
+                  p={1}
+                  borderRadius="sm"
+                  display="block"
+                  wordBreak="break-all"
+                >
+                  {outboundTx}
+                </Code>
+              </Box>
             )}
           </VStack>
         </Box>
-      )}
-
-      {/* Transaction IDs - Main Focus */}
-      <Box
-        bg="gray.800"
-        borderRadius="md"
-        p={4}
-        border="1px solid"
-        borderColor="green.700"
-        w="full"
-      >
-        <VStack gap={3} align="stretch">
-          {/* Input Transaction */}
-          {inboundTx && (
-            <Box>
-              <Text fontSize="xs" color="gray.400" mb={1} fontWeight="medium">
-                Input Transaction
-              </Text>
-              <Code
-                fontSize="xs"
-                bg="gray.900"
-                color="teal.300"
-                p={2}
-                borderRadius="md"
-                display="block"
-                wordBreak="break-all"
-              >
-                {inboundTx}
-              </Code>
-            </Box>
-          )}
-
-          {/* Output Transaction */}
-          {outboundTx && (
-            <Box>
-              <Text fontSize="xs" color="gray.400" mb={1} fontWeight="medium">
-                Output Transaction
-              </Text>
-              <Code
-                fontSize="xs"
-                bg="gray.900"
-                color="green.300"
-                p={2}
-                borderRadius="md"
-                display="block"
-                wordBreak="break-all"
-              >
-                {outboundTx}
-              </Code>
-            </Box>
-          )}
-        </VStack>
-      </Box>
 
       {swapStatus.thorchainData?.outboundTxHash && (
         <Link

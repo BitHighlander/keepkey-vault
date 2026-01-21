@@ -37,22 +37,22 @@ export function SwapHeader({
   isComplete
 }: SwapHeaderProps) {
   return (
-    <HStack justify="center" mb={8} position="relative" width="full">
-      <HStack gap={8}>
-        <VStack gap={2}>
+    <HStack justify="center" mb={4} position="relative" width="full">
+      <HStack gap={4}>
+        <VStack gap={1}>
           <Box position="relative">
-            <AssetIcon caip={fromAsset.caip} boxSize="160px" alt={fromAsset.symbol} />
+            <AssetIcon caip={fromAsset.caip} boxSize="80px" alt={fromAsset.symbol} />
             {/* Confirmations Badge - Top Right */}
             {confirmations !== undefined && requiredConfirmations !== undefined && (
               <Box
                 position="absolute"
-                top="0"
-                right="0"
+                top="-2px"
+                right="-2px"
                 bg="teal.500"
                 borderRadius="full"
-                minW="40px"
-                px={2}
-                py={1}
+                minW="28px"
+                px={1.5}
+                py={0.5}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
@@ -61,7 +61,7 @@ export function SwapHeader({
                 zIndex={10}
               >
                 <Text
-                  fontSize="xs"
+                  fontSize="2xs"
                   fontWeight="bold"
                   color="white"
                   whiteSpace="nowrap"
@@ -71,14 +71,14 @@ export function SwapHeader({
               </Box>
             )}
           </Box>
-          <Text fontWeight="bold" fontSize="2xl">
+          <Text fontWeight="bold" fontSize="lg">
             {fromAsset.amount} {fromAsset.symbol}
           </Text>
         </VStack>
-        <FaArrowRight size={32} color="gray" />
-        <VStack gap={2}>
-          <AssetIcon caip={toAsset.caip} boxSize="160px" alt={toAsset.symbol} />
-          <Text fontWeight="bold" fontSize="2xl">
+        <FaArrowRight size={20} color="gray" />
+        <VStack gap={1}>
+          <AssetIcon caip={toAsset.caip} boxSize="80px" alt={toAsset.symbol} />
+          <Text fontWeight="bold" fontSize="lg">
             {toAsset.amount} {toAsset.symbol}
           </Text>
         </VStack>

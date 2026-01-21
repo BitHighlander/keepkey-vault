@@ -336,6 +336,47 @@ export function Provider({ children }: ProviderProps) {
           showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
         });
 
+        // Add Bitcoin Account 3 paths
+        paths.push({
+          note: 'Bitcoin account 3 legacy',
+          networks: ['bip122:000000000019d6689c085ae165831e93'],
+          script_type: 'p2pkh',
+          available_scripts_types: ['p2pkh', 'p2sh', 'p2wpkh', 'p2sh-p2wpkh'],
+          type: 'xpub',
+          addressNList: [0x80000000 + 44, 0x80000000 + 0, 0x80000000 + 3],
+          addressNListMaster: [0x80000000 + 44, 0x80000000 + 0, 0x80000000 + 3, 0, 0],
+          curve: 'secp256k1',
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+        });
+
+        paths.push({
+          note:"Bitcoin account 3 Segwit (p2sh-p2wpkh) (ypub) (bip49)",
+          networks: ['bip122:000000000019d6689c085ae165831e93'],
+          script_type:"p2sh-p2wpkh",
+          available_scripts_types:['p2pkh','p2sh','p2wpkh','p2sh-p2wpkh'],
+          type:"ypub",
+          addressNList: [0x80000000 + 49, 0x80000000 + 0, 0x80000000 + 3],
+          addressNListMaster: [0x80000000 + 49, 0x80000000 + 0, 0x80000000 + 3, 0, 0],
+          curve: 'secp256k1',
+          showDisplay: false // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+        })
+
+        //add account3
+        paths.push({
+          note: 'Bitcoin account 3 Native Segwit (Bech32)',
+          blockchain: 'bitcoin',
+          symbol: 'BTC',
+          symbolSwapKit: 'BTC',
+          networks: ['bip122:000000000019d6689c085ae165831e93'],
+          script_type: 'p2wpkh', //bech32
+          available_scripts_types: ['p2pkh', 'p2sh', 'p2wpkh', 'p2sh-p2wpkh'],
+          type: 'zpub',
+          addressNList: [0x80000000 + 84, 0x80000000 + 0, 0x80000000 + 3],
+          addressNListMaster: [0x80000000 + 84, 0x80000000 + 0, 0x80000000 + 3, 0, 0],
+          curve: 'secp256k1',
+          showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+        });
+
         //
         paths.push({
           note:" MAYA path 1",

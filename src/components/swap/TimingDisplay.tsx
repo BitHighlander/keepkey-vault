@@ -98,233 +98,184 @@ export function TimingDisplay({
       bg="gray.900"
       border="1px solid"
       borderColor="teal.700"
-      borderRadius="lg"
-      p={6}
-      mt={4}
+      borderRadius="md"
+      p={3}
+      mt={2}
     >
-      <VStack gap={4} align="stretch">
-        {/* Stage title with icon and badge */}
-        <HStack justify="space-between">
-          <HStack>
-            <Text fontSize="xl" fontWeight="bold">
+      <VStack gap={2} align="stretch">
+        {/* Stage title with confirmations inline */}
+        <HStack justify="space-between" align="center">
+          <HStack gap={2}>
+            <Text fontSize="md" fontWeight="bold">
               {getStageIcon(stage)} {getStageTitle(stage)}
             </Text>
-            <Badge colorScheme="teal">Active</Badge>
+            <Badge colorScheme="teal" size="sm">Active</Badge>
           </HStack>
           {confirmations !== undefined && (
-            <Text color="gray.400" fontSize="sm">
-              {confirmations} / {requiredConfirmations} confirmations
+            <Text color="gray.400" fontSize="xs">
+              {confirmations}/{requiredConfirmations}
             </Text>
           )}
         </HStack>
 
-        {/* Prominent time display */}
-        <Box bg="gray.800" p={4} borderRadius="md">
-          <HStack gap={6} justify="center">
-            <VStack gap={0}>
-              <Text fontSize="2xl" fontWeight="bold" color="white">
-                {elapsed}
-              </Text>
-              <Text fontSize="xs" color="gray.500">
-                Elapsed
-              </Text>
-            </VStack>
+        {/* Compact time display */}
+        <HStack gap={4} justify="center" bg="gray.800" p={2} borderRadius="md">
+          <VStack gap={0}>
+            <Text fontSize="lg" fontWeight="bold" color="white">
+              {elapsed}
+            </Text>
+            <Text fontSize="2xs" color="gray.500">
+              Elapsed
+            </Text>
+          </VStack>
 
-            <Text fontSize="2xl" color="gray.600">•</Text>
+          <Text fontSize="lg" color="gray.600">•</Text>
 
-            <VStack gap={0}>
-              <Text fontSize="2xl" fontWeight="bold" color="teal.400">
-                ~{remaining}
-              </Text>
-              <Text fontSize="xs" color="gray.500">
-                Remaining
-              </Text>
-            </VStack>
-          </HStack>
-        </Box>
+          <VStack gap={0}>
+            <Text fontSize="lg" fontWeight="bold" color="teal.400">
+              ~{remaining}
+            </Text>
+            <Text fontSize="2xs" color="gray.500">
+              Remaining
+            </Text>
+          </VStack>
+        </HStack>
 
-        {/* Progress bar */}
+        {/* Compact progress bar */}
         <Box>
-          <Progress.Root value={percentage} colorPalette="teal" size="lg" striped animated>
+          <Progress.Root value={percentage} colorPalette="teal" size="sm" striped animated>
             <Progress.Track>
               <Progress.Range />
             </Progress.Track>
           </Progress.Root>
-          <Text fontSize="sm" color="gray.400" mt={1} textAlign="center">
+          <Text fontSize="2xs" color="gray.400" mt={0.5} textAlign="center">
             {percentage}% complete
           </Text>
         </Box>
 
-        {/* Reassurance message */}
+        {/* Condensed reassurance message */}
         {timingData?.reassuranceMessage && (
           <HStack
             bg="teal.900"
-            p={3}
+            p={2}
             borderRadius="md"
             border="1px solid"
             borderColor="teal.700"
+            gap={2}
           >
-            <Box color="teal.300" fontSize="lg">
+            <Box color="teal.300" fontSize="sm">
               <FaLightbulb />
             </Box>
-            <Text fontSize="sm" color="teal.200">
+            <Text fontSize="2xs" color="teal.200" lineHeight="1.3">
               {timingData.reassuranceMessage}
             </Text>
           </HStack>
         )}
 
-        {/* Transaction IDs - Main Focus */}
-        <Box
-          bg="gray.800"
-          borderRadius="md"
-          p={4}
-          border="1px solid"
-          borderColor="teal.700"
-        >
-          <VStack gap={3} align="stretch">
-            {/* Input Transaction */}
-            {inboundTx && (
-              <Box>
-                <HStack justify="space-between" align="center" mb={1}>
-                  <Text fontSize="xs" color="gray.400" fontWeight="medium">
-                    Input Transaction
-                  </Text>
-                  <IconButton
-                    aria-label="Copy input transaction"
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => handleCopy(inboundTx, 'input')}
-                    color={copiedTx === 'input' ? 'green.400' : 'gray.400'}
-                    _hover={{ color: copiedTx === 'input' ? 'green.300' : 'teal.300' }}
-                  >
-                    {copiedTx === 'input' ? <FaCheck /> : <FaCopy />}
-                  </IconButton>
-                </HStack>
-                <Code
-                  fontSize="xs"
-                  bg="gray.900"
-                  color="teal.300"
-                  p={2}
-                  borderRadius="md"
-                  display="block"
-                  wordBreak="break-all"
-                >
-                  {inboundTx}
-                </Code>
-              </Box>
-            )}
-
-            {/* Output Transaction */}
-            <Box>
-              <HStack justify="space-between" align="center" mb={1}>
-                <Text fontSize="xs" color="gray.400" fontWeight="medium">
-                  Output Transaction
-                </Text>
-                {outboundTx && (
-                  <IconButton
-                    aria-label="Copy output transaction"
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => handleCopy(outboundTx, 'output')}
-                    color={copiedTx === 'output' ? 'green.400' : 'gray.400'}
-                    _hover={{ color: copiedTx === 'output' ? 'green.300' : 'green.300' }}
-                  >
-                    {copiedTx === 'output' ? <FaCheck /> : <FaCopy />}
-                  </IconButton>
-                )}
-              </HStack>
-              {outboundTx ? (
-                <Code
-                  fontSize="xs"
-                  bg="gray.900"
-                  color="green.300"
-                  p={2}
-                  borderRadius="md"
-                  display="block"
-                  wordBreak="break-all"
-                >
-                  {outboundTx}
-                </Code>
-              ) : (
-                <Box
-                  bg="gray.900"
-                  p={2}
-                  borderRadius="md"
-                  border="1px dashed"
-                  borderColor="gray.700"
-                >
-                  <Text fontSize="xs" color="gray.500" textAlign="center">
-                    Waiting for output transaction...
-                  </Text>
-                </Box>
-              )}
-            </Box>
-          </VStack>
-        </Box>
-
-        {/* Expandable details toggle */}
+        {/* Collapsible Transaction IDs */}
         <Button
           variant="ghost"
-          size="sm"
+          size="xs"
           onClick={onToggleExpand}
+          justifyContent="space-between"
+          width="full"
         >
-          {isExpanded ? 'Hide' : 'Show'} Details
-          <Box ml={2}>
-            {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
-          </Box>
+          <Text fontSize="xs">{isExpanded ? 'Hide' : 'Show'} Transaction Details</Text>
+          {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
         </Button>
 
-        {/* Expanded content */}
         <Collapsible.Root open={isExpanded}>
           <Collapsible.Content>
-            <VStack gap={3} align="stretch" pt={3}>
-              <Box borderTop="1px" borderColor="gray.700" />
-
-              <DetailRow
-                label="Expected Duration"
-                value={formatTime(timingData?.stageExpectedSeconds || 0)}
-              />
-              <DetailRow
-                label="Actual Progress"
-                value={`${formatTime(timingData?.stageElapsedSeconds || 0)} (${timingData?.ratio || '0.00'}x)`}
-              />
-              <DetailRow
-                label="Performance"
-                value={getPerformanceLabel(timingData?.ratio)}
-              />
-
-              {confirmations !== undefined && (
-                <>
-                  <Box borderTop="1px" borderColor="gray.700" />
-                  <DetailRow
-                    label="Confirmations"
-                    value={`${confirmations} / ${requiredConfirmations}`}
-                  />
-                  <DetailRow
-                    label="Block Progress"
-                    value={`${((confirmations / (requiredConfirmations || 1)) * 100).toFixed(0)}%`}
-                  />
-                </>
-              )}
-
-              {timingData?.usingDefaults && (
-                <HStack
-                  bg="yellow.900"
-                  p={2}
-                  borderRadius="md"
-                  fontSize="xs"
-                >
-                  <Box color="yellow.400">
-                    <FaExclamationTriangle />
+            <Box
+              bg="gray.800"
+              borderRadius="md"
+              p={2}
+              border="1px solid"
+              borderColor="teal.700"
+            >
+              <VStack gap={2} align="stretch">
+                {/* Input Transaction */}
+                {inboundTx && (
+                  <Box>
+                    <HStack justify="space-between" align="center" mb={1}>
+                      <Text fontSize="2xs" color="gray.400" fontWeight="medium">
+                        Input TX
+                      </Text>
+                      <IconButton
+                        aria-label="Copy input transaction"
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => handleCopy(inboundTx, 'input')}
+                        color={copiedTx === 'input' ? 'green.400' : 'gray.400'}
+                        _hover={{ color: copiedTx === 'input' ? 'green.300' : 'teal.300' }}
+                      >
+                        {copiedTx === 'input' ? <FaCheck /> : <FaCopy />}
+                      </IconButton>
+                    </HStack>
+                    <Code
+                      fontSize="2xs"
+                      bg="gray.900"
+                      color="teal.300"
+                      p={1}
+                      borderRadius="sm"
+                      display="block"
+                      wordBreak="break-all"
+                    >
+                      {inboundTx}
+                    </Code>
                   </Box>
-                  <Text color="yellow.200">
-                    Using default estimates - precise timing loading
-                  </Text>
-                </HStack>
-              )}
-            </VStack>
+                )}
+
+                {/* Output Transaction */}
+                <Box>
+                  <HStack justify="space-between" align="center" mb={1}>
+                    <Text fontSize="2xs" color="gray.400" fontWeight="medium">
+                      Output TX
+                    </Text>
+                    {outboundTx && (
+                      <IconButton
+                        aria-label="Copy output transaction"
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => handleCopy(outboundTx, 'output')}
+                        color={copiedTx === 'output' ? 'green.400' : 'gray.400'}
+                        _hover={{ color: copiedTx === 'output' ? 'green.300' : 'green.300' }}
+                      >
+                        {copiedTx === 'output' ? <FaCheck /> : <FaCopy />}
+                      </IconButton>
+                    )}
+                  </HStack>
+                  {outboundTx ? (
+                    <Code
+                      fontSize="2xs"
+                      bg="gray.900"
+                      color="green.300"
+                      p={1}
+                      borderRadius="sm"
+                      display="block"
+                      wordBreak="break-all"
+                    >
+                      {outboundTx}
+                    </Code>
+                  ) : (
+                    <Box
+                      bg="gray.900"
+                      p={1}
+                      borderRadius="sm"
+                      border="1px dashed"
+                      borderColor="gray.700"
+                    >
+                      <Text fontSize="2xs" color="gray.500" textAlign="center">
+                        Waiting for output...
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+              </VStack>
+            </Box>
           </Collapsible.Content>
         </Collapsible.Root>
+
       </VStack>
     </Box>
   );
