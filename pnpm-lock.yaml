@@ -31,11 +31,11 @@ importers:
         specifier: ^9.20.0
         version: 9.20.0(@types/node@20.19.23)
       '@pioneer-platform/pioneer-discovery':
-        specifier: ^8.41.0
-        version: 8.41.0
+        specifier: ^8.44.0
+        version: 8.44.0
       '@pioneer-platform/pioneer-sdk':
-        specifier: ^8.41.0
-        version: 8.41.0(@types/node@20.19.23)
+        specifier: ^8.44.0
+        version: 8.44.0(@types/node@20.19.23)
       '@pioneer-platform/pioneer-types':
         specifier: ^8.19.3
         version: 8.19.3
@@ -899,14 +899,14 @@ packages:
   '@pioneer-platform/pioneer-coins@9.20.0':
     resolution: {integrity: sha512-oN3FB6EJT54Wux5mtMOETHYmzFfHtA6r9EUs8ki0QPDKlIo8a2vZfyJR03qA3HFIs7iiHZv/tH+aOdUV+HeI7Q==}
 
-  '@pioneer-platform/pioneer-discovery@8.41.0':
-    resolution: {integrity: sha512-pO6HsbKAPnArMfgbwAK3ewGtSVKpGWBR+IpJUMQNxMZtjMyVT52U1kYi3wZ9DaonLf5W3iH8/n7LLHPCJ8uLFQ==}
+  '@pioneer-platform/pioneer-discovery@8.44.0':
+    resolution: {integrity: sha512-6EbTbnMyC9W/Z1C4A4sP/blcAT1GASXR+Qnhuh+WAJauA7GNOoJr7KfvoKTF62RCRJGx39AH8Rwk4wZMe8dRUg==}
 
   '@pioneer-platform/pioneer-events@8.22.0':
     resolution: {integrity: sha512-T01ELjELh8XJVPr3pG4gEcRrLb6efZrqVdx+nRdAjwK7m3OafNe2965L30v4JqKsbjiF/ZmKwqY0olJwQOoC6A==}
 
-  '@pioneer-platform/pioneer-sdk@8.41.0':
-    resolution: {integrity: sha512-wOiqZWeeKukxTAevzwAFQ46VG0rAV/dtsqwwS7S4l7ArxHEiclLNjr3Uz1MelhuCV3dmFMSFISk51o2uFc2/bA==}
+  '@pioneer-platform/pioneer-sdk@8.44.0':
+    resolution: {integrity: sha512-f83IKd2NW+RYQIGi5SztTyixVpkMTRTjmHdUNIoo27io5M/tIVNRp4WaM9lsmGwsPJP/s1Rs7aEAIZ+orffoYg==}
 
   '@pioneer-platform/pioneer-types@8.19.3':
     resolution: {integrity: sha512-U4c49ITLrCM/o7NmCc+FQrREupI+ZIq0KxlEuxtP9G7AujAuVO0Ix/UDeUVReY6Pra3deqaibES8aGIftOTjqg==}
@@ -5426,7 +5426,7 @@ snapshots:
       - '@swc/wasm'
       - '@types/node'
 
-  '@pioneer-platform/pioneer-discovery@8.41.0':
+  '@pioneer-platform/pioneer-discovery@8.44.0':
     dependencies:
       '@pioneer-platform/pioneer-caip': 9.21.0
       ethers: 5.7.2
@@ -5450,12 +5450,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-sdk@8.41.0(@types/node@20.19.23)':
+  '@pioneer-platform/pioneer-sdk@8.44.0(@types/node@20.19.23)':
     dependencies:
       '@pioneer-platform/pioneer-caip': 9.21.0
       '@pioneer-platform/pioneer-client': 9.16.0
       '@pioneer-platform/pioneer-coins': 9.20.0(@types/node@20.19.23)
-      '@pioneer-platform/pioneer-discovery': 8.41.0
+      '@pioneer-platform/pioneer-discovery': 8.44.0
       '@pioneer-platform/pioneer-events': 8.22.0
       coinselect: 3.1.13
       eventemitter3: 5.0.1
