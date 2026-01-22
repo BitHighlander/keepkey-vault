@@ -263,7 +263,6 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
           balance: fallbackBalance,
           valueUsd: fallbackValueUsd,
           networkId: assetContext.networkId,
-          symbol: assetContext.symbol,
           path: pubkey.path,
           master: pubkey.master
         };
@@ -1778,7 +1777,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                             balance: assetContext.balance,
                             valueUsd: assetContext.priceUsd ? parseFloat(assetContext.balance) * assetContext.priceUsd : 0,
                             networkId: assetContext.networkId,
-                            symbol: assetContext.symbol
+                            addressType: 'default' as const
                           };
                         }
 
@@ -2229,7 +2228,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                           balance: assetContext.balance,
                           valueUsd: assetContext.priceUsd ? parseFloat(assetContext.balance) * assetContext.priceUsd : 0,
                           networkId: assetContext.networkId,
-                          symbol: assetContext.symbol
+                          addressType: 'default' as const
                         };
                       }
 
