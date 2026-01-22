@@ -1794,9 +1794,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // The fee from the API should already be in the correct units
         console.log('Fee from transaction:', feeValue);
 
-        // For MayaChain and ThorChain, allow empty fees (backend will apply default)
+        // For Cosmos SDK chains (Cosmos, Maya, Thor), allow empty fees (backend will apply default)
         const caipId = assetContext?.caip || assetContext?.assetId;
-        const isCosmosSdkChain = caipId?.includes('mayachain') || caipId?.includes('thorchain');
+        const isCosmosSdkChain = caipId?.startsWith('cosmos:') || caipId?.includes('mayachain') || caipId?.includes('thorchain');
 
         // Sanity check: if fee is null, undefined, or suspiciously high, stop
         // EXCEPT for Cosmos SDK chains where backend controller applies default fees
@@ -1807,7 +1807,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // If Cosmos SDK chain has no fee, set a placeholder for display
         if (isCosmosSdkChain && (!feeValue || feeValue === null)) {
           feeValue = '0'; // Backend will apply actual fee
-          console.log('MayaChain/ThorChain: Using backend default fee');
+          console.log('Cosmos SDK chain: Using backend default fee');
         }
 
         // Check for suspiciously high fees (like 1 BTC)
