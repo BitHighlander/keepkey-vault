@@ -98,11 +98,13 @@ const findNativeAssetBalance = (balances: any[], caip: string, isEthMainnet = fa
 
 const filterBalancesByNetwork = (balances: any[], networkId: string, symbol?: string) => {
   if (symbol) {
-    return balances?.filter((balance: any) => 
-      balance.networkId === networkId && balance.symbol === symbol
+    return balances?.filter((balance: any) =>
+      (balance.networkId === networkId || balance.caip?.includes(networkId)) && balance.symbol === symbol
     ) || [];
   }
-  return balances?.filter((balance: any) => balance.networkId === networkId) || [];
+  return balances?.filter((balance: any) =>
+    balance.networkId === networkId || balance.caip?.includes(networkId)
+  ) || [];
 };
 
 const PubkeyBalance = ({ pubkeyBalance, assetContext, theme, formatUsd }: PubkeyBalanceProps) => (
@@ -233,23 +235,33 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     );
     
     // Create a comprehensive list that includes all pubkeys, even those with 0 balance
-    const allPubkeyBalances = networkPubkeys.map((pubkey: any) => {
+    const allPubkeyBalances = networkPubkeys.map((pubkey: any, index: number) => {
       // Find existing balance for this pubkey
-      const existingBalance = assetBalances.find((balance: any) => 
-        balance.address === pubkey.address || 
+      const existingBalance = assetBalances.find((balance: any) =>
+        balance.address === pubkey.address ||
         balance.pubkey === pubkey.pubkey ||
         balance.master === pubkey.master
       );
-      
+
       if (existingBalance) {
         return existingBalance;
       } else {
-        // Create a 0 balance entry for pubkeys without balance
+        // FALLBACK: Only use assetContext.balance for the FIRST pubkey if:
+        // 1. No balances found in app.balances at all (assetBalances.length === 0)
+        // 2. There's only one pubkey total (networkPubkeys.length === 1)
+        const shouldUseFallback = (assetBalances.length === 0 || networkPubkeys.length === 1) &&
+                                   index === 0 &&
+                                   assetContext.balance;
+        const fallbackBalance = shouldUseFallback ? assetContext.balance : '0';
+        const fallbackValueUsd = shouldUseFallback && priceUsd
+          ? parseFloat(assetContext.balance) * priceUsd
+          : 0;
+
         return {
           address: pubkey.address || pubkey.pubkey,
           pubkey: pubkey.pubkey,
-          balance: '0',
-          valueUsd: 0,
+          balance: fallbackBalance,
+          valueUsd: fallbackValueUsd,
           networkId: assetContext.networkId,
           symbol: assetContext.symbol,
           path: pubkey.path,
@@ -1745,11 +1757,30 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                         );
 
                         // Find the balance for this pubkey from aggregatedBalance
-                        const pubkeyBalance = aggregatedBalance?.balances?.find((b: any) =>
+                        let pubkeyBalance = aggregatedBalance?.balances?.find((b: any) =>
                           b.address === pubkey.address ||
                           b.pubkey === pubkey.pubkey ||
-                          b.address === pubkey.pubkey
+                          b.address === pubkey.pubkey ||
+                          b.master === pubkey.master
                         );
+
+                        // FALLBACK: Only use assetContext.balance for single pubkey OR first pubkey when no balances exist
+                        const shouldUseFallback = !pubkeyBalance &&
+                                                   assetContext.balance &&
+                                                   parseFloat(assetContext.balance) > 0 &&
+                                                   (assetContext.pubkeys.length === 1 ||
+                                                    (index === 0 && (!aggregatedBalance?.balances || aggregatedBalance.balances.length === 0)));
+
+                        if (shouldUseFallback) {
+                          pubkeyBalance = {
+                            address: pubkey.address || pubkey.pubkey,
+                            pubkey: pubkey.pubkey,
+                            balance: assetContext.balance,
+                            valueUsd: assetContext.priceUsd ? parseFloat(assetContext.balance) * assetContext.priceUsd : 0,
+                            networkId: assetContext.networkId,
+                            symbol: assetContext.symbol
+                          };
+                        }
 
                         return (
                           <Box
@@ -2183,11 +2214,24 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
                       );
 
                       // Find the balance for this pubkey from aggregatedBalance
-                      const pubkeyBalance = aggregatedBalance?.balances?.find((b: any) =>
+                      let pubkeyBalance = aggregatedBalance?.balances?.find((b: any) =>
                         b.address === pubkey.address ||
                         b.pubkey === pubkey.pubkey ||
-                        b.address === pubkey.pubkey
+                        b.address === pubkey.pubkey ||
+                        b.master === pubkey.master
                       );
+
+                      // FALLBACK: If no balance found in aggregatedBalance but assetContext has balance
+                      if (!pubkeyBalance && assetContext.balance && parseFloat(assetContext.balance) > 0) {
+                        pubkeyBalance = {
+                          address: pubkey.address || pubkey.pubkey,
+                          pubkey: pubkey.pubkey,
+                          balance: assetContext.balance,
+                          valueUsd: assetContext.priceUsd ? parseFloat(assetContext.balance) * assetContext.priceUsd : 0,
+                          networkId: assetContext.networkId,
+                          symbol: assetContext.symbol
+                        };
+                      }
 
                       return (
                         <Box
