@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePioneerContext } from '@/components/providers/pioneer';
 
 export interface PendingSwap {
@@ -56,19 +56,24 @@ export const usePendingSwaps = () => {
 
   // Get ETH address specifically - swaps are usually EVM-based
   // Priority: ETH address > any address
-  const userAddress = 
+  // STABILITY FIX: Extract only what we need to prevent unnecessary re-renders
+  const userAddress =
     state?.pubkeys?.find((p: any) => p.networks?.includes('eip155:1') || p.networks?.includes('eip155:*'))?.address ||
     state?.pubkeys?.find((p: any) => p.address)?.address ||
     app?.assetContext?.pubkey ||
     app?.pubkeys?.find((p: any) => p.address)?.address ||
     '';
-  
+
+  // STABILITY FIX: Extract pioneer API reference separately to prevent app object triggering re-renders
+  const pioneerApi = app?.pioneer;
+
   //console.log('🔍 [usePendingSwaps] Using address:', userAddress);
 
   // Fetch pending swaps - EXACT PATTERN from useCustomTokens
+  // STABILITY FIX: Only depend on userAddress and pioneerApi, not entire app object
   const fetchPendingSwaps = useCallback(async () => {
-    if (!userAddress || !app?.pioneer) {
-      //console.log('⏭️ [usePendingSwaps] Skipping fetch:', { userAddress, hasPioneer: !!app?.pioneer });
+    if (!userAddress || !pioneerApi) {
+      //console.log('⏭️ [usePendingSwaps] Skipping fetch:', { userAddress, hasPioneer: !!pioneerApi });
       return;
     }
 
@@ -78,12 +83,12 @@ export const usePendingSwaps = () => {
       setIsLoading(true);
       setError(null);
 
-      if (typeof app.pioneer.GetAddressPendingSwaps !== 'function') {
+      if (typeof pioneerApi.GetAddressPendingSwaps !== 'function') {
         console.warn('⚠️ GetAddressPendingSwaps not available on Pioneer SDK');
         return;
       }
 
-      const response = await app.pioneer.GetAddressPendingSwaps({
+      const response = await pioneerApi.GetAddressPendingSwaps({
         address: userAddress
       });
 
@@ -121,12 +126,17 @@ export const usePendingSwaps = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [userAddress, app]);
+  }, [userAddress, pioneerApi]);
 
-  // Fetch on mount - EXACT PATTERN from useCustomTokens
+  // STABILITY FIX: Fetch on mount only, not on every fetchPendingSwaps change
+  // Use a ref to track if we've done the initial fetch
+  const hasFetchedRef = useRef(false);
   useEffect(() => {
-    fetchPendingSwaps();
-  }, [fetchPendingSwaps]);
+    if (!hasFetchedRef.current && userAddress && pioneerApi) {
+      hasFetchedRef.current = true;
+      fetchPendingSwaps();
+    }
+  }, [userAddress, pioneerApi]);
 
   // Helper functions
   const getPendingForAsset = useCallback((caip: string) => {

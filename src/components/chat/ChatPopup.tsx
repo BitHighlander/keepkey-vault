@@ -722,6 +722,9 @@ User: "What's the status of my swap 0xabc123def456?"
 User: "Show me my pending swaps"
 → {"intent": "query_swap", "functions": ["getMyPendingSwaps"], "parameters": {}, "content": "I'll show you all your pending swap transactions..."}
 
+User: "How many swaps have I done?"
+→ {"intent": "query_swap", "functions": ["getMyPendingSwaps"], "parameters": {}, "content": "Let me check your swap history..."}
+
 User: "Force check swap 0xdef789"
 → {"intent": "monitor_swap", "functions": ["checkSwapProgress"], "parameters": {"txHash": "0xdef789"}, "content": "Forcing an immediate status check for your swap..."}
 
@@ -750,6 +753,7 @@ Be helpful, conversational, and context-aware based on the current page.`;
     const response = await app.pioneer.SupportChat({
       model: 'qwen3-4b', // Fast Venice.ai model for support chat
       messages: [
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: input }
       ]
     });
@@ -761,6 +765,11 @@ Be helpful, conversational, and context-aware based on the current page.`;
     }
 
     const intentResult = JSON.parse(chatData.choices[0].message.content);
+    
+    // Debug: Log intent parsing results
+    console.log('🚨 [DEBUG] User input:', input);
+    console.log('🚨 [DEBUG] Venice.ai response:', chatData.choices[0].message.content);
+    console.log('🚨 [DEBUG] Parsed intent:', intentResult);
 
     // Execute the functions
     const executionResult = await executeChatFunctions(

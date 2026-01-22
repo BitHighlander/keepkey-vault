@@ -293,8 +293,19 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     });
   };
 
+  // STABILITY FIX: Track the last CAIP we initialized to prevent unnecessary re-runs
+  const lastInitializedCaip = React.useRef<string>('');
+  const isAppReady = React.useRef(false);
+
   // Fetch asset data based on CAIP prop
+  // STABILITY FIX: Only depend on caip and a stable app readiness flag
   useEffect(() => {
+    // Skip if we've already initialized this CAIP and app is ready
+    if (lastInitializedCaip.current === caip && isAppReady.current) {
+      console.log('⏭️ [Asset] Skipping re-initialization - already loaded:', caip);
+      return;
+    }
+
     console.log('🎯 [Asset] Component mounted with CAIP:', caip);
 
     // Reset state when CAIP changes
@@ -311,8 +322,13 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     // Wait for app to be ready
     if (!app || !app.balances || !app.pubkeys) {
       console.log('⏳ [Asset] Waiting for app to be ready...');
+      isAppReady.current = false;
       return;
     }
+
+    // Mark app as ready and track this CAIP as initialized
+    isAppReady.current = true;
+    lastInitializedCaip.current = caip;
 
     console.log('🔍 [Asset] Fetching data for CAIP:', caip);
 
@@ -601,32 +617,41 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     }
 
     setLoading(false);
-  }, [caip, app?.balances, app?.pubkeys, app?.assetsMap]);
+  }, [caip]); // STABILITY FIX: Only re-run when CAIP changes, not when balances/pubkeys update
 
   // Set up interval to sync market data every 15 seconds
   // SKIP interval when custom token dialog is open to prevent state refresh from closing the dialog
+  // STABILITY FIX: Use ref to access app without making it a dependency
+  const appRef = React.useRef(app);
+  React.useEffect(() => {
+    appRef.current = app;
+  }, [app]);
+
   useEffect(() => {
-    if (!app || isCustomTokenDialogOpen) {
+    if (!appRef.current || isCustomTokenDialogOpen) {
       console.log("⏸️ [Asset] Skipping syncMarket interval - dialog open or app not ready");
       return;
     }
 
     // Initialize previousBalance when component mounts
-    if (app.assetContext?.balance) {
-      setPreviousBalance(app.assetContext.balance);
+    if (appRef.current.assetContext?.balance) {
+      setPreviousBalance(appRef.current.assetContext.balance);
       // Mark as no longer initial load after first balance is set
       setIsInitialLoad(false);
     }
 
     const intervalId = setInterval(() => {
-      app
+      const currentApp = appRef.current;
+      if (!currentApp) return;
+
+      currentApp
         .syncMarket()
         .then(() => {
           console.log("📊 [Asset] syncMarket called from Asset component");
 
           // Check if balance has increased
-          if (app.assetContext?.balance) {
-            const currentBalance = app.assetContext.balance;
+          if (currentApp.assetContext?.balance) {
+            const currentBalance = currentApp.assetContext.balance;
             const prevBalance = previousBalance;
 
             console.log("💰 [Asset] Balance comparison:", {
@@ -648,7 +673,7 @@ export const Asset = ({ caip, onBackClick, onSendClick, onReceiveClick, onSwapCl
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [app, isInitialLoad, isCustomTokenDialogOpen]);
+  }, [isCustomTokenDialogOpen]); // STABILITY FIX: Remove app dependency to prevent re-creating interval
 
   const handleBack = () => {
     // Set loading state

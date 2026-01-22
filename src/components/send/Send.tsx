@@ -371,8 +371,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
               newBalance = parseFloat(pubkeyBalance.balance).toFixed(8);
               console.log('✅ [Send] Found balance for selected UTXO pubkey:', newBalance);
             } else {
-              console.warn('⚠️ [Send] No balance found for selected UTXO pubkey, defaulting to 0');
-              newBalance = '0';
+              // Fallback to assetContext.balance if available
+              newBalance = assetContext.balance || '0';
+              console.warn('⚠️ [Send] No balance found for selected UTXO pubkey, falling back to assetContext.balance:', newBalance);
             }
           } else {
             // Advanced tab hidden OR no specific pubkey selected - sum all pubkey balances
@@ -409,7 +410,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             }
 
             newBalance = totalBalance.toFixed(8);
-            console.log('✅ [Send] Total UTXO balance calculated:', newBalance);
+
+            // Fallback to assetContext.balance if no balances were found in app.balances
+            if (totalBalance === 0 && assetContext.balance && parseFloat(assetContext.balance) > 0) {
+              newBalance = assetContext.balance;
+              console.log('ℹ️ [Send] No UTXO balances found in app.balances, using assetContext.balance:', newBalance);
+            } else {
+              console.log('✅ [Send] Total UTXO balance calculated:', newBalance);
+            }
           }
         } else {
           // For non-UTXO chains
@@ -476,11 +484,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                 pubkeyNote: selectedPubkey.note
               });
             } else {
-              console.warn('⚠️ [Send] No balance found for selected pubkey, defaulting to 0', {
+              // Fallback to assetContext.balance if available
+              newBalance = assetContext.balance || '0';
+              console.warn('⚠️ [Send] No balance found for selected pubkey in app.balances, falling back to assetContext.balance:', {
                 selectedPubkey,
-                balancesCount: app?.balances?.length || 0
+                balancesCount: app?.balances?.length || 0,
+                fallbackBalance: newBalance
               });
-              newBalance = '0';
             }
           } else {
             // If no pubkey selected yet, use the first pubkey's balance or assetContext balance
@@ -3120,7 +3130,34 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
                   MAX
                 </Button>
               </Flex>
-              
+
+              {/* Available Balance Display */}
+              <Box
+                p={2}
+                bg="rgba(255,255,255,0.02)"
+                borderRadius="md"
+                borderWidth="1px"
+                borderColor={theme.borderAlt}
+              >
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="sm" color="gray.400">Available:</Text>
+                  <Flex direction="column" align="flex-end" gap={0}>
+                    <Text fontSize="sm" color={assetColor} fontWeight="bold">
+                      {(() => {
+                        const balanceNum = parseFloat(balance || '0');
+                        if (balanceNum === 0) return '0';
+                        const formatted = balanceNum.toFixed(8);
+                        // Remove trailing zeros and decimal point if not needed
+                        return formatted.replace(/\.?0+$/, '');
+                      })()} {assetContext.symbol}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">
+                      ${nativeToUsd(balance)} USD
+                    </Text>
+                  </Flex>
+                </Flex>
+              </Box>
+
               {/* Active Input (Larger) */}
               <Box 
                 onClick={() => !isUsdInput && toggleInputMode()}
