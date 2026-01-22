@@ -52,7 +52,6 @@ import {
   isPriceAvailable as checkPriceAvailable,
   calculateFeeInUsd as calcFeeInUsd
 } from '@/utils/currencyConverter'
-import { toBaseUnit } from '@/lib/asset-utils'
 
 // Define animation keyframes
 const scale = keyframes`
@@ -1516,26 +1515,10 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         fastest: 5
       };
 
-      // CRITICAL FIX: Convert display amount to base units (integer string)
-      // The SDK/blockchain expects amounts in smallest units (satoshis/wei/uatom) as INTEGER strings
-      // NOT decimal strings like "0.425531" which causes "amount: [{denom: 'uatom', amount: '425531.91000000003'}]"
-      const amountBaseUnits = toBaseUnit(nativeAmount, assetContext);
-      console.log('💱 Amount conversion for send:', {
-        originalAmount: amount,
-        isUsdInput,
-        nativeAmount,
-        nativeAmountType: typeof nativeAmount,
-        baseUnits: amountBaseUnits,
-        baseUnitsType: typeof amountBaseUnits,
-        hasDecimalPoint: amountBaseUnits.includes('.'),
-        decimals: assetContext?.precision || 8,
-        symbol: assetContext?.symbol
-      });
-
       const sendPayload: SendPayload = {
         caip,
         to: recipient,
-        amount: amountBaseUnits, // Use base units (integer string) instead of display amount
+        amount: nativeAmount,
         feeLevel: customFeeOption ? 3 : feeLevelMap[selectedFeeLevel], // Use selected or custom fee level (valid range: 1-5)
         isMax,
       }

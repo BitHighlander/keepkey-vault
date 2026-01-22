@@ -2027,26 +2027,15 @@ export const Swap = ({ onBackClick }: SwapProps) => {
             inputAmount,
             swapPayloadBefore: { ...swapPayload }
           });
-
-          // CRITICAL FIX: Convert inputAmount to base units (integer string) before passing to SDK
-          // The SDK/blockchain expects amounts in smallest units (satoshis/wei/uatom) as INTEGER strings
-          // NOT decimal strings like "425531.91000000003"
-          const inputAmountBase = toBaseUnit(inputAmount, app.assetContext);
-          console.log('💱 Amount conversion:', {
-            display: inputAmount,
-            baseUnits: inputAmountBase,
-            decimals: app.assetContext?.precision || 8
-          });
-
           if (isMaxAmount) {
             console.log('🔥 MAX swap detected - setting isMax: true in payload (SDK will calculate max and deduct gas)');
             swapPayload.isMax = true;
             // CRITICAL FIX: When isMax=true, let SDK calculate the amount (don't pass inputAmount to avoid double gas deduction)
             // The inputAmount is set to full balance in handleMaxClick, SDK will deduct gas automatically
-            swapPayload.amount = inputAmountBase; // Pass full balance in base units, SDK will adjust for gas
+            swapPayload.amount = inputAmount; // Pass full balance, SDK will adjust for gas
           } else {
             console.log('📊 Regular swap - providing exact amount in payload');
-            swapPayload.amount = inputAmountBase; // Use base units (integer string)
+            swapPayload.amount = inputAmount;
           }
 
           console.log('📦 Swap payload:', swapPayload);
@@ -2178,24 +2167,8 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           const broadcastResult = await app.pioneer.Broadcast(broadcastPayload);
           console.log('✅ Step 3 Complete: Broadcast result:', broadcastResult);
 
-          // Extract txid from broadcast result with proper validation
+          // Extract txid from broadcast result
           let txid = broadcastResult?.data?.txid || broadcastResult?.data?.data?.txid || broadcastResult?.data;
-
-          // CRITICAL: Validate txid is actually a string, not an object!
-          if (typeof txid === 'object' && txid !== null) {
-            console.error('❌ CRITICAL: txid is an object, not a string!', {
-              txid,
-              broadcastResult: JSON.stringify(broadcastResult, null, 2)
-            });
-            // Try to extract string from object
-            if (txid.txid && typeof txid.txid === 'string') {
-              txid = txid.txid;
-            } else if (txid.txHash && typeof txid.txHash === 'string') {
-              txid = txid.txHash;
-            } else {
-              throw new Error(`Broadcast succeeded but returned invalid txid type: ${typeof txid}. Expected string, got: ${JSON.stringify(txid)}`);
-            }
-          }
 
           if (!txid) {
             throw new Error('Broadcast succeeded but no transaction ID returned');
@@ -2301,25 +2274,10 @@ export const Swap = ({ onBackClick }: SwapProps) => {
           setIsSigningTx(false);
 
           // 1. Prepare swap data for global SwapProgress dialog
-          // Extract only needed properties to match event contract
           const swapData = {
             txHash: String(txid),
-            fromAsset: {
-              caip: app.assetContext.caip,
-              symbol: app.assetContext.symbol,
-              name: app.assetContext.name,
-              icon: app.assetContext.icon,
-              chainId: app.assetContext.chainId,
-              assetId: app.assetContext.assetId
-            },
-            toAsset: {
-              caip: app.outboundAssetContext.caip,
-              symbol: app.outboundAssetContext.symbol,
-              name: app.outboundAssetContext.name,
-              icon: app.outboundAssetContext.icon,
-              chainId: app.outboundAssetContext.chainId,
-              assetId: app.outboundAssetContext.assetId
-            },
+            fromAsset: app.assetContext,
+            toAsset: app.outboundAssetContext,
             inputAmount: inputAmount,
             outputAmount: outputAmount,
             memo: quote?.memo
