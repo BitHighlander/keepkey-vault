@@ -239,6 +239,32 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
   // Step wizard state (1: Recipient, 2: Amount, 3: Fees, 4: Review)
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
 
+  // Helper function to check if we should skip fee step for certain assets
+  // These chains have fees applied by the backend, so we don't show fee selection UI
+  const shouldSkipFeeStep = useCallback(() => {
+    const caipId = assetContext?.caip || assetContext?.assetId;
+    const symbol = assetContext?.symbol?.toUpperCase();
+    const networkId = assetContext?.networkId;
+
+    return (
+      // XRP/Ripple
+      caipId?.includes('ripple') ||
+      networkId?.includes('ripple') ||
+      symbol === 'XRP' ||
+      // Cosmos SDK chains (Cosmos Hub, Osmosis, etc.)
+      caipId?.startsWith('cosmos:') ||
+      symbol === 'ATOM' ||
+      // THORChain
+      caipId?.includes('thorchain') ||
+      networkId?.includes('thorchain') ||
+      symbol === 'RUNE' ||
+      // MayaChain
+      caipId?.includes('mayachain') ||
+      networkId?.includes('mayachain') ||
+      symbol === 'CACAO'
+    );
+  }, [assetContext]);
+
   // Add a state to track if asset data has loaded
   const [assetLoaded, setAssetLoaded] = useState<boolean>(false)
 
@@ -1386,8 +1412,13 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
 
   // Step navigation functions
   const nextStep = useCallback(() => {
+    // For assets that skip fee step, go directly from step 2 to building the transaction
+    if (shouldSkipFeeStep() && currentStep === 2) {
+      // Don't advance to step 3, just trigger transaction build
+      return;
+    }
     if (currentStep < 3) setCurrentStep((currentStep + 1) as 1 | 2 | 3);
-  }, [currentStep]);
+  }, [currentStep, shouldSkipFeeStep]);
 
   const prevStep = useCallback(() => {
     if (currentStep > 1) setCurrentStep((currentStep - 1) as 1 | 2 | 3);
@@ -1804,9 +1835,9 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // The fee from the API should already be in the correct units
         console.log('Fee from transaction:', feeValue);
 
-        // For MayaChain and ThorChain, allow empty fees (backend will apply default)
+        // For Cosmos SDK chains (Cosmos, Maya, Thor), allow empty fees (backend will apply default)
         const caipId = assetContext?.caip || assetContext?.assetId;
-        const isCosmosSdkChain = caipId?.includes('mayachain') || caipId?.includes('thorchain');
+        const isCosmosSdkChain = caipId?.startsWith('cosmos:') || caipId?.includes('mayachain') || caipId?.includes('thorchain');
 
         // Sanity check: if fee is null, undefined, or suspiciously high, stop
         // EXCEPT for Cosmos SDK chains where backend controller applies default fees
@@ -1817,7 +1848,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         // If Cosmos SDK chain has no fee, set a placeholder for display
         if (isCosmosSdkChain && (!feeValue || feeValue === null)) {
           feeValue = '0'; // Backend will apply actual fee
-          console.log('MayaChain/ThorChain: Using backend default fee');
+          console.log('Cosmos SDK chain: Using backend default fee');
         }
 
         // Check for suspiciously high fees (like 1 BTC)
@@ -2972,7 +3003,7 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         zIndex={10}
       >
         <Flex gap={2} px={4} pt={4} pb={2}>
-          {[1, 2, 3].map((step) => (
+          {(shouldSkipFeeStep() ? [1, 2] : [1, 2, 3]).map((step) => (
             <Box
               key={step}
               flex={1}
@@ -2987,11 +3018,11 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
         {/* Step Title */}
         <Box px={4} pb={3}>
           <Text color="gray.400" fontSize="xs" fontWeight="medium">
-            STEP {currentStep} OF 3
+            STEP {currentStep} OF {shouldSkipFeeStep() ? '2' : '3'}
           </Text>
           <Text color="white" fontSize="lg" fontWeight="bold" mt={1}>
             {currentStep === 1 && 'Enter Recipient'}
-            {currentStep === 2 && 'Enter Amount'}
+            {currentStep === 2 && (shouldSkipFeeStep() ? 'Enter Amount & Send' : 'Enter Amount')}
             {currentStep === 3 && 'Select Fee & Send'}
           </Text>
         </Box>
@@ -3278,14 +3309,14 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             bg={assetColor}
             color="black"
             _hover={{ bg: assetColorHover }}
-            onClick={nextStep}
+            onClick={shouldSkipFeeStep() ? handleSend : nextStep}
             disabled={!canProceedFromStep2()}
             height="56px"
             fontSize="lg"
             fontWeight="bold"
             mt={4}
           >
-            Next: Select Fee
+            {shouldSkipFeeStep() ? 'Review & Send' : 'Next: Select Fee'}
           </Button>
         </>
       )}
@@ -3339,8 +3370,8 @@ const Send: React.FC<SendProps> = ({ onBackClick }) => {
             </Box>
           )}
 
-          {/* Fee Selection - Now using reusable component - Hide for XRP */}
-          {!assetContext?.caip?.includes('ripple') && !assetContext?.networkId?.includes('ripple') && (
+          {/* Fee Selection - Now using reusable component - Hide for backend-managed fee assets */}
+          {!shouldSkipFeeStep() && (
             <>
               <Box 
                 width="100%" 
