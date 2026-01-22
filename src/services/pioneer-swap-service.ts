@@ -79,10 +79,70 @@ export async function getSwapQuote(
   console.log(`${tag} Slippage: ${request.slippagePercentage || 3}%`);
 
   try {
+    // DIAGNOSTIC: Check available pubkeys and their address types BEFORE swap
+    console.log(`${tag} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`${tag} 🔍 PRE-SWAP DIAGNOSTICS`);
+    console.log(`${tag} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+    // Extract network from CAIP
+    const networkIdIn = request.caipIn.split('/')[0];
+    const networkIdOut = request.caipOut.split('/')[0];
+
+    console.log(`${tag} Input network: ${networkIdIn}`);
+    console.log(`${tag} Output network: ${networkIdOut}`);
+
+    // Find all pubkeys for input network
+    const pubkeysIn = app.pubkeys?.filter((pk: any) =>
+      pk.networks?.includes(networkIdIn) ||
+      pk.networks?.some((n: string) => n.startsWith(networkIdIn.split(':')[0]))
+    ) || [];
+
+    console.log(`${tag} Found ${pubkeysIn.length} pubkeys for input network ${networkIdIn}`);
+    pubkeysIn.forEach((pk: any, idx: number) => {
+      console.log(`${tag}   [${idx}] ${pk.note || 'Unnamed'}`);
+      console.log(`${tag}       type: ${pk.type} (xpub/ypub/zpub/address)`);
+      console.log(`${tag}       script_type: ${pk.script_type} (p2pkh/p2sh-p2wpkh/p2wpkh)`);
+      console.log(`${tag}       address: ${pk.address?.substring(0, 20)}...`);
+      console.log(`${tag}       master: ${pk.master?.substring(0, 20)}...`);
+      console.log(`${tag}       path: m/${pk.addressNList?.map((n: number) => n >= 0x80000000 ? `${n - 0x80000000}'` : n).join('/')}`);
+    });
+
+    // Check specifically for zpub (p2wpkh) addresses
+    const zpubKeys = pubkeysIn.filter((pk: any) => pk.type === 'zpub' || pk.script_type === 'p2wpkh');
+    const ypubKeys = pubkeysIn.filter((pk: any) => pk.type === 'ypub' || pk.script_type === 'p2sh-p2wpkh');
+    const xpubKeys = pubkeysIn.filter((pk: any) => pk.type === 'xpub' || pk.script_type === 'p2pkh');
+
+    console.log(`${tag} Address type breakdown for input network:`);
+    console.log(`${tag}   ✅ Native SegWit (zpub/p2wpkh): ${zpubKeys.length}`);
+    console.log(`${tag}   ⚠️  Wrapped SegWit (ypub/p2sh-p2wpkh): ${ypubKeys.length}`);
+    console.log(`${tag}   ❌ Legacy (xpub/p2pkh): ${xpubKeys.length}`);
+
+    if (zpubKeys.length === 0) {
+      console.error(`${tag} ⚠️ WARNING: No p2wpkh (Native SegWit) addresses available!`);
+      console.error(`${tag} This will cause swap to fail if protocol requires p2wpkh for change address`);
+    }
+
+    console.log(`${tag} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
     // Set asset contexts (required by Pioneer SDK before calling swap)
     console.log(`${tag} Setting asset contexts...`);
     await app.setAssetContext({ caip: request.caipIn });
     await app.setOutboundAssetContext({ caip: request.caipOut });
+
+    // DIAGNOSTIC: Log what contexts were actually set
+    console.log(`${tag} Asset contexts set:`);
+    console.log(`${tag}   assetContext:`, JSON.stringify({
+      caip: app.assetContext?.caip,
+      symbol: app.assetContext?.symbol,
+      address: app.assetContext?.address?.substring(0, 20) + '...',
+      networkId: app.assetContext?.networkId
+    }, null, 2));
+    console.log(`${tag}   outboundAssetContext:`, JSON.stringify({
+      caip: app.outboundAssetContext?.caip,
+      symbol: app.outboundAssetContext?.symbol,
+      address: app.outboundAssetContext?.address?.substring(0, 20) + '...',
+      networkId: app.outboundAssetContext?.networkId
+    }, null, 2));
 
     // Build swap payload
     const swapPayload = {
@@ -125,7 +185,28 @@ export async function getSwapQuote(
     return result;
 
   } catch (error: any) {
-    console.error(`${tag} ❌ Quote failed:`, error);
+    console.error(`${tag} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.error(`${tag} ❌ SWAP QUOTE FAILED`);
+    console.error(`${tag} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.error(`${tag} Error message:`, error.message);
+    console.error(`${tag} Error stack:`, error.stack);
+    console.error(`${tag} Full error object:`, JSON.stringify(error, null, 2));
+
+    // Check if error is related to address types
+    if (error.message?.includes('p2wpkh') || error.message?.includes('xpub') || error.message?.includes('change address')) {
+      console.error(`${tag} 🔍 ADDRESS TYPE ERROR DETECTED`);
+      console.error(`${tag} This error indicates the swap requires p2wpkh (Native SegWit) addresses`);
+      console.error(`${tag} but only p2pkh (Legacy) addresses are available.`);
+      console.error(`${tag}`);
+      console.error(`${tag} Possible causes:`);
+      console.error(`${tag} 1. Wallet not paired or pubkeys not loaded`);
+      console.error(`${tag} 2. Native SegWit (BIP84/zpub) paths not registered`);
+      console.error(`${tag} 3. Asset context set to wrong address type`);
+      console.error(`${tag} 4. Regression in path configuration`);
+    }
+
+    console.error(`${tag} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
     throw new Error(
       `${tag} Quote failed for ${request.caipIn} → ${request.caipOut}: ${error.message}`
     );
