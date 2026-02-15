@@ -202,41 +202,90 @@ export function Provider({ children }: ProviderProps) {
         console.log('🔧 Pioneer credentials:', { username, queryKey, keepkeyApiKey });
         console.log('🔧 Pioneer URLs:', { PIONEER_URL, PIONEER_WSS });
 
+        // ============================================================================
+        // V2 API Detection: Query vault health to determine API version & supported chains
+        // This must happen BEFORE chain list building so we know which chains to include
+        // ============================================================================
+        let detectedApiVersion = 1;
+        let detectedSupportedChains: string[] = [];
+        try {
+          const healthResp = await fetch('http://localhost:1646/api/health', {
+            method: 'GET',
+            signal: AbortSignal.timeout(2000),
+            headers: { 'Accept': 'application/json' }
+          });
+          if (healthResp.ok) {
+            const healthData = await healthResp.json();
+            detectedApiVersion = healthData.apiVersion || 1;
+            detectedSupportedChains = healthData.supportedChains || [];
+            console.log(`✅ [V2 DETECT] Vault API v${detectedApiVersion}, ${detectedSupportedChains.length} supported chains:`, detectedSupportedChains);
+          }
+        } catch (e: any) {
+          console.log('ℹ️ [V2 DETECT] Vault health not reachable — defaulting to v1:', e?.message);
+        }
+
+        // V2 network ID mapping (bypasses ChainToNetworkId which has wrong/mismatched values for v2 chains)
+        const V2_NETWORK_IDS: Record<string, string> = {
+          'ZEC': 'bip122:00040fe8ec8471911baa1db1266ea15d',
+          'ZCASH': 'bip122:00040fe8ec8471911baa1db1266ea15d',
+          'SOL': 'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp',
+          'SOLANA': 'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp',
+          'TRX': 'tron:0x2b6653dc',
+          'TRON': 'tron:0x2b6653dc',
+          'TON': 'ton:-239',
+        };
+
         // Get supported blockchains like pioneer-react does
         const walletType = WalletOption.KEEPKEY;
         let allSupported = availableChainsByWallet[walletType];
 
-        //remove v2 assets for now (case-insensitive filter)
+        // V2 chain filtering: only include v2 chains when vault reports apiVersion >= 2
         const v2Assets = ['TRX', 'TRON', 'TON', 'SOL', 'SOLANA', 'ZCASH'];
-        console.log('🔧 All supported chains before filter:', allSupported);
-        allSupported = allSupported.filter((chain: string) => {
-          const chainUpper = String(chain).toUpperCase();
-          const shouldFilter = v2Assets.some(v2 => chainUpper.includes(v2.toUpperCase()));
-          if (shouldFilter) {
-            console.log(`🚫 Filtering out v2 chain: ${chain}`);
-          }
-          return !shouldFilter;
-        });
-        console.log('🔧 All supported chains after filter:', allSupported);
+        console.log('🔧 All supported chains before v2 filter:', allSupported);
 
-        let blockchains = allSupported.map(
+        if (detectedApiVersion >= 2) {
+          // V2 API — keep v2 chains that the vault explicitly supports
+          allSupported = allSupported.filter((chain: string) => {
+            const chainUpper = String(chain).toUpperCase();
+            const isV2 = v2Assets.some(v2 => chainUpper.includes(v2));
+            if (isV2) {
+              const networkId = V2_NETWORK_IDS[chainUpper];
+              if (networkId) {
+                const vaultSupports = detectedSupportedChains.some(
+                  (sc: string) => sc.toLowerCase() === networkId.toLowerCase()
+                );
+                if (vaultSupports) {
+                  console.log(`✅ [V2] Keeping v2 chain: ${chain} (vault supports ${networkId})`);
+                  return true;
+                }
+              }
+              console.log(`🚫 [V2] Filtering unsupported v2 chain: ${chain}`);
+              return false;
+            }
+            return true; // Keep all v1 chains
+          });
+        } else {
+          // V1 API — filter out ALL v2 chains
+          allSupported = allSupported.filter((chain: string) => {
+            const chainUpper = String(chain).toUpperCase();
+            const shouldFilter = v2Assets.some(v2 => chainUpper.includes(v2));
+            if (shouldFilter) {
+              console.log(`🚫 [V1] Filtering out v2 chain: ${chain}`);
+            }
+            return !shouldFilter;
+          });
+        }
+        console.log('🔧 All supported chains after v2 filter:', allSupported);
+
+        // Convert chain symbols to network IDs, using V2_NETWORK_IDS for v2 chains
+        let blockchains = allSupported.map((chainStr: any) => {
+          const chainUpper = String(chainStr).toUpperCase();
+          if (V2_NETWORK_IDS[chainUpper]) {
+            return V2_NETWORK_IDS[chainUpper];
+          }
           // @ts-ignore
-          (chainStr: any) => ChainToNetworkId[getChainEnumValue(chainStr)],
-        );
-
-        // Also filter out v2 network IDs from the blockchains array (after conversion)
-        const v2NetworkPrefixes = ['tron:', 'ton:', 'solana:', 'sol:'];
-        const originalBlockchainsCount = blockchains.length;
-        blockchains = blockchains.filter((networkId: string) => {
-          if (!networkId) return false;
-          const networkIdLower = networkId.toLowerCase();
-          const shouldFilter = v2NetworkPrefixes.some(prefix => networkIdLower.startsWith(prefix));
-          if (shouldFilter) {
-            console.log(`🚫 Filtering out v2 network ID: ${networkId}`);
-          }
-          return !shouldFilter;
-        });
-        console.log(`🔧 Filtered ${originalBlockchainsCount - blockchains.length} v2 network IDs from blockchains`);
+          return ChainToNetworkId[getChainEnumValue(chainStr)];
+        }).filter((id: string) => !!id); // Remove any undefined entries
 
         const paths = getPaths(blockchains);
 
@@ -443,10 +492,15 @@ export function Provider({ children }: ProviderProps) {
           // 'eip155:1101', // Polygon zkEVM
         ];
 
-        // Filter ZCash if feature flag is disabled
-        if (!isZcashEnabled()) {
+        // Filter ZCash: auto-enabled by v2 vault detection, otherwise check feature flag
+        const v2SupportsZcash = detectedApiVersion >= 2 && detectedSupportedChains.some(
+          (sc: string) => sc.toLowerCase() === ZCASH_NETWORK_ID.toLowerCase()
+        );
+        if (!isZcashEnabled() && !v2SupportsZcash) {
           unsupportedNetworks.push(ZCASH_NETWORK_ID);
-          console.log('🚫 ZCash feature flag disabled - filtering out ZCash network');
+          console.log('🚫 ZCash disabled - feature flag off and v2 not available');
+        } else if (v2SupportsZcash) {
+          console.log('✅ ZCash auto-enabled by v2 vault detection');
         }
 
         const originalLength = blockchains.length;
