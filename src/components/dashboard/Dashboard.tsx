@@ -542,7 +542,7 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
       const hasPendingSwaps = networkBalances.some((b: any) => b.pending?.isPending);
 
       // Compute freshness from balance fetchedAt timestamps (defense-in-depth)
-      // Use oldest (minimum) fetchedAt — if any balance is stale, network is stale
+      // Use newest (maximum) fetchedAt — network is "Fresh" if we recently fetched ANY balance
       let computedFetchedAt = network.fetchedAt;
       let computedIsStale = network.isStale;
       if (!computedFetchedAt) {
@@ -550,7 +550,7 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
           .map((b: any) => b.fetchedAt || b.updated)
           .filter((t: any): t is number => typeof t === 'number' && t > 0);
         if (fetchTimes.length > 0) {
-          computedFetchedAt = Math.min(...fetchTimes);
+          computedFetchedAt = Math.max(...fetchTimes);
         }
       }
       if (computedFetchedAt && computedIsStale === undefined) {
