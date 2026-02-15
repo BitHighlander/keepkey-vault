@@ -647,7 +647,11 @@ export function Provider({ children }: ProviderProps) {
           }
         } else {
           // Pass vault endpoint when available
+          // CRITICAL: forceLocalhost tells the SDK to test localhost:1646 even on non-localhost domains
+          // Without this, detectKkApiAvailability() skips localhost on Vercel/production domains
+          // and KeepKeySdk.create() is never attempted, resulting in 0 pubkeys
           sdkConfig.keepkeyEndpoint = detectedKeeperEndpoint;
+          sdkConfig.forceLocalhost = true;
         }
         endTimer('SDK Config Creation');
 
