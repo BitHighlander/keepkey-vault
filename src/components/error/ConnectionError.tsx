@@ -22,9 +22,10 @@ const theme = {
 
 interface ConnectionErrorProps {
   onRetry?: () => void;
+  needsLocalhostPermission?: boolean;
 }
 
-const ConnectionError: React.FC<ConnectionErrorProps> = ({ onRetry }) => {
+const ConnectionError: React.FC<ConnectionErrorProps> = ({ onRetry, needsLocalhostPermission }) => {
   // Function to launch KeepKey Desktop using the custom URI scheme
   const launchKeepKeyDesktop = () => {
     try {
@@ -80,7 +81,7 @@ const ConnectionError: React.FC<ConnectionErrorProps> = ({ onRetry }) => {
         </Box>
 
         <Heading size="lg" color={theme.gold} textAlign="center">
-          Connection Error
+          {needsLocalhostPermission ? 'Local Network Access Required' : 'Connection Error'}
         </Heading>
 
         <Image
@@ -90,9 +91,20 @@ const ConnectionError: React.FC<ConnectionErrorProps> = ({ onRetry }) => {
           my={2}
         />
 
-        <Text fontSize="md" color="gray.300" textAlign="center">
-          Unable to connect to KeepKey Desktop. Please ensure the application is running on your computer.
-        </Text>
+        {needsLocalhostPermission ? (
+          <VStack gap={2}>
+            <Text fontSize="md" color="gray.300" textAlign="center">
+              Please approve <Text as="span" color={theme.gold} fontWeight="bold">local network access</Text> in your browser to allow communication with your KeepKey on localhost.
+            </Text>
+            <Text fontSize="sm" color="gray.400" textAlign="center">
+              Your browser may have blocked the connection to localhost:1646. Check for a permission prompt in your address bar, approve it, then click Try Again.
+            </Text>
+          </VStack>
+        ) : (
+          <Text fontSize="md" color="gray.300" textAlign="center">
+            Unable to connect to KeepKey Desktop. Please ensure the application is running on your computer.
+          </Text>
+        )}
 
         <VStack gap={4} width="100%">
           <Button

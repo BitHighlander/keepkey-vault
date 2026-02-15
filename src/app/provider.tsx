@@ -97,6 +97,7 @@ export function Provider({ children }: ProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [isVaultUnavailable, setIsVaultUnavailable] = useState(false);
+  const [needsLocalhostPermission, setNeedsLocalhostPermission] = useState(false);
   const [showWatchOnlyLanding, setShowWatchOnlyLanding] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -466,42 +467,56 @@ export function Provider({ children }: ProviderProps) {
         let detectedKeeperEndpoint = undefined;
 
         startTimer('Vault Endpoint Detection');
-        // Try multiple endpoints to find the vault
-        // swagger.json is the most reliable as it doesn't require auth
+        // Try multiple endpoints to find the vault, with RETRY for browser permission gesture.
+        // On new Vercel preview domains, the browser blocks localhost access until user approves.
+        // The first fetch fails immediately, browser shows permission prompt, user approves,
+        // then retries succeed. Without retry, the app gives up permanently and shows empty dashboard.
         const vaultEndpoints = [
           'http://localhost:1646/spec/swagger.json',
           'http://127.0.0.1:1646/spec/swagger.json',
           'http://localhost:1646/auth/pair' // This should return 400 if running
         ];
 
-        for (const endpoint of vaultEndpoints) {
-          console.log(`🔍 [KKAPI DEBUG] Trying ${endpoint}...`);
-          try {
-            const healthCheck = await fetch(endpoint, { 
-              method: 'GET',
-              signal: AbortSignal.timeout(1000),
-              headers: {
-                'Accept': 'application/json',
-              }
-            });
-            
-            console.log(`🔍 [KKAPI DEBUG] Response from ${endpoint}:`, {
-              status: healthCheck.status,
-              ok: healthCheck.ok,
-              statusText: healthCheck.statusText
-            });
-            
-            // Check if we got a successful response (200 for swagger.json, or 400 for auth/pair)
-            if (healthCheck.ok || (endpoint.includes('/auth/pair') && healthCheck.status === 400)) {
-              // Extract base URL from the endpoint
-              const baseUrl = endpoint.replace(/\/(spec\/swagger\.json|auth\/pair|api.*)$/, '');
-              detectedKeeperEndpoint = baseUrl;
-              console.log(`✅ [KKAPI DEBUG] Vault detected at: ${detectedKeeperEndpoint}`);
-              break;
-            }
-          } catch (error: any) {
-            console.log(`❌ [KKAPI DEBUG] Failed to reach ${endpoint}:`, error?.message || error);
+        const MAX_VAULT_RETRIES = 3;
+        const VAULT_RETRY_DELAY_MS = 3000; // 3s between retries — enough for browser permission gesture
+
+        for (let attempt = 1; attempt <= MAX_VAULT_RETRIES; attempt++) {
+          if (attempt > 1) {
+            console.log(`🔄 [KKAPI DEBUG] Retry ${attempt}/${MAX_VAULT_RETRIES} — waiting ${VAULT_RETRY_DELAY_MS}ms for browser localhost permission approval...`);
+            await new Promise(resolve => setTimeout(resolve, VAULT_RETRY_DELAY_MS));
           }
+
+          for (const endpoint of vaultEndpoints) {
+            console.log(`🔍 [KKAPI DEBUG] Trying ${endpoint} (attempt ${attempt}/${MAX_VAULT_RETRIES})...`);
+            try {
+              const healthCheck = await fetch(endpoint, {
+                method: 'GET',
+                signal: AbortSignal.timeout(2000),
+                headers: {
+                  'Accept': 'application/json',
+                }
+              });
+
+              console.log(`🔍 [KKAPI DEBUG] Response from ${endpoint}:`, {
+                status: healthCheck.status,
+                ok: healthCheck.ok,
+                statusText: healthCheck.statusText
+              });
+
+              // Check if we got a successful response (200 for swagger.json, or 400 for auth/pair)
+              if (healthCheck.ok || (endpoint.includes('/auth/pair') && healthCheck.status === 400)) {
+                // Extract base URL from the endpoint
+                const baseUrl = endpoint.replace(/\/(spec\/swagger\.json|auth\/pair|api.*)$/, '');
+                detectedKeeperEndpoint = baseUrl;
+                console.log(`✅ [KKAPI DEBUG] Vault detected at: ${detectedKeeperEndpoint} (attempt ${attempt})`);
+                break;
+              }
+            } catch (error: any) {
+              console.log(`❌ [KKAPI DEBUG] Failed to reach ${endpoint}:`, error?.message || error);
+            }
+          }
+
+          if (detectedKeeperEndpoint) break; // Found vault, stop retrying
         }
         endTimer('Vault Endpoint Detection');
 
@@ -548,8 +563,9 @@ export function Provider({ children }: ProviderProps) {
         // Validate we have either vault connection OR cached pubkeys
         if (!detectedKeeperEndpoint && (!cachedPubkeys || cachedPubkeys.length === 0)) {
           console.error('❌ [VALIDATION] Cannot start app - no vault detected and no cached pubkeys found');
-          console.error('❌ [VALIDATION] User must open KeepKey Desktop to pair device and cache pubkeys');
+          console.error('❌ [VALIDATION] User needs to: 1) Approve localhost access in browser, or 2) Open KeepKey Desktop');
           setIsVaultUnavailable(true);
+          setNeedsLocalhostPermission(true); // Most likely cause on new domains
           setIsLoading(false);
           PIONEER_INITIALIZED = false; // Reset flag so retry works
           return; // Stop initialization
@@ -1185,6 +1201,22 @@ export function Provider({ children }: ProviderProps) {
         console.log('[INIT] ✅ All phases complete - SDK ready');
         setInitPhase('complete');
 
+        // 🚨 CRITICAL GATE: Never show empty dashboard with 0 pubkeys
+        // If vault was detected but we ended up with 0 pubkeys, something went wrong
+        // (KeepKeySdk pairing failed, or localhost permission wasn't fully granted)
+        if (detectedKeeperEndpoint && (!appInit.pubkeys || appInit.pubkeys.length === 0)) {
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🚨 [EMPTY DASHBOARD GATE] Vault was detected but got 0 pubkeys');
+          console.error('🚨 This means KeepKey pairing/SDK init failed silently');
+          console.error('🚨 Showing connection error instead of empty dashboard');
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          setIsVaultUnavailable(true);
+          setNeedsLocalhostPermission(true);
+          setIsLoading(false);
+          PIONEER_INITIALIZED = false;
+          return;
+        }
+
         console.log('🔍 [FINAL CHECK] About to call setPioneerSdk with:', {
           hasEvents: !!appInit.events,
           hasDashboard: !!appInit.dashboard,
@@ -1288,8 +1320,8 @@ export function Provider({ children }: ProviderProps) {
   // Handler for retry button in ConnectionError
   const handleRetry = () => {
     console.log('🔄 Retrying vault connection...');
-    console.error('FAILING TO INIT!!!!')
     setIsVaultUnavailable(false);
+    setNeedsLocalhostPermission(false);
     setIsLoading(true);
     setError(null);
     PIONEER_INITIALIZED = false; // Reset the flag to allow re-initialization
@@ -1316,7 +1348,7 @@ export function Provider({ children }: ProviderProps) {
 
   // Show connection error if vault is unavailable and no cached data
   if (isVaultUnavailable) {
-    return <ConnectionError onRetry={handleRetry} />;
+    return <ConnectionError onRetry={handleRetry} needsLocalhostPermission={needsLocalhostPermission} />;
   }
 
   // 🚨 CRITICAL RENDER LOGGING - Track all state before render decisions
