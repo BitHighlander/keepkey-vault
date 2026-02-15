@@ -2,10 +2,13 @@
  * Scam Token Detection Utility
  *
  * Provides functions to detect potential scam tokens based on:
+ * 0. User whitelist (user-marked "not scam" tokens bypass all checks)
  * 1. USD value (tokens with value are not scams)
  * 2. Known stablecoin names with zero value (confirmed scams)
  * 3. Zero-value tokens (possible scams)
  */
+
+import { isTokenWhitelisted } from '@/lib/storage/scamWhitelist';
 
 // List of known stablecoin symbols that should always have ~$1 value
 export const KNOWN_STABLECOINS = [
@@ -35,12 +38,20 @@ export const detectScamToken = (token: any, assetInfo?: any): ScamDetectionResul
   const symbol = (token.symbol || token.ticker || '').toUpperCase();
   const valueUsd = parseFloat(token.valueUsd || 0);
 
-  // console.log('🔍 Scam detection for:', {
-  //   symbol,
-  //   valueUsd,
-  //   rawValueUsd: token.valueUsd,
-  //   valueUsdType: typeof token.valueUsd
-  // });
+  // WHITELIST CHECK: If user marked this token as "not scam", skip all detection
+  if (token.caip && typeof window !== 'undefined') {
+    try {
+      if (isTokenWhitelisted(token.caip)) {
+        return {
+          isScam: false,
+          scamType: null,
+          reason: 'User marked as not scam'
+        };
+      }
+    } catch {
+      // SSR or localStorage unavailable — fall through to normal detection
+    }
+  }
 
   // FIRST: If token has USD value >= $1, it's NOT a scam (even if symbol matches)
   if (valueUsd >= 1) {

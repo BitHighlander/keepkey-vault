@@ -21,6 +21,8 @@ interface ScamWarningModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  onMarkNotScam?: (caip: string) => void;
+  tokenCaip?: string;
   tokenSymbol: string;
   scamType: 'possible' | 'confirmed';
   reason: string;
@@ -30,6 +32,8 @@ export const ScamWarningModal: React.FC<ScamWarningModalProps> = ({
   isOpen,
   onClose,
   onConfirm,
+  onMarkNotScam,
+  tokenCaip,
   tokenSymbol,
   scamType,
   reason,
@@ -123,6 +127,22 @@ export const ScamWarningModal: React.FC<ScamWarningModalProps> = ({
           >
             Cancel (Safe)
           </Button>
+          {scamType === 'possible' && onMarkNotScam && tokenCaip && (
+            <Button
+              variant="solid"
+              bg="green.600"
+              color="white"
+              _hover={{ bg: 'green.500' }}
+              onClick={() => {
+                onMarkNotScam(tokenCaip);
+                onClose();
+              }}
+              size="lg"
+              flex={1}
+            >
+              Mark as Not Scam
+            </Button>
+          )}
           <Button
             variant="solid"
             bg={scamType === 'confirmed' ? 'red.600' : 'orange.600'}

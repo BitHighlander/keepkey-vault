@@ -584,20 +584,102 @@ export function Receive({ onBackClick }: ReceiveProps) {
               {assetContext.name} ({assetContext.symbol})
             </Text>
             
-            <Badge 
-              colorScheme="orange" 
-              variant="solid" 
-              bg={theme.gold} 
-              color="black" 
-              mt={2} 
+            <Badge
+              colorScheme="orange"
+              variant="solid"
+              bg={theme.gold}
+              color="black"
+              mt={2}
               mb={4}
-              px={3} 
-              py={1} 
+              px={3}
+              py={1}
               borderRadius="full"
             >
               {assetContext.networkName || assetContext.networkId?.split(':').pop() || 'Network'}
             </Badge>
-            
+
+            {/* View on Device Button - Show different states */}
+            {!addressVerified && (
+              <MotionBox
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                mt={6}
+                width="100%"
+                maxW="sm"
+              >
+                <Button
+                  onClick={handleViewOnDevice}
+                  loading={viewingOnDevice}
+                  loadingText="Verifying on Device..."
+                  bg={theme.gold}
+                  color="black"
+                  _hover={{ bg: theme.goldHover }}
+                  size="lg"
+                  width="100%"
+                  fontWeight="bold"
+                  disabled={!selectedPubkey}
+                >
+                  <Flex align="center" gap={2}>
+                    <FaEye />
+                    <Text>View on Device</Text>
+                  </Flex>
+                </Button>
+              </MotionBox>
+            )}
+
+            {/* Re-verify button when already verified */}
+            {addressVerified && (
+              <MotionBox
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                mt={6}
+                width="100%"
+                maxW="sm"
+              >
+                <Button
+                  onClick={handleViewOnDevice}
+                  loading={viewingOnDevice}
+                  loadingText="Viewing on Device..."
+                  variant="outline"
+                  borderColor={theme.gold}
+                  color={theme.gold}
+                  _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
+                  size="md"
+                  width="100%"
+                  disabled={!selectedPubkey}
+                >
+                  <FaEye style={{ marginRight: '8px' }} />
+                  Verify Again
+                </Button>
+              </MotionBox>
+            )}
+
+            {/* Security Warning - Show before verification */}
+            {!addressVerified && (
+              <Box
+                mt={4}
+                bg="rgba(255, 69, 0, 0.08)"
+                borderRadius="12px"
+                p={4}
+                borderWidth="1px"
+                borderColor="rgba(255, 69, 0, 0.2)"
+                width="100%"
+                maxW="sm"
+              >
+                <HStack gap={3} align="flex-start">
+                  <Text fontSize="20px" flexShrink={0}>🛡️</Text>
+                  <VStack align="flex-start" gap={1} flex={1}>
+                    <Text color="orange.300" fontSize="sm" fontWeight="semibold">
+                      Security Verification Required
+                    </Text>
+                    <Text color="orange.200" fontSize="xs" lineHeight="1.5">
+                      Always verify the address on your KeepKey device before receiving funds. This protects you from malware and phishing attacks.
+                    </Text>
+                  </VStack>
+                </HStack>
+              </Box>
+            )}
+
             {/* Pubkey Selector - Always visible and interactive */}
             <Box width="100%" maxW="sm" mt={4} mx="auto">
               <Text color="gray.400" fontSize="sm" mb={2}>Select Address Type</Text>
@@ -621,11 +703,11 @@ export function Receive({ onBackClick }: ReceiveProps) {
                 {(() => {
                   // Sort pubkeys to show Segwit first for Bitcoin
                   let sortedPubkeys = assetContext.pubkeys || [];
-                  
-                  const isBitcoin = assetContext.symbol === 'BTC' || 
+
+                  const isBitcoin = assetContext.symbol === 'BTC' ||
                                   assetContext.name?.toLowerCase().includes('bitcoin') ||
                                   assetContext.networkId === 'bip122:000000000019d6689c085ae165831e93';
-                  
+
                   if (isBitcoin && sortedPubkeys.length > 0) {
                     // Sort to put Native Segwit first, then other Segwit, then Legacy
                     sortedPubkeys = [...sortedPubkeys].sort((a: Pubkey, b: Pubkey) => {
@@ -638,37 +720,37 @@ export function Receive({ onBackClick }: ReceiveProps) {
                                              b.note?.toLowerCase() === 'segwit native' ||
                                              (b.pathMaster?.includes("84'") && b.scriptType === 'p2wpkh') ||
                                              b.scriptType === 'p2wpkh';
-                      
+
                       // Check for P2SH-Segwit (wrapped Segwit)
-                      const aIsP2SHSegwit = a.pathMaster?.includes("49'") || 
+                      const aIsP2SHSegwit = a.pathMaster?.includes("49'") ||
                                            (a.note?.toLowerCase().includes('segwit') && !aIsNativeSegwit);
-                      const bIsP2SHSegwit = b.pathMaster?.includes("49'") || 
+                      const bIsP2SHSegwit = b.pathMaster?.includes("49'") ||
                                            (b.note?.toLowerCase().includes('segwit') && !bIsNativeSegwit);
-                      
+
                       // Native Segwit comes first
                       if (aIsNativeSegwit && !bIsNativeSegwit) return -1;
                       if (!aIsNativeSegwit && bIsNativeSegwit) return 1;
-                      
+
                       // Then P2SH-Segwit
                       if (aIsP2SHSegwit && !bIsP2SHSegwit) return -1;
                       if (!aIsP2SHSegwit && bIsP2SHSegwit) return 1;
-                      
+
                       return 0;
                     });
                   }
-                  
+
                   return sortedPubkeys.map((pubkey: Pubkey) => {
                     // Check address type for labeling
                     const isNativeSegwit = (pubkey.note?.toLowerCase().includes('native') && pubkey.note?.toLowerCase().includes('segwit')) ||
                                           pubkey.note?.toLowerCase() === 'segwit native' ||
                                           (pubkey.pathMaster?.includes("84'") && pubkey.scriptType === 'p2wpkh') ||
                                           pubkey.scriptType === 'p2wpkh';
-                    
-                    const isP2SHSegwit = pubkey.pathMaster?.includes("49'") || 
+
+                    const isP2SHSegwit = pubkey.pathMaster?.includes("49'") ||
                                         (pubkey.note?.toLowerCase().includes('segwit') && !isNativeSegwit);
-                    
+
                     let label = pubkey.note || 'Bitcoin';
-                    
+
                     // Add appropriate labels for Bitcoin addresses
                     if (isBitcoin) {
                       if (isNativeSegwit) {
@@ -679,9 +761,9 @@ export function Receive({ onBackClick }: ReceiveProps) {
                         label = `${label} (Legacy - Higher Fees)`;
                       }
                     }
-                    
+
                     label = `${label} - Path: ${pubkey.pathMaster}`;
-                    
+
                     return (
                       <option key={pubkey.pathMaster} value={pubkey.pathMaster} style={{ background: '#111', color: 'white' }}>
                         {label}
@@ -808,88 +890,6 @@ export function Receive({ onBackClick }: ReceiveProps) {
               </Box>
             )}
 
-            {/* Security Warning - Show before verification */}
-            {!addressVerified && (
-              <Box
-                mt={6}
-                bg="rgba(255, 69, 0, 0.08)"
-                borderRadius="12px"
-                p={4}
-                borderWidth="1px"
-                borderColor="rgba(255, 69, 0, 0.2)"
-                width="100%"
-                maxW="sm"
-              >
-                <HStack gap={3} align="flex-start">
-                  <Text fontSize="20px" flexShrink={0}>🛡️</Text>
-                  <VStack align="flex-start" gap={1} flex={1}>
-                    <Text color="orange.300" fontSize="sm" fontWeight="semibold">
-                      Security Verification Required
-                    </Text>
-                    <Text color="orange.200" fontSize="xs" lineHeight="1.5">
-                      Always verify the address on your KeepKey device before receiving funds. This protects you from malware and phishing attacks.
-                    </Text>
-                  </VStack>
-                </HStack>
-              </Box>
-            )}
-
-            {/* View on Device Button - Show different states */}
-            {!addressVerified && (
-              <MotionBox
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                mt={6}
-                width="100%"
-                maxW="sm"
-              >
-                <Button
-                  onClick={handleViewOnDevice}
-                  loading={viewingOnDevice}
-                  loadingText="Verifying on Device..."
-                  bg={theme.gold}
-                  color="black"
-                  _hover={{ bg: theme.goldHover }}
-                  size="lg"
-                  width="100%"
-                  fontWeight="bold"
-                  disabled={!selectedPubkey}
-                >
-                  <Flex align="center" gap={2}>
-                    <FaEye />
-                    <Text>View on Device</Text>
-                  </Flex>
-                </Button>
-              </MotionBox>
-            )}
-            
-            {/* Re-verify button when already verified */}
-            {addressVerified && (
-              <MotionBox
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                mt={4}
-                width="100%"
-                maxW="sm"
-              >
-                <Button
-                  onClick={handleViewOnDevice}
-                  loading={viewingOnDevice}
-                  loadingText="Viewing on Device..."
-                  variant="outline"
-                  borderColor={theme.gold}
-                  color={theme.gold}
-                  _hover={{ bg: 'rgba(255, 215, 0, 0.1)' }}
-                  size="md"
-                  width="100%"
-                  disabled={!selectedPubkey}
-                >
-                  <FaEye style={{ marginRight: '8px' }} />
-                  Verify Again
-                </Button>
-              </MotionBox>
-            )}
-                  
             {/* Show/Hide Details */}
             <Button
               variant="ghost"

@@ -35,6 +35,7 @@ import { usePendingSwaps } from '@/hooks/usePendingSwaps';
 import { isFeatureEnabled, isPioneerV2Enabled } from '@/config/features';
 import { ScamWarningModal } from '@/components/dashboard/ScamWarningModal';
 import { detectScamToken, type ScamDetectionResult } from '@/utils/scamDetection';
+import { addToWhitelist, markAsReported } from '@/lib/storage/scamWhitelist';
 import { logPathAnalysis, hasDuplicatePaths } from '@/utils/pathDiagnostics';
 
 // Add sound effect imports
@@ -240,6 +241,50 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
 
   // Pending swaps - using same pattern as other working hooks
   const { pendingSwaps, getPendingForAsset, getDebitsForAsset, getCreditsForAsset } = usePendingSwaps();
+
+  // Handle "Mark as Not Scam" — whitelist locally + fire-and-forget server report
+  const handleMarkNotScam = (token: any) => {
+    const caip = token.caip;
+    const symbol = token.symbol || token.ticker || 'UNKNOWN';
+    const name = token.name || symbol;
+
+    // 1. Add to local whitelist
+    addToWhitelist({ caip, symbol, name });
+    console.log(`✅ [Dashboard] Whitelisted token: ${symbol} (${caip})`);
+
+    // 2. Fire-and-forget server report via Pioneer SDK
+    if (app?.pioneer) {
+      try {
+        const contractMatch = caip.match(/erc20:(0x[a-fA-F0-9]+)/i);
+        const contractAddress = contractMatch ? contractMatch[1] : undefined;
+
+        app.pioneer.ReportNotScam({
+          caip,
+          symbol,
+          contractAddress,
+          reporterAddress: app.pubkeys?.[0]?.address || 'unknown',
+        }).then(() => {
+          markAsReported(caip);
+          console.log(`✅ [Dashboard] Reported not-scam to server: ${symbol}`);
+        }).catch((err: any) => {
+          console.warn(`⚠️ [Dashboard] Server report failed (non-blocking):`, err?.message || err);
+        });
+      } catch (err: any) {
+        console.warn(`⚠️ [Dashboard] Server report skipped:`, err?.message || err);
+      }
+    }
+
+    // 3. Navigate to asset page
+    setLoadingAssetCaip(caip);
+    const encodedCaip = btoa(caip);
+    startTransition(() => {
+      router.push(`/asset/${encodedCaip}`);
+    });
+
+    // 4. Clear modal state
+    setScamWarningToken(null);
+    setPendingTokenAction(null);
+  };
 
   // Format balance for display
   const formatBalance = (balance: string) => {
@@ -496,7 +541,29 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
 
       const hasPendingSwaps = networkBalances.some((b: any) => b.pending?.isPending);
 
-      return { ...network, hasPendingSwaps };
+      // Compute freshness from balance fetchedAt timestamps (defense-in-depth)
+      // Use oldest (minimum) fetchedAt — if any balance is stale, network is stale
+      let computedFetchedAt = network.fetchedAt;
+      let computedIsStale = network.isStale;
+      if (!computedFetchedAt) {
+        const fetchTimes = networkBalances
+          .map((b: any) => b.fetchedAt || b.updated)
+          .filter((t: any): t is number => typeof t === 'number' && t > 0);
+        if (fetchTimes.length > 0) {
+          computedFetchedAt = Math.min(...fetchTimes);
+        }
+      }
+      if (computedFetchedAt && computedIsStale === undefined) {
+        computedIsStale = (Date.now() - computedFetchedAt) > 5 * 60 * 1000;
+      }
+
+      return {
+        ...network,
+        hasPendingSwaps,
+        fetchedAt: computedFetchedAt,
+        fetchedAtISO: computedFetchedAt ? new Date(computedFetchedAt).toISOString() : network.fetchedAtISO,
+        isStale: computedIsStale,
+      };
     }) || [];
 
   // Get staking positions from app.balances with chart === 'staking'
@@ -1891,17 +1958,36 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
                                   {tokenSymbol}
                                 </Text>
                                 {scamDetection.isScam && (
-                                  <Badge
-                                    colorScheme={scamDetection.scamType === 'confirmed' ? 'red' : 'orange'}
-                                    variant="solid"
-                                    fontSize="xs"
-                                    px={2}
-                                    py={0.5}
-                                    textTransform="uppercase"
-                                    fontWeight="bold"
-                                  >
-                                    {scamDetection.scamType === 'confirmed' ? '⚠️ SCAM' : '⚠️ POSSIBLE SCAM'}
-                                  </Badge>
+                                  <>
+                                    <Badge
+                                      colorScheme={scamDetection.scamType === 'confirmed' ? 'red' : 'orange'}
+                                      variant="solid"
+                                      fontSize="xs"
+                                      px={2}
+                                      py={0.5}
+                                      textTransform="uppercase"
+                                      fontWeight="bold"
+                                    >
+                                      {scamDetection.scamType === 'confirmed' ? '⚠️ SCAM' : '⚠️ POSSIBLE SCAM'}
+                                    </Badge>
+                                    {scamDetection.scamType === 'possible' && (
+                                      <Badge
+                                        colorScheme="green"
+                                        variant="outline"
+                                        fontSize="xs"
+                                        px={2}
+                                        py={0.5}
+                                        cursor="pointer"
+                                        _hover={{ bg: 'green.900', borderColor: 'green.400' }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleMarkNotScam(token);
+                                        }}
+                                      >
+                                        Not Scam
+                                      </Badge>
+                                    )}
+                                  </>
                                 )}
                               </HStack>
                               <Box
@@ -2443,6 +2529,12 @@ const Dashboard = forwardRef<any, DashboardProps>(({ onRefreshStateChange }, ref
         setScamWarningToken(null);
         setPendingTokenAction(null);
       }}
+      onMarkNotScam={() => {
+        if (scamWarningToken) {
+          handleMarkNotScam(scamWarningToken);
+        }
+      }}
+      tokenCaip={scamWarningToken?.caip}
       tokenSymbol={scamWarningToken?.symbol || scamWarningToken?.ticker || 'UNKNOWN'}
       scamType={scamWarningToken ? detectScamToken(scamWarningToken).scamType || 'possible' : 'possible'}
       reason={scamWarningToken ? detectScamToken(scamWarningToken).reason : ''}
