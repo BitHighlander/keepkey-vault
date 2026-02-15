@@ -225,11 +225,12 @@ export function Provider({ children }: ProviderProps) {
         }
 
         // V2 network ID mapping (bypasses ChainToNetworkId which has wrong/mismatched values for v2 chains)
+        // IMPORTANT: Solana Base58 address is case-sensitive — must match pioneer-caip's ChainToNetworkId exactly
         const V2_NETWORK_IDS: Record<string, string> = {
           'ZEC': 'bip122:00040fe8ec8471911baa1db1266ea15d',
           'ZCASH': 'bip122:00040fe8ec8471911baa1db1266ea15d',
-          'SOL': 'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp',
-          'SOLANA': 'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp',
+          'SOL': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+          'SOLANA': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
           'TRX': 'tron:0x2b6653dc',
           'TRON': 'tron:0x2b6653dc',
           'TON': 'ton:-239',
