@@ -2091,18 +2091,33 @@ export const Swap = ({ onBackClick }: SwapProps) => {
               throw new Error(`Chain mapping not found for network: ${networkId}`);
             }
 
+            // OP_RETURN / opReturnData: v1 server (keepkey-desktop) creates its own
+            // OP_RETURN output from top-level opReturnData. We must strip any OP_RETURN
+            // from the outputs array to avoid duplicates and base64 encoding issues.
+            let opReturnMemo: string | undefined;
+            const filteredOutputs = unsignedTx.outputs.filter((o: any) => {
+              if (o.addressType === 'opreturn' || (o.opReturnData && String(o.amount) === '0')) {
+                opReturnMemo = o.opReturnData;
+                return false;
+              }
+              return true;
+            });
+
+            if (!opReturnMemo && unsignedTx.memo && unsignedTx.memo.trim() !== '') {
+              opReturnMemo = unsignedTx.memo;
+            }
+
             const signPayload: any = {
               // @ts-ignore
               coin: COIN_MAP_KEEPKEY_LONG[chainName],
               inputs: unsignedTx.inputs,
-              outputs: unsignedTx.outputs,
+              outputs: filteredOutputs,
               version: 1,
               locktime: 0,
             };
 
-            // Add memo as OP_RETURN if present
-            if (unsignedTx.memo && unsignedTx.memo !== ' ') {
-              signPayload.opReturnData = unsignedTx.memo;
+            if (opReturnMemo) {
+              signPayload.opReturnData = opReturnMemo;
             }
 
             console.log('📝 UTXO sign payload:', signPayload);

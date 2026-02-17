@@ -18,6 +18,8 @@ const getNetworkIdToChain = (): Record<string, string> => {
     'eip155:1': 'ethereum',
     'eip155:137': 'polygon',
     'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'ripple',
+    'ton:-239': 'ton',
+    'tron:0x2b6653dc': 'tron',
   };
 
   // Add ZCash only if feature flag is enabled
@@ -47,6 +49,8 @@ const COIN_MAP_KEEPKEY: Record<string, string> = {
   'mayachain': 'MayaChain',
   'thorchain': 'THORChain',
   'kujira': 'Kujira',
+  'ton': 'TON',
+  'tron': 'TRON',
 };
 
 // Map network IDs to their types for KeepKey SDK
@@ -69,6 +73,8 @@ const getNetworkIdToType = (): Record<string, string> => {
     'eip155:8453': 'EVM',   // BASE
     'eip155:*': 'EVM',      // Catch-all for other EVM chains
     'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'XRP',
+    'ton:-239': 'TON',
+    'tron:0x2b6653dc': 'TRON',
   };
 
   // Add ZCash only if feature flag is enabled
@@ -238,6 +244,12 @@ export async function getAndVerifyAddress(params: AddressVerificationParams): Pr
       break;
     case 'XRP':
       ({ address } = await keepKeySdk.address.xrpGetAddress(addressInfo));
+      break;
+    case 'TON':
+      ({ address } = await keepKeySdk.address.tonGetAddress(addressInfo));
+      break;
+    case 'TRON':
+      ({ address } = await keepKeySdk.address.tronGetAddress(addressInfo));
       break;
     default:
       throw new Error(`Unsupported network type "${networkType}" for networkId: ${networkId}`);
