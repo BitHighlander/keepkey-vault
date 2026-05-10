@@ -45,6 +45,12 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           <span className="arr">↗</span>
         </a>
 
+        {onDismiss && (
+          <button type="button" className="bypass" onClick={onDismiss}>
+            I don&apos;t like change · use anyway →
+          </button>
+        )}
+
         <p className="lede">
           This application has been succeeded by the new{" "}
           <strong>KeepKey Desktop</strong> — faster sign flows, native
@@ -79,12 +85,6 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           <a href="https://keepkey.com/desktop">Migration guide</a>
           <a href="https://keepkey.com/support">Get help</a>
         </div>
-
-        {onDismiss && (
-          <button type="button" className="bypass" onClick={onDismiss}>
-            I don&apos;t like change · use anyway →
-          </button>
-        )}
       </main>
     </div>
   );
