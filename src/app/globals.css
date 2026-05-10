@@ -300,24 +300,32 @@ h1 .accent {
 }
 
 .bypass {
-  display: block;
-  margin: 28px auto 0;
-  background: transparent;
-  border: 0;
-  padding: 6px 10px;
-  font-family: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--fg-mute);
-  cursor: pointer;
-  transition: color 120ms ease;
-}
-.bypass:hover { color: var(--fg-dim); }
-.bypass:focus-visible {
-  outline: 1px solid var(--line);
-  outline-offset: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 32px auto 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-family: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   color: var(--fg-dim);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+.bypass:hover {
+  color: var(--fg);
+  border-color: var(--gold);
+  background: var(--gold-soft);
+}
+.bypass:active { transform: translateY(1px); }
+.bypass:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  color: var(--fg);
 }
 
 @media (max-width: 560px) {
