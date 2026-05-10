@@ -21,11 +21,14 @@ body {
   color: var(--fg);
   font-family: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+}
+
+.deprecation-shell {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 24px;
-  letter-spacing: -0.005em;
   background-image:
     radial-gradient(circle at 50% -10%, rgba(201, 163, 104, 0.08), transparent 55%),
     radial-gradient(circle at 50% 110%, rgba(110, 231, 135, 0.05), transparent 55%);
@@ -294,6 +297,27 @@ h1 .accent {
   margin-top: 7px;
   flex-shrink: 0;
   box-shadow: 0 0 0 3px rgba(110, 231, 135, 0.12);
+}
+
+.bypass {
+  display: block;
+  margin: 28px auto 0;
+  background: transparent;
+  border: 0;
+  padding: 6px 10px;
+  font-family: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-mute);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.bypass:hover { color: var(--fg-dim); }
+.bypass:focus-visible {
+  outline: 1px solid var(--line);
+  outline-offset: 2px;
+  color: var(--fg-dim);
 }
 
 @media (max-width: 560px) {

@@ -1,6 +1,12 @@
-export default function DeprecatedNotice() {
+"use client";
+
+interface DeprecatedNoticeProps {
+  onDismiss?: () => void;
+}
+
+export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
   return (
-    <>
+    <div className="deprecation-shell">
       <div className="topbar">
         <span>
           <span className="dot" />
@@ -73,7 +79,13 @@ export default function DeprecatedNotice() {
           <a href="https://keepkey.com/desktop">Migration guide</a>
           <a href="https://keepkey.com/support">Get help</a>
         </div>
+
+        {onDismiss && (
+          <button type="button" className="bypass" onClick={onDismiss}>
+            I don&apos;t like change · use anyway →
+          </button>
+        )}
       </main>
-    </>
+    </div>
   );
 }
