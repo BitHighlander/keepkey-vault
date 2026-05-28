@@ -41,7 +41,7 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </h1>
 
         <a className="cta cta-hero" href="https://keepkey.com/desktop">
-          Download KeepKey Desktop
+          Download KeepKey Vault
           <span className="arr">↗</span>
         </a>
 
@@ -60,13 +60,13 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
 
         <div className="compare">
           <div className="pane deprecated">
-            <span className="pane-tag">You&apos;re using</span>
+            <span className="pane-tag">● Current</span>
             <span className="pane-name">KeepKey Vault</span>
             <span className="pane-meta">v1.2.16 · last update Apr 2025</span>
           </div>
           <div className="arrow">→</div>
           <div className="pane current">
-            <span className="pane-tag">● Current</span>
+            <span className="pane-tag">↑ Upgrade to</span>
             <span className="pane-name">KeepKey Desktop</span>
             <span className="pane-meta">v2.0+ · macOS · Windows · Linux</span>
           </div>
