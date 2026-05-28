@@ -1,17 +1,24 @@
 "use client";
 
+import { useState } from "react";
+
+const VAULT_URL = "https://keepkey.com/get-started";
+const SUPPORT_URL = "https://keepkey.com/support";
+
 interface DeprecatedNoticeProps {
   onDismiss?: () => void;
 }
 
-function openExternal(url: string) {
-  // window.open() is caught by the Electron webview's foreground-tab handler
-  // and routed back into the webview. Assigning location.href fires will-navigate
-  // instead, which the main process intercepts and passes to shell.openExternal.
-  window.location.href = url;
-}
-
 export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
+  const [copied, setCopied] = useState(false);
+
+  function copyUrl() {
+    navigator.clipboard.writeText(VAULT_URL).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    });
+  }
+
   return (
     <div className="deprecation-shell">
       <div className="topbar">
@@ -47,13 +54,8 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           Time to <span className="accent">upgrade.</span>
         </h1>
 
-        <button
-          type="button"
-          className="cta cta-hero"
-          onClick={() => openExternal('https://keepkey.com/get-started')}
-        >
-          Download KeepKey Vault
-          <span className="arr">↗</span>
+        <button type="button" className="cta cta-hero" onClick={copyUrl}>
+          {copied ? "✓ URL copied — paste in your browser" : <>Download KeepKey Vault <span className="arr">↗</span></>}
         </button>
 
         {onDismiss && (
@@ -83,12 +85,8 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           </div>
         </div>
 
-        <button
-          type="button"
-          className="url"
-          onClick={() => openExternal('https://keepkey.com/get-started')}
-        >
-          keepkey.com/get-started
+        <button type="button" className="url" onClick={copyUrl}>
+          {copied ? "✓ copied!" : "keepkey.com/get-started"}
         </button>
 
         <ul className="reasons">
@@ -98,9 +96,9 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </ul>
 
         <div className="footer-meta">
-          <button type="button" onClick={() => openExternal('https://keepkey.com/get-started')}>Release notes</button>
-          <button type="button" onClick={() => openExternal('https://keepkey.com/get-started')}>Migration guide</button>
-          <button type="button" onClick={() => openExternal('https://keepkey.com/support')}>Get help</button>
+          <button type="button" onClick={copyUrl}>Release notes</button>
+          <button type="button" onClick={copyUrl}>Migration guide</button>
+          <button type="button" onClick={() => navigator.clipboard.writeText(SUPPORT_URL)}>Get help</button>
         </div>
       </main>
     </div>
