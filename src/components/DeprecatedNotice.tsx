@@ -4,6 +4,10 @@ interface DeprecatedNoticeProps {
   onDismiss?: () => void;
 }
 
+function openExternal(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
   return (
     <div className="deprecation-shell">
@@ -40,10 +44,14 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           Time to <span className="accent">upgrade.</span>
         </h1>
 
-        <a className="cta cta-hero" href="https://keepkey.com/get-started">
+        <button
+          type="button"
+          className="cta cta-hero"
+          onClick={() => openExternal('https://keepkey.com/get-started')}
+        >
           Download KeepKey Vault
           <span className="arr">↗</span>
-        </a>
+        </button>
 
         {onDismiss && (
           <button type="button" className="bypass" onClick={onDismiss}>
@@ -72,7 +80,13 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           </div>
         </div>
 
-        <span className="url">keepkey.com/get-started</span>
+        <button
+          type="button"
+          className="url"
+          onClick={() => openExternal('https://keepkey.com/get-started')}
+        >
+          keepkey.com/get-started
+        </button>
 
         <ul className="reasons">
           <li>Rebuilt sign flows with full payload preview on-device</li>
@@ -81,9 +95,9 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </ul>
 
         <div className="footer-meta">
-          <a href="https://keepkey.com/get-started">Release notes</a>
-          <a href="https://keepkey.com/get-started">Migration guide</a>
-          <a href="https://keepkey.com/support">Get help</a>
+          <button type="button" onClick={() => openExternal('https://keepkey.com/get-started')}>Release notes</button>
+          <button type="button" onClick={() => openExternal('https://keepkey.com/get-started')}>Migration guide</button>
+          <button type="button" onClick={() => openExternal('https://keepkey.com/support')}>Get help</button>
         </div>
       </main>
     </div>
