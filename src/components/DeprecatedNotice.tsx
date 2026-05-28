@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 const VAULT_URL = "https://keepkey.com/get-started";
 const SUPPORT_URL = "https://keepkey.com/support";
 
@@ -10,15 +8,6 @@ interface DeprecatedNoticeProps {
 }
 
 export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
-  const [copied, setCopied] = useState(false);
-
-  function copyUrl() {
-    navigator.clipboard.writeText(VAULT_URL).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
-    });
-  }
-
   return (
     <div className="deprecation-shell">
       <div className="topbar">
@@ -54,9 +43,10 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           Time to <span className="accent">upgrade.</span>
         </h1>
 
-        <button type="button" className="cta cta-hero" onClick={copyUrl}>
-          {copied ? "✓ URL copied — paste in your browser" : <>Download KeepKey Vault <span className="arr">↗</span></>}
-        </button>
+        <a className="cta cta-hero" href={VAULT_URL} target="_blank" rel="noopener noreferrer">
+          Download KeepKey Vault
+          <span className="arr">↗</span>
+        </a>
 
         {onDismiss && (
           <button type="button" className="bypass" onClick={onDismiss}>
@@ -85,9 +75,9 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           </div>
         </div>
 
-        <button type="button" className="url" onClick={copyUrl}>
-          {copied ? "✓ copied!" : "keepkey.com/get-started"}
-        </button>
+        <a className="url" href={VAULT_URL} target="_blank" rel="noopener noreferrer">
+          keepkey.com/get-started
+        </a>
 
         <ul className="reasons">
           <li>Rebuilt sign flows with full payload preview on-device</li>
@@ -96,9 +86,9 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </ul>
 
         <div className="footer-meta">
-          <button type="button" onClick={copyUrl}>Release notes</button>
-          <button type="button" onClick={copyUrl}>Migration guide</button>
-          <button type="button" onClick={() => navigator.clipboard.writeText(SUPPORT_URL)}>Get help</button>
+          <a href={VAULT_URL} target="_blank" rel="noopener noreferrer">Release notes</a>
+          <a href={VAULT_URL} target="_blank" rel="noopener noreferrer">Migration guide</a>
+          <a href={SUPPORT_URL} target="_blank" rel="noopener noreferrer">Get help</a>
         </div>
       </main>
     </div>
