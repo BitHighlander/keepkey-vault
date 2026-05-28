@@ -306,7 +306,7 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
       const currentPage = detectCurrentPage(pathname);
 
       // Parse user intent and call appropriate Pioneer functions
-      const response = await processUserIntent(inputValue, app, currentPage?.description);
+      const response = await processUserIntent(inputValue, app, currentPage?.description, sessionIdRef.current);
 
       // Auto-monitor swaps when user queries swap status
       if (response.functionCall?.result?.txHash && 
@@ -641,7 +641,7 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
 };
 
 // Process user intent using SupportChat API (Venice.ai privacy-preserving)
-async function processUserIntent(input: string, app: any, currentPageContext?: string): Promise<{
+async function processUserIntent(input: string, app: any, currentPageContext?: string, sessionId?: string): Promise<{
   content: string;
   functionCall?: { name: string; arguments: any; result?: any };
 }> {
@@ -763,7 +763,7 @@ Be helpful, conversational, and context-aware based on the current page.`;
     // Call SupportChat API (Venice.ai privacy-preserving endpoint)
     const response = await app.pioneer.SupportChat({
       model: 'qwen3-4b', // Fast Venice.ai model for support chat
-      sessionId: sessionIdRef.current,
+      sessionId: sessionId,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: input }
