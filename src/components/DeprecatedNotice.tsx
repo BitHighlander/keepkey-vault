@@ -5,7 +5,10 @@ interface DeprecatedNoticeProps {
 }
 
 function openExternal(url: string) {
-  window.open(url, '_blank', 'noopener,noreferrer');
+  // window.open() is caught by the Electron webview's foreground-tab handler
+  // and routed back into the webview. Assigning location.href fires will-navigate
+  // instead, which the main process intercepts and passes to shell.openExternal.
+  window.location.href = url;
 }
 
 export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
