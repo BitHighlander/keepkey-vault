@@ -12,12 +12,12 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           <span className="dot" />
           Connection blocked
         </span>
-        <span>kk-vault · v1.2.16</span>
+        <span>kk-desktop · legacy</span>
       </div>
 
       <main className="card">
         <span className="ribbon">Deprecated</span>
-        <span className="version">build 1.2.16</span>
+        <span className="version">KeepKey Desktop</span>
 
         <figure className="preview">
           <div className="preview-frame">
@@ -25,12 +25,12 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
               <span className="tl" />
               <span className="tl" />
               <span className="tl" />
-              <span className="title">KeepKey Desktop</span>
+              <span className="title">KeepKey Vault</span>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/images/keepkey-desktop-dashboard.png"
-              alt="Preview of KeepKey Desktop dashboard"
+              alt="Preview of KeepKey Vault dashboard"
             />
           </div>
         </figure>
@@ -40,7 +40,7 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           Time to <span className="accent">upgrade.</span>
         </h1>
 
-        <a className="cta cta-hero" href="https://keepkey.com/desktop">
+        <a className="cta cta-hero" href="https://keepkey.com/get-started">
           Download KeepKey Vault
           <span className="arr">↗</span>
         </a>
@@ -52,8 +52,8 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         )}
 
         <p className="lede">
-          This application has been succeeded by the new{" "}
-          <strong>KeepKey Desktop</strong> — faster sign flows, native
+          KeepKey Desktop has been succeeded by the new{" "}
+          <strong>KeepKey Vault</strong> — faster sign flows, native
           multi-chain support, and the new Dapp Store. Your keys never left the
           device, so there&apos;s nothing to migrate.
         </p>
@@ -61,18 +61,18 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         <div className="compare">
           <div className="pane deprecated">
             <span className="pane-tag">● Current</span>
-            <span className="pane-name">KeepKey Vault</span>
-            <span className="pane-meta">v1.2.16 · last update Apr 2025</span>
+            <span className="pane-name">KeepKey Desktop</span>
+            <span className="pane-meta">legacy · last update Apr 2025</span>
           </div>
           <div className="arrow">→</div>
           <div className="pane current">
             <span className="pane-tag">↑ Upgrade to</span>
-            <span className="pane-name">KeepKey Desktop</span>
+            <span className="pane-name">KeepKey Vault</span>
             <span className="pane-meta">v2.0+ · macOS · Windows · Linux</span>
           </div>
         </div>
 
-        <span className="url">keepkey.com/desktop</span>
+        <span className="url">keepkey.com/get-started</span>
 
         <ul className="reasons">
           <li>Rebuilt sign flows with full payload preview on-device</li>
@@ -81,8 +81,8 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </ul>
 
         <div className="footer-meta">
-          <a href="https://keepkey.com/desktop">Release notes</a>
-          <a href="https://keepkey.com/desktop">Migration guide</a>
+          <a href="https://keepkey.com/get-started">Release notes</a>
+          <a href="https://keepkey.com/get-started">Migration guide</a>
           <a href="https://keepkey.com/support">Get help</a>
         </div>
       </main>
