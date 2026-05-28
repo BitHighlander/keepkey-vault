@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const VAULT_URL = "https://keepkey.com/get-started";
+const VAULT_URL = "https://keepkey.com/desktop";
 const SUPPORT_URL = "https://keepkey.com/support";
 
 function isElectron() {
@@ -111,7 +111,7 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </div>
 
         <button type="button" className="url" onClick={handleDownload}>
-          {copied ? "✓ copied!" : "keepkey.com/get-started"}
+          {copied ? "✓ copied!" : "keepkey.com/desktop"}
         </button>
 
         <ul className="reasons">
