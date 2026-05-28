@@ -66,6 +66,17 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({ app }) => {
   const [monitoredSwaps, setMonitoredSwaps] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Stable session ID for this browser session — persists across page navigations, resets on tab close
+  const sessionIdRef = useRef<string>(
+    typeof sessionStorage !== 'undefined'
+      ? (sessionStorage.getItem('kk_chat_session') || (() => {
+          const id = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+          sessionStorage.setItem('kk_chat_session', id);
+          return id;
+        })())
+      : `chat_${Date.now()}`
+  );
+
   // Tutorial system integration
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const tutorialSteps = getCurrentPageTutorial(pathname);
@@ -752,6 +763,7 @@ Be helpful, conversational, and context-aware based on the current page.`;
     // Call SupportChat API (Venice.ai privacy-preserving endpoint)
     const response = await app.pioneer.SupportChat({
       model: 'qwen3-4b', // Fast Venice.ai model for support chat
+      sessionId: sessionIdRef.current,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: input }

@@ -1,6 +1,12 @@
-export default function DeprecatedNotice() {
+"use client";
+
+interface DeprecatedNoticeProps {
+  onDismiss?: () => void;
+}
+
+export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
   return (
-    <>
+    <div className="deprecation-shell">
       <div className="topbar">
         <span>
           <span className="dot" />
@@ -35,9 +41,15 @@ export default function DeprecatedNotice() {
         </h1>
 
         <a className="cta cta-hero" href="https://keepkey.com/desktop">
-          Download KeepKey Desktop
+          Download KeepKey Vault
           <span className="arr">↗</span>
         </a>
+
+        {onDismiss && (
+          <button type="button" className="bypass" onClick={onDismiss}>
+            I don&apos;t like change · use anyway →
+          </button>
+        )}
 
         <p className="lede">
           This application has been succeeded by the new{" "}
@@ -48,13 +60,13 @@ export default function DeprecatedNotice() {
 
         <div className="compare">
           <div className="pane deprecated">
-            <span className="pane-tag">You&apos;re using</span>
+            <span className="pane-tag">● Current</span>
             <span className="pane-name">KeepKey Vault</span>
             <span className="pane-meta">v1.2.16 · last update Apr 2025</span>
           </div>
           <div className="arrow">→</div>
           <div className="pane current">
-            <span className="pane-tag">● Current</span>
+            <span className="pane-tag">↑ Upgrade to</span>
             <span className="pane-name">KeepKey Desktop</span>
             <span className="pane-meta">v2.0+ · macOS · Windows · Linux</span>
           </div>
@@ -74,6 +86,6 @@ export default function DeprecatedNotice() {
           <a href="https://keepkey.com/support">Get help</a>
         </div>
       </main>
-    </>
+    </div>
   );
 }

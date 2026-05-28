@@ -1,7 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import DeprecatedNotice from "@/components/DeprecatedNotice";
+import DeprecationGate from "@/components/DeprecationGate";
+import { Provider } from "./provider";
+import { MaintenanceWrapper } from "@/components/maintenance/MaintenanceWrapper";
+import { Provider as ChakraProvider } from "@/components/ui/provider";
+import { GlobalHeader } from "@/components/layout/GlobalHeader";
+import { HeaderProvider } from "@/contexts/HeaderContext";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -39,7 +44,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({
-  children: _children,
+  children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
@@ -49,7 +54,18 @@ export default function RootLayout({
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
         suppressHydrationWarning
       >
-        <DeprecatedNotice />
+        <DeprecationGate>
+          <ChakraProvider>
+            <MaintenanceWrapper>
+              <Provider>
+                <HeaderProvider>
+                  <GlobalHeader />
+                  <div style={{ paddingTop: "72px" }}>{children}</div>
+                </HeaderProvider>
+              </Provider>
+            </MaintenanceWrapper>
+          </ChakraProvider>
+        </DeprecationGate>
       </body>
     </html>
   );
