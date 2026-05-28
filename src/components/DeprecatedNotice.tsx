@@ -1,13 +1,40 @@
 "use client";
 
+import { useState } from "react";
+
 const VAULT_URL = "https://keepkey.com/get-started";
 const SUPPORT_URL = "https://keepkey.com/support";
+
+function isElectron() {
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+}
 
 interface DeprecatedNoticeProps {
   onDismiss?: () => void;
 }
 
 export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
+  const [copied, setCopied] = useState(false);
+
+  function handleDownload() {
+    if (isElectron()) {
+      navigator.clipboard.writeText(VAULT_URL).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 4000);
+      });
+    } else {
+      window.open(VAULT_URL, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  function handleSupport() {
+    if (isElectron()) {
+      navigator.clipboard.writeText(SUPPORT_URL);
+    } else {
+      window.open(SUPPORT_URL, '_blank', 'noopener,noreferrer');
+    }
+  }
+
   return (
     <div className="deprecation-shell">
       <div className="topbar">
@@ -43,10 +70,18 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           Time to <span className="accent">upgrade.</span>
         </h1>
 
-        <a className="cta cta-hero" href={VAULT_URL} target="_blank" rel="noopener noreferrer">
-          Download KeepKey Vault
-          <span className="arr">↗</span>
-        </a>
+        <button type="button" className="cta cta-hero" onClick={handleDownload}>
+          {copied
+            ? "✓ Copied! Paste in your browser"
+            : <> Download KeepKey Vault <span className="arr">↗</span> </>
+          }
+        </button>
+
+        {copied && (
+          <p style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 8 }}>
+            <code>{VAULT_URL}</code>
+          </p>
+        )}
 
         {onDismiss && (
           <button type="button" className="bypass" onClick={onDismiss}>
@@ -75,9 +110,9 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
           </div>
         </div>
 
-        <a className="url" href={VAULT_URL} target="_blank" rel="noopener noreferrer">
-          keepkey.com/get-started
-        </a>
+        <button type="button" className="url" onClick={handleDownload}>
+          {copied ? "✓ copied!" : "keepkey.com/get-started"}
+        </button>
 
         <ul className="reasons">
           <li>Rebuilt sign flows with full payload preview on-device</li>
@@ -86,9 +121,9 @@ export default function DeprecatedNotice({ onDismiss }: DeprecatedNoticeProps) {
         </ul>
 
         <div className="footer-meta">
-          <a href={VAULT_URL} target="_blank" rel="noopener noreferrer">Release notes</a>
-          <a href={VAULT_URL} target="_blank" rel="noopener noreferrer">Migration guide</a>
-          <a href={SUPPORT_URL} target="_blank" rel="noopener noreferrer">Get help</a>
+          <button type="button" onClick={handleDownload}>Release notes</button>
+          <button type="button" onClick={handleDownload}>Migration guide</button>
+          <button type="button" onClick={handleSupport}>Get help</button>
         </div>
       </main>
     </div>
