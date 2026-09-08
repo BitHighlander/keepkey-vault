@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import bs58 from 'bs58'
 
 import worker from './index'
+import { syntheticPumpBuy } from '../../scripts/fixtures/solana-pump'
 
 const fetchWorker = (path: string, init?: RequestInit, env: Record<string, string> = {}) =>
   worker.fetch(new Request(`https://clearsign.example${path}`, init), env)
@@ -55,10 +56,10 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(4)
-    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana'])
+    expect(body.entries).toHaveLength(5)
+    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana'])
     for (const entry of body.entries) {
-      expect(['Relay', 'Portals']).toContain(entry.protocol)
+      expect(['Relay', 'Portals', 'Pump']).toContain(entry.protocol)
       expect(entry.provenance.protocol).toMatch(/^https:\/\//)
     }
   })
@@ -108,6 +109,20 @@ describe('ClearSign Worker public surface', () => {
     })
     expect(response.status).toBe(503)
     expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+  })
+
+  it('discovers Pump buy from raw transaction bytes without a client catalog key', async () => {
+    const response = await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx })
+    // Reached provisioning, rather than falsely classifying a reviewed buy as unknown.
+    expect(response.status).toBe(503)
+    expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+  })
+
+  it('rejects Pump layout, bool, fixed-program, and explicit catalog mismatches', async () => {
+    for (const options of [{ invalidBoolean: true }, { wrongFeeProgram: true }, { extraData: true }]) {
+      expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy(undefined, options).rawTx })).status).toBe(422)
+    }
+    expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx, catalogKey: 'relayDepositNative' })).status).toBe(422)
   })
 
   it('refuses malformed, wrong-program, wrong-length, and unknown Solana requests', async () => {

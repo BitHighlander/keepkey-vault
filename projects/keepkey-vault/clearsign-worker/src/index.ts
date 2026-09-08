@@ -86,9 +86,9 @@ function reviewedCatalog() {
     id: `solana:${key}`,
     family: 'solana',
     network: 'Solana',
-    protocol: 'Relay',
-    maintainedBy: 'Relay',
-    action: 'Deposit funds for a cross-chain swap',
+    protocol: spec.protocol || 'Relay',
+    maintainedBy: spec.protocol || 'Relay',
+    action: spec.action || 'Deposit funds for a cross-chain swap',
     method: spec.instructionName,
     program: spec.programId,
     discriminator: spec.discriminator.toString('hex'),
@@ -97,7 +97,7 @@ function reviewedCatalog() {
       ...(spec.args || []).map((arg) => arg.label),
       ...(spec.accounts || []).map((account) => account.label),
     ],
-    provenance: { protocol: PROVENANCE.protocol, security: PROVENANCE.protocolSecurity },
+    provenance: spec.provenance || { protocol: PROVENANCE.protocol, security: PROVENANCE.protocolSecurity },
   }))
   return [...evm, ...solana]
 }
@@ -213,7 +213,7 @@ async function home(env: Env, origin: string): Promise<Response> {
 <body><main><span class="pill">${escapeHtml(status.status)}</span><h1>KeepKey ClearSign</h1><p class="muted">Human-readable transaction details, authenticated by the KeepKey in your hand.</p>
 <section class="card"><h2>What happens</h2><p>${escapeHtml(status.message)}</p><p>The service recognizes a reviewed protocol action and signs a description. Your KeepKey independently checks the root certificate, signer fingerprint, program or contract, decoded fields, and the exact transaction binding. You still approve the final transaction on the device.</p></section>
 <section class="card"><h2>Trust status</h2><dl><dt>Device label</dt><dd>${escapeHtml(status.trust.label)}</dd><dt>Signer</dt><dd>${escapeHtml(status.trust.signerAlias)} · ${escapeHtml(status.trust.signerFingerprint)}</dd><dt>Ethereum</dt><dd>${escapeHtml(status.scopes.ethereum)}</dd><dt>Solana</dt><dd>${escapeHtml(status.scopes.solana)}</dd><dt>Earliest certificate expiry</dt><dd>${escapeHtml(status.trust.certificateExpiresAt || 'Pending')}</dd></dl></section>
-<section class="card"><h2>Reviewed protocols</h2><p><strong>Relay</strong> · Ethereum and Solana deposits for cross-chain swaps.</p><p><strong>Portals</strong> · Native ETH swaps through the verified Ethereum router. KeepKey reads the output token, minimum output, recipient, and input amount from the transaction itself.</p><p>Only exact catalog matches are certified. Unknown programs, contracts, selectors, instruction sizes, or lookup-table accounts are refused.</p><a href="/v1/catalog">View the machine-readable catalog</a></section>
+<section class="card"><h2>Reviewed protocols</h2><p><strong>Relay</strong> · Ethereum and Solana deposits for cross-chain swaps.</p><p><strong>Portals</strong> · Native ETH swaps through the verified Ethereum router. KeepKey reads the output token, minimum output, recipient, and input amount from the transaction itself.</p><p><strong>Pump AMM</strong> · Token buys with base output units, maximum quote input units, token mints, and receive/pay accounts decoded on your KeepKey.</p><p>Only exact catalog matches are certified. Unknown programs, contracts, selectors, instruction sizes, or lookup-table accounts are refused.</p><a href="/v1/catalog">View the machine-readable catalog</a></section>
 <section class="card"><h2>Privacy and provenance</h2><p>Ethereum requests contain only transaction shape. Solana lookup-table requests contain the unsigned transaction so this service can resolve and bind its accounts. Wallet seeds, private keys, PINs, passphrases, and device signatures never leave your KeepKey. This service writes no transaction database.</p><p><a href="${PROVENANCE.protocol}">How Relay works</a> · <a href="${PROVENANCE.protocolSecurity}">Relay security</a> · <a href="${PROVENANCE.portals}">Portals documentation</a> · <a href="${PROVENANCE.portalsRouter}">Verified Portals router</a> · <a href="${PROVENANCE.firmware}">KeepKey firmware</a> · <a href="${PROVENANCE.vault}">Vault source</a></p></section>
 </main></body></html>`
   return new Response(html, {
@@ -293,9 +293,10 @@ export default {
       try { body = await readJson(request) } catch (error: any) {
         return json({ error: error.message }, error.message === 'request too large' ? 413 : 400)
       }
-      const catalogKey = String(body?.catalogKey || '')
-      const spec = CERTIFIED_SOLANA_CATALOG[catalogKey]
-      if (!spec) return json({ classification: 'OPAQUE', error: 'catalogKey is not in the reviewed catalog' }, 422)
+      const requestedKey = body?.catalogKey === undefined ? undefined : String(body.catalogKey)
+      if (requestedKey !== undefined && !Object.hasOwn(CERTIFIED_SOLANA_CATALOG, requestedKey)) {
+        return json({ classification: 'OPAQUE', error: 'catalogKey is not in the reviewed catalog' }, 422)
+      }
 
       let fullTx: Buffer
       let messageBytes: Uint8Array
@@ -309,18 +310,37 @@ export default {
         return json({ classification: 'OPAQUE', error: error?.message || 'malformed Solana transaction' }, 422)
       }
 
-      const programBytes = Buffer.from(bs58.decode(spec.programId))
-      const expectedLength = solanaSchemaCoverage(spec)
-      const matchesInstruction = message.instructions.some((instruction) => {
+      const candidates = Object.entries(CERTIFIED_SOLANA_CATALOG).filter(([key]) => requestedKey === undefined || key === requestedKey)
+      const matches = candidates.filter(([key, spec]) => message.instructions.some((instruction) => {
+        const programBytes = Buffer.from(bs58.decode(spec.programId))
+        const expectedLength = solanaSchemaCoverage(spec)
         const programKey = message.staticAccounts[instruction.programIdIndex]
         if (!programKey || !Buffer.from(programKey).equals(programBytes)) return false
         if ((spec.accounts || []).some((account) => account.index >= instruction.accountIndices.length)) return false
         const data = Buffer.from(instruction.data)
-        return data.length === expectedLength && data.subarray(0, spec.discriminator.length).equals(spec.discriminator)
-      })
-      if (!matchesInstruction) {
-        return json({ classification: 'OPAQUE', error: `catalog entry ${catalogKey} does not exactly match an instruction in this transaction` }, 422)
+        if (data.length !== expectedLength || !data.subarray(0, spec.discriminator.length).equals(spec.discriminator)) return false
+        if (key === 'pumpAmmBuy') {
+          if (instruction.accountIndices.length < 23 || data[24] > 1) return false
+          // Pin the official IDL's fixed program accounts and required user
+          // signer; an arbitrary program label cannot certify another CPI.
+          const fixedAccounts: Record<number, string> = {
+            13: '11111111111111111111111111111111',
+            14: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+            16: spec.programId,
+            22: 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ',
+          }
+          if (instruction.accountIndices[1] >= message.header.numRequiredSignatures) return false
+          for (const [index, expected] of Object.entries(fixedAccounts)) {
+            const account = message.staticAccounts[instruction.accountIndices[Number(index)]]
+            if (!account || bs58.encode(account) !== expected) return false
+          }
+        }
+        return true
+      }))
+      if (matches.length !== 1) {
+        return json({ classification: 'OPAQUE', error: 'transaction does not uniquely match a reviewed Solana catalog entry' }, 422)
       }
+      const [catalogKey, spec] = matches[0]
 
       const state = provisioning(env)
       if (!state.solanaReady || !env.CLEARSIGN_SOLANA_CERTIFICATE_HEX || !env.CLEARSIGN_DELEGATE_PRIVATE_KEY) {
@@ -331,6 +351,7 @@ export default {
       try {
         const schema = signCertifiedSolanaSchema(env.CLEARSIGN_SOLANA_CERTIFICATE_HEX, env.CLEARSIGN_DELEGATE_PRIVATE_KEY, spec)
         const response: any = {
+          catalogKey,
           success: true,
           classification: 'VERIFIED',
           schema: { payload: schema.schemaPayload, signature: schema.schemaSignature, signerKeyId: schema.keyId },
@@ -339,7 +360,7 @@ export default {
           fingerprint: schema.fingerprint,
           transactionShape: message.version,
           lookupTableCount: message.altEntries.length,
-          provenance: PROVENANCE,
+          provenance: spec.provenance || PROVENANCE,
         }
         if (message.altEntries.length === 0) return json(response)
 

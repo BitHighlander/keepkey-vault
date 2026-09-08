@@ -57,6 +57,9 @@ export interface SolanaSchemaAccount {
 }
 
 export interface SolanaSchemaSpec {
+  protocol?: string
+  action?: string
+  provenance?: { protocol: string }
   programId: string // base58
   discriminator: Buffer
   programName: string
@@ -179,6 +182,29 @@ export function signCertifiedSolanaSchema(
  * 32-byte order id. Mirrors keepkey-sdk/tests/fixtures/solana-schema.js.
  */
 export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
+  pumpAmmBuy: {
+    protocol: 'Pump',
+    action: 'Buy tokens through Pump AMM with a maximum quote-token input',
+    provenance: { protocol: 'https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json' },
+    programId: 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',
+    discriminator: Buffer.from('66063d1201daebea', 'hex'),
+    programName: 'Pump AMM',
+    instructionName: 'Buy',
+    // Exact official IDL: u64 base_amount_out, u64 max_quote_amount_in,
+    // OptionBool (a one-byte bool). Amounts are raw token units; the two
+    // signed mint accounts identify their units without trusting a ticker.
+    args: [
+      { type: ARG_U64, label: 'Base units out' },
+      { type: ARG_U64, label: 'Max quote units' },
+      { type: ARG_U8, label: 'Track volume' },
+    ],
+    accounts: [
+      { index: 3, label: 'Buy token mint' },
+      { index: 4, label: 'Pay token mint' },
+      { index: 5, label: 'Receive account' },
+      { index: 6, label: 'Pay account' },
+    ],
+  },
   relayDepositNative: {
     programId: '99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2',
     discriminator: Buffer.from('0d9e0ddf5fd51c06', 'hex'),
