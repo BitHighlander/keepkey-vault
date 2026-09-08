@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto'
 import { utils } from 'ethers'
 import bs58 from 'bs58'
-import { createResilientSolanaAccountFetcher, type SolanaRpcConfig } from './solana-rpc'
+import { createResilientSolanaAccountFetcher, solanaRpcEndpoints, type SolanaRpcConfig } from './solana-rpc'
 
 export const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
+const identityCache = new Map<string, { token: NonNullable<ReturnType<typeof inspectPumpToken>>; expires: number }>()
+const pendingIdentity = new Map<string, Promise<ReturnType<typeof inspectPumpToken>>>()
 
 /** Version 2 is a compact-review eligibility attestation, not merely a label.
  * The certified delegate checks the actual mint owner, scale and immutable
@@ -33,8 +35,28 @@ export function pumpTokenPreimage(token: { mint: string; tokenProgram: string; s
     Buffer.from(bs58.decode(token.tokenProgram)), decimals, Buffer.from(token.symbol, 'ascii')])
 }
 
+async function resolvePumpToken(env: SolanaRpcConfig, mint: string, fetcher: typeof fetch) {
+  const key = JSON.stringify([solanaRpcEndpoints(env), mint])
+  const cached = identityCache.get(key)
+  if (cached && cached.expires > Date.now()) return cached.token
+  identityCache.delete(key)
+  if (pendingIdentity.has(key)) return pendingIdentity.get(key)!
+  const pending = (async () => {
+    const [token] = await createResilientSolanaAccountFetcher(env, 'jsonParsed', inspectPumpToken, fetcher)([mint])
+    // Only immutable identities with no transfer-changing or close-account
+    // extensions are eligible. Never cache errors or caller-provided labels.
+    if (token) {
+      if (identityCache.size >= 256) identityCache.delete(identityCache.keys().next().value!)
+      identityCache.set(key, { token, expires: Date.now() + 86_400_000 })
+    }
+    return token
+  })()
+  pendingIdentity.set(key, pending)
+  try { return await pending } finally { pendingIdentity.delete(key) }
+}
+
 export async function certifyPumpToken(env: SolanaRpcConfig, mint: string, delegateKey: string, fetcher: typeof fetch = fetch) {
-  const [token] = await createResilientSolanaAccountFetcher(env, 'jsonParsed', inspectPumpToken, fetcher)([mint])
+  const token = await resolvePumpToken(env, mint, fetcher)
   if (!token) return undefined
   const digest = createHash('sha256').update(pumpTokenPreimage(token)).digest('hex')
   const signed = new utils.SigningKey(`0x${delegateKey}`).signDigest(`0x${digest}`)

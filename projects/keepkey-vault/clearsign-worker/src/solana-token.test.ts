@@ -42,3 +42,17 @@ test('cannot certify site labels, another mint, mutable metadata or transfer-aff
     const a = account(); mutate(a); expect(inspectPumpToken(a, mint)).toBeUndefined()
   }
 })
+
+test('reuses verified immutable identity during RPC outages without caching a signing key', async () => {
+  const env = { CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://cache-test.example' }
+  let reads = 0
+  const fetcher = (async () => {
+    if (++reads > 1) throw new Error('RPC unavailable')
+    return Response.json({ result: { value: [account()] } })
+  }) as typeof fetch
+  const first = await certifyPumpToken(env, mint, '11'.repeat(32), fetcher)
+  const second = await certifyPumpToken(env, mint, '22'.repeat(32), fetcher)
+  expect(reads).toBe(1)
+  expect(second?.symbol).toBe(first?.symbol)
+  expect(second?.signature).not.toBe(first?.signature)
+})
