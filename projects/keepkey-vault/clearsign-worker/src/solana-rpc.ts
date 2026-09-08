@@ -7,7 +7,7 @@ export interface SolanaRpcConfig {
 
 export class SolanaRpcUnavailableError extends Error {
   readonly code = 'SOLANA_RPC_UNAVAILABLE'
-  constructor() { super('Solana lookup-table RPC is unavailable. Please retry shortly.') }
+  constructor() { super('Solana account RPC is unavailable. Please retry shortly.') }
 }
 
 // Public Relay lookup table used by the synthetic readiness check. No wallet
@@ -39,11 +39,13 @@ const keyFor = (env: SolanaRpcConfig) => env.CLEARSIGN_SOLANA_RPC_ENDPOINTS || e
 
 /** Every request remains server-side. Fail over only between operator-configured
  * RPCs; never accept a node URL or resolved accounts from the transaction caller. */
-export function createResilientSolanaAltFetcher(
+export function createResilientSolanaAccountFetcher<T>(
   env: SolanaRpcConfig,
+  encoding: 'base64' | 'jsonParsed',
+  validate: (value: any, key: string) => T,
   fetcher: typeof fetch = fetch,
   timeoutMs = TIMEOUT_MS,
-): AltAccountFetcher {
+): (keys: string[]) => Promise<T[]> {
   return async keys => {
     if (!keys.length) return []
     const endpoints = solanaRpcEndpoints(env)
@@ -59,7 +61,7 @@ export function createResilientSolanaAltFetcher(
           (async () => {
             const response = await fetcher(endpoint, {
               method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getMultipleAccounts', params: [keys, { encoding: 'base64', commitment: 'confirmed' }] }),
+              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getMultipleAccounts', params: [keys, { encoding, commitment: 'confirmed' }] }),
               signal: controller.signal,
             })
             if (!response.ok) { reason = `http_${response.status}`; throw new Error(reason) }
@@ -67,14 +69,8 @@ export function createResilientSolanaAltFetcher(
             if (body.error) { reason = 'rpc_error'; throw new Error(reason) }
             const values = body.result?.value
             if (!Array.isArray(values) || values.length !== keys.length) { reason = 'invalid_response'; throw new Error(reason) }
-            return values.map(value => {
-              reason = 'invalid_lookup_account'
-              if (!value || value.owner !== ALT_PROGRAM_ID || value.data?.[1] !== 'base64' || typeof value.data[0] !== 'string') throw new Error(reason)
-              const data = Buffer.from(value.data[0], 'base64')
-              if (data.toString('base64') !== value.data[0]) throw new Error(reason)
-              parseAltAccountData(data)
-              return { data, owner: value.owner }
-            })
+            reason = 'invalid_account'
+            return values.map((value, i) => validate(value, keys[i]))
           })(),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => { reason = 'timeout'; controller.abort(); reject(new Error(reason)) }, timeoutMs)
@@ -93,6 +89,18 @@ export function createResilientSolanaAltFetcher(
     health.set(keyFor(env), { value: { status: 'unavailable', providerCount: endpoints.length, failedProviders: failed, checkedAt: new Date().toISOString() }, expiresAt: Date.now() + 5_000 })
     throw new SolanaRpcUnavailableError()
   }
+}
+
+export function createResilientSolanaAltFetcher(
+  env: SolanaRpcConfig, fetcher: typeof fetch = fetch, timeoutMs = TIMEOUT_MS,
+): AltAccountFetcher {
+  return createResilientSolanaAccountFetcher(env, 'base64', value => {
+    if (!value || value.owner !== ALT_PROGRAM_ID || value.data?.[1] !== 'base64' || typeof value.data[0] !== 'string') throw new Error('invalid lookup account')
+    const data = Buffer.from(value.data[0], 'base64')
+    if (data.toString('base64') !== value.data[0]) throw new Error('noncanonical lookup account')
+    parseAltAccountData(data)
+    return { data, owner: value.owner }
+  }, fetcher, timeoutMs)
 }
 
 export async function solanaRpcHealth(env: SolanaRpcConfig): Promise<RpcHealth> {

@@ -1,8 +1,19 @@
 /** Synthetic Pump AMM buy. No captured wallet data or live blockhash. */
 import bs58 from 'bs58'
+import { createHash } from 'node:crypto'
+import { ed25519 } from '@noble/curves/ed25519'
+
+export function syntheticAta(owner: Buffer, program: Buffer, mint: Buffer): Buffer {
+  for (let bump = 255; bump >= 0; bump--) {
+    const key = createHash('sha256').update(Buffer.concat([owner, program, mint, Buffer.from([bump]),
+      Buffer.from(bs58.decode('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')), Buffer.from('ProgramDerivedAddress')])).digest()
+    try { ed25519.ExtendedPoint.fromHex(key) } catch { return key }
+  }
+  throw new Error('no synthetic ATA found')
+}
 
 export function syntheticPumpBuy(signer = Buffer.alloc(32, 0x11), options: {
-  invalidBoolean?: boolean; wrongFeeProgram?: boolean; extraData?: boolean; unknownCompanion?: boolean
+  invalidBoolean?: boolean; wrongFeeProgram?: boolean; extraData?: boolean; unknownCompanion?: boolean; mint?: string
 } = {}) {
   const keys = Array.from({ length: 29 }, (_, i) => Buffer.alloc(32, i + 1))
   keys[0] = Buffer.from(signer)
@@ -17,6 +28,9 @@ export function syntheticPumpBuy(signer = Buffer.alloc(32, 0x11), options: {
     22: 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ',
   }
   for (const [i, key] of Object.entries(programs)) keys[Number(i)] = Buffer.from(bs58.decode(key))
+  if (options.mint) keys[3] = Buffer.from(bs58.decode(options.mint))
+  keys[4] = syntheticAta(keys[0], keys[20], keys[3])
+  keys[5] = syntheticAta(keys[0], keys[16], keys[21])
   if (options.wrongFeeProgram) keys[22] = Buffer.alloc(32, 0xee)
   const u64 = (n: bigint) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(n); return b }
   const ix = (program: number, accounts: number[], data: Buffer) =>
@@ -43,4 +57,3 @@ export function syntheticPumpBuy(signer = Buffer.alloc(32, 0x11), options: {
   ])
   return { message, rawTx: Buffer.concat([Buffer.from([1]), Buffer.alloc(64), message]).toString('base64') }
 }
-

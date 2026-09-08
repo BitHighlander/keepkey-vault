@@ -23,7 +23,7 @@ describe('server-side Solana RPC failover', () => {
   })
   it('rejects unowned or malformed account data, including after failover', async () => {
     const fetcher=(async()=>Response.json({result:{value:[{owner:'attacker',data:[table.toString('base64'),'base64']}]}})) as typeof fetch
-    await expect(createResilientSolanaAltFetcher(env,fetcher)(['table'])).rejects.toThrow('lookup-table RPC is unavailable')
+    await expect(createResilientSolanaAltFetcher(env,fetcher)(['table'])).rejects.toThrow('account RPC is unavailable')
     expect((await solanaRpcHealth(env)).status).toBe('unavailable')
   })
   it('fails with a bounded unavailable error when all providers fail', async () => {

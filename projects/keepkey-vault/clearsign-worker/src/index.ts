@@ -25,6 +25,7 @@ import {
 import { resolveCanonicalLutAccounts } from '../../src/bun/solana-lut-resolver'
 import { createResilientSolanaAltFetcher, solanaRpcHealth, SolanaRpcUnavailableError } from './solana-rpc'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
+import { certifyPumpToken } from './solana-token'
 
 interface Env {
   CLEARSIGN_ENVIRONMENT?: string
@@ -361,6 +362,18 @@ export default {
           transactionShape: message.version,
           lookupTableCount: message.altEntries.length,
           provenance: spec.provenance || PROVENANCE,
+        }
+        if (catalogKey === 'pumpAmmBuy') {
+          proofStage = 'token-identity'
+          const buy = message.instructions.find(ix =>
+            bs58.encode(message.staticAccounts[ix.programIdIndex] || []) === spec.programId
+            && Buffer.from(ix.data).subarray(0, 8).equals(spec.discriminator))!
+          const mint = message.staticAccounts[buy.accountIndices[3]]
+          if (mint) {
+            const token = await certifyPumpToken(env, bs58.encode(mint), env.CLEARSIGN_DELEGATE_PRIVATE_KEY)
+            if (token) response.tokenInfo = [token]
+          }
+          response.tokenMetadataStatus = response.tokenInfo ? 'certified-on-chain' : 'detailed-review-required'
         }
         if (message.altEntries.length === 0) return json(response)
 
