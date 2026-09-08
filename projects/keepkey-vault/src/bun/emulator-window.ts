@@ -83,8 +83,13 @@ let bridgePort = 0
 /** Pending confirm — resolved when the webview POSTs to the bridge */
 let pendingConfirm: {
   id: string
+  shownAt: number
   resolve: (approved: boolean) => void
 } | null = null
+
+// A window activation can move the emulator underneath the mouse-up that
+// approved the host dialog. Do not let that same gesture approve firmware.
+const CONFIRM_MIN_REVIEW_MS = 500
 
 /**
  * Pending seed ack — resolved on explicit "I've recorded my words" click,
@@ -135,6 +140,11 @@ function startBridge(): number {
         return req.json().then((body: any) => {
           console.log(`${TAG} Bridge: confirm id=${body.id}, approved=${body.approved}`)
           if (pendingConfirm && pendingConfirm.id === body.id) {
+            const reviewMs = Date.now() - pendingConfirm.shownAt
+            if (reviewMs < CONFIRM_MIN_REVIEW_MS) {
+              console.warn(`${TAG} Ignoring confirm received after ${reviewMs}ms (minimum ${CONFIRM_MIN_REVIEW_MS}ms)`)
+              return new Response('too early', { status: 409, headers: { 'Access-Control-Allow-Origin': '*' } })
+            }
             pendingConfirm.resolve(body.approved)
             pendingConfirm = null
           }
@@ -439,8 +449,8 @@ async function requestUserConfirm(details: EmulatorConfirmDetails & { id: string
   // Bring the emu window to front so the user actually sees the prompt.
   // Without this, a user focused on the dashboard never realizes a sign
   // is waiting on a click in another window.
-  try { emuWindow!.focus() } catch (e: any) {
-    console.warn(`${TAG} focus() failed:`, e?.message)
+  try { emuWindow!.activate() } catch (e: any) {
+    console.warn(`${TAG} activate() failed:`, e?.message)
   }
 
   return new Promise((resolve) => {
@@ -459,10 +469,23 @@ async function requestUserConfirm(details: EmulatorConfirmDetails & { id: string
 
     pendingConfirm = {
       id: details.id,
+      shownAt: Date.now(),
       resolve: (value: boolean) => {
         clearTimeout(timer)
         resolve(value)
       },
+    }
+
+    // Drop playback left over from the preceding state and render the newest
+    // captured firmware frame immediately. The confirmation controls must be
+    // paired with the screen they approve, not an idle or prior OLED frame.
+    if (cachedPopFrames && viewReady) {
+      const fresh = cachedPopFrames()
+      if (fresh.length > 0) {
+        playbackQueue.length = 0
+        const fb = fresh[fresh.length - 1]!
+        sendToWindow('display-update', { fb: Buffer.from(fb).toString('base64'), w: 256, h: 64 })
+      }
     }
 
     console.log(`${TAG} Sending confirm-request: op=${details.operation}`)
@@ -544,6 +567,10 @@ export function stopDisplayPoll(): void {
 
 /** Transport delegate fields the confirm gate needs (a subset of EmulatorTransportDelegate). */
 type ConfirmDelegate = { onButtonRequest: (() => void) | null }
+type ConfirmEventSource = {
+  on: (event: string, listener: () => void) => unknown
+  removeListener: (event: string, listener: () => void) => unknown
+}
 
 /**
  * Run a wallet op on the emulator with screen-first confirm gating.
@@ -572,38 +599,47 @@ export async function emuGatedConfirm(
   fn: () => Promise<any>,
   delegate: ConfirmDelegate | null,
   opts: { interactive: true; details: EmulatorConfirmDetails } | { interactive: false },
+  eventSource?: ConfirmEventSource | null,
 ): Promise<any> {
-  const { saveEmulatorState, flushRingBuffers } = await import('./emulator')
+  const { saveEmulatorState } = await import('./emulator')
   const { writeDecision } = await import('./emulator-transport')
 
   let rejected = false
   const prevHandler = delegate ? delegate.onButtonRequest : null
 
-  if (delegate) {
-    delegate.onButtonRequest = () => {
-      if (!opts.interactive) {
-        // Setup op (wipe / load / settings) — auto-press through each confirm.
-        // Signing ops are always interactive and must be approved by the user.
-        writeDecision(true)
-        return
-      }
-      // Interactive sign — the real frame is already on screen (display poll).
-      // Hold it and gate on the user's click. Fire-and-forget: hdwallet still
-      // gets its ButtonRequest back and sends the ButtonAck; the DLD we write
-      // on click is what releases confirm_helper.
-      requestUserConfirm({ id: crypto.randomUUID(), ...opts.details })
-        .then((approved) => {
-          if (!approved) rejected = true
-          writeDecision(approved)
-        })
-        .catch((e: any) => {
-          // A failed prompt must not strand confirm_helper waiting forever —
-          // reject so the firmware aborts cleanly.
-          console.warn(`${TAG} confirm prompt failed — rejecting:`, e?.message)
-          rejected = true
-          writeDecision(false)
-        })
+  const onButtonRequest = () => {
+    if (!opts.interactive) {
+      // Setup op (wipe / load / settings) — auto-press through each confirm.
+      // Signing ops are always interactive and must be approved by the user.
+      writeDecision(true)
+      return
     }
+    // Interactive sign — the real frame is already on screen (display poll).
+    // Hold it and gate on the user's click. Fire-and-forget: hdwallet still
+    // gets its ButtonRequest back and sends the ButtonAck; the DLD we write
+    // on click is what releases confirm_helper.
+    requestUserConfirm({ id: crypto.randomUUID(), ...opts.details })
+      .then((approved) => {
+        if (!approved) rejected = true
+        writeDecision(approved)
+      })
+      .catch((e: any) => {
+        // A failed prompt must not strand confirm_helper waiting forever —
+        // reject so the firmware aborts cleanly.
+        console.warn(`${TAG} confirm prompt failed — rejecting:`, e?.message)
+        rejected = true
+        writeDecision(false)
+      })
+  }
+
+  // Prefer the parsed transport event when the caller can provide it. Raw HID
+  // inspection remains a fallback for setup paths that only have a delegate.
+  // Message type 26 is ButtonRequest; Transport emits its numeric type as a
+  // string immediately after parsing and before it sends ButtonAck.
+  if (eventSource) {
+    eventSource.on('26', onButtonRequest)
+  } else if (delegate) {
+    delegate.onButtonRequest = onButtonRequest
   }
 
   // Open the window up front (interactive) so the confirm frame is visible the
@@ -620,8 +656,13 @@ export async function emuGatedConfirm(
     if (rejected) throw new Error('Transaction rejected by user on emulator')
     throw e
   } finally {
+    if (eventSource) eventSource.removeListener('26', onButtonRequest)
     if (delegate) delegate.onButtonRequest = prevHandler
-    flushRingBuffers() // drain any late output so the next op reads clean
+    // fn() consumed its terminal Success/Failure and released the SDK's wire
+    // lock. A queued status read may already own the output ring, especially
+    // after saveEmulatorState() yields. Draining here steals that response and
+    // poisons the transport with a timeout. Only reconnect/reset paths may
+    // flush stale packets while no device operation is active.
     sendDismiss()
   }
 }
@@ -633,8 +674,9 @@ export async function emuInteractiveConfirm(
   fn: () => Promise<any>,
   details: EmulatorConfirmDetails,
   engineDelegate?: ConfirmDelegate | null,
+  eventSource?: ConfirmEventSource | null,
 ): Promise<any> {
-  return emuGatedConfirm(fn, engineDelegate ?? null, { interactive: true, details })
+  return emuGatedConfirm(fn, engineDelegate ?? null, { interactive: true, details }, eventSource)
 }
 
 // ── Inline HTML ─────────────────────────────────────────────────────────
@@ -823,6 +865,7 @@ function buildEmulatorHTML(bridgePort: number): string {
   var confirmMeta = document.getElementById('confirmMeta');
   var hasRealDisplay = false;
   var currentConfirmId = null;
+  var confirmReadyAt = 0;
 
   // ── Receive messages from bun (via executeJavascript) ──
 
@@ -894,6 +937,14 @@ function buildEmulatorHTML(bridgePort: number): string {
   function onConfirmRequest(details) {
     console.log('[emu-ui] Confirm request: op=' + details.operation + ' id=' + details.id);
     currentConfirmId = details.id;
+    confirmReadyAt = Date.now() + ${CONFIRM_MIN_REVIEW_MS};
+    confirmBtn.disabled = true;
+    rejectBtn.disabled = true;
+    setTimeout(function() {
+      if (currentConfirmId !== details.id) return;
+      confirmBtn.disabled = false;
+      rejectBtn.disabled = false;
+    }, ${CONFIRM_MIN_REVIEW_MS});
     var opName = details.opLabel || details.operation
       .replace(/([A-Z])/g, ' $$1').replace(/^ /, '')
       .replace('Sign Tx', 'Sign Transaction')
@@ -915,6 +966,7 @@ function buildEmulatorHTML(bridgePort: number): string {
 
   function onConfirmDismiss() {
     currentConfirmId = null;
+    confirmReadyAt = 0;
     confirmMeta.innerHTML = '';
     confirmMeta.classList.remove('visible');
     buttons.classList.remove('visible');
@@ -959,17 +1011,21 @@ function buildEmulatorHTML(bridgePort: number): string {
   // ── Button clicks → bridge POST ──
 
   confirmBtn.addEventListener('click', function() {
-    if (!currentConfirmId) return;
+    if (!currentConfirmId || Date.now() < confirmReadyAt) return;
+    var confirmId = currentConfirmId;
+    currentConfirmId = null;
     console.log('[emu-ui] CONFIRM clicked');
-    postBridge('/_emu/confirm', { id: currentConfirmId, approved: true });
+    postBridge('/_emu/confirm', { id: confirmId, approved: true });
     confirmMeta.innerHTML = '<div class="op-label" style="color:#4fc3f7">Processing…</div>';
     buttons.classList.remove('visible');
   });
 
   rejectBtn.addEventListener('click', function() {
-    if (!currentConfirmId) return;
+    if (!currentConfirmId || Date.now() < confirmReadyAt) return;
+    var confirmId = currentConfirmId;
+    currentConfirmId = null;
     console.log('[emu-ui] REJECT clicked');
-    postBridge('/_emu/confirm', { id: currentConfirmId, approved: false });
+    postBridge('/_emu/confirm', { id: confirmId, approved: false });
     confirmMeta.innerHTML = '<div class="op-label" style="color:#e57373">Rejected</div>';
     buttons.classList.remove('visible');
     setTimeout(function() {

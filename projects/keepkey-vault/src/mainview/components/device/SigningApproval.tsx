@@ -95,11 +95,11 @@ function Row({ label, value, mono = true }: { label: string; value?: string; mon
 
 // ── Trust badge (inline) ──────────────────────────────────────────────
 
-function TrustBadge({ level, hasSigned, t }: { level: 'verified' | 'known' | 'unknown'; hasSigned?: boolean; t: (k: string, f?: string) => string }) {
+function TrustBadge({ level, keepKeyCertified, runtimeSigned, t }: { level: 'verified' | 'known' | 'unknown'; keepKeyCertified?: boolean; runtimeSigned?: boolean; t: (k: string, f?: string) => string }) {
 	const cfg = level === 'verified'
-		? { bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)", color: "var(--teal)", label: hasSigned ? t("signing.signedVerified", "Signed & Verified") : t("signing.verified", "Verified Contract") }
+		? { bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)", color: "var(--teal)", label: keepKeyCertified ? t("signing.keepKeyCertified", "Verified by KeepKey") : t("signing.verified", "Verified Contract") }
 		: level === 'known'
-			? { bg: "rgba(233,196,106,0.12)", border: "rgba(233,196,106,0.3)", color: "var(--gold)", label: t("signing.knownPattern", "Known Pattern") }
+			? { bg: "rgba(233,196,106,0.12)", border: "rgba(233,196,106,0.3)", color: "var(--gold)", label: runtimeSigned ? t("signing.runtimeSigner", "Described by your signer") : t("signing.knownPattern", "Known Pattern") }
 			: { bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.3)", color: "var(--rose)", label: t("signing.unverifiedContract", "Unverified Contract") }
 
 	return (
@@ -258,13 +258,13 @@ function SolanaBlindSigningConsent({
 				<Box flex="1">
 					<Text fontSize="2xs" fontWeight="700" color={granted ? "var(--teal)" : "var(--rose)"}>
 						{granted
-							? t("signing.solanaBlindSignAllowedOnce", "Blind signing allowed for this request")
+							? t("signing.solanaApprovedInVault", "This request is approved in Vault")
 							: t("signing.solanaBlindSignConsentTitle", "Opaque Solana transaction")}
 					</Text>
 					<Text fontSize="2xs" color="kk.textSecondary">
 						{t(
-							"signing.solanaBlindSignConsentDescription",
-							"The Vault and device cannot fully verify this transaction. Only continue if you trust the requesting app and independently verified the payload. This permission applies once.",
+							"signing.solanaHostConsentDescription",
+							"The Vault and device cannot fully verify this transaction. Only continue if you trust the requesting app and have independently verified the payload. Allow once approves this request in Vault; the device also requires Advanced Mode.",
 						)}
 					</Text>
 				</Box>
@@ -760,6 +760,8 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 	const hasCalldata = fwSupportsBlindSignGate
 		&& (request.needsBlindSigning !== undefined || (decoded && decoded.source !== undefined))
 	const hasSignedBlob = !!decoded?.signedInsightBlob
+	const hasKeepKeyCertifiedBlob = hasSignedBlob && decoded?.insightKeyId === 0x80
+	const hasRuntimeSignedBlob = hasSignedBlob && !hasKeepKeyCertifiedBlob
 
 	let trustLevel: 'verified' | 'known' | 'unknown' = 'verified'
 	if (hasCalldata) {
@@ -767,7 +769,8 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 		// clear-signs. A contract our decoder recognizes (source 'local') but the
 		// firmware blind-signs (e.g. Uniswap) must still read 'unknown' — the badge
 		// can't claim "known" for a tx the device shows as raw hex.
-		if (hasSignedBlob) trustLevel = 'verified'
+		if (hasKeepKeyCertifiedBlob) trustLevel = 'verified'
+		else if (hasRuntimeSignedBlob) trustLevel = 'known'
 		else if (request.needsBlindSigning) trustLevel = 'unknown'
 		else if (decoded?.source === 'pioneer' || decoded?.source === 'local') trustLevel = 'known'
 	}
@@ -794,7 +797,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 	const advancedModeRequired =
 		isSolanaSignMessage
 		|| !!request.requiresAdvancedMode
-		|| (fwSupportsBlindSignGate && !!request.needsBlindSigning && !blindSigningConsentRequired)
+		|| (fwSupportsBlindSignGate && !!request.needsBlindSigning)
 	const advancedModeBlocked = advancedModeRequired && !advancedModeEnabled
 	const blindSigningConsentBlocked = blindSigningConsentRequired && !blindSigningConsentGranted
 	const approveDisabled = enablingPolicy || advancedModeBlocked || blindSigningConsentBlocked
@@ -1004,7 +1007,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 						  EVM verified-contract trust signal, so hide it there too.
 						*/}
 						{!isSimpleTransfer && !request.ethMessageDecoded && !isSolanaRequest && (
-							<TrustBadge level={trustLevel} hasSigned={hasSignedBlob} t={t} />
+							<TrustBadge level={trustLevel} keepKeyCertified={hasKeepKeyCertifiedBlob} runtimeSigned={hasRuntimeSignedBlob} t={t} />
 						)}
 						<Text fontSize="2xs" color={remaining <= 30 ? "red.400" : "kk.textMuted"} fontWeight={remaining <= 30 ? "600" : "400"}>
 							{timeStr}
@@ -1021,7 +1024,31 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 				{/* ── Method ── */}
 				<Text fontSize="sm" fontWeight="600" color="white" alignSelf="flex-start">{methodLabel}</Text>
 
+				{hasKeepKeyCertifiedBlob && (
+					<Box w="100%" p="3" borderRadius="xl" bg="rgba(34,197,94,0.08)" border="1px solid rgba(34,197,94,0.24)">
+						<Text fontSize="xs" fontWeight="700" color="var(--teal)">{t("signing.keepKeyCertifiedTitle", "KeepKey verified the transaction description")}</Text>
+						<Text mt="1" fontSize="2xs" lineHeight="1.5" color="kk.textSecondary">
+							{t("signing.keepKeyCertifiedBody", "Your KeepKey checks the signed ClearSign certificate, then decodes the contract, action, and values from the same bytes it will sign. Review those details again on the device.")}
+						</Text>
+					</Box>
+				)}
+
+				{hasRuntimeSignedBlob && (
+					<Box w="100%" p="3" borderRadius="xl" bg="rgba(233,196,106,0.08)" border="1px solid rgba(233,196,106,0.24)">
+						<Text fontSize="xs" fontWeight="700" color="var(--gold)">{t("signing.runtimeSignerTitle", "Described by a signer you loaded")}</Text>
+						<Text mt="1" fontSize="2xs" lineHeight="1.5" color="kk.textSecondary">
+							{t("signing.runtimeSignerBody", "KeepKey has not vouched for this signer. Its description is extra context only; the normal raw-data and Advanced Mode protections still apply.")}
+						</Text>
+					</Box>
+				)}
+
 				{/* ── AdvancedMode gate ── */}
+				{request.solanaCertified && (
+					<Box w="100%" p="3" borderRadius="xl" bg="rgba(34,197,94,0.1)" border="1px solid rgba(34,197,94,0.3)">
+						<Text fontSize="xs" fontWeight="700" color="var(--teal)">KeepKey ClearSign</Text>
+						<Text mt="1" fontSize="2xs" color="kk.textSecondary">The live signer supplied a certified description. Your KeepKey will verify it and show the transaction details before signing.</Text>
+					</Box>
+				)}
 				{advancedModeRequired && (
 					<BlindSigningBanner
 						enabled={advancedModeEnabled}
@@ -1029,11 +1056,13 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 						onEnable={handleEnableAdvancedMode}
 						onCancel={() => setShowAdvancedConfirm(false)}
 						t={t}
-						title={isSolanaSignMessage ? t("signing.solanaAdvancedModeRequired", "Advanced Mode Required") : undefined}
-						description={isSolanaSignMessage
+						title={isSolanaRequest ? t("signing.solanaAdvancedModeRequired", "Advanced Mode Required") : undefined}
+						description={isSolanaSignTx
+							? t("signing.solanaTransactionAdvancedModeDescription", "Advanced Mode is off on the selected KeepKey or emulator. Enable it and confirm on the device before approving this unverified transaction. Allow once does not change this device setting.")
+							: isSolanaSignMessage
 							? t("signing.solanaAdvancedModeDescription", "Advanced Mode is off, so your KeepKey will reject this raw Solana message. Enable Advanced Mode here before approving.")
 							: undefined}
-						enableLabel={isSolanaSignMessage ? t("signing.enableAdvancedMode", "Enable Advanced Mode") : undefined}
+						enableLabel={isSolanaRequest ? t("signing.enableAdvancedMode", "Enable Advanced Mode") : undefined}
 						error={advancedModeError}
 					/>
 				)}

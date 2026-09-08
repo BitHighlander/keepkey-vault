@@ -1,5 +1,11 @@
 # Release Control — 7.15 cycle (firmware → vault → bex)
 
+> **FIRMWARE DIRECTION SUPERSEDED 2026-08-23:** Upstream firmware is frozen and
+> continuing 7.15 security work has moved to the fork's `alpha` line. Do not use
+> this document's upstream firmware critical path until the owner explicitly
+> thaws it. Follow
+> [handoff-firmware-715-alpha-seed-display-and-upstream-freeze.md](handoff-firmware-715-alpha-seed-display-and-upstream-freeze.md).
+
 **Generated 2026-07-16 from live repo state** (gh/git verified, not memory). Single source of truth for the 7.15 firmware release + vault + bex releases. Supersedes the scattered `handoff-*` docs.
 
 ---

@@ -6,6 +6,7 @@ import { FaShieldAlt, FaArrowRotateRight } from "react-icons/fa"
 import { rpcRequest, onRpcMessage } from "../lib/rpc"
 import { useFiat } from "../lib/fiat-context"
 import { generateQRSvg } from "../lib/qr"
+import { parseZcashPaymentRequest } from "../lib/zcash-payment-uri"
 import { QrScannerOverlay } from "./QrScannerOverlay"
 import { AddressBookPicker } from "./AddressBookPicker"
 import { SaveRecipientDialog } from "./SaveRecipientDialog"
@@ -269,9 +270,31 @@ export function ZcashPrivacyTab({ initialPage }: { initialPage?: Page } = {}) {
 	}, [recipient, recipientValid])
 
 	const handleQrScan = useCallback((raw: string) => {
-		const data = raw.trim().replace(/[\x00-\x1f\x7f-\x9f]/g, "").slice(0, 256)
-		if (!data) return
-		setRecipient(data)
+		try {
+			const request = parseZcashPaymentRequest(raw)
+			const validation = validateZcashRecipient(request.address)
+			if (!validation.valid) {
+				throw new Error(validation.error === "saplingNotSupported"
+					? "Sapling-only recipients are not supported"
+					: "The QR code does not contain a valid Zcash recipient")
+			}
+			setRecipient(request.address)
+			if (request.amount != null) setAmount(request.amount)
+			if (request.memo != null) setMemo(request.memo)
+			setSendError(null)
+			console.info("[Zcash QR] accepted payment request", {
+				format: request.format,
+				payloadLength: raw.length,
+				hasAmount: request.amount != null,
+				hasMemo: request.memo != null,
+			})
+		} catch (error: any) {
+			console.warn("[Zcash QR] rejected payment request", {
+				payloadLength: raw.length,
+				reason: error?.message ?? "Unknown QR error",
+			})
+			setSendError(`QR code not accepted: ${error?.message ?? "Unknown QR error"}`)
+		}
 		setShowScanner(false)
 	}, [])
 

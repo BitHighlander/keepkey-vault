@@ -10,17 +10,34 @@ import { prepareSolanaX402DeviceMetadata } from './solana-x402'
 export type SolanaDeviceSigner = (params: any) => Promise<any>
 export type SolanaAddressDeriver = (addressNList: number[]) => Promise<string>
 
+class SolanaFirmwareInstructionLimitError extends Error {
+  readonly status = 422
+  readonly details: { code: string; firmwareVersion: string; instructionCount: number; deviceCode: number }
+
+  constructor(firmwareVersion: string, instructionCount: number, cause: unknown) {
+    super(
+      `KeepKey firmware ${firmwareVersion} rejected this v0 Solana transaction with ${instructionCount} instructions. ` +
+      'This matches a firmware parser bug affecting transactions with more than 8 instructions. ' +
+      'Advanced Mode cannot resolve it. Install firmware containing the Solana instruction-parser fix, then request a fresh transaction.',
+      { cause },
+    )
+    this.name = 'SolanaFirmwareInstructionLimitError'
+    this.details = { code: 'SOLANA_FIRMWARE_INSTRUCTION_LIMIT', firmwareVersion, instructionCount, deviceCode: 3 }
+  }
+}
+
 /**
  * Route a serialized Solana transaction through the transaction-specific
  * firmware message and splice the returned signature into the original wire
  * transaction. The device receives the exact legacy/v0 message bytes, while
- * metadata and one-shot opaque-signing consent are forwarded unchanged.
+ * metadata is forwarded unchanged. Host consent never overrides device policy.
  */
 export async function signSolanaWireTransaction(
   unsignedTx: any,
   signWithDevice: SolanaDeviceSigner,
   deriveSignerAddress: SolanaAddressDeriver,
   logPrefix = 'signTx:solana',
+  getFirmwareVersion?: () => string | undefined | Promise<string | undefined>,
 ): Promise<any> {
   const fullTx = Buffer.from(
     typeof unsignedTx.rawTx === 'string'
@@ -78,17 +95,46 @@ export async function signSolanaWireTransaction(
   const x402Metadata = unsignedTx.x402
     ? prepareSolanaX402DeviceMetadata(message, unsignedTx.x402, signerPublicKey)
     : undefined
+  const { allowBlindSigning: _hostConsent, ...transactionParams } = unsignedTx
   const deviceParams = {
-    ...unsignedTx,
+    ...transactionParams,
     ...(x402Metadata || {}),
     rawTx: Buffer.from(messageBytes).toString('base64'),
   }
-  console.debug(
+  console.info(
     `[${logPrefix}] routing ${parsed.isVersioned ? 'v0' : 'legacy'} transaction ` +
-    `through SolanaSignTx (${messageBytes.length}B message)`,
+    `through SolanaSignTx (${messageBytes.length}B message, ` +
+    `${message.instructions.length} instructions, ${message.altEntries.length} lookup tables)`,
   )
 
-  const result = await signWithDevice(deviceParams)
+  let result
+  try {
+    result = await signWithDevice(deviceParams)
+  } catch (cause: any) {
+    const deviceMessage = cause?.message?.message ?? cause?.message
+    const deviceCode = cause?.message?.code ?? cause?.code
+    if (deviceCode === 9 && deviceMessage === 'Enable AdvancedMode to blind-sign') {
+      throw Object.assign(new Error(
+        'Advanced Mode is off on the selected KeepKey or emulator. Enable it in Vault and confirm on the device, ' +
+        'then retry. Allow once approves only this request in Vault.',
+        { cause },
+      ), { status: 409, details: { code: 'SOLANA_ADVANCED_MODE_REQUIRED', deviceCode: 9 } })
+    }
+    // Diagnose only after the device rejects a host-parsed message. Patched
+    // firmware using the same version string must still be allowed to sign.
+    // Keep this specific to the reproduced no-LUT, <=32-account 7.14.2 case;
+    // other malformed responses may have unrelated causes.
+    if (deviceCode === 3 && deviceMessage === 'Malformed Solana transaction' &&
+        message.version === 'v0' && message.instructions.length > 8 &&
+        message.staticAccounts.length <= 32 && message.altEntries.length === 0) {
+      let firmwareVersion: string | undefined
+      try { firmwareVersion = await getFirmwareVersion?.() } catch { /* preserve original failure */ }
+      if (firmwareVersion && /^v?7\.14\.2(?:[-+].*)?$/.test(firmwareVersion)) {
+        throw new SolanaFirmwareInstructionLimitError(firmwareVersion, message.instructions.length, cause)
+      }
+    }
+    throw cause
+  }
   if (!result?.signature) return result
 
   const sigBytes: Uint8Array = result.signature instanceof Uint8Array
@@ -104,6 +150,8 @@ export async function signSolanaWireTransaction(
     throw new Error(`[${logPrefix}] Raw tx too short to hold signer slot ${signerIndex}`)
   }
   for (let i = 0; i < 64; i++) rawBytes[slotOffset + i] = sigBytes[i]
+
+  console.info(`[${logPrefix}] signed transaction assembled (${rawBytes.length}B); returning to caller for broadcast`)
 
   return {
     signature: sigBytes,

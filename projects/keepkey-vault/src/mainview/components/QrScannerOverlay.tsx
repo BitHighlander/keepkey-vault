@@ -21,7 +21,8 @@ function decodeQrFromImageSrc(src: string): Promise<string | null> {
 			if (!ctx) { resolve(null); return }
 			ctx.drawImage(img, 0, 0)
 			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-			const code = jsQR(imageData.data, imageData.width, imageData.height)
+			console.info("[QrScanner] checking uploaded image", { width: imageData.width, height: imageData.height })
+			const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" })
 			resolve(code?.data || null)
 		}
 		img.onerror = () => resolve(null)
@@ -39,12 +40,15 @@ export function QrScannerOverlay({ onScan, onClose }: QrScannerOverlayProps) {
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
 	const [dragOver, setDragOver] = useState(false)
+	const [cameraInfo, setCameraInfo] = useState<string | null>(null)
+	const [framesChecked, setFramesChecked] = useState(0)
 	const videoRef = useRef<HTMLVideoElement>(null)
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const foundRef = useRef(false)
 	const streamRef = useRef<MediaStream | null>(null)
 	const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+	const frameCountRef = useRef(0)
 
 	// Start browser camera on mount
 	useEffect(() => {
@@ -54,11 +58,19 @@ export function QrScannerOverlay({ onScan, onClose }: QrScannerOverlayProps) {
 		async function startCamera() {
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
-					video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
+					video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
 					audio: false,
 				})
 				if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }
 				streamRef.current = stream
+				const settings = stream.getVideoTracks()[0]?.getSettings()
+				const resolution = settings?.width && settings?.height ? `${settings.width}×${settings.height}` : "resolution unavailable"
+				setCameraInfo(resolution)
+				console.info("[QrScanner] camera ready", {
+					width: settings?.width,
+					height: settings?.height,
+					facingMode: settings?.facingMode,
+				})
 				if (videoRef.current) {
 					videoRef.current.srcObject = stream
 					videoRef.current.play().catch(() => {})
@@ -78,8 +90,15 @@ export function QrScannerOverlay({ onScan, onClose }: QrScannerOverlayProps) {
 					if (!ctx) return
 					ctx.drawImage(video, 0, 0)
 					const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-					const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" })
+					frameCountRef.current += 1
+					if (frameCountRef.current % 10 === 0) setFramesChecked(frameCountRef.current)
+					const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" })
 					if (code?.data) {
+						console.info("[QrScanner] QR decoded", {
+							payloadLength: code.data.length,
+							format: /^zcash:/i.test(code.data.trim()) ? "zcash URI" : "plain text",
+							framesChecked: frameCountRef.current,
+						})
 						foundRef.current = true
 						if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
 						if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
@@ -165,8 +184,8 @@ export function QrScannerOverlay({ onScan, onClose }: QrScannerOverlayProps) {
 						overflow="hidden"
 						border="2px solid"
 						borderColor="kk.gold"
-						maxW="400px"
-						w="90%"
+						maxW="720px"
+						w="94%"
 						bg="black"
 					>
 						{mode === "starting" && (
@@ -200,6 +219,7 @@ export function QrScannerOverlay({ onScan, onClose }: QrScannerOverlayProps) {
 
 					<Text fontSize="xs" color="gray.500" mt="3" textAlign="center">
 						Point your camera at a wallet QR code
+						{mode === "streaming" && cameraInfo ? ` · ${cameraInfo} · ${framesChecked} frames checked` : ""}
 					</Text>
 
 					{/* Switch to file upload */}

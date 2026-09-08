@@ -136,8 +136,9 @@ function _writeLogSync(line: string): void {
 
 const _ts = () => new Date().toISOString()
 const _fmt = (...args: any[]) => args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
-const _origLog = console.log, _origWarn = console.warn, _origError = console.error
+const _origLog = console.log, _origInfo = console.info, _origWarn = console.warn, _origError = console.error
 console.log = (...args: any[]) => { _writeLogSync(`[${_ts()}] ${_fmt(...args)}\n`); _origLog(...args) }
+console.info = (...args: any[]) => { _writeLogSync(`[${_ts()}] INFO: ${_fmt(...args)}\n`); _origInfo(...args) }
 console.warn = (...args: any[]) => { _writeLogSync(`[${_ts()}] WARN: ${_fmt(...args)}\n`); _origWarn(...args) }
 console.error = (...args: any[]) => { _writeLogSync(`[${_ts()}] ERR: ${_fmt(...args)}\n`); _origError(...args) }
 _writeLogSync(`\n=== New session: ${_ts()} ===\n`)
@@ -235,7 +236,9 @@ import {
 	validateProviderCeremony,
 	writeProviderKeyFile,
 } from "../shared/clearsign-provider-key"
-import { EVM_RPC_URLS, getTokenMetadata, broadcastEvmTx, verifyEvmSigner } from "./evm-rpc"
+import { getTokenMetadata, broadcastEvmTx, verifyEvmSigner } from "./evm-rpc"
+import { evmSourceForChain } from "./pioneer-evm"
+import { deviceErrorMessage } from "../shared/device-error"
 import type { ChainBalance, TokenBalance, CustomToken, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, EvmAddressSet, Bip85SeedMeta, StakingPosition, SwapAsset, AuditToken, DefiPosition, RecentActivity, ClearSignEvent, ClearSignSolanaSchemaArtifact } from "../shared/types"
 import type { VaultRPCSchema } from "../shared/rpc-schema"
 import { collectAndAnalyze, MAX_CHUNK_BYTES } from "./rng-audit"
@@ -910,15 +913,15 @@ function getAllChains(): ChainDef[] {
 	return [...CHAINS, ...customChainDefs]
 }
 
-/** Lookup RPC URL for a chain (custom chains from DB on miss, built-in chains from EVM_RPC_URLS) */
-function getRpcUrl(chain: ChainDef): string | undefined {
+/** Built-in EVM chains use Pioneer by network ID. Custom chains use only the
+ * RPC URL the user explicitly configured. Never embed public node URLs here. */
+function getEvmRpcSource(chain: ChainDef): string | undefined {
 	// Custom chains: query DB only for custom chain IDs (avoids per-call overhead for built-in chains)
 	if (chain.id.startsWith('evm-custom-')) {
 		const stored = getCustomChains().find(c => `evm-custom-${c.chainId}` === chain.id)
-		if (stored) return stored.rpcUrl
+		return evmSourceForChain(chain, stored?.rpcUrl)
 	}
-	// Built-in chains: lookup from EVM_RPC_URLS
-	return chain.chainId ? EVM_RPC_URLS[chain.chainId] : undefined
+	return evmSourceForChain(chain)
 }
 
 // ── REST API Server (on by default, can be disabled in Settings) ───────
@@ -1243,6 +1246,7 @@ function getOrCreateWcManager(): WalletConnectManager {
 					return address
 				},
 				'walletconnect:solanaSignTransaction',
+				() => engine.getDeviceState().firmwareVersion,
 			)
 			if (!result?.signature || !result.serializedTx) {
 				throw new Error('Device returned no Solana transaction signature')
@@ -2021,7 +2025,6 @@ async function headlessSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
 	// shortfall. Fix: re-quote with the actual net delivery amount.
 	if (
 		quote.swapper === 'NEAR Intents'
-		&& params.isMax
 		&& params.fromCaip.startsWith('bip122:')
 		&& engine.wallet
 	) {
@@ -2076,7 +2079,7 @@ async function headlessSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
 						? { allXpubs: estXpubs }
 						: { xpub: estXpub, accountPath: estAccountPath }),
 				})
-				if (est && est.feeSat > 0) {
+				if (est && est.feeSat > 0 && est.netSat > 0 && (est.netSat / 10 ** fromChain.decimals) < Number(params.amount)) {
 					const netAmount = (est.netSat / 1e8).toFixed(8)
 					console.log(`[swap] NEAR Intents sendMax: re-quoting ${fromChain.symbol} with net ${netAmount} (fee=${est.feeSat} sat)`)
 					quote = { ...await getSwapQuote({ ...params, amount: netAmount, isMax: false }), netFromAmount: netAmount }
@@ -2154,7 +2157,6 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 	let execParams = params
 	if (
 		cachedQuote?.netFromAmount
-		&& params.isMax
 		&& params.fromCaip.startsWith('bip122:')
 		&& (params.swapper === 'NEAR Intents' || params.integration === 'nearIntents')
 	) {
@@ -2165,7 +2167,7 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 	const result = await executeSwap(execParams, {
 		wallet: engine.wallet,
 		getAllChains,
-		getRpcUrl,
+		getEvmRpcSource,
 		getBtcXpub: () => {
 			if (btcAccounts.isInitialized) {
 				const selected = btcAccounts.getSelectedXpub()
@@ -2182,12 +2184,16 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 			: (fn) => fn(),
 		pushSubStage,
 		isAdvancedModeEnabled: getAdvancedModeEnabled,
+		getFirmwareVersion: () => engine.getDeviceState().firmwareVersion,
 		getSolanaRpcEndpoint: () => getSetting('solana_rpc_endpoint') || undefined,
 		onClearSignEvent: (event) => recordClearSignEvent({
 			kind: 'transaction',
 			source: 'vault-rpc',
 			...event,
 		}),
+	}).catch((error: any) => {
+		console.error(`[swap] execute failed (${params.fromChainId}): ${deviceErrorMessage(error)}`)
+		throw error
 	})
 	const scope = getWalletDbScope()
 	// Register swap for tracking (non-blocking)
@@ -3153,6 +3159,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 							return address
 						},
 						'solanaSignTx',
+						() => engine.getDeviceState().firmwareVersion,
 					)
 					if (payload) recordClearSignEvent({
 						kind: 'transaction', outcome: 'signed', source: 'vault-rpc', chain: 'Solana',
@@ -5106,7 +5113,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					}
 				}
 
-				const rpcUrl = chain.id.startsWith('evm-custom-') ? getRpcUrl(chain) : undefined
+				const rpcUrl = chain.id.startsWith('evm-custom-') ? getEvmRpcSource(chain) : undefined
 				const evmIdx = chain.chainFamily === 'evm' ? (params.evmAddressIndex ?? evmAddresses.getSelectedAddress()?.addressIndex ?? 0) : undefined
 
 				// TON: derive Ed25519 public key for wallet deployment (StateInit)
@@ -5183,7 +5190,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				let result: { txid: string }
 
 				// Custom chains: broadcast via direct RPC
-				const rpcUrl = chain.id.startsWith('evm-custom-') ? getRpcUrl(chain) : undefined
+				const rpcUrl = chain.id.startsWith('evm-custom-') ? getEvmRpcSource(chain) : undefined
 				if (rpcUrl) {
 					const serialized = params.signedTx?.serializedTx || params.signedTx?.serialized || (typeof params.signedTx === 'string' ? params.signedTx : undefined)
 					if (!serialized || typeof serialized !== 'string') throw new Error(`Cannot extract serialized tx from: ${JSON.stringify(params.signedTx).slice(0, 200)}`)
@@ -5621,7 +5628,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 
 				if (!chain.chainId) throw new Error('Chain has no EVM chainId')
-				const rpcUrl = getRpcUrl(chain) || EVM_RPC_URLS[chain.chainId]
+				const rpcUrl = getEvmRpcSource(chain)
 				if (!rpcUrl) throw new Error(`No RPC URL for chain ${chain.coin}`)
 				const addr = params.contractAddress.trim()
 				if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) throw new Error('Invalid contract address')
@@ -6867,18 +6874,14 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 				const lower = raw.toLowerCase()
 
-				/* When the user specifies a chainId, only probe that one. Otherwise
-				 * try every EVM RPC we have configured in parallel — direct
-				 * on-chain ERC20 reads (name/symbol/decimals) work even for
-				 * tokens Pioneer hasn't indexed yet. */
+				/* Pioneer resolves token metadata on-chain, including unindexed
+				 * tokens. Probe built-in EVM networks or the requested custom chain. */
+				const allChains = getAllChains()
 				const chainsToProbe = params.chainId
 					? [params.chainId.replace(/^eip155:/, '')]
-					: Object.keys(EVM_RPC_URLS)
+					: CHAINS.filter(c => c.chainFamily === 'evm' && c.chainId).map(c => c.chainId!)
 
-				const allChains = getAllChains()
 				const hits = (await Promise.all(chainsToProbe.map(async (numericId) => {
-					const rpcUrl = EVM_RPC_URLS[numericId]
-					if (!rpcUrl) return null
 					// Resolve vault's internal chain id (e.g. 'base') from the EIP-155
 					// network id. SwapAsset.chainId per types.ts is the vault id, NOT
 					// CAIP-2 — every downstream consumer (balance lookup, addCustomToken
@@ -6889,6 +6892,8 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					const networkId = `eip155:${numericId}`
 					const vaultChain = allChains.find(c => c.networkId === networkId)
 					if (!vaultChain) return null
+					const rpcUrl = getEvmRpcSource(vaultChain)
+					if (!rpcUrl) return null
 					try {
 						const meta = await withTimeout(
 							getTokenMetadata(rpcUrl, lower),
@@ -6946,7 +6951,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				return previewSwapBuild(params, {
 					wallet: engine.wallet,
 					getAllChains,
-					getRpcUrl,
+					getEvmRpcSource,
 					getBtcXpub: () => {
 						if (btcAccounts.isInitialized) {
 							const selected = btcAccounts.getSelectedXpub()
@@ -6960,6 +6965,10 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					},
 					wrapSign: (fn) => fn(), // unused in preview
 					pushSubStage: NOOP_PUSH_SUBSTAGE,
+					getFirmwareVersion: () => engine.getDeviceState().firmwareVersion,
+				}).catch((error: any) => {
+					console.error(`[swap] preview failed (${params.fromChainId}): ${deviceErrorMessage(error)}`)
+					throw error
 				})
 			},
 

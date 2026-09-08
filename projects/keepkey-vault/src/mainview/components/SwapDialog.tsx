@@ -30,7 +30,8 @@ import { useEvmAddresses } from "../hooks/useEvmAddresses"
 import { useDeviceState } from "../hooks/useDeviceState"
 import { versionCompare } from "../../shared/firmware-versions"
 import { AssetPickerDialog } from "./AssetPickerDialog"
-import { networkDisplayName, ellipsizeCaip, parseCaip } from "../../shared/swap-discovery"
+import { SWAP_ACCENT, SwapNetworkBadge } from "./SwapSelectionGuide"
+import { parseCaip } from "../../shared/swap-discovery"
 import { isSymbolSquatter } from "../../shared/symbolSquatter"
 import { shouldRetryCompletedSwapMetadata } from "../../shared/swap-tracker-guards"
 import {
@@ -42,7 +43,6 @@ import {
   parseCustomSlippagePercent,
 } from "../../shared/slippage"
 import { KeepKeyDevice, RouteMap, SpinningDevice } from "./v3"
-import calculatingGif from "../assets/swap/calculating.gif"
 import shiftingGif from "../assets/swap/shifting.gif"
 import completedGif from "../assets/swap/completed.gif"
 import shapeshiftLogo from "../assets/providers/shapeshift.svg"
@@ -117,6 +117,10 @@ function nativeMaxFeeReserve(asset: SwapAsset, mode: NativeMaxReserveMode = 'saf
   if (asset.contractAddress) return 0
   if (asset.chainFamily === 'tron') return NATIVE_TRON_FEE_RESERVE
   if (asset.chainFamily === 'solana') return NATIVE_SOLANA_FEE_RESERVE
+  // Transparent Zcash transactions must pay ZIP-317's 10,000 zat floor
+  // (2 actions) even when the byte fee is lower. Reserve it before quoting a
+  // MAX swap so the swap service never commits to the entire balance.
+  if (asset.chainId === 'zcash') return 0.0001
   if (asset.chainFamily !== 'evm') return 0
   const chainDef = CHAINS.find(c => c.id === asset.chainId)
   const reserveKey = chainDef?.networkId ?? asset.chainId
@@ -382,29 +386,6 @@ const ETHERSCAN_BY_CHAIN: Record<string, string> = {
 }
 
 // Default "to" asset when swapping from a given chain — BTC-like default to ETH, others to BTC
-const DEFAULT_OUTPUT: Record<string, string> = {
-  bitcoin: 'ETH.ETH',
-  ethereum: 'BTC.BTC',
-  litecoin: 'BTC.BTC',
-  dogecoin: 'BTC.BTC',
-  bitcoincash: 'BTC.BTC',
-  dash: 'BTC.BTC',
-  zcash: 'ETH.ETH',         // ZEC.ZEC pool is on Mayachain; ETH outbound is the most-used
-  cosmos: 'ETH.ETH',
-  thorchain: 'ETH.ETH',
-  mayachain: 'ETH.ETH',
-  avalanche: 'ETH.ETH',
-  bsc: 'ETH.ETH',
-  base: 'ETH.ETH',
-  arbitrum: 'ETH.ETH',
-  optimism: 'ETH.ETH',
-  polygon: 'ETH.ETH',
-  ripple: 'ETH.ETH',
-  solana: 'ETH.ETH',
-  tron: 'ETH.ETH',
-  ton: 'ETH.ETH',
-}
-
 // ── Icons ───────────────────────────────────────────────────────────
 const SwapArrowIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -603,126 +584,77 @@ const DIALOG_CSS = `
 // AssetPickerDialog at modal-over-modal z-index. Search/filter logic moved
 // out of this component into AssetPickerDialog + swap-discovery.
 interface AssetSelectorProps {
+  side: "from" | "to"
   label: string
   selected: SwapAsset | null
   onOpenPicker: () => void
   disabled?: boolean
 }
 
-function AssetSelector({ label, selected, onOpenPicker, disabled }: AssetSelectorProps) {
+export function AssetSelector({ label, selected, onOpenPicker, disabled, side }: AssetSelectorProps) {
   const { t } = useTranslation("swap")
-
-  /* ── Selected asset → big prominent display ── */
-  if (selected) {
-    // Symbol squatter: an unverified token wearing a major chain's ticker/name
-    // (e.g. an ERC-20 that calls itself "SOLANA"). Strip its server icon so it
-    // can't wear the native logo, and warn — see shared/symbolSquatter.
-    const squatter = isSymbolSquatter(selected.caip, selected.symbol)
-    return (
-      <Box>
-        <Flex justify="space-between" align="center" mb="3">
-          <Text fontSize="xs" color="kk.textMuted" fontWeight="600" textTransform="uppercase" letterSpacing="0.05em">{label}</Text>
-          {!disabled && (
-            <Box as="button" display="flex" alignItems="center" gap="1" color="kk.textMuted" fontSize="11px" fontWeight="500"
-              _hover={{ color: "kk.gold" }} transition="color 0.15s"
-              onClick={onOpenPicker}>
-              {t("change") || "Change"} <ChevronDownIcon />
-            </Box>
-          )}
-        </Flex>
-        <Flex
-          direction="column"
-          align="center"
-          gap="2"
-          cursor={disabled ? "default" : "pointer"}
-          opacity={disabled ? 0.7 : 1}
-          onClick={() => { if (!disabled) onOpenPicker() }}
-          _hover={disabled ? {} : { opacity: 0.85 }}
-          transition="opacity 0.15s"
-        >
-          <Box position="relative" flexShrink={0}
-            style={{ animation: 'kkLogoFloat 3s ease-in-out infinite, kkLogoGlow 3s ease-in-out infinite' }}>
-            <AssetIcon
-              caip={selected.caip}
-              iconUrl={squatter ? undefined : selected.icon}
-              chainCaip={chainBadgeCaip(selected)}
-              size={80}
-              alt={selected.symbol}
-              ring={squatter ? "rgba(255,107,107,0.5)" : "rgba(139,227,196,0.28)"}
-            />
-          </Box>
-          {(() => {
-            // GAS vs TOKEN — prefer the CAIP namespace (authoritative: `/slip44:`
-            // is native, `/erc20:` `/token:` are tokens). A SwapAsset can carry a
-            // token CAIP yet a missing contractAddress, which would mislabel it as
-            // GAS — only fall back to contractAddress when there's no CAIP.
-            const isToken = selected.caip ? parseCaip(selected.caip).isToken : !!selected.contractAddress
-            return (
-              <VStack gap="0.5" align="center" minW="0" maxW="100%">
-                <Flex align="center" justify="center" gap="2">
-                  <Text fontSize="lg" fontWeight="800" color="kk.textPrimary" lineHeight="1.1">{selected.symbol}</Text>
-                  {/* GAS vs TOKEN — never let a token masquerade as the chain coin */}
-                  <Box
-                    bg={isToken ? "rgba(255,255,255,0.06)" : "rgba(233,196,106,0.14)"}
-                    color={isToken ? "kk.textMuted" : "kk.gold"}
-                    px="1.5" py="0.5" borderRadius="4px" fontSize="9px" fontWeight="700" letterSpacing="0.06em">
-                    {isToken ? "TOKEN" : "GAS"}
-                  </Box>
-                </Flex>
-                {/* Network — distinguishes USDC-on-Ethereum from USDC-on-Optimism */}
-                <Text fontSize="xs" color="kk.textSecondary" textAlign="center">
-                  {selected.name}
-                  {selected.caip && <> · <Text as="span" fontWeight="600" color="kk.textPrimary">{networkDisplayName(selected.caip.split("/")[0])}</Text></>}
-                </Text>
-                {/* Exact CAIP-19 (hex parts middle-ellipsized) so it stays unambiguous without overflowing */}
-                {selected.caip && (
-                  <Text fontSize="9px" fontFamily="mono" color="kk.textMuted" opacity={0.6} whiteSpace="nowrap" textAlign="center">
-                    {ellipsizeCaip(selected.caip)}
-                  </Text>
-                )}
-                {/* Symbol-squatter warning — a token impersonating a native coin's name */}
-                {squatter && (
-                  <Text fontSize="10px" fontWeight="700" color="#ff6b6b" textAlign="center" maxW="220px" lineHeight="1.3" mt="0.5">
-                    {t("symbolSquatterWarning", {
-                      defaultValue: "⚠ Unverified token using the “{{symbol}}” name — this is NOT the native coin. Verify the contract above.",
-                      symbol: selected.symbol,
-                    })}
-                  </Text>
-                )}
-              </VStack>
-            )
-          })()}
-        </Flex>
-      </Box>
-    )
-  }
-
-  /* ── No asset selected → dashed prompt ── */
+  const accent = SWAP_ACCENT[side]
+  const squatter = selected ? isSymbolSquatter(selected.caip, selected.symbol) : false
+  const isToken = selected ? (selected.caip ? parseCaip(selected.caip).isToken : !!selected.contractAddress) : false
   return (
-    <Box>
-      <Text fontSize="xs" color="kk.textMuted" mb="1" fontWeight="600" textTransform="uppercase" letterSpacing="0.05em">{label}</Text>
-      <Flex
-        as="button"
-        align="center"
-        gap="3"
-        w="full"
-        bg="rgba(255,255,255,0.03)"
-        border="2px dashed"
-        borderColor="rgba(255,255,255,0.1)"
-        borderRadius="xl"
-        px="4" py="5"
-        cursor={disabled ? "default" : "pointer"}
-        opacity={disabled ? 0.6 : 1}
-        _hover={disabled ? {} : { borderColor: "kk.gold", bg: "rgba(233,196,106,0.04)" }}
-        transition="all 0.2s"
-        onClick={() => { if (!disabled) onOpenPicker() }}
-      >
-        <Box w="64px" h="64px" borderRadius="full" bg="rgba(255,255,255,0.06)" display="flex" alignItems="center" justifyContent="center">
-          <Text fontSize="xl" color="kk.textMuted">?</Text>
+    <Box className="swap-selection">
+      <Text fontSize="10px" color={accent} mb="2" fontWeight="700" textTransform="uppercase" letterSpacing="0.05em">{label}</Text>
+      <Flex as="button" w="full" minH="56px" bg={selected ? "transparent" : `${accent}08`}
+        border={selected ? "0" : `1px dashed ${accent}44`} borderRadius="10px" p={selected ? "0" : "2"}
+        aria-label={`${selected ? "Change" : "Choose"} ${side === "from" ? "source" : "destination"} network and asset`}
+        aria-disabled={disabled} align="center" gap="3" textAlign="left"
+        cursor={disabled ? "default" : "pointer"} opacity={disabled ? 0.6 : 1}
+        _hover={disabled ? {} : { bg: `${accent}0a` }} transition="background 0.15s"
+        onClick={() => { if (!disabled) onOpenPicker() }}>
+        {selected ? (
+          <AssetIcon caip={selected.caip} iconUrl={squatter ? undefined : selected.icon}
+            chainCaip={chainBadgeCaip(selected)} size={44} alt={selected.symbol}
+            ring={squatter ? "rgba(255,107,107,0.5)" : `${accent}55`} />
+        ) : (
+          <Box w="40px" h="40px" flexShrink={0} borderRadius="12px" bg={`${accent}14`}
+            display="grid" placeItems="center" color={accent}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/>
+              <rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/>
+            </svg>
+          </Box>
+        )}
+        <Box flex="1" minW="0">
+          {selected ? <>
+            <Flex align="center" gap="2">
+              <Text fontSize="20px" fontWeight="800" color="kk.textPrimary" lineHeight="1.2" truncate>{selected.symbol}</Text>
+              <Text fontSize="8px" color="kk.textMuted" fontWeight="700">{isToken ? "TOKEN" : "NATIVE"}</Text>
+            </Flex>
+            {selected.caip && <Flex mt="1"><SwapNetworkBadge chainId={selected.caip.split("/")[0]} side={side} /></Flex>}
+          </> : <>
+            <Text fontSize="12px" fontWeight="600" color="kk.textPrimary">Choose a network</Text>
+            <Text fontSize="10px" color="kk.textMuted" mt="0.5">Then choose an asset</Text>
+          </>}
         </Box>
-        <Text fontSize="md" color="kk.textMuted" flex="1" textAlign="left" fontWeight="500">{t("selectAsset")}</Text>
-        {!disabled && <ChevronDownIcon />}
+        {!disabled && <Box color={accent} flexShrink={0}><ChevronDownIcon /></Box>}
       </Flex>
+      {squatter && selected && (
+        <Box mt="2">
+          <Text fontSize="10px" fontWeight="700" color="#ff6b6b" lineHeight="1.4">
+            {t("symbolSquatterWarning", { defaultValue: "⚠ Unverified token using the “{{symbol}}” name — this is NOT the native coin. Verify the contract below.", symbol: selected.symbol })}
+          </Text>
+          <Text fontSize="9px" color="kk.textSecondary" wordBreak="break-all">{selected.caip}</Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+/** Secondary choices stay available without taking space from amounts and the CTA. */
+function SwapDisclosure({ label, summary, children }: { label: string; summary?: ReactNode; children: ReactNode }) {
+  return (
+    <Box as="details" className="kk-acc" borderRadius="8px" border="1px solid rgba(255,255,255,0.07)" bg="rgba(255,255,255,0.02)">
+      <Flex as="summary" align="center" gap="2" px="2.5" py="2" fontSize="10px" color="kk.textSecondary">
+        <Text flexShrink={0} fontWeight="600">{label}</Text>
+        <Box flex="1" minW="0" textAlign="right" color="kk.textMuted">{summary}</Box>
+        <Box className="kk-acc-chev" flexShrink={0}><ChevronDownIcon /></Box>
+      </Flex>
+      <Box className="kk-acc-body" px="2.5" pb="2.5">{children}</Box>
     </Box>
   )
 }
@@ -1337,29 +1269,11 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
 
     if (match) {
       setFromAsset(match)
-      // Only auto-set a default output for native assets — token swaps let the user pick
-      if (!match.contractAddress) {
-        const defaultOut = DEFAULT_OUTPUT[match.chainId]
-        if (defaultOut) {
-          const outMatch = assets.find(a => a.asset === defaultOut)
-          if (outMatch) setToAsset(outMatch)
-        }
-      }
       hasAutoSelected.current = true
     }
   }, [assets, chain, initialFromCaip, initialFromAsset])
 
-  // Default the output to the input chain's native gas asset for a TOKEN input
-  // (e.g. USDT mainnet → ETH) when no output is chosen yet. Opening swap from a
-  // token page shouldn't land on a blank output; native inputs keep their own
-  // DEFAULT_OUTPUT above. Runs once assets are loaded (the initialFromAsset fast
-  // path sets fromAsset before assets arrive, so we can't do it inline there).
-  useEffect(() => {
-    if (!fromAsset || toAsset || assets.length === 0) return
-    if (!fromAsset.contractAddress) return // native input handled by DEFAULT_OUTPUT
-    const nativeOut = assets.find(a => a.chainId === fromAsset.chainId && !a.contractAddress)
-    if (nativeOut) setToAsset(nativeOut)
-  }, [fromAsset, toAsset, assets])
+  // Output stays empty until the user chooses its network and asset.
 
   // ── Resume from swap history ──────────────────────────────────────
   const hasResumedRef = useRef<string | null>(null)
@@ -2016,7 +1930,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
       isMax: sendIsMax, feeLevel: 5,
       fromAddressOverride: fromAddress,
       toAddressOverride: toAddress,
-      fromEvmAddressIndex: fromAsset.chainFamily === 'evm' ? evmAddresses.selectedIndex : undefined,
+      fromEvmAddressIndex: fromAsset.chainFamily === 'evm' ? effectiveEvmIndex : undefined,
       integration: quote.integration,
       relayTx: quote.relayTx,
       // Token sources Pioneer's available-assets doesn't pre-list (e.g. SPL
@@ -2025,7 +1939,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
     }).then((res) => { if (!cancelled) { setPreviewBuild(res); setPreviewLoading(false) } })
       .catch((e: any) => { if (!cancelled) { setPreviewError(e?.message || 'Preview failed'); setPreviewLoading(false) } })
     return () => { cancelled = true }
-  }, [phase, quote, fromAsset, toAsset, sendAmount, sendIsMax, fromBalance, fromAddress, toAddress])
+  }, [phase, quote, fromAsset, toAsset, sendAmount, sendIsMax, fromBalance, fromAddress, toAddress, effectiveEvmIndex])
 
   const auditPayloadReady = !!previewBuild?.unsignedTx
   const previewBalanceBlocked = !!previewBuild?.balance && !previewBuild.balance.sufficient
@@ -2318,7 +2232,9 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
       // RAM. The backend now withholds the schema when AdvancedMode is off, so
       // reaching here means AdvancedMode is ON but no signer is armed for this
       // session -- which the raw message blames on the transaction instead.
-      if (/Invalid Solana instruction schema/i.test(raw)) {
+      if (/KeepKey device timed out/i.test(raw)) {
+        friendly = raw
+      } else if (/Invalid Solana instruction schema/i.test(raw)) {
         friendly = t("solanaSchemaUnverified",
           "Clear-signing isn't armed on this device this session, so it couldn't verify the swap details. Load the ClearSign signer in Settings, then try again.")
       } else if (/User rejected|user denied|device.*reject/i.test(raw)) {
@@ -2341,7 +2257,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
       setError(friendly)
       setPhase('review')
     }
-  }, [quote, quoteFetchedAt, fromAsset, toAsset, sendAmount, sendIsMax, fromBalance, fromAddress, toAddress, slippageBps, balances, phase, previewLoading, previewError, previewBuild, allowSolanaBlindSigning, useCustomAddress])
+  }, [quote, quoteFetchedAt, fromAsset, toAsset, sendAmount, sendIsMax, fromBalance, fromAddress, toAddress, effectiveEvmIndex, slippageBps, balances, phase, previewLoading, previewError, previewBuild, allowSolanaBlindSigning, useCustomAddress])
 
   // ── Reset ─────────────────────────────────────────────────────────
   const reset = useCallback(() => {
@@ -2629,7 +2545,8 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
         w={isSwapComplete && phase === 'submitted' ? "1040px" : "760px"}
         maxW="94vw"
         maxH="90vh"
-        overflow="auto"
+        display="flex" flexDirection="column" overflow="hidden"
+        role="dialog" aria-modal="true" aria-label="Swap"
         onClick={(e) => e.stopPropagation()}
         style={{
           animation: 'kkSwapFadeIn 0.2s ease-out',
@@ -2642,7 +2559,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
         }}
       >
         {/* ── Header ──────────────────────────────────────────────── */}
-        <Flex px="5" py="2.5" borderBottom="1px solid" borderColor="kk.border" align="center" justify="space-between"
+        <Flex flexShrink={0} px="5" py="2.5" borderBottom="1px solid" borderColor="kk.border" align="center" justify="space-between"
           bg="transparent">
           <HStack gap="2.5" align="center">
             <ProviderBadge swapper={quote?.swapper || liveSwapper || quote?.integration} size={22} variant="compact" />
@@ -2719,7 +2636,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
         {/* ── Body ────────────────────────────────────────────────── */}
         {/* Padding zeroed on the complete-swap view so the 2-column hero/details
             layout reaches the modal edges and the footer can span full width. */}
-        <Box
+        <Box data-swap-body flex="1" minH="0" overflowY="auto"
           px={isSwapComplete && phase === 'submitted' ? "0" : "5"}
           py={isSwapComplete && phase === 'submitted' ? "0" : "3"}
         >
@@ -3790,7 +3707,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                 <Text fontSize="sm" color="kk.textSecondary" textAlign="center" lineHeight="1.5">
                   {blindSignCause === 'device'
                     ? t('deviceBlindSignBody', 'The device could not read this transaction well enough to show you what it does, and it refuses to sign anything it cannot display unless you turn on Advanced Mode. Newer firmware can read more transaction types, so this may not be needed after an update.')
-                    : t('solanaOpaqueBody', 'This Relay transaction uses a custom Solana program and lookup-table accounts that your KeepKey cannot fully verify. No signed ClearSign descriptor was supplied for the route, so this transaction requires the opaque fallback.')}
+                    : t('solanaOpaqueBody', 'This Relay transaction reads accounts from Solana lookup tables. Vault can decode the route on this computer, but KeepKey 7.16 cannot authenticate those table-supplied accounts, so its signed instruction description cannot replace blind signing. Signing requires Advanced Mode on the device.')}
                 </Text>
               </VStack>
 
@@ -4344,22 +4261,21 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
 
           {/* ── INPUT — side-by-side You pay / You receive ─────────── */}
           {!loadingAssets && !assetLoadError && (phase === 'input' || phase === 'quoting') && (
-            <VStack gap="2" align="stretch">
-              {/* Side-by-side: FROM | center pivot | TO. Pivot is absolutely
-                  positioned over the gap so the two columns stay equal-width.
-                  Hover rotates 180° + glows gold to read as "swap direction". */}
+            <VStack className="swap-selection" gap="2" align="stretch">
+              {/* Compact asset cards; the network stays beside each symbol. */}
               <Box position="relative">
-              <Flex gap="3" align="stretch">
+              <Flex className="swap-asset-columns" gap="5" align="stretch">
                 {/* FROM column */}
                 <Box
-                  flex="1"
-                  bg="linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(139,227,196,0.04) 100%)"
-                  border="1px solid" borderColor="kk.border" borderRadius="xl" p="3"
+                  flex="1" minW="0"
+                  bg="linear-gradient(135deg, rgba(233,196,106,0.06) 0%, rgba(233,196,106,0.015) 100%)"
+                  border="1px solid" borderColor="rgba(233,196,106,0.22)" borderRadius="xl" p="3"
                   transition="border-color 0.2s"
-                  _hover={{ borderColor: "rgba(139,227,196,0.22)" }}
+                  _hover={{ borderColor: "rgba(233,196,106,0.45)" }}
                 >
                   <AssetSelector
-                    label={t("youPay", "You pay")}
+                    side="from"
+                    label={t("youSend", "You send")}
                     selected={fromAsset}
                     onOpenPicker={() => setPickerSide('from')}
                     disabled={busy}
@@ -4432,58 +4348,6 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                         </Flex>
                       </Flex>
 
-                      {/* EVM address switcher — shown when multiple addresses tracked.
-                          Uses local dialog state so switching here doesn't affect AssetPage. */}
-                      {fromAsset?.chainFamily === 'evm' && evmAddresses.addresses.length > 1 && (
-                        <Box mt="2" mb="2">
-                          <Text fontSize="8px" color="kk.textMuted" textTransform="uppercase" letterSpacing="0.08em" mb="1">From address</Text>
-                          <Flex gap="1" flexWrap="wrap">
-                            {evmAddresses.addresses.map(addr => {
-                              const isSelected = addr.addressIndex === effectiveEvmIndex
-                              const chainBal = addr.chainBalances?.[fromAsset.chainId]
-                              const chainBalLoading = chainBal === undefined
-                              // For selected address fall back to global balances when chainBal not yet loaded
-                              let bal = 0
-                              if (chainBal) {
-                                bal = parseFloat(chainBal.balance)
-                              } else if (isSelected) {
-                                const gb = balances.find(b => b.chainId === fromAsset.chainId)
-                                bal = gb ? parseFloat(gb.balance) : 0
-                              }
-                              const snippet = addr.address ? `${addr.address.slice(0, 6)}…${addr.address.slice(-4)}` : `#${addr.addressIndex}`
-                              return (
-                                <Box
-                                  key={addr.addressIndex}
-                                  as="button"
-                                  onClick={() => setEvmAddressIndexOverride(addr.addressIndex)}
-                                  px="2" py="1"
-                                  borderRadius="md"
-                                  border="1px solid"
-                                  borderColor={isSelected ? "kk.gold" : "kk.border"}
-                                  bg={isSelected ? "rgba(233,196,106,0.1)" : "rgba(255,255,255,0.03)"}
-                                  cursor="pointer"
-                                  transition="all 0.15s"
-                                  _hover={{ borderColor: "kk.gold", bg: "rgba(233,196,106,0.06)" }}
-                                  disabled={busy}
-                                >
-                                  <Flex direction="column" align="flex-start" gap="0">
-                                    <Text fontSize="9px" fontFamily="mono" color={isSelected ? "kk.gold" : "kk.textSecondary"} fontWeight="600" lineHeight="1.3">
-                                      {snippet}
-                                    </Text>
-                                    {chainBalLoading && !isSelected
-                                      ? <Spinner size="xs" color="kk.textMuted" />
-                                      : <Text fontSize="9px" fontFamily="mono" color="kk.textMuted" lineHeight="1.3">
-                                          {bal > 0 ? `${bal.toFixed(4)} ${fromAsset.symbol}` : `0 ${fromAsset.symbol}`}
-                                        </Text>
-                                    }
-                                  </Flex>
-                                </Box>
-                              )
-                            })}
-                          </Flex>
-                        </Box>
-                      )}
-
                       {/* Amount + USD-equivalent side by side: the input takes
                           the available width, the converted figure sits right
                           on the same baseline. Click the converted value to
@@ -4494,6 +4358,7 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                             <Text position="absolute" left="8px" top="50%" transform="translateY(-50%)" fontSize="xs" fontWeight="600" color="kk.textSecondary" pointerEvents="none" zIndex={1}>$</Text>
                           )}
                           <Input
+                            aria-label="Amount to send"
                             value={isMax ? (sendAmount ? formatBalance(sendAmount) : 'MAX') : (inputMode === 'crypto' ? amount : fiatAmount)}
                             onChange={(e) => { if (isMax) { setIsMax(false); setMaxReserveMode('safe') } inputMode === 'crypto' ? handleCryptoChange(e.target.value) : handleFiatChange(e.target.value) }}
                             placeholder={inputMode === 'fiat' ? '0.00' : t("amountPlaceholder")}
@@ -4547,7 +4412,10 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                         </Text>
                       )}
                       {isFeeReservedNativeMax && !nativeMaxInsufficient && fromAsset && nativeMaxReserveDisplay && (
-                        <Box mt="2" p="2" borderRadius="md" bg="rgba(233,196,106,0.06)" border="1px solid rgba(233,196,106,0.18)">
+                        <Box mt="2">
+                          <SwapDisclosure label="Fee reserve" summary={<Text color="var(--gold)">
+                            ~{formatBalance(String(nativeMaxReserveDisplay.reserveAmount))} {fromAsset.symbol} · {maxReserveMode === 'safe' ? 'Safe' : 'Closer MAX'}
+                          </Text>}>
                           <Text fontSize="10px" color="kk.textSecondary" fontFamily="mono" lineHeight="1.45">
                             {t("maxReserveDisclosure", {
                               defaultValue: "MAX swaps {{amount}} {{symbol}} and keeps ~{{reserve}} {{symbol}} for network fees{{usd}}.",
@@ -4587,12 +4455,14 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                                   )
                                 })}
                               </Flex>
-                              {maxReserveMode === 'closer' && (
-                                <Text fontSize="9px" color="var(--gold)" fontFamily="mono" flex="1" minW="150px">
-                                  {t("maxReserveCloserWarning", "Tighter gas reserve; swap may fail if gas moves before signing.")}
-                                </Text>
-                              )}
+
                             </Flex>
+                          )}
+                          </SwapDisclosure>
+                          {maxReserveMode === 'closer' && (
+                            <Text fontSize="9px" color="var(--gold)" mt="1">
+                              {t("maxReserveCloserWarning", "Tighter gas reserve; swap may fail if gas moves before signing.")}
+                            </Text>
                           )}
                         </Box>
                       )}
@@ -4627,42 +4497,75 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                   )}
 
                   {fromAsset && fromAddress && (
-                    <Flex mt="2" px="1" align="center" gap="1">
-                      <Box w="4px" h="4px" borderRadius="full" bg="var(--teal)" flexShrink={0} />
-                      <Text fontSize="9px" fontFamily="mono" color="kk.textMuted" truncate title={fromAddress}>
-                        {fromAddress.slice(0, 10)}...{fromAddress.slice(-6)}
-                      </Text>
-                    </Flex>
+                    <Box mt="2">
+                      {fromAsset.chainFamily === 'evm' && evmAddresses.addresses.length > 1 ? (
+                        <SwapDisclosure label="From address" summary={<Text truncate>{fromAddress.slice(0, 8)}…{fromAddress.slice(-6)}</Text>}>
+                          <Flex gap="1" flexWrap="wrap">
+                            {evmAddresses.addresses.map(addr => {
+                              const isSelected = addr.addressIndex === effectiveEvmIndex
+                              const chainBal = addr.chainBalances?.[fromAsset.chainId]
+                              const chainBalLoading = chainBal === undefined
+                              // For selected address fall back to global balances when chainBal not yet loaded
+                              let bal = 0
+                              if (chainBal) {
+                                bal = parseFloat(chainBal.balance)
+                              } else if (isSelected) {
+                                const gb = balances.find(b => b.chainId === fromAsset.chainId)
+                                bal = gb ? parseFloat(gb.balance) : 0
+                              }
+                              const snippet = addr.address ? `${addr.address.slice(0, 6)}…${addr.address.slice(-4)}` : `#${addr.addressIndex}`
+                              return (
+                                <Box
+                                  key={addr.addressIndex}
+                                  as="button"
+                                  onClick={() => setEvmAddressIndexOverride(addr.addressIndex)}
+                                  px="2" py="1"
+                                  borderRadius="md"
+                                  border="1px solid"
+                                  borderColor={isSelected ? "kk.gold" : "kk.border"}
+                                  bg={isSelected ? "rgba(233,196,106,0.1)" : "rgba(255,255,255,0.03)"}
+                                  cursor="pointer"
+                                  transition="all 0.15s"
+                                  _hover={{ borderColor: "kk.gold", bg: "rgba(233,196,106,0.06)" }}
+                                  disabled={busy}
+                                >
+                                  <Flex direction="column" align="flex-start" gap="0">
+                                    <Text fontSize="9px" fontFamily="mono" color={isSelected ? "kk.gold" : "kk.textSecondary"} fontWeight="600" lineHeight="1.3">
+                                      {snippet}
+                                    </Text>
+                                    {chainBalLoading && !isSelected
+                                      ? <Spinner size="xs" color="kk.textMuted" />
+                                      : <Text fontSize="9px" fontFamily="mono" color="kk.textMuted" lineHeight="1.3">
+                                          {bal > 0 ? `${bal.toFixed(4)} ${fromAsset.symbol}` : `0 ${fromAsset.symbol}`}
+                                        </Text>
+                                    }
+                                  </Flex>
+                                </Box>
+                              )
+                            })}
+                          </Flex>
+                          <Text fontSize="9px" color="kk.textMuted" wordBreak="break-all" mt="2">{fromAddress}</Text>
+                        </SwapDisclosure>
+                      ) : (
+                        <Text fontSize="9px" color="kk.textMuted" truncate title={fromAddress} px="1">
+                          From {fromAddress.slice(0, 8)}…{fromAddress.slice(-6)}
+                        </Text>
+                      )}
+                    </Box>
                   )}
                 </Box>
 
-                {/* Flip button — centered vertically */}
-                <Flex align="center" justify="center" flexShrink={0}>
-                  <Box
-                    as="button" w="36px" h="36px" display="flex" alignItems="center" justifyContent="center"
-                    borderRadius="full" border="2px solid" borderColor="rgba(233,196,106,0.4)"
-                    bg="linear-gradient(135deg, rgba(233,196,106,0.15) 0%, rgba(233,196,106,0.05) 100%)"
-                    color="var(--gold)" cursor="pointer"
-                    _hover={{ borderColor: "var(--gold)", bg: "rgba(233,196,106,0.2)", transform: "rotate(180deg) scale(1.1)" }}
-                    transition="all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)"
-                    onClick={handleFlip}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
-                    </svg>
-                  </Box>
-                </Flex>
-
                 {/* TO column */}
                 <Box
-                  flex="1"
+                  flex="1" minW="0"
                   bg="linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(139,227,196,0.04) 100%)"
-                  border="1px solid" borderColor="kk.border" borderRadius="xl" p="3"
+                  border="1px solid" borderColor="rgba(139,227,196,0.22)" borderRadius="xl" p="3"
                   transition="border-color 0.2s"
                   _hover={{ borderColor: "rgba(139,227,196,0.22)" }}
                 >
                   <AssetSelector
-                    label={t("youReceive", "You receive")}
+                    side="to"
+                    label={t("youReceiveShort", "You receive")}
                     selected={toAsset}
                     onOpenPicker={() => setPickerSide('to')}
                     disabled={busy}
@@ -4679,61 +4582,15 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                           ≈ {fmtCompact(parseFloat(quote.expectedOutput) * toPriceUsd)}
                         </Text>
                       )}
-                      {isFeeReservedNativeMax && fromAsset && nativeMaxReserveDisplay && (
-                        <Text fontSize="9px" color="var(--gold)" mt="1">
-                          {t("sendMaxGasReserveNote", {
-                            defaultValue: "Keeping ~{{reserve}} {{symbol}} for network fees{{usd}}.",
-                            reserve: formatBalance(String(nativeMaxReserveDisplay.reserveAmount)),
-                            symbol: fromAsset.symbol,
-                            usd: nativeMaxReserveDisplay.reserveUsd > 0 ? ` (${fmtCompact(nativeMaxReserveDisplay.reserveUsd)})` : '',
-                          })}
-                        </Text>
-                      )}
                     </Box>
                   )}
 
-                  {/* Quoting placeholder — sits in the same slot the price will
-                      occupy. Reads as "your number is computing here", not as
-                      a separate loading screen tacked on below the form. */}
                   {toAsset && !quote && phase === 'quoting' && (
-                    <Box mt="3" p="2.5" bg="rgba(233,196,106,0.06)" borderRadius="lg" border="1px solid" borderColor="rgba(233,196,106,0.20)"
-                      style={{ animation: 'kkSwapFadeIn 0.25s ease-out' }}>
-                      <Text fontSize="9px" color="kk.textMuted" fontWeight="600" textTransform="uppercase" letterSpacing="0.05em" mb="1.5">
-                        {t("expectedOutput")}
-                      </Text>
-                      <Flex align="center" gap="3">
-                        <Box
-                          w="68px"
-                          h="68px"
-                          borderRadius="full"
-                          flexShrink={0}
-                          overflow="hidden"
-                          display="flex"
-                          alignItems="center"
-                          justifyContent="center"
-                          style={{
-                            background: 'radial-gradient(circle at 50% 45%, rgba(233,196,106,0.22), rgba(233,196,106,0.06) 70%)',
-                            boxShadow: '0 0 0 1px rgba(233,196,106,0.25), 0 4px 14px -6px rgba(233,196,106,0.35)',
-                          }}
-                        >
-                          <Image
-                            src={calculatingGif}
-                            alt=""
-                            w="60px"
-                            h="60px"
-                            style={{ objectFit: 'contain' }}
-                          />
-                        </Box>
-                        <VStack gap="0" align="flex-start" minW="0">
-                          <Text fontSize="xs" color="var(--gold)" fontWeight="700" letterSpacing="-0.005em">
-                            {t("findingBestRoute") || "Finding best route…"}
-                          </Text>
-                          <Text fontSize="10px" color="kk.textMuted" fontWeight="500">
-                            {t("gettingQuote")}
-                          </Text>
-                        </VStack>
-                      </Flex>
-                    </Box>
+                    <Flex mt="3" p="3" gap="2" align="center" minH="62px" bg="rgba(139,227,196,0.04)" borderRadius="lg"
+                      border="1px solid rgba(139,227,196,0.16)">
+                      <Spinner size="sm" color="var(--teal)" />
+                      <Text fontSize="11px" color="kk.textSecondary">{t("findingBestRoute", "Finding best route…")}</Text>
+                    </Flex>
                   )}
 
                   {/* Fallback fetch — the amount is valid and nothing is blocking
@@ -4839,10 +4696,10 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                 as="button"
                 position="absolute"
                 left="50%"
-                top="50%"
+                top="58px"
                 transform="translate(-50%, -50%)"
-                w="40px"
-                h="40px"
+                w="30px"
+                h="30px"
                 borderRadius="full"
                 bg="var(--ink-3)"
                 border="1px solid var(--ink-4)"
@@ -4875,11 +4732,12 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
               </Box>
               </Box>
 
-              {/* Slippage tolerance — visible whenever a swap target is selected.
+              {/* Slippage tolerance — expandable once a swap target is selected.
                   Bps math: 50 = 0.5%, 100 = 1%, 300 = 3%. Custom uses an inline
                   controlled input because native window.prompt is unavailable in
                   some Electron/WebView builds. */}
               {fromAsset && toAsset && (
+                <SwapDisclosure label="Swap details" summary={`Slippage ${slippageBps / 100}%`}>
                 <VStack align="stretch" gap="1" px="1" py="1">
                   <Flex align="center" justify="space-between" gap="2">
                     <Text fontSize="10px" color="kk.textMuted" fontWeight="600" textTransform="uppercase" letterSpacing="0.05em">
@@ -4961,35 +4819,21 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                     <Text fontSize="9px" color="kk.error" textAlign="right">{customSlippageError}</Text>
                   )}
                 </VStack>
-              )}
-
-              {/* Review Swap button — only when quote is ready. Gradient
-                  matches the handoff CTA style: teal-2 → teal with a soft
-                  teal glow shadow. Bigger touch target than the prior xs button. */}
-              {phase === 'input' && quote && fromAsset && toAsset && !sameAsset && (
-                <Box
-                  as="button"
-                  w="full"
-                  py="3"
-                  borderRadius="14px"
-                  fontWeight="600"
-                  fontSize="14px"
-                  letterSpacing="-0.005em"
-                  color="var(--ink-0)"
-                  border="0"
-                  cursor="pointer"
-                  style={{
-                    background: 'linear-gradient(180deg, var(--teal-2), var(--teal))',
-                    boxShadow: '0 8px 24px -8px rgba(139,227,196,0.5)',
-                    transition: 'transform 0.15s, box-shadow 0.15s',
-                  }}
-                  _hover={{
-                    transform: "translateY(-1px)",
-                  }}
-                  onClick={() => setPhase('review')}
-                >
-                  {t("reviewSwap") || "Review Swap"}
-                </Box>
+                  <Box mt="3" pt="2" borderTop="1px solid rgba(255,255,255,0.06)">
+                    {([['Send asset', fromAsset], ['Receive asset', toAsset]] as const).map(([label, asset]) => (
+                      <Box key={label} mt="2">
+                        <Text fontSize="10px" color="kk.textSecondary">{label} · {asset.name}</Text>
+                        <Text fontSize="9px" color="kk.textMuted" wordBreak="break-all">{asset.caip}</Text>
+                      </Box>
+                    ))}
+                  </Box>
+                  <a href="https://api.shapeshift.com/docs#description/introduction" target="_blank" rel="noopener noreferrer">
+                    <Flex gap="1.5" align="center" mt="3" color="kk.textMuted">
+                      <Image src={shapeshiftLogo} alt="" w="11px" h="11px" />
+                      <Text fontSize="9px">Powered by ShapeShift API</Text>
+                    </Flex>
+                  </a>
+                </SwapDisclosure>
               )}
 
               {/* Hint */}
@@ -5019,36 +4863,18 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
           )}
         </Box>
 
-        {/* ── Footer ──────────────────────────────────────────────── */}
-        {!loadingAssets && phase !== 'submitted' && !busy && phase !== 'review' && phase !== 'blind-signing-required' && (
-          <Flex px="5" py="2.5" borderTop="1px solid" borderColor="kk.border" justify="space-between" align="center" gap="3"
-            bg="linear-gradient(90deg, transparent 0%, rgba(35,220,200,0.02) 50%, transparent 100%)">
-            <Box minW="0" flex="1">
-              {quote ? (
-                <ProverChip
-                  swapper={quote.swapper}
-                  integration={quote.integration}
-                  onClick={() => setQuoteDetailsOpen(true)}
-                />
-              ) : null /* don't claim a provider before we have a quote */}
+        {/* Primary action stays outside the scrolling body. */}
+        {!loadingAssets && !assetLoadError && phase === 'input' && quote && fromAsset && toAsset && !sameAsset && (
+          <Flex className="swap-selection" px="5" py="3" gap="3" align="center" flexShrink={0}
+            borderTop="1px solid" borderColor="kk.border" bg="var(--ink-1)">
+            <Box flexShrink={0}>
+              <ProverChip swapper={quote.swapper} integration={quote.integration} onClick={() => setQuoteDetailsOpen(true)} />
             </Box>
-            <Box
-              as="a"
-              href="https://api.shapeshift.com/docs#description/introduction"
-              target="_blank"
-              rel="noopener noreferrer"
-              display="flex"
-              alignItems="center"
-              gap="1.5"
-              opacity="0.55"
-              _hover={{ opacity: 1 }}
-              transition="opacity 0.15s"
-              flexShrink={0}
-            >
-              <Image src={shapeshiftLogo} alt="" w="11px" h="11px" />
-              <Text fontSize="9px" color="kk.textMuted" letterSpacing="0.04em">
-                Powered by ShapeShift API
-              </Text>
+            <Box as="button" flex="1" py="3" borderRadius="12px" fontWeight="600" fontSize="14px"
+              color="var(--ink-0)" border="0" cursor="pointer"
+              bg="linear-gradient(180deg, var(--teal-2), var(--teal))"
+              _hover={{ filter: "brightness(1.06)" }} onClick={() => setPhase('review')}>
+              {t("reviewSwap") || "Review Swap"}
             </Box>
           </Flex>
         )}

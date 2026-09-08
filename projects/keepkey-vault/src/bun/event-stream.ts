@@ -5,9 +5,9 @@
  * currently-watched addresses. Reconnects automatically on drop.
  * Closes immediately on stopEventStream().
  *
- * No xpubs — UTXO chains are handled by the watchtower sync worker
- * server-side. Only individual addresses (EVM, Cosmos, XRP, Solana, etc.)
- * are subscribed here.
+ * UTXO xpubs are valid watch identifiers. The self-contained Pioneer provider
+ * demand-polls their Blockbook histories only while this stream is connected;
+ * there is no watchtower or always-on cache worker.
  */
 
 import { getPioneerApiBase, getQueryKey } from './pioneer'

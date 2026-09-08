@@ -406,7 +406,7 @@ Default paths used by KeepKey Vault:
 | BNB Smart Chain | `m/44'/60'/0'/0/0` | 56 |
 | Base | `m/44'/60'/0'/0/0` | 8453 |
 | Monad | `m/44'/60'/0'/0/0` | 143 |
-| Hyperliquid | `m/44'/60'/0'/0/0` | 2868 |
+| Hyperliquid | `m/44'/60'/0'/0/0` | 999 |
 | Custom EVM chains | `m/44'/60'/0'/0/0` | user-defined |
 
 All EVM chains derive the same address at a given account index. The firmware receives `coin: 'Ethereum'` for all EVM chains.

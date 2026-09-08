@@ -98,6 +98,12 @@ export const LoadClearsignSignerRequest = z.object({
   { message: 'icon, iconWidth, and iconHeight must all be present or all absent' },
 )
 
+/** POST /eth/clearsign/sign-alpha-delegate-certificate — gated 7.16 ceremony only. */
+export const SignAlphaDelegateCertificateRequest = z.object({
+  signedBodyHex: z.string().regex(/^(0x)?[0-9a-fA-F]{150}$/),
+  expectedMessageHashHex: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/),
+}).strict()
+
 /** POST /eth/sign-typed-data */
 export const EthSignTypedDataRequest = z.object({
   address: z.string().min(1),
@@ -164,18 +170,28 @@ export const XrpSignRequest = z.object({
   addressNList: z.array(z.number().int()).optional(),
 }).strip()
 
-/** POST /solana/sign-transaction — sign a raw Solana transaction */
-export const SolanaSwapMetadata = z.object({
-  /** Base64-encoded canonical KKSOLSW1 descriptor. */
-  payload: z.string().min(1),
-  /** Base64-encoded 64-byte compact secp256k1 signature over SHA256(payload). */
+/**
+ * Transaction-bound, signer-attested resolution of the Address Lookup Table
+ * accounts this exact message references (KKSOLSW1). `accounts` is the raw
+ * canonical account list — NOT an opaque descriptor blob — matching
+ * SolanaSignTx.lut_account on the wire: all writable lookup keys, then all
+ * readonly lookup keys, in lookup-table/index order, max 8.
+ *
+ * `signerKeyId` 0-3 is a runtime clear-sign signer slot (annotation-only,
+ * Advanced Mode still required); 0x80 is the certified delegate sentinel and
+ * requires `certificate` to also be present.
+ */
+export const SolanaLutProof = z.object({
+  /** Base64-encoded 32-byte account keys, writable-then-readonly, canonical order. Max 8. */
+  accounts: z.array(z.string().min(1)).min(1).max(8),
+  /** Base64-encoded 64-byte compact secp256k1 signature over SHA256(preimage). */
   signature: z.string().min(1),
-  /** Device ClearSign signer slot (0 = built-in, 1..3 = user-loaded). */
-  signerKeyId: z.number().int().min(0).max(3),
+  /** Device ClearSign signer slot (0-3), or 0x80 for the certified delegate path. */
+  signerKeyId: z.union([z.number().int().min(0).max(3), z.literal(0x80)]),
 }).strict()
 
 /**
- * Reusable KKSOLSC1 instruction schema. Unlike the swap descriptor this is not
+ * Reusable KKSOLSC1 instruction schema. Unlike the LUT proof this is not
  * bound to one transaction — it describes how to read a program's instruction,
  * so one signature serves every future call to that program.
  */
@@ -184,8 +200,8 @@ export const SolanaInstructionSchema = z.object({
   payload: z.string().min(1),
   /** Base64-encoded 64-byte compact secp256k1 signature over SHA256(payload). */
   signature: z.string().min(1),
-  /** Device ClearSign signer slot (0 = built-in, 1..3 = user-loaded). */
-  signerKeyId: z.number().int().min(0).max(3),
+  /** Device ClearSign signer slot (0-3), or 0x80 for the certified delegate path. */
+  signerKeyId: z.union([z.number().int().min(0).max(3), z.literal(0x80)]),
 }).strict()
 
 /** x402 v2 SVM exact PaymentRequirements needed for device-verifiable payTo. */
@@ -208,10 +224,13 @@ export const SolanaSignRequest = z.object({
   address_n: z.array(z.number().int()).optional(),
   addressNList: z.array(z.number().int()).optional(),
   raw_tx: z.string().min(1),
-  /** Transaction-bound ClearSign metadata. Partial descriptors are rejected. */
-  swapMetadata: SolanaSwapMetadata.optional(),
+  /** Transaction-bound LUT account proof. Partial proofs are rejected. */
+  lutProof: SolanaLutProof.optional(),
   /** Reusable, signer-attested instruction schema. Partial schemas rejected. */
   schema: SolanaInstructionSchema.optional(),
+  /** 139-byte KeepKey root certificate for the certified path (hex or base64).
+   * Required exactly when lutProof/schema use signerKeyId 0x80. */
+  certificate: z.string().min(1).optional(),
   /**
    * Optional x402 PaymentRequirements. Vault cross-checks these fields against
    * the signed zero-LUT v0 bytes before forwarding device display metadata.
@@ -219,7 +238,13 @@ export const SolanaSignRequest = z.object({
   x402: SolanaX402Requirements.optional(),
   // One-shot opaque-signing consent is intentionally not part of the public
   // REST contract. Unknown fields are stripped; the Vault UI grants consent.
-}).strip()
+}).strip().refine(
+  (v) => {
+    const certifiedRequested = v.lutProof?.signerKeyId === 0x80 || v.schema?.signerKeyId === 0x80
+    return certifiedRequested === (v.certificate !== undefined)
+  },
+  { message: 'certificate is required exactly when lutProof or schema uses signerKeyId 0x80' },
+)
 
 /** POST /tron/sign-transaction — sign a raw Tron transaction */
 export const TronSignRequest = z.object({

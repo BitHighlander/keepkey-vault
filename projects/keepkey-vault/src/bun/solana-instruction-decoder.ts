@@ -70,11 +70,14 @@ export interface SolanaProgramRegistry {
 // decoded program (e.g. a bridge router) reaches the review UI without waiting
 // on a package release. Contribute the same entry upstream and drop it here
 // once a published version carries it.
-export const PROGRAM_REGISTRY: SolanaProgramRegistry = {
-  programs: {
-    ...(solanaProgramsData as unknown as SolanaProgramRegistry).programs,
-    ...(localPrograms as unknown as SolanaProgramRegistry).programs,
-  },
+const upstreamPrograms = (solanaProgramsData as unknown as SolanaProgramRegistry).programs
+export const PROGRAM_REGISTRY: SolanaProgramRegistry = { programs: { ...upstreamPrograms } }
+for (const [id, local] of Object.entries((localPrograms as unknown as SolanaProgramRegistry).programs)) {
+  PROGRAM_REGISTRY.programs[id] = {
+    ...upstreamPrograms[id],
+    ...local,
+    instructions: { ...upstreamPrograms[id]?.instructions, ...local.instructions },
+  }
 }
 
 // ── Decoded-output types ──────────────────────────────────────────────

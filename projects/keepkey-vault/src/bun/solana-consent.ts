@@ -1,4 +1,5 @@
 import type { SolanaTxDecodedInfo, SolanaTxDecodedInstruction } from '../shared/types'
+import { hasCompleteCertifiedSolanaEnvelope, supportsCertifiedClearSign } from './solana-certified-policy'
 
 const SYSTEM_PROGRAM = '11111111111111111111111111111111'
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
@@ -55,16 +56,16 @@ function firmwareClearSigns(instruction: SolanaTxDecodedInstruction): boolean {
 
 /**
  * Decide whether an external REST Solana transaction needs explicit one-shot
- * opaque-signing consent. Provider-signed transaction metadata is verified (or
+ * consent in Vault. Root-certified transaction metadata is verified (or
  * rejected without fallback) by firmware. Without it, mirror firmware's
  * clear-sign boundary conservatively so a richer host decoder cannot turn an
  * on-device opaque transaction into an implicitly approved request.
  */
 export function requiresSolanaBlindSigningConsent(
   decoded: SolanaTxDecodedInfo | undefined,
-  hasTransactionBoundMetadata: boolean,
+  hasCertifiedMetadata: boolean,
 ): boolean {
-  if (hasTransactionBoundMetadata) return false
+  if (hasCertifiedMetadata) return false
   if (
     !decoded
     || decoded.staticAccountCount > 32
@@ -76,4 +77,17 @@ export function requiresSolanaBlindSigningConsent(
     return true
   }
   return decoded.instructions.some((instruction) => !firmwareClearSigns(instruction))
+}
+
+/** Host approval and the device policy are independent. SolanaSignTx tag 8
+ * is reserved; there is no one-request override of firmware AdvancedMode. */
+export function solanaSigningRequirements(
+  decoded: SolanaTxDecodedInfo | undefined,
+  metadata: unknown,
+  firmwareVersion?: string,
+): { requiresBlindSigningConsent: boolean; requiresAdvancedMode: boolean } {
+  const certified = supportsCertifiedClearSign(firmwareVersion)
+    && hasCompleteCertifiedSolanaEnvelope(metadata)
+  const opaque = requiresSolanaBlindSigningConsent(decoded, certified)
+  return { requiresBlindSigningConsent: opaque, requiresAdvancedMode: opaque }
 }

@@ -3234,6 +3234,14 @@ mod tests {
         assert_eq!(plan, vec![None, Some(0), None, Some(1)]);
     }
 
+    /// Ironwood private send: one real input spend plus one output/change action.
+    /// Firmware returns only the real spend's authorization signature.
+    #[test]
+    fn orchard_signature_plan_one_spend_one_change() {
+        let plan = plan_orchard_signature_application(&[true, false], 1).unwrap();
+        assert_eq!(plan, vec![Some(0), None]);
+    }
+
     #[test]
     fn orchard_signature_plan_rejects_mismatched_counts() {
         let err = plan_orchard_signature_application(&[false, true, false], 2).unwrap_err();

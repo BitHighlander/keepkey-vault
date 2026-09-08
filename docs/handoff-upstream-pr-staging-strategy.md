@@ -1,5 +1,11 @@
 # Handoff — Upstream PR Staging Strategy (7.15.0 → keepkey upstream)
 
+> **SUPERSEDED 2026-08-23:** Upstream is frozen. Continue firmware security and
+> OLED work on the fork's `alpha` line using
+> [handoff-firmware-715-alpha-seed-display-and-upstream-freeze.md](handoff-firmware-715-alpha-seed-display-and-upstream-freeze.md).
+> This upstream staging plan must not be executed unless the owner explicitly
+> thaws upstream.
+
 **Status:** PLAN ONLY. Nothing here is executed. Executing ANY step requires explicit
 per-step human authorization (see the ⚠ below).
 

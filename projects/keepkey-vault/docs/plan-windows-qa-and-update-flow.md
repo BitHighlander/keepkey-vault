@@ -182,8 +182,8 @@ so they are the highest-value remaining items.
 - Locale keys for the new copy (§3) — deferred to avoid conflicting with in-flight
   locale edits.
 - BEX host-side `chainId >= 256` legacy guard (§2) — different repo; not started.
-- Hyperliquid is unaudited by the discovery integrity gate: `chains.ts` lists chainId
-  **2868** but HyperEVM is **999**, and CoinGecko's hyperliquid USDC "address" is
-  32 hex chars, not an EVM address. Nothing on that chain is verified.
+- Hyperliquid's registry mismatch was resolved: Vault uses canonical HyperEVM
+  mainnet chain ID **999** and `https://rpc.hyperliquid.xyz/evm`. The malformed
+  CoinGecko USDC identifier remains excluded rather than treated as an EVM token.
 - None of §3/§4 has been exercised on a real device yet — `make vault` is a user-run
   step. The QA script in §3 is the intended verification.

@@ -396,11 +396,10 @@ async function deviceSign(wallet: any, sr: SigningRequest): Promise<string[]> {
 		throw new Error("Device did not return signatures")
 	}
 
-	if (signatures.length !== sr.n_actions) {
-		throw new Error(
-			`Signature count mismatch: got ${signatures.length} signatures for ${sr.n_actions} actions`
-		)
-	}
+	// Ironwood bundles can include output/change actions whose spends are dummy.
+	// Firmware may therefore return one signature per real spend instead of one
+	// per action. The sidecar owns the fail-closed mapping because it has the
+	// PCZT metadata needed to distinguish real spends from dummy ones.
 
 	return signatures
 }

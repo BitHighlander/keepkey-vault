@@ -216,7 +216,7 @@ export interface TokenBalance {
   icon?: string            // [DB] TEXT — icon URL (keepkey.info or override)
   decimals?: number        // [DB] INTEGER — token decimals (e.g. 6 for USDT, 18 for most ERC-20)
   type?: string            // [DB] TEXT — "native" | "token" | "unknown"
-  dataSource?: string      // data origin: "zapper" | "blockbook" | "cache"
+  dataSource?: string      // data origin: "zerion" | "blockbook" | "cache"
 }
 
 export interface ChainBalance {
@@ -250,17 +250,14 @@ export interface ChainBalance {
   confirmedAssetCaips?: string[]
 }
 
-// DeFi position. The server-side merged path (includeDefi=true) is the
-// canonical source; the legacy fields below (isDefi, type, metaType, balance,
-// symbol, name) are retained so prior shapes built by classifyDefiPosition
-// continue to deserialize cleanly.
+// DeFi position. The server-side Zerion merge (includeDefi=true) is canonical;
+// the optional display fields also support the dedicated per-address route.
 export interface DefiPosition {
-  // === Server-side (canonical) ===
-  protocol: string | null   // Zapper appId slug ("lido", "morpheus", "aave-v3") or null
-  displayName?: string      // Pretty protocol name from the server ("Lido", "Morpheus")
-  network: string           // Zapper network display ("Ethereum") or legacy slug ("ethereum")
+  protocol: string | null   // Zerion protocol/dapp slug, or null
+  displayName?: string      // Pretty protocol name from the server
+  network: string           // Zerion chain slug
   networkId?: string        // CAIP-2 chain ("eip155:1") — used to attribute the position to a chain
-  balanceUsd: number        // USD value Zapper attributes to the protocol for this pubkey
+  balanceUsd: number        // USD value Zerion attributes to the protocol for this pubkey
   icon?: string
   /**
    * The protocol's underlying ERC-20 legs (e.g. an LP's token pair). NOT
@@ -276,8 +273,7 @@ export interface DefiPosition {
     balanceUsd?: number
   }>
 
-  // === Legacy (classifyDefiPosition / /zapper/portfolio path) ===
-  isDefi?: boolean
+  // Optional row-display fields returned by the per-address route.
   name?: string             // display label (e.g. "Supplied USDC", "ETH / USDC LP")
   symbol?: string           // underlying token ticker when known
   type?: string             // tokenType (e.g. "contract-position", "app-token")
@@ -646,6 +642,8 @@ export interface SigningRequestInfo {
   solanaMessageDecoded?: SolanaMessageDecodedInfo
   /** Clear-signing: decoded Solana tx — per-instruction rows + resolved ALT accounts */
   solanaDecoded?: SolanaTxDecodedInfo
+  /** A complete root-certified envelope is attached; verified on the device. */
+  solanaCertified?: boolean
   /**
    * Populated when a Solana transaction was received but clear-sign decoding
    * failed (malformed wire layout, unsupported message version, RPC outage,
@@ -658,8 +656,8 @@ export interface SigningRequestInfo {
   needsBlindSigning?: boolean
   /** true when the UI must enable AdvancedMode before allowing approval */
   requiresAdvancedMode?: boolean
-  /** true when this request needs a separate, explicit one-shot opaque-signing
-   * consent in the Vault UI. External callers cannot set the device flag. */
+  /** true when this request needs separate consent in Vault. This does not
+   * change or override the device's AdvancedMode policy. */
   requiresBlindSigningConsent?: boolean
   /** true when device AdvancedMode policy is currently enabled */
   advancedModeEnabled?: boolean
@@ -1118,6 +1116,8 @@ export interface RelayTxParams {
 
 /** Quote response from Pioneer (aggregated across DEXes) */
 export interface SwapQuote {
+  /** Provider-native quote identifier used to register execution for status and affiliate attribution. */
+  providerQuoteId?: string
   expectedOutput: string     // human-readable amount out
   minimumOutput: string      // after slippage
   inboundAddress: string     // vault address to send to
@@ -1273,6 +1273,8 @@ export interface PendingSwap {
    *  refreshSwap via api.relay.link. Drives the "Relay Track" external link
    *  on relay/shapeshift integrations. */
   relayRequestId?: string
+  /** Provider-native quote id, persisted so ShapeShift execution tracking survives restart. */
+  providerQuoteId?: string
   /** Vault chain id of the actual outbound (refunds outbound on the source chain,
    *  not the destination). Populated by the Maya/Thor classifier — used to route
    *  the explorer link to the correct chain. Falls back to toChainId when absent. */
@@ -1389,6 +1391,8 @@ export interface SwapHistoryRecord {
   /** Relay request id (bytes32 hex, lowercase). Persisted so the resume path
    *  can render the "Relay Track" external link without re-querying. */
   relayRequestId?: string
+  /** Provider-native quote id used for ShapeShift execution/affiliate tracking. */
+  providerQuoteId?: string
   /** Chain id of the actual outbound. For refunds this is the source chain
    *  (Maya returns the inbound asset on the inbound chain), so the explorer
    *  link must use this — not toChainId. Populated by the Maya midgard

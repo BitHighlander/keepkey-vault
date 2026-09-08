@@ -3,6 +3,7 @@ import pkg from "./package.json";
 
 const isWindows = process.platform === "win32";
 const isMac = process.platform === "darwin";
+const skipMacIcons = process.env.KK_SKIP_MAC_ICONS === "1";
 const arch = process.arch; // 'arm64' or 'x64'
 if (isMac) console.log(`[electrobun] Building for macOS ${arch}`);
 
@@ -55,7 +56,9 @@ export default {
 		},
 		mac: {
 			bundleCEF: false,
-			icons: "icon.iconset",
+			// Local escape hatch for macOS versions where iconutil rejects an
+			// otherwise complete iconset. Release builds never set this flag.
+			icons: skipMacIcons ? undefined : "icon.iconset",
 			codesign: process.env.CI !== 'true',
 			notarize: process.env.CI !== 'true',
 			entitlements: {

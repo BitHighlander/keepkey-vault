@@ -23,10 +23,9 @@ interface DefiPositionsPanelProps {
 /**
  * DeFi positions for an EVM address, rendered below the token table.
  *
- * Primary source: `props.positions` (server-merged via GetPortfolioBalances
- * includeDefi=true on dashboard refresh). Falls back to the legacy
- * `getDefiPositions` RPC when no props are provided — keeps the panel
- * functional against pre-v1.4 servers that don't return defiPositions.
+ * Primary source: `props.positions` (server-merged Zerion data via
+ * GetPortfolioBalances includeDefi=true). Falls back to the dedicated Zerion
+ * `getDefiPositions` RPC when the parent has not already supplied positions.
  *
  * Hide-dust mirrors the token table: zero-USD positions are tucked behind a
  * "show hidden" toggle.

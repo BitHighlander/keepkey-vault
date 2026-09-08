@@ -14,6 +14,7 @@
  */
 import { readFileSync, existsSync, mkdirSync } from 'fs'
 import { resolve, join } from 'path'
+import { fileLinkResolver } from './file-link-resolver'
 
 const projectRoot = join(import.meta.dir, '..')
 const outDir = join(projectRoot, '_build', '_bundled_backend')
@@ -82,35 +83,7 @@ const result = await Bun.build({
   outdir: outDir,
   target: 'bun',
   external: [...FORCE_EXTERNAL],
-  plugins: [{
-    name: 'file-link-resolver',
-    setup(build) {
-      // Sort by longest name first so @keepkey/hdwallet-keepkey-nodehid
-      // matches before @keepkey/hdwallet-keepkey
-      const sorted = [...aliases.entries()].sort((a, b) => b[0].length - a[0].length)
-
-      for (const [name, pkgDir] of sorted) {
-        if (FORCE_EXTERNAL.has(name)) continue
-
-        const escapedName = name.replace(/[\/\-]/g, '\\$&')
-
-        // Exact match: import "@keepkey/hdwallet-core"
-        build.onResolve({ filter: new RegExp(`^${escapedName}$`) }, () => {
-          const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
-          const main = pkgJson.main || 'index.js'
-          return { path: join(pkgDir, main) }
-        })
-
-        // Subpath match: import "@keepkey/device-protocol/lib/messages_pb"
-        build.onResolve({ filter: new RegExp(`^${escapedName}/(.+)`) }, (args) => {
-          const subpath = args.path.slice(name.length + 1)
-          let resolved = join(pkgDir, subpath)
-          if (!existsSync(resolved) && existsSync(resolved + '.js')) resolved += '.js'
-          return { path: resolved }
-        })
-      }
-    },
-  }],
+  plugins: [fileLinkResolver(aliases, FORCE_EXTERNAL)],
 })
 
 if (!result.success) {

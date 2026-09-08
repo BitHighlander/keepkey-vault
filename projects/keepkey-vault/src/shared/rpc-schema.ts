@@ -39,6 +39,14 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       // ── Wallet operations (hdwallet pass-through) ─────────────────
       getFeatures: { params: void; response: any }
       ping: { params: { msg?: string }; response: any }
+      // Legacy device-resident TOTP manager (firmware >= 7.6). These typed
+      // calls keep the firmware's control-byte Ping protocol out of the
+      // renderer and, critically, keep imported secrets out of logs.
+      authenticatorListAccounts: { params: void; response: Array<{ slot: number; issuer: string; account: string }> }
+      authenticatorAddAccount: { params: { issuer: string; account: string; secret: string }; response: void }
+      authenticatorGenerateOtp: { params: { issuer: string; account: string }; response: void }
+      authenticatorRemoveAccount: { params: { issuer: string; account: string }; response: void }
+      authenticatorWipe: { params: void; response: void }
       // RNG health test — pulls entropy from the device and scores it. Device
       // interactive past the firmware's press-free budget, so call with a 0
       // timeout. See src/bun/rng-audit.ts for what the result can/cannot prove.
@@ -118,7 +126,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       // rather than mutable UI selection.
       broadcastTx: { params: { chainId: string; signedTx: any; to?: string; amount?: string; fee?: string; symbol?: string; caip?: string; fromAddress?: string }; response: BroadcastResult }
 
-      // ── DeFi positions (Zapper) ──────────────────────────────────────
+      // ── DeFi positions (Zerion) ──────────────────────────────────────
       getDefiPositions: { params: { address: string }; response: DefiPosition[] }
 
       // ── Staking / delegation ─────────────────────────────────────────

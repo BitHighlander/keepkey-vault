@@ -431,8 +431,8 @@ build-emulator:
 			-DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 			-DNANOPB_DIR="$$NANOPB_DIR" \
 			-DNANOPB_PLUGIN="$$(command -v protoc-gen-nanopb)" \
-			-DCMAKE_C_FLAGS="-DPB_NO_PACKED_STRUCTS=1" \
-			-DCMAKE_CXX_FLAGS="-DPB_NO_PACKED_STRUCTS=1" && \
+			-DCMAKE_C_FLAGS="-DPB_NO_PACKED_STRUCTS=1 -DKK_CLEARSIGN_TEST_ROOT=1" \
+			-DCMAKE_CXX_FLAGS="-DPB_NO_PACKED_STRUCTS=1 -DKK_CLEARSIGN_TEST_ROOT=1" && \
 		make -j$$(sysctl -n hw.ncpu) kkemu kkemulator_dylib
 	mkdir -p $(EMU_INSTALL_DIR)
 	@if [ -f $(EMU_BUILD_DIR)/lib/libkkemu.dylib ]; then \
@@ -441,6 +441,14 @@ build-emulator:
 		echo "    Dylib:  $(EMU_INSTALL_DIR)/libkkemu.dylib (ad-hoc signed)"; \
 	else \
 		echo "ERROR: libkkemu.dylib missing from build output"; exit 1; \
+	fi
+	@# KK_CLEARSIGN_TEST_ROOT=1 above embeds the reviewed test root pubkey
+	@# (02de9231...dae7) instead of firmware's default all-zero placeholder.
+	@# Without it every ClearSign certificate check fails with a generic
+	@# "Invalid certified ... proof" and no useful signal — verify it landed.
+	@if ! python3 -c "import sys; needle = bytes.fromhex('02de9231b2094433235532fb1932e324a2c7304195e12e610c675cccbbd606dae7'); data = open('$(EMU_INSTALL_DIR)/libkkemu.dylib', 'rb').read(); sys.exit(0 if needle in data else 1)"; then \
+		echo "WARNING: ClearSign test root pubkey NOT found in libkkemu.dylib —"; \
+		echo "         certificate verification will silently fail on this build."; \
 	fi
 	cp $(EMU_BUILD_DIR)/bin/kkemu $(EMU_INSTALL_DIR)/kkemu
 	chmod +x $(EMU_INSTALL_DIR)/kkemu

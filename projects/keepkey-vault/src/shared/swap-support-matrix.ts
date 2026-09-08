@@ -59,14 +59,10 @@ export interface AvailabilityAssessment {
  *  single-source. Adding to this map both fixes matrix lookups AND the picker's
  *  duplicate-row dedupe in one edit.
  *
- *  Note on Hyperliquid: pioneer-discovery and vault's CHAINS table agree on
- *  `eip155:2868` but the actual Hyperliquid mainnet chainId per chainID.network
- *  is 999. Relay routes 999. We previously aliased 2868→999 here, but vault's
- *  ChainDef doesn't have a 999 entry, so any picker click would silently fail
- *  (synthesizeSwapAsset returned null). Until vault's CHAINS table is
- *  reconciled, Hyperliquid is intentionally absent from RELAY_CHAINS /
- *  SHAPESHIFT_CHAINS — picker shows it as unsupported_chain with a clear
- *  reason rather than letting it look swappable and break on click. */
+ *  Hyperliquid is represented only by its canonical HyperEVM mainnet chain ID
+ *  (`eip155:999`). There is deliberately no alias for the historic, incorrect
+ *  `eip155:2868` value: silently treating distinct chain IDs as equivalent is
+ *  unsafe for both transaction signing and swap routing. */
 export const CHAIN_CAIP2_ALIASES: Record<string, string> = {
   // alternate → canonical
   'tron:27Lqcw': 'tron:0x2b6653dc',
@@ -139,6 +135,7 @@ const RELAY_CHAINS = new Set<string>([
   'eip155:100',        // Gnosis
   'eip155:137',        // Polygon
   'eip155:143',        // Monad
+  'eip155:999',        // Hyperliquid HyperEVM
   'eip155:146',        // Sonic
   'eip155:4663',       // Robinhood Chain — live in Relay's public chain list (api.relay.link/chains, 2026-08)
   'eip155:169',        // Manta Pacific
@@ -153,7 +150,6 @@ const RELAY_CHAINS = new Set<string>([
   'eip155:80094',      // Berachain
   'eip155:81457',      // Blast
   'eip155:534352',     // Scroll
-  // Hyperliquid (eip155:999) is omitted — see CHAIN_CAIP2_ALIASES note above.
 ])
 
 /** 0x — single-chain EVM aggregator. */

@@ -177,8 +177,27 @@ describe('PROGRAM_REGISTRY', () => {
     const p = PROGRAM_REGISTRY.programs[SYSTEM_PROGRAM]
     expect(p.instructions?.['02000000']?.args?.[0]).toEqual({ name: 'lamports', type: 'u64' })
   })
-  test('SPL Token has 7 decoder-ready instructions', () => {
+  test('SPL Token preserves upstream instructions and adds syncNative', () => {
     const ixs = PROGRAM_REGISTRY.programs[SPL_TOKEN].instructions!
-    expect(Object.keys(ixs).sort()).toEqual(['03', '04', '07', '08', '09', '0c', '0d'])
+    expect(Object.keys(ixs).sort()).toEqual(['03', '04', '07', '08', '09', '0c', '0d', '11'])
+  })
+})
+
+
+describe('Pump AMM swap preview', () => {
+  test('decodes all nine instructions and preserves upstream SPL closeAccount', async () => {
+    const { syntheticPumpBuy } = await import('../scripts/fixtures/solana-pump')
+    const { buildSolanaDecodedInfo } = await import('../src/bun/solana-clearsign')
+    const decoded = await buildSolanaDecodedInfo(syntheticPumpBuy().rawTx, async () => { throw new Error('no lookups expected') })
+    expect(decoded.instructions).toHaveLength(9)
+    expect(decoded.instructions.every(ix => ix.status === 'known' && !ix.note)).toBe(true)
+    expect(decoded.instructions[5].instructionName).toBe('syncNative')
+    expect(decoded.instructions[7].instructionName).toBe('buy')
+    expect(decoded.instructions[7].args.map(arg => [arg.name, arg.value])).toEqual([
+      ['base_amount_out', '10000'], ['max_quote_amount_in', '20000'], ['track_volume', 'true'],
+    ])
+    expect(decoded.instructions[7].accounts[3].label).toBe('base_mint')
+    expect(decoded.instructions[8].instructionName).toBe('closeAccount')
+    expect(decoded.hasUnknownProgram).toBeUndefined()
   })
 })

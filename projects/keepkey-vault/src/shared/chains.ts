@@ -203,7 +203,7 @@ const CONFIGS: ChainConfig[] = [
     id: 'hyperliquid', chain: Chain.Hyperliquid, coin: 'Hyperliquid', symbol: 'HYPE',
     chainFamily: 'evm', color: '#00D084',
     rpcMethod: 'ethGetAddress', signMethod: 'ethSignTx',
-    defaultPath: [0x8000002C, 0x8000003C, 0x80000000, 0, 0], chainId: '2868',
+    defaultPath: [0x8000002C, 0x8000003C, 0x80000000, 0, 0], chainId: '999',
   },
   {
     id: 'cosmos', chain: Chain.Cosmos, coin: 'Cosmos', symbol: 'ATOM',

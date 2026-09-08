@@ -540,6 +540,27 @@ describe('parseQuoteResponse', () => {
     expect(result.nearIntentsRefundTo).toBe('bc1qmysender')
   })
 
+  test('Chainflip BTC→ETH (UTXO source, no memo) — deposit channel succeeds', () => {
+    const btcCaip = 'bip122:000000000019d6689c085ae165831e93/slip44:0'
+    const ethCaip = 'eip155:1/slip44:60'
+    const resp = {
+      data: [{
+        integration: 'shapeshift',
+        quote: {
+          swapper: 'Chainflip',
+          buyAmount: '0.05',
+          inbound_address: 'bc1qchainflipdeposit',
+          txs: [{ txParams: { to: 'bc1qchainflipdeposit', senderAddress: 'bc1qmysender' } }],
+        },
+      }],
+    }
+    const result = parseQuoteResponse(resp, { fromCaip: btcCaip, toCaip: ethCaip, slippageBps: 300 })
+    expect(result.swapper).toBe('Chainflip')
+    expect(result.inboundAddress).toBe('bc1qchainflipdeposit')
+    expect(result.memo).toBe('')
+    expect(result.relayTx).toBeUndefined()
+  })
+
   test('NEAR Intents ZEC→ETH (UTXO source) — extracts nearIntentsRefundTo from senderAddress', () => {
     const zecCaip = 'bip122:00040fe8ec8471911baa1db1266ea15d/slip44:133'
     const ethCaip = 'eip155:1/slip44:60'
@@ -721,6 +742,25 @@ describe('parseQuoteResponse', () => {
 })
 
 // ── Assets parsing tests ────────────────────────────────────────────
+
+describe('provider quote tracking', () => {
+  test('preserves ShapeShift provider quote id for post-broadcast attribution', () => {
+    const response = {
+      data: [{
+        integration: 'shapeshift',
+        quote: {
+          quoteId: 'ss-provider-quote-123',
+          swapper: 'Relay',
+          buyAmount: '1.25',
+          inbound_address: '0x1111111111111111111111111111111111111111',
+          txs: [{ txParams: { to: '0x1111111111111111111111111111111111111111', data: '0x12345678aa', value: '0', chainId: 1 } }],
+        },
+      }],
+    }
+    const result = parseQuoteResponse(response, { fromCaip: 'eip155:1/slip44:60', toCaip: 'eip155:1/slip44:60' })
+    expect(result.providerQuoteId).toBe('ss-provider-quote-123')
+  })
+})
 
 describe('parseAssetsResponse', () => {
   test('parses double-wrapped response with assets array', () => {

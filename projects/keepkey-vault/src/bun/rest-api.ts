@@ -6,6 +6,7 @@ import type { ClearSignEvent } from '../shared/types'
 import { createHash } from 'crypto'
 import { decodeEIP712 } from './eip712-decoder'
 import { decodeCalldata, firmwareClearSigns } from './calldata-decoder'
+import { isCertifiedEvmMetadata } from './evm-schema-registry'
 import { CHAINS, isChainSupported, hiveRolePath } from '../shared/chains'
 import { versionCompare } from '../shared/firmware-versions'
 import { isBitcoinOnlyVariant, DEFAULT_AUTO_LOCK_MS } from '../shared/flags'
@@ -32,7 +33,9 @@ import { parseSolanaTx, SolanaTxParseError } from './solana-tx'
 import { signSolanaWireTransaction } from './solana-signing'
 import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
-import { requiresSolanaBlindSigningConsent } from './solana-consent'
+import { solanaSigningRequirements } from './solana-consent'
+import { prepareExternalSolanaProof, type CertifiedSolanaProof } from './solana-certified-registry'
+import { hasCompleteCertifiedSolanaEnvelope, supportsCertifiedClearSign } from './solana-certified-policy'
 import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
 import { utxoDiscoveryKey } from './btc-backend/types'
 import {
@@ -47,6 +50,13 @@ import {
 import { usb } from 'usb'
 import { handleMcpRequest } from './mcp'
 import { onBexOpen, onBexClose, onBexMessage } from './bex-bridge'
+import {
+  ALPHA_ROOT_PATH,
+  ALPHA_ROOT_PUBLIC_KEY,
+  CLEARSIGN_DOMAIN_SEPARATOR,
+  inspectAlphaCertificateBody,
+  verifyAlphaRootSignature,
+} from './clearsign-alpha-ceremony'
 
 export interface EmuSigningDetails {
   operation: string
@@ -1164,8 +1174,11 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
 
   const server = Bun.serve({
     port,
+    // Network-backed reads and queued device reads can exceed Bun's 10s
+    // default. Human-confirmed signing requests still disable this below.
+    idleTimeout: 60,
     maxRequestBodySize: 1024 * 1024, // 1 MB max (addresses/signing payloads are small)
-    // Keep Bun's default idle timeout for the server as a whole (so idle/
+    // Keep a finite idle timeout for the server as a whole (so idle/
     // unauthenticated connections still get reaped) — but lift it per-request
     // for human-gated device operations below, where the response legitimately
     // blocks while the user confirms on the device. Without that, Bun closes
@@ -1180,7 +1193,11 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
       // Human-gated device ops (signing + the clear-sign trust confirm) block
       // the socket while the user presses the physical button. Disable the idle
       // timeout for just these requests, not the whole server.
-      if (method === 'POST' && (SIGNING_ROUTES.has(path) || path === '/eth/clearsign/load-signer')) {
+      if (method === 'POST' && (
+        SIGNING_ROUTES.has(path)
+        || path === '/eth/clearsign/load-signer'
+        || path === '/eth/clearsign/sign-alpha-delegate-certificate'
+      )) {
         server.timeout(req, 0)
       }
 
@@ -1467,6 +1484,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
       let activeSigningId: string | undefined
       let activeSigningInfo: SigningRequestInfo | undefined
       let activeAllowBlindSigning = false
+      let activeSolanaProof: CertifiedSolanaProof | undefined
 
       try {
         // ═══════════════════════════════════════════════════════════════
@@ -1653,6 +1671,22 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const id = crypto.randomUUID()
           const signingInfo: SigningRequestInfo = { id, method: path, appName }
 
+          // Certification is required work, not best-effort preview decoding.
+          // Preserve an outage as an error before opening the approval dialog.
+          if (path === '/solana/sign-transaction') {
+            try {
+              activeSolanaProof = await prepareExternalSolanaProof(
+                probeCheckBody, engine.getDeviceState().firmwareVersion,
+              )
+            } catch (error: any) {
+              if (error instanceof SolanaTxParseError) throw new HttpError(400, error.message)
+              throw new HttpError(503, error?.message || 'Solana ClearSign service unavailable')
+            }
+            signingInfo.solanaCertified = supportsCertifiedClearSign(engine.getDeviceState().firmwareVersion)
+              && hasCompleteCertifiedSolanaEnvelope(activeSolanaProof || probeCheckBody)
+            if (activeSolanaProof) console.info('[REST] live Solana ClearSign proof attached')
+          }
+
           // Try to extract useful details from the body without consuming it
           // (we'll parse body again in the handler below — Bun caches it)
           try {
@@ -1775,10 +1809,11 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               } else {
                 signingInfo.solanaDecodeError = 'missing raw_tx payload'
               }
-              signingInfo.requiresBlindSigningConsent = requiresSolanaBlindSigningConsent(
+              Object.assign(signingInfo, solanaSigningRequirements(
                 signingInfo.solanaDecoded,
-                preview.swapMetadata !== undefined || preview.schema !== undefined,
-              )
+                activeSolanaProof || preview,
+                engine.getDeviceState().firmwareVersion,
+              ))
               if (signingInfo.requiresBlindSigningConsent) {
                 signingInfo.needsBlindSigning = true
               }
@@ -1883,6 +1918,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                 // priority 1). The device verifies it against the loaded signer and
                 // clear-signs regardless of what the firmware natively handles.
                 if (preview.txMetadata?.signedPayload) {
+                  const keepKeyCertified = isCertifiedEvmMetadata(preview.txMetadata)
                   signingInfo.calldataDecoded = {
                     dappName: 'Unknown', contractName: 'Unknown', method: '(runtime signer)',
                     selector: preview.data.slice(0, 10), fields: [], source: 'none',
@@ -1890,8 +1926,11 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                     signedInsightBlob: preview.txMetadata.signedPayload,
                     insightKeyId: preview.txMetadata.keyId,
                   }
-                  signingInfo.needsBlindSigning = false
-                  console.log(`[REST] needsBlindSigning=false (caller-provided runtime-signer blob, keyId=${preview.txMetadata.keyId})`)
+                  signingInfo.needsBlindSigning = keepKeyCertified
+                    ? false
+                    : !firmwareClearSigns(preview.to, preview.data, chainIdNum)
+                  console.log(`[REST] needsBlindSigning=${signingInfo.needsBlindSigning} `
+                    + `(${keepKeyCertified ? 'KeepKey-certified v3' : 'runtime metadata'}, keyId=${preview.txMetadata.keyId})`)
                 } else {
                   // Needs blind signing unless the firmware clear-signs it natively.
                   // Keyed off the device's own allowlist (firmwareClearSigns), NOT
@@ -2522,6 +2561,53 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           }
         }
 
+        if (path === '/eth/clearsign/sign-alpha-delegate-certificate' && method === 'POST') {
+          auth.requireAuth(req)
+          if (process.env.KK_ENABLE_ALPHA_CLEARSIGN_CEREMONY !== '1') {
+            throw new HttpError(404, 'Alpha ClearSign ceremony is disabled')
+          }
+          const wallet = requireWallet(engine) as any
+          if (typeof wallet.ethSignTypedHash !== 'function') {
+            throw new HttpError(501, 'Connected wallet cannot sign reviewed EIP-712 hashes')
+          }
+          const body = await parseRequest(req, S.SignAlphaDelegateCertificateRequest)
+          let inspection
+          try {
+            inspection = inspectAlphaCertificateBody(body.signedBodyHex, body.expectedMessageHashHex)
+          } catch (cause: any) {
+            throw new HttpError(400, cause?.message || String(cause))
+          }
+
+          console.log(`[REST] alpha delegate ceremony: alias="${inspection.alias}" chain=${inspection.chainId}`
+            + ` expiry=${inspection.notAfter} delegate=${inspection.delegatePublicKey}`)
+          const signed = await wallet.ethSignTypedHash({
+            addressNList: ALPHA_ROOT_PATH,
+            domainSeparatorHash: CLEARSIGN_DOMAIN_SEPARATOR,
+            messageHash: inspection.messageHash,
+          })
+          const verified = verifyAlphaRootSignature(inspection, signed.signature)
+          if (String(signed.address).toLowerCase() !== verified.address.toLowerCase()) {
+            throw new HttpError(500, 'device signing address did not match the reviewed alpha root')
+          }
+          return json({
+            format: 'keepkey-clearsign-delegate-cert-v1',
+            certificateHex: verified.certificateHex,
+            root: {
+              path: "m/44'/60'/0'/0/0",
+              publicKeyHex: ALPHA_ROOT_PUBLIC_KEY,
+              address: verified.address,
+            },
+            issuedFor: {
+              alias: inspection.alias,
+              fingerprint: 'a9531b9d',
+              publicKeyHex: inspection.delegatePublicKey,
+            },
+            domainSeparatorHex: CLEARSIGN_DOMAIN_SEPARATOR,
+            messageHashHex: inspection.messageHash,
+            signingDigestHex: inspection.signingDigest,
+          })
+        }
+
         if (path === '/eth/sign-typed-data' && method === 'POST') {
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
@@ -2583,6 +2669,65 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const { captureCurrentFrame } = await import('./emulator-window')
           const dataUrl = await captureCurrentFrame()
           return json({ dataUrl })
+        }
+
+        // Dev-only automation surface: launch/connect the emulator, simulate
+        // its confirm/reject button, and (via /emulator/capture above) read
+        // the current OLED frame — enough to drive a full sign flow headless
+        // for scripted acceptance testing, no physical interaction required.
+        if (path === '/emulator/start' && method === 'POST') {
+          auth.requireAuth(req)
+          const body = await req.json().catch(() => ({} as any))
+          const { initEmulator } = await import('./emulator')
+          const status = initEmulator(body?.flashName || 'default')
+          if (status.state !== 'running') throw new HttpError(500, status.error || 'Emulator failed to start')
+          const { openEmulatorWindow } = await import('./emulator-window')
+          openEmulatorWindow()
+          await engine.connectEmulator()
+          return json({ status })
+        }
+
+        if (path === '/emulator/decision' && method === 'POST') {
+          auth.requireAuth(req)
+          if (!engine.isEmulator) throw new HttpError(400, 'Decision is emulator-only')
+          const body = await req.json().catch(() => ({} as any))
+          if (typeof body?.approved !== 'boolean') throw new HttpError(400, 'approved (boolean) is required')
+          const { writeDecision } = await import('./emulator-transport')
+          writeDecision(body.approved)
+          return json({ ok: true })
+        }
+
+        if (path === '/emulator/stop' && method === 'POST') {
+          auth.requireAuth(req)
+          const { stopEmulator } = await import('./emulator')
+          const { closeEmulatorWindow } = await import('./emulator-window')
+          closeEmulatorWindow()
+          const status = stopEmulator()
+          return json({ status })
+        }
+
+        // Host-side signing-approval overlay (separate from the on-device
+        // DebugLinkDecision above): every /*/sign-* REST call blocks on
+        // auth.requestSigningApproval() until a human clicks Approve/Reject
+        // in the Vault UI. For scripted acceptance testing against the
+        // emulator with nobody at the keyboard, these resolve it the same
+        // way that click would. Never auto-invoked — always requires an
+        // explicit caller decision.
+        if (path === '/emulator/pending-signing' && method === 'GET') {
+          auth.requireAuth(req)
+          const ids = auth.listPendingSigningIds()
+          return json({ ids, id: ids[0] || null })
+        }
+
+        if (path === '/emulator/approve-signing' && method === 'POST') {
+          auth.requireAuth(req)
+          const body = await req.json().catch(() => ({} as any))
+          const id = String(body?.id || auth.listPendingSigningIds()[0] || '')
+          if (!id) throw new HttpError(400, 'id is required (or a signing request must be pending)')
+          const approved = body?.approved !== false
+          const ok = approved ? auth.approveSigningRequest(id) : auth.rejectSigningRequest(id)
+          if (!ok) throw new HttpError(404, 'No pending signing request with that id')
+          return json({ ok: true, approved })
         }
 
         // ── UTXO SIGNING (1 endpoint) ────────────────────────────────
@@ -2767,12 +2912,13 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
 
           // Both legacy and v0 messages use SolanaSignTx. The helper removes
           // the signature wrapper, forwards the transaction-bound KKSOLSW1
-          // descriptor unchanged, or adds a one-shot opaque fallback only when
-          // the Vault UI returned explicit consent, then splices
+          // descriptor unchanged. Opaque transactions require both approval
+          // in Vault and the device's AdvancedMode policy, then it splices
           // the returned signature back into the original wire transaction.
-          const clearSignPayload = body.schema?.payload ? String(body.schema.payload) : undefined
-          const clearSignRequest = body.schema ? {
-            signerKeyId: body.schema.signerKeyId,
+          const effectiveSchema = activeSolanaProof?.schema || body.schema
+          const clearSignPayload = effectiveSchema?.payload ? String(effectiveSchema.payload) : undefined
+          const clearSignRequest = effectiveSchema ? {
+            signerKeyId: effectiveSchema.signerKeyId,
             txHash: createHash('sha256').update(fullTx).digest('hex'),
           } : undefined
           let clearSignSentToDevice = false
@@ -2782,11 +2928,13 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               {
                 addressNList,
                 rawTx: body.raw_tx,
-                swapMetadata: body.swapMetadata,
+                lutProof: activeSolanaProof?.lutProof || body.lutProof,
+                certificate: activeSolanaProof?.certificate || body.certificate,
+                tokenInfo: activeSolanaProof?.tokenInfo,
                 // Reusable KKSOLSC1 instruction schema — signed once per
                 // program+instruction, so the device can decode this call
                 // without a per-transaction attestation.
-                schema: body.schema,
+                schema: effectiveSchema,
                 // x402 payment intent is never trusted directly: the signing
                 // helper matches network, sponsor, mint, amount, authority and
                 // destination ATA against the exact v0 message first.
@@ -2810,18 +2958,19 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                 return address
               },
               'rest:solanaSignTx',
+              () => engine.getDeviceState().firmwareVersion,
             )
             if (clearSignPayload) recordRestClearSignEvent({
               kind: 'transaction', outcome: 'signed', source: 'rest-api', chain: 'Solana',
               format: 'KKSOLSC1_BASE64', label: 'Solana ClearSign transaction', payload: clearSignPayload,
-              keyId: Number.isInteger(body.schema?.signerKeyId) ? body.schema!.signerKeyId : undefined,
+              keyId: Number.isInteger(effectiveSchema?.signerKeyId) ? effectiveSchema!.signerKeyId : undefined,
               sentToDevice: clearSignSentToDevice, request: clearSignRequest,
             })
           } catch (err: any) {
             if (clearSignPayload) recordRestClearSignEvent({
               kind: 'transaction', outcome: 'blocked', source: 'rest-api', chain: 'Solana',
               format: 'KKSOLSC1_BASE64', label: 'Blocked Solana ClearSign transaction', payload: clearSignPayload,
-              keyId: Number.isInteger(body.schema?.signerKeyId) ? body.schema!.signerKeyId : undefined,
+              keyId: Number.isInteger(effectiveSchema?.signerKeyId) ? effectiveSchema!.signerKeyId : undefined,
               sentToDevice: clearSignSentToDevice, request: clearSignRequest,
               error: err?.message || String(err),
             })

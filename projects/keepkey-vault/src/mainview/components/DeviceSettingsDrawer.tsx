@@ -14,6 +14,8 @@ import { isBitcoinOnlyVariant } from "../../shared/flags"
 import { SelfHostNodePanel } from "./SelfHostNodePanel"
 import { ClearSignStudio } from "./ClearSignStudio"
 import { RngAuditPanel } from "./RngAuditPanel"
+import { PasskeysPanel } from "./PasskeysPanel"
+import { AuthenticatorPanel } from "./AuthenticatorPanel"
 
 interface DevicePolicy {
 	policyName?: string
@@ -190,6 +192,8 @@ export function DeviceSettingsDrawer({ open, onClose, deviceState, onCheckForUpd
 	const [resetting, setResetting] = useState(false)
 	const [clearSignStudioOpen, setClearSignStudioOpen] = useState(false)
 	const [rngAuditOpen, setRngAuditOpen] = useState(false)
+	const [passkeysOpen, setPasskeysOpen] = useState(false)
+	const [authenticatorOpen, setAuthenticatorOpen] = useState(false)
 	const panelRef = useRef<HTMLDivElement>(null)
 
 	// Fetch device features + app settings when drawer opens
@@ -1187,6 +1191,49 @@ export function DeviceSettingsDrawer({ open, onClose, deviceState, onCheckForUpd
 							/>
 						</Flex>
 
+						{/* ── Identity and recovery tools ────────── */}
+						<Flex
+							align="center"
+							justify="space-between"
+							py="3"
+							borderBottom="1px solid"
+							borderColor="rgba(255,255,255,0.06)"
+						>
+							<Flex align="center" gap="3">
+								<Flex align="center" justify="center" w="32px" h="32px" borderRadius="lg" bg="rgba(35,220,200,0.10)">
+									<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#23DCC8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<circle cx="7.5" cy="15.5" r="5.5" /><path d="M12 12l8-8M17 4l3 3M15 9l2 2" />
+									</svg>
+								</Flex>
+								<Box>
+									<Flex align="center" gap="2"><Text fontSize="md" color="kk.textPrimary" fontWeight="500">Passkeys</Text><Text fontSize="2xs" px="2" py="0.5" borderRadius="full" bg="rgba(245,163,59,0.12)" color="#F5A33B">Preview</Text></Flex>
+									<Text fontSize="sm" color="kk.textSecondary" mt="0.5">Use KeepKey as a browser security key</Text>
+								</Box>
+							</Flex>
+							<Button size="sm" variant="outline" borderColor="rgba(35,220,200,0.35)" color="#23DCC8" onClick={() => setPasskeysOpen(true)}>Setup & test</Button>
+						</Flex>
+
+						<Flex
+							align="center"
+							justify="space-between"
+							py="3"
+							borderBottom="1px solid"
+							borderColor="rgba(255,255,255,0.06)"
+						>
+							<Flex align="center" gap="3">
+								<Flex align="center" justify="center" w="32px" h="32px" borderRadius="lg" bg="rgba(128,90,213,0.12)">
+									<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<rect x="3" y="4" width="18" height="16" rx="3" /><path d="M8 9h8M8 13h5M17 13h.01M8 17h.01M12 17h.01M16 17h.01" />
+									</svg>
+								</Flex>
+								<Box>
+									<Flex align="center" gap="2"><Text fontSize="md" color="kk.textPrimary" fontWeight="500">Authenticator backup</Text><Text fontSize="2xs" px="2" py="0.5" borderRadius="full" bg="rgba(128,90,213,0.14)" color="#C4B5FD">Alpha</Text></Flex>
+									<Text fontSize="sm" color="kk.textSecondary" mt="0.5">Phone-first 2FA with emergency device codes</Text>
+								</Box>
+							</Flex>
+							<Button size="sm" variant="outline" borderColor="rgba(167,139,250,0.35)" color="#C4B5FD" onClick={() => setAuthenticatorOpen(true)}>Open</Button>
+						</Flex>
+
 						{/* ── Verify Seed row ────────────────────── */}
 						<Box py="3">
 							<Flex align="center" justify="space-between">
@@ -1934,6 +1981,17 @@ export function DeviceSettingsDrawer({ open, onClose, deviceState, onCheckForUpd
 				</VStack>
 			</Box>
 			<RngAuditPanel open={rngAuditOpen} onClose={() => setRngAuditOpen(false)} />
+			<PasskeysPanel
+				open={passkeysOpen}
+				onClose={() => setPasskeysOpen(false)}
+				firmwareVersion={deviceState.firmwareVersion}
+				isEmulator={deviceState.isEmulator}
+			/>
+			<AuthenticatorPanel
+				open={authenticatorOpen}
+				onClose={() => setAuthenticatorOpen(false)}
+				firmwareVersion={deviceState.firmwareVersion}
+			/>
 			<ClearSignStudio
 				open={clearSignStudioOpen}
 				onClose={() => setClearSignStudioOpen(false)}

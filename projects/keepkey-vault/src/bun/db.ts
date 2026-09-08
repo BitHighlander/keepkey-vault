@@ -311,6 +311,7 @@ export function initDb() {
     // Filled at trackSwap time via on-chain calldata, or lazily backfilled
     // by refreshSwap via api.relay.link for legacy rows.
     try { db.exec(`ALTER TABLE swap_history ADD COLUMN relay_request_id TEXT`) } catch { /* already exists */ }
+    try { db.exec(`ALTER TABLE swap_history ADD COLUMN provider_quote_id TEXT`) } catch { /* already exists */ }
     // Outbound chain truth from Maya midgard classifier — refunds outbound on
     // source chain, not destination. Without this column, history+activity
     // panels still resolve explorer URLs against toChainId and a refunded
@@ -1831,8 +1832,8 @@ export function insertSwapHistory(record: SwapHistoryRecord) {
          from_caip, to_caip, from_amount, quoted_output, minimum_output, received_output, slippage_bps, fee_bps,
          fee_outbound, integration, swapper, memo, inbound_address, router, status, outbound_txid,
          error, created_at, updated_at, completed_at, estimated_time_secs, actual_time_secs, approval_txid,
-         relay_request_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         relay_request_id, provider_quote_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         record.id, record.deviceId || null, record.walletId || null, record.txid, record.fromAsset, record.toAsset,
         record.fromSymbol, record.toSymbol, record.fromChainId, record.toChainId,
@@ -1846,6 +1847,7 @@ export function insertSwapHistory(record: SwapHistoryRecord) {
         record.completedAt || null, record.estimatedTimeSeconds,
         record.actualTimeSeconds || null, record.approvalTxid || null,
         record.relayRequestId || null,
+        record.providerQuoteId || null,
       ]
     )
   } catch (e: any) {
@@ -2073,6 +2075,7 @@ function mapSwapRow(r: any): SwapHistoryRecord {
     actualTimeSeconds: r.actual_time_secs || undefined,
     approvalTxid: r.approval_txid || undefined,
     relayRequestId: r.relay_request_id || undefined,
+    providerQuoteId: r.provider_quote_id || undefined,
     outboundChainId: r.outbound_chain_id || undefined,
     refundReason: r.refund_reason || undefined,
     nearTxHash: r.near_tx_hash || undefined,

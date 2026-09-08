@@ -27,6 +27,7 @@ let hasRevealedOnce = false // module-level: skip delay after first reveal (e.g.
 
 export function DeviceGrid({ onViewPortfolio, onReady, emulatorEnabled = false }: DeviceGridProps) {
 	const [devices, setDevices] = useState<RegisteredDevice[]>([])
+	const [emulatorVisible, setEmulatorVisible] = useState(emulatorEnabled)
 	const [emuWallets, setEmuWallets] = useState<EmulatorWalletInfo[]>([])
 	const [emuStatus, setEmuStatus] = useState<EmulatorStatus | null>(null)
 	const [loading, setLoading] = useState<string | null>(null)
@@ -46,10 +47,10 @@ export function DeviceGrid({ onViewPortfolio, onReady, emulatorEnabled = false }
 		try {
 			const [devs, status, wallets] = await Promise.all([
 				rpcRequest<RegisteredDevice[]>("getRegisteredDevices", undefined, 5000),
-				emulatorEnabled
+				emulatorVisible
 					? rpcRequest<EmulatorStatus>("emulatorStatus", undefined, 5000).catch(() => null)
 					: Promise.resolve(null),
-				emulatorEnabled
+				emulatorVisible
 					? rpcRequest<EmulatorWalletInfo[]>("emulatorListWallets", undefined, 5000).catch(() => [] as EmulatorWalletInfo[])
 					: Promise.resolve([] as EmulatorWalletInfo[]),
 			])
@@ -60,26 +61,30 @@ export function DeviceGrid({ onViewPortfolio, onReady, emulatorEnabled = false }
 		} catch (e: any) {
 			setError(e?.message || String(e))
 		}
+	}, [emulatorVisible])
+
+	useEffect(() => {
+		if (emulatorEnabled) setEmulatorVisible(true)
 	}, [emulatorEnabled])
 
 	useEffect(() => {
 		refresh()
-		if (!emulatorEnabled) return
+		if (!emulatorVisible) return
 		const unsub = onRpcMessage("emulator-status", (s) => {
 			setEmuStatus(s as EmulatorStatus)
 			rpcRequest<EmulatorWalletInfo[]>("emulatorListWallets", undefined, 5000)
 				.then(setEmuWallets).catch(() => {})
 		})
 		return unsub
-	}, [refresh, emulatorEnabled])
+	}, [refresh, emulatorVisible])
 
 	useEffect(() => {
-		if (!emulatorEnabled) {
+		if (!emulatorVisible) {
 			setEmuStatus(null)
 			setEmuWallets([])
 			setConfirmDeleteEmu(null)
 		}
-	}, [emulatorEnabled])
+	}, [emulatorVisible])
 
 	// ── Handlers ────────────────────────────────────────────────────
 
@@ -108,6 +113,33 @@ export function DeviceGrid({ onViewPortfolio, onReady, emulatorEnabled = false }
 		} catch (e: any) { setError(e?.message || String(e) || "Emulator failed to start") }
 		setLoading(null)
 	}, [refresh])
+
+	const handleUseEmulator = useCallback(async () => {
+		setLoading("emu:__enable")
+		setError(null)
+		try {
+			if (!emulatorVisible) {
+				await rpcRequest("setEmulatorEnabled", { enabled: true }, 10000)
+				setEmulatorVisible(true)
+			}
+			const wallets = await rpcRequest<EmulatorWalletInfo[]>("emulatorListWallets", undefined, 10000)
+			if (wallets.length > 0) {
+				const preferred = wallets.find(wallet => wallet.isActive) ?? wallets[0]
+				const status = await rpcRequest<EmulatorStatus>("emulatorSwitchWallet", { name: preferred.name }, 30000)
+				if (!status || status.state !== "running") throw new Error(status?.error || "Emulator did not start")
+				setEmuStatus(status)
+				setEmuWallets(wallets)
+			} else {
+				await rpcRequest("emulatorPair", undefined, 10000)
+				const status = await rpcRequest<EmulatorStatus>("emulatorInit", { flashName: "default" }, 30000)
+				if (!status || status.state !== "running") throw new Error(status?.error || "Emulator did not start")
+				setEmuStatus(status)
+			}
+		} catch (e: any) {
+			setError(e?.message || String(e) || "Emulator failed to start")
+		}
+		setLoading(null)
+	}, [emulatorVisible])
 
 	const handleStopEmu = useCallback(async () => {
 		setLoading("emu:__stop")
@@ -164,8 +196,30 @@ export function DeviceGrid({ onViewPortfolio, onReady, emulatorEnabled = false }
 		<Box
 			w="100%"
 			maxW="720px"
+			position="relative"
 			style={{ animation: 'fadeIn 0.4s ease' }}
 		>
+			<Box
+				as="button"
+				position="absolute"
+				top="0"
+				right="0"
+				px="3"
+				py="1.5"
+				borderRadius="10px"
+				fontSize="11px"
+				fontWeight="600"
+				letterSpacing="0.04em"
+				color="var(--teal)"
+				bg="rgba(139,227,196,0.10)"
+				border="1px solid rgba(139,227,196,0.30)"
+				opacity={loading === "emu:__enable" ? 0.55 : 1}
+				cursor={loading === "emu:__enable" ? "wait" : "pointer"}
+				_hover={{ bg: "rgba(139,227,196,0.18)" }}
+				onClick={handleUseEmulator}
+			>
+				{loading === "emu:__enable" ? "Starting emulator…" : "Use emulator"}
+			</Box>
 			{/* Header */}
 			<Flex direction="column" align="center" mb="5" gap="1">
 				<Text

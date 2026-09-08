@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'bun:test'
-import { findEvmSchema } from './evm-schema-registry'
+import { describe, it, expect, spyOn } from 'bun:test'
+import { findEvmSchema, isCertifiedEvmMetadata, resolveEvmSchema } from './evm-schema-registry'
+import { supportsCertifiedClearSign } from './solana-certified-policy'
 
 /* The exact Relay ETH->Solana bridge deposit captured from api.relay.link on
  * 2026-07-27 — the transaction that used to blind-sign. */
@@ -45,5 +46,32 @@ describe('findEvmSchema', () => {
     expect(findEvmSchema(1, undefined, DATA)).toBeUndefined()
     expect(findEvmSchema(1, TO, undefined)).toBeUndefined()
     expect(findEvmSchema(1, TO, '0x')).toBeUndefined()
+  })
+})
+
+describe('certified EVM metadata admission', () => {
+  const envelope = `0x03${'00'.repeat(140)}`
+
+  it('recognizes only version 3 at the reserved delegate key id', () => {
+    expect(isCertifiedEvmMetadata({ signedPayload: envelope, keyId: 0x80 })).toBe(true)
+    expect(isCertifiedEvmMetadata({ signedPayload: envelope, keyId: 3 })).toBe(false)
+    expect(isCertifiedEvmMetadata({ signedPayload: `0x02${'00'.repeat(140)}`, keyId: 0x80 })).toBe(false)
+  })
+
+  it('rejects malformed encodings before the firmware boundary', () => {
+    expect(isCertifiedEvmMetadata({ signedPayload: '0x03zz', keyId: 0x80 })).toBe(false)
+    expect(isCertifiedEvmMetadata({ signedPayload: '0x03', keyId: 0x80 })).toBe(false)
+    expect(isCertifiedEvmMetadata(undefined)).toBe(false)
+  })
+
+  it('does not attach the CI-key schema or contact the signer on firmware 7.14.2', async () => {
+    const fetch = spyOn(globalThis, 'fetch').mockImplementation(() => { throw new Error('No network expected') })
+    try {
+      expect(findEvmSchema(1, TO, DATA)?.keyId).toBe(3)
+      expect(await resolveEvmSchema(1, TO, DATA, supportsCertifiedClearSign('7.14.2'))).toBeUndefined()
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      fetch.mockRestore()
+    }
   })
 })

@@ -15,11 +15,96 @@
         "0d9e0ddf5fd51c06": {
           "name": "depositNative",
           "description": "Deposit native SOL to a Relay vault for a cross-chain fill.",
-          "accounts": ["config", "depositor", "refundTo", "vault", "systemProgram"],
+          "accounts": [
+            "config",
+            "depositor",
+            "refundTo",
+            "vault",
+            "systemProgram"
+          ],
           "args": [
-            { "name": "amount", "type": "u64" },
-            { "name": "orderId", "type": "bytes" }
+            {
+              "name": "amount",
+              "type": "u64"
+            },
+            {
+              "name": "orderId",
+              "type": "bytes"
+            }
           ]
+        }
+      }
+    },
+    "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA": {
+      "name": "Pump AMM",
+      "category": "swap",
+      "website": "https://pump.fun",
+      "description": "Buy schema from pump-fun/pump-public-docs idl/pump_amm.json. Values are raw token units; decimals are not assumed.",
+      "discriminator": {
+        "encoding": "anchor",
+        "offset": 0,
+        "length": 8
+      },
+      "instructions": {
+        "66063d1201daebea": {
+          "name": "buy",
+          "accounts": [
+            "pool",
+            "user",
+            "global_config",
+            "base_mint",
+            "quote_mint",
+            "user_base_token_account",
+            "user_quote_token_account",
+            "pool_base_token_account",
+            "pool_quote_token_account",
+            "protocol_fee_recipient",
+            "protocol_fee_recipient_token_account",
+            "base_token_program",
+            "quote_token_program",
+            "system_program",
+            "associated_token_program",
+            "event_authority",
+            "program",
+            "coin_creator_vault_ata",
+            "coin_creator_vault_authority",
+            "global_volume_accumulator",
+            "user_volume_accumulator",
+            "fee_config",
+            "fee_program"
+          ],
+          "args": [
+            {
+              "name": "base_amount_out",
+              "type": "u64"
+            },
+            {
+              "name": "max_quote_amount_in",
+              "type": "u64"
+            },
+            {
+              "name": "track_volume",
+              "type": "bool"
+            }
+          ]
+        }
+      }
+    },
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA": {
+      "name": "SPL Token",
+      "category": "token",
+      "discriminator": {
+        "encoding": "u8",
+        "offset": 0,
+        "length": 1
+      },
+      "instructions": {
+        "11": {
+          "name": "syncNative",
+          "accounts": [
+            "account"
+          ],
+          "args": []
         }
       }
     }

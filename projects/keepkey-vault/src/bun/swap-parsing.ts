@@ -381,7 +381,9 @@ function parseSingleQuote(
   // address IS the only instruction — no memo or calldata needed. Source-chain
   // guards preserve the EVM→BTC/SOL case: EVM with no calldata has no way to
   // encode the destination, so it remains rejected unless it is a deposit channel.
-  const isMemolessTransfer = (fromIsUtxo || fromIsSolana) && !!inboundAddress && swapper === 'NEAR Intents'
+  const isMemolessTransfer = (fromIsUtxo || fromIsSolana)
+    && !!inboundAddress
+    && new Set(['NEAR Intents', 'Chainflip']).has(swapper ?? '')
   if (!memo && !hasPrebuiltTx && !isNativeDeposit && !isMemolessTransfer) {
     console.error(`${TAG} MISSING memo + no prebuilt tx — dumping response structure:`)
     console.error(`${TAG}   integration: ${integration}, swapper: ${swapper ?? 'none'}`)
@@ -448,7 +450,13 @@ function parseSingleQuote(
     ? (txParams.senderAddress as string | undefined) || undefined
     : undefined
 
+  const providerQuoteIdRaw = quote.quoteId ?? quote.meta?.quoteId ?? raw.quoteId ?? best.quoteId
+  const providerQuoteId = typeof providerQuoteIdRaw === 'string' && providerQuoteIdRaw.length > 0
+    ? providerQuoteIdRaw
+    : undefined
+
   return {
+    ...(providerQuoteId ? { providerQuoteId } : {}),
     expectedOutput: expectedOutputStr,
     minimumOutput: minOutStr,
     inboundAddress: inboundAddress || '',
