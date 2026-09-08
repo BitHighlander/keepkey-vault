@@ -23,7 +23,7 @@ import {
   solanaSchemaCoverage,
 } from '../../src/bun/solana-certified-schema'
 import { resolveCanonicalLutAccounts } from '../../src/bun/solana-lut-resolver'
-import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from '../../src/bun/solana-alt'
+import { createResilientSolanaAltFetcher, solanaRpcHealth, SolanaRpcUnavailableError } from './solana-rpc'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
 
 interface Env {
@@ -32,6 +32,9 @@ interface Env {
   CLEARSIGN_CERTIFICATE_HEX?: string
   CLEARSIGN_SOLANA_CERTIFICATE_HEX?: string
   CLEARSIGN_SOLANA_RPC_ENDPOINT?: string
+  CLEARSIGN_SOLANA_RPC_ENDPOINTS?: string
+  CLEARSIGN_SOURCE_REVISION?: string
+  CF_VERSION_METADATA?: { id: string; tag: string; timestamp: string }
 }
 
 const SERVICE = 'KeepKey ClearSign'
@@ -148,14 +151,20 @@ function provisioning(env: Env) {
   }
 }
 
-function publicStatus(env: Env, origin: string) {
+async function publicStatus(env: Env, origin: string) {
   const state = provisioning(env)
+  const rpc = state.solanaReady ? await solanaRpcHealth(env) : undefined
+  const dependencyUnavailable = rpc?.status === 'unavailable'
   const expires = [state.evmCertificate?.notAfter, state.solanaCertificate?.notAfter].filter(Boolean) as number[]
   return {
     service: SERVICE,
     environment: env.CLEARSIGN_ENVIRONMENT || 'production',
-    status: state.ready ? 'ready' : 'provisioning',
-    message: state.ready
+    status: !state.ready ? 'provisioning' : dependencyUnavailable ? 'degraded' : 'ready',
+    build: { sourceRevision: env.CLEARSIGN_SOURCE_REVISION || null, version: env.CF_VERSION_METADATA || null },
+    dependencies: { solanaRpc: rpc || { status: 'not-configured' } },
+    message: dependencyUnavailable
+      ? 'Solana lookup-table verification is temporarily unavailable. Ethereum signing remains independently available.'
+      : state.ready
       ? 'KeepKey can authenticate transaction descriptions for every scope marked ready below, without blind signing.'
       : 'The service is online, but no certified signing scope is active yet.',
     endpoints: {
@@ -166,7 +175,7 @@ function publicStatus(env: Env, origin: string) {
     },
     scopes: {
       ethereum: state.evmReady ? 'ready' : 'provisioning',
-      solana: state.solanaReady ? 'ready' : 'provisioning',
+      solana: !state.solanaReady ? 'provisioning' : dependencyUnavailable ? 'degraded' : 'ready',
     },
     trust: {
       label: state.ready ? 'Authenticated by KeepKey' : 'Certificate pending',
@@ -196,8 +205,8 @@ function escapeHtml(value: unknown): string {
   })[character]!)
 }
 
-function home(env: Env, origin: string): Response {
-  const status = publicStatus(env, origin)
+async function home(env: Env, origin: string): Promise<Response> {
+  const status = await publicStatus(env, origin)
   const ready = status.status === 'ready'
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${SERVICE}</title><style>body{margin:0;background:#0b0d10;color:#eef2f5;font:15px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}main{max-width:820px;margin:0 auto;padding:56px 24px}h1{font-size:28px;margin:0 0 8px}.muted{color:#929aa5}.card{border:1px solid #29313a;background:#11151a;border-radius:14px;padding:20px;margin:18px 0}.pill{display:inline-block;border:1px solid ${ready ? '#42d392' : '#e7b84b'};color:${ready ? '#42d392' : '#e7b84b'};border-radius:999px;padding:3px 10px;font-size:12px}dt{color:#929aa5}dd{margin:0 0 10px;word-break:break-all}a{color:#7dd3fc}code{color:#d9b75f}</style></head>
@@ -245,18 +254,18 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: commonHeaders })
     if (request.method === 'GET' && url.pathname === '/') return home(env, url.origin)
     if (request.method === 'GET' && url.pathname === '/health') {
-      const state = provisioning(env)
-      return json({ ok: true, ready: state.ready, service: 'keepkey-clearsign', fingerprint: ALPHA_DELEGATE_FINGERPRINT })
+      const status = await publicStatus(env, url.origin)
+      return json({ ok: true, ready: status.status === 'ready', service: 'keepkey-clearsign', fingerprint: ALPHA_DELEGATE_FINGERPRINT, build: status.build, dependencies: status.dependencies })
     }
     if (request.method === 'GET' && (url.pathname === '/ready' || url.pathname === '/v1/status')) {
-      const status = publicStatus(env, url.origin)
+      const status = await publicStatus(env, url.origin)
       return json(status, url.pathname === '/ready' && status.status !== 'ready' ? 503 : 200)
     }
     if (request.method === 'GET' && url.pathname === '/v1/catalog') {
       return json({ version: 1, entries: reviewedCatalog(), provenance: PROVENANCE }, 200, 'public, max-age=300')
     }
     if (request.method === 'GET' && url.pathname === '/signer') {
-      const status = publicStatus(env, url.origin)
+      const status = await publicStatus(env, url.origin)
       return json({ status: status.status, alias: status.trust.signerAlias, fingerprint: ALPHA_DELEGATE_FINGERPRINT, publicKeyHex: ALPHA_DELEGATE_PUBLIC_KEY, keyId: CERTIFIED_METADATA_KEY_ID, scopes: status.scopes, certificateExpiresAt: status.trust.certificateExpiresAt })
     }
 
@@ -318,6 +327,7 @@ export default {
         return json({ classification: 'UNAVAILABLE', error: 'Solana certified signing is not provisioned' }, 503)
       }
 
+      let proofStage = 'schema'
       try {
         const schema = signCertifiedSolanaSchema(env.CLEARSIGN_SOLANA_CERTIFICATE_HEX, env.CLEARSIGN_DELEGATE_PRIVATE_KEY, spec)
         const response: any = {
@@ -333,10 +343,12 @@ export default {
         }
         if (message.altEntries.length === 0) return json(response)
 
+        proofStage = 'lookup-resolution'
         const resolution = await resolveCanonicalLutAccounts(
           message,
-          createRpcAltFetcher(env.CLEARSIGN_SOLANA_RPC_ENDPOINT || DEFAULT_SOLANA_RPC_ENDPOINT),
+          createResilientSolanaAltFetcher(env),
         )
+        proofStage = 'lookup-signature'
         const messageHash = createHash('sha256').update(messageBytes).digest()
         const proof = signCertifiedSolanaLutAttestation(env.CLEARSIGN_SOLANA_CERTIFICATE_HEX, env.CLEARSIGN_DELEGATE_PRIVATE_KEY, messageHash, resolution.accounts)
         response.lutProof = {
@@ -347,8 +359,10 @@ export default {
         response.writableCount = resolution.writableCount
         response.readonlyCount = resolution.readonlyCount
         return json(response)
-      } catch {
-        return json({ error: 'certified Solana proof could not be produced' }, 500)
+      } catch (error) {
+        const code = error instanceof SolanaRpcUnavailableError ? error.code : 'SOLANA_PROOF_FAILED'
+        console.error(`[clearsign] Solana certification failed: stage=${proofStage} code=${code}`)
+        return json({ classification: 'UNAVAILABLE', code, error: error instanceof SolanaRpcUnavailableError ? error.message : 'certified Solana proof could not be produced' }, error instanceof SolanaRpcUnavailableError ? 503 : 500)
       }
     }
     return json({ error: 'not found' }, 404)
