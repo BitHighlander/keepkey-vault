@@ -26,10 +26,11 @@ export function addSessionActivity(items: RecentActivity[]): number {
 
 /** Newest-first session rows; chainFilter matches chain id or symbol
  *  (same loose semantics as getRecentActivityFromLog's chain filter). */
-export function getSessionActivity(limit = 50, chainFilter?: string): RecentActivity[] {
+export function getSessionActivity(limit?: number, chainFilter?: string): RecentActivity[] {
   let list = Array.from(rows.values())
   if (chainFilter) list = list.filter(r => r.chainId === chainFilter || r.chain === chainFilter)
-  return list.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
+  list.sort((a, b) => b.createdAt - a.createdAt)
+  return limit ? list.slice(0, limit) : list
 }
 
 export function clearSessionActivity(): void {

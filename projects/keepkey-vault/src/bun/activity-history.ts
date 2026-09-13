@@ -20,8 +20,11 @@ export type ActivityHistoryRebuildOptions = {
   accountIndex?: number
   /** Collect normalized RecentActivity rows into result.rows. Used with dryRun
    *  by hidden (passphrase) sessions: fetch live, return rows, write nothing. */
-  collectRows?: boolean
-}
+    collectRows?: boolean
+    /** Bypass Pioneer's history cache (up to 5 min stale). The pending-tx watcher
+    *  needs this — a cached page never contains the tx it is waiting for. */
+    forceRefresh?: boolean
+  }
 
 type HistoryQuery = {
   caip: string
@@ -206,6 +209,13 @@ async function deriveHistoryQueries(wallet: any, chain: ChainDef, accountIndex: 
   }] : []
 }
 
+// Deriving history queries is a device round-trip per chain, and addresses never
+// change for a wallet+chain+account. Repeat scans (the pending-tx watcher rescans
+// every minute) reuse them instead of queueing USB traffic behind a signing
+// prompt. Cleared on disconnect / passphrase prompt / seed change (index.ts).
+const queryCache = new Map<string, HistoryQuery[]>()
+export function clearHistoryQueryCache(): void { queryCache.clear() }
+
 function selectChains(
   chains: ChainDef[],
   firmwareVersion: string | undefined,
@@ -223,9 +233,14 @@ export async function rebuildActivityHistory(params: {
   wallet: any
   scope: ActivityHistoryScope
   chains: ChainDef[]
-  firmwareVersion?: string
-  options?: ActivityHistoryRebuildOptions
-}): Promise<ActivityHistoryRebuildResult> {
+    firmwareVersion?: string
+    options?: ActivityHistoryRebuildOptions
+    /** False once the wallet session this scan started in is gone. A device derive
+    *  can queue behind a PIN/passphrase prompt and return ANOTHER (hidden)
+    *  wallet's addresses — nothing derived or fetched then may be cached or
+    *  written. Not part of options: REST passes options straight from the body. */
+    isCurrent?: () => boolean
+  }): Promise<ActivityHistoryRebuildResult> {
   const options = params.options || {}
   const dryRun = !!options.dryRun
   const collected: RecentActivity[] | undefined = options.collectRows ? [] : undefined
@@ -267,12 +282,21 @@ export async function rebuildActivityHistory(params: {
     const seenTxids = new Set<string>()
 
     try {
-      const queries = await deriveHistoryQueries(params.wallet, chain, accountIndex)
+      const cacheKey = `${params.scope.walletId}|${chain.id}|${accountIndex}`
+      let queries = queryCache.get(cacheKey)
+      if (!queries) {
+        queries = await deriveHistoryQueries(params.wallet, chain, accountIndex)
+        if (params.isCurrent && !params.isCurrent()) throw new Error('Wallet session changed during scan')
+        if (queries.length) queryCache.set(cacheKey, queries)
+      }
       result.totals.queries += queries.length
 
       for (const query of queries) {
         const resp = await withTimeout(
-          pioneer.GetTransactionHistory({ queries: [{ pubkey: query.pubkey, caip: query.caip }] }),
+          pioneer.GetTransactionHistory(
+            { queries: [{ pubkey: query.pubkey, caip: query.caip }] },
+            options.forceRefresh ? { forceRefresh: true } : undefined,
+          ),
           PIONEER_TIMEOUT_MS,
           `GetTransactionHistory(${chain.symbol}:${query.label})`,
         )
@@ -331,6 +355,7 @@ export async function rebuildActivityHistory(params: {
             })
           }
           if (!dryRun) {
+            if (params.isCurrent && !params.isCurrent()) throw new Error('Wallet session changed during scan')
             if (exists) {
               updateApiLogTxMeta(txid, meta, params.scope.deviceId, params.scope.walletId, {
                 activityType,

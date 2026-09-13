@@ -768,7 +768,10 @@ export async function executeSwap(params: ExecuteSwapParams, ctx: SwapContext): 
       if (result.approveTx) {
         swapLog(`${TAG} Relay ERC-20 approval required: prompting device for approveTx`)
         stage('approve-signing')
-        const signedApprove = await wallet.ethSignTx(result.approveTx)
+        const signedApprove = await wrapSign(
+          () => wallet.ethSignTx(result.approveTx),
+          { operation: 'erc20Approve', chain: fromChain.coin, to: result.approveTx.to, value: params.amount },
+        )
         swapLog(`${TAG} Device signed approveTx`)
         let approveHex: string = typeof signedApprove === 'string'
           ? signedApprove
@@ -796,7 +799,7 @@ export async function executeSwap(params: ExecuteSwapParams, ctx: SwapContext): 
 
   // ── EVM chains: MUST use router contract depositWithExpiry() ──
   } else if (fromChain.chainFamily === 'evm') {
-    const result = await buildEvmSwapTx(params, fromChain, fromAddress, pioneer, getEvmRpcSource, isErc20Source, wallet, /* previewMode */ false, stage)
+    const result = await buildEvmSwapTx(params, fromChain, fromAddress, pioneer, getEvmRpcSource, isErc20Source, wallet, /* previewMode */ false, stage, wrapSign)
     unsignedTx = result.unsignedTx
     approvalTxid = result.approvalTxid
 
@@ -1841,6 +1844,7 @@ async function buildEvmSwapTx(
   wallet: any,
   previewMode = false,
   stage: (s: SwapSubStage) => void = () => {},
+  wrapSign: SwapContext['wrapSign'] = (fn) => fn(),
 ): Promise<{ unsignedTx: any; approvalTxid?: string; approveTx?: any; allowance?: { current: string; required: string; sufficient: boolean; spender: string; tokenContract: string }; balance?: { current: string; required: string; sufficient: boolean; tokenContract?: string } }> {
   // Some protocols (e.g. Mayachain) only return `inboundAddress` and use it as the
   // router for EVM deposits. Accept either; throw only if both are missing.
@@ -2083,7 +2087,10 @@ async function buildEvmSwapTx(
       } else {
       swapLog(`${TAG} Signing ERC-20 approve tx: token=${tokenContract}, spender=${routerAddress}, amount=${amountBaseUnits}`)
       stage('approve-signing')
-      const signedApprove = await wallet.ethSignTx(approveTx)
+      const signedApprove = await wrapSign(
+        () => wallet.ethSignTx(approveTx),
+        { operation: 'erc20Approve', chain: fromChain.coin, to: tokenContract, value: params.amount },
+      )
 
       // Extract serialized tx
       let approveHex: string

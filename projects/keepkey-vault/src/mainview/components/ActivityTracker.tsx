@@ -1,7 +1,8 @@
 /**
  * ActivityTracker — floating bubble (bottom-left) showing recent transaction activity.
  *
- * Always visible. Queries api_log (with activity_type) + swap_history.
+ * Always visible. Every tx for the wallet (api_log + swap_history, no cap),
+ * kept live by the backend's 'activity-changed' push.
  * Captures: broadcasts, swaps, API signs, messages.
  */
 import { useState, useEffect, useCallback, useRef } from "react"
@@ -10,7 +11,8 @@ import { rpcRequest, onRpcMessage } from "../lib/rpc"
 import { Z } from "../lib/z-index"
 import { ActivityPanel } from "./ActivityPanel"
 import { SwapDialog } from "./SwapDialog"
-import type { RecentActivity, PendingSwap, SwapStatusUpdate, ApiLogEntry, DeviceStateInfo } from "../../shared/types"
+import { useRecentActivity } from "../hooks/useRecentActivity"
+import type { PendingSwap, SwapStatusUpdate, DeviceStateInfo } from "../../shared/types"
 
 const TRACKER_CSS = `
   @keyframes kkActivityPulse {
@@ -34,7 +36,8 @@ const TRACKER_CSS = `
 `
 
 export function ActivityTracker() {
-  const [activities, setActivities] = useState<RecentActivity[]>([])
+  // Every activity row, kept live by the backend's 'activity-changed' push.
+  const { activities, refresh: fetchActivities } = useRecentActivity()
   const [pendingSwaps, setPendingSwaps] = useState<PendingSwap[]>([])
   const [panelOpen, setPanelOpen] = useState(false)
   const [resumeSwap, setResumeSwap] = useState<PendingSwap | null>(null)
@@ -44,13 +47,6 @@ export function ActivityTracker() {
   const lastDeviceStateKeyRef = useRef<string>('')
   const bounceTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
-  // Fetch recent activities from api_log + swap_history (unified query)
-  const fetchActivities = useCallback(() => {
-    rpcRequest<RecentActivity[]>('getRecentActivity', { limit: 50 }, 5000)
-      .then((result) => { if (result) setActivities(result) })
-      .catch((err) => { console.warn('[ActivityTracker] fetch activities failed:', err.message) })
-  }, [])
-
   // Fetch pending swaps (for live swap tracking)
   const fetchSwaps = useCallback(() => {
     rpcRequest<PendingSwap[]>('getPendingSwaps', undefined, 5000)
@@ -58,59 +54,32 @@ export function ActivityTracker() {
       .catch((err) => { console.warn('[ActivityTracker] fetch swaps failed:', err.message) })
   }, [])
 
-  // Fetch on mount
-  useEffect(() => { fetchActivities(); fetchSwaps() }, [fetchActivities, fetchSwaps])
+  useEffect(() => { fetchSwaps() }, [fetchSwaps])
 
   // Device and seed changes can happen without remounting this component.
-  // Clear first so the previous wallet's activity is never displayed while
-  // the scoped backend query is catching up.
+  // Clear first so the previous wallet's swaps are never displayed while the
+  // scoped backend query is catching up (useRecentActivity does the same for rows).
   useEffect(() => {
     const unsub = onRpcMessage('device-state', (state: DeviceStateInfo) => {
       const stateKey = `${state.state}:${state.deviceId || ''}:${state.isHiddenWallet ? 'hidden' : 'standard'}`
       if (stateKey !== lastDeviceStateKeyRef.current) {
         lastDeviceStateKeyRef.current = stateKey
-        setActivities([])
         setPendingSwaps([])
       }
-      // Hidden wallets included: both RPCs are hidden-safe — getRecentActivity
-      // serves the RAM-only session store and getPendingSwaps serves in-memory
-      // (never-persisted) swaps, scoped to the hidden walletId.
-      if (state.state === 'ready' && state.deviceId) {
-        fetchActivities()
-        fetchSwaps()
-      }
+      // Hidden wallets included: getPendingSwaps serves in-memory (never-persisted)
+      // swaps, scoped to the hidden walletId.
+      if (state.state === 'ready' && state.deviceId) fetchSwaps()
     })
     return unsub
-  }, [fetchActivities, fetchSwaps])
+  }, [fetchSwaps])
 
-  // Listen for new api-log entries — re-fetch if it's a sign/broadcast
-  useEffect(() => {
-    const unsub = onRpcMessage('api-log', (entry: ApiLogEntry) => {
-      if (entry.activityType) {
-        // New sign/broadcast logged — refresh activity list
-        fetchActivities()
-      }
-    })
-    return unsub
-  }, [fetchActivities])
-
-  // Listen for background history-scan completion — those rows are written
-  // directly via DB helpers (no api-log), so this is the only refresh signal.
-  useEffect(() => {
-    const unsub = onRpcMessage('activity-scan-complete', () => {
-      fetchActivities()
-    })
-    return unsub
-  }, [fetchActivities])
-
-  // Listen for swap updates (keep swap awareness)
+  // Swap lifecycle. The swap's activity row follows via 'activity-changed'.
   useEffect(() => {
     const unsub1 = onRpcMessage('swap-update', (_update: SwapStatusUpdate) => {
       fetchSwaps()
     })
     const unsub2 = onRpcMessage('swap-complete', (swap: PendingSwap) => {
       fetchSwaps()
-      fetchActivities()
       if (swap.status === 'completed' || swap.status === 'refunded') {
         window.dispatchEvent(new CustomEvent('keepkey-swap-completed', {
           detail: { ...swap, swap }
@@ -118,25 +87,21 @@ export function ActivityTracker() {
       }
     })
     return () => { unsub1(); unsub2() }
-  }, [fetchSwaps, fetchActivities])
+  }, [fetchSwaps])
 
   // Listen for swap-executed DOM event from SwapDialog
   useEffect(() => {
     let t1: ReturnType<typeof setTimeout>
-    let t2: ReturnType<typeof setTimeout>
     const handler = () => {
-      fetchActivities()
       fetchSwaps()
-      t1 = setTimeout(fetchActivities, 1000)
-      t2 = setTimeout(fetchSwaps, 1000)
+      t1 = setTimeout(fetchSwaps, 1000)
     }
     window.addEventListener('keepkey-swap-executed', handler)
     return () => {
       window.removeEventListener('keepkey-swap-executed', handler)
       clearTimeout(t1)
-      clearTimeout(t2)
     }
-  }, [fetchActivities, fetchSwaps])
+  }, [fetchSwaps])
 
   // Detect new items — trigger bounce animation
   const activeSwaps = pendingSwaps.filter(s =>

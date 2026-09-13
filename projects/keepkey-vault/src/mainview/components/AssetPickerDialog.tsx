@@ -27,6 +27,7 @@ import { useDeviceState } from "../hooks/useDeviceState"
 import { CHAINS } from "../../shared/chains"
 import { Z } from "../lib/z-index"
 import { useFiat } from "../lib/fiat-context"
+import { isSymbolSquatter } from "../../shared/symbolSquatter"
 // ── constants ──────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 20
@@ -912,6 +913,11 @@ function AssetListRow({ entry: e, onSelect, onUnavailable }: {
   const selectable  = isRowSelectable(e)
   const isTryQuote  = e.availability.status === "unknown"
   const chainName   = networkDisplayName(e.chainId)
+  // An unverified token wearing a major chain's identity. Checked HERE, in the
+  // list, not just on the summary tile after selection — the list is where the
+  // user actually decides, and a squatter that renders with the native logo has
+  // already won by then. See shared/symbolSquatter.
+  const squatter    = isSymbolSquatter(e.caip, e.symbol, e.name)
 
   return (
     <Box
@@ -931,7 +937,7 @@ function AssetListRow({ entry: e, onSelect, onUnavailable }: {
     >
       {/* Icon — 64px */}
       <Box flexShrink={0}>
-        <AssetIcon caip={e.caip} iconUrl={e.iconUrl} chainCaip={chainBadgeCaip(e)} size={64} alt={e.symbol} />
+        <AssetIcon caip={e.caip} iconUrl={squatter ? undefined : e.iconUrl} chainCaip={chainBadgeCaip(e)} size={64} alt={e.symbol} />
       </Box>
 
       {/* Info */}
@@ -939,6 +945,12 @@ function AssetListRow({ entry: e, onSelect, onUnavailable }: {
         <Flex align="center" gap="2" flexWrap="wrap">
           <Text fontSize="15px" fontWeight="800">{e.symbol}</Text>
           <GasTokenBadge entry={e} />
+          {squatter && (
+            <Box bg="rgba(239,68,68,0.14)" color="#F87171" px="1.5" py="0.5"
+              borderRadius="4px" fontSize="9px" fontWeight="700" letterSpacing="0.04em">
+              NOT THE REAL {e.symbol.toUpperCase()}
+            </Box>
+          )}
           {e.balance && (
             <Box bg="rgba(139,227,196,0.12)" color="var(--teal)" px="1.5" py="0.5"
               borderRadius="4px" fontSize="9px" fontWeight="600" letterSpacing="0.04em">
@@ -1339,17 +1351,18 @@ export function AssetPickerDialog({
   }, [open, swappable, balances, customTokens, firmwareVersion])
 
   // Reset navigation on open/close.
-  // On the TO side, default the chain step to the FROM token's chain so the
-  // user lands directly on the same-chain asset list (the common case) instead
-  // of having to pick the network again. They can still hit Back to switch.
+  // The TO side ALWAYS starts on the network step — never pre-fill the chain.
+  // Landing straight on a token list is what lets a name-squatting token
+  // ("solana" on Ethereum) be picked by someone who thinks they chose a
+  // network. Picking the network is the user's defence; don't skip it.
   useEffect(() => {
     if (open) {
-      setToChain(side === 'to' && fromChainId ? fromChainId : null)
+      setToChain(null)
       setUnavailEntry(null)
       setConfirmEntry(null)
       setSearch("")
     }
-  }, [open, side, fromChainId])
+  }, [open])
 
   // Escape to close
   useEffect(() => {

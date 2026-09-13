@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react"
 import { useTranslation } from "react-i18next"
 import { Box, Flex, Text, VStack, Button, Input } from "@chakra-ui/react"
-import { rpcRequest, rpcFire } from "../lib/rpc"
+import { rpcRequest } from "../lib/rpc"
 import { formatBalance } from "../lib/formatting"
 import { describeSigningError } from "../lib/signing-errors"
 import { useFiat } from "../lib/fiat-context"
@@ -18,9 +18,6 @@ import { isBalanceUnverified } from "../../shared/balance-display-state"
 
 type SendPhase = 'input' | 'built' | 'signed' | 'broadcast'
 
-// Balance servers need a moment to index a just-broadcast tx — resyncing
-// immediately re-reads the pre-send balance and briefly shows it as current.
-const POST_SEND_RESYNC_DELAY_MS = 4000
 
 // ── Confetti ────────────────────────────────────────────────────────────────
 const CONFETTI_COLORS = ['#8be3c4', '#e9c46a', '#a8efd2', '#9f8ce0', '#e08c7b', '#f2d27e']
@@ -342,10 +339,8 @@ export function SendForm({ chain, address, balance, token, onClearToken, xpubOve
 			}, 60000)
 			setTxid(result.txid)
 			setPhase('broadcast')
-			// Gated to the chain we sent FROM — the balance server needs time to
-			// index the broadcast before a resync reflects it, not the pre-send state.
-			const resyncChainId = chain.id
-			setTimeout(() => rpcFire('getBalance', { chainId: resyncChainId }), POST_SEND_RESYNC_DELAY_MS)
+			// Balance resync + confirmation tracking are owned by the backend for every
+			// broadcast source (in-app, REST, swap): broadcastTx → onActivityLogged.
 		} catch (e: any) {
 			setError(e.message || t("broadcastFailed"))
 		}

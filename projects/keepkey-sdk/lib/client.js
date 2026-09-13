@@ -40,7 +40,7 @@ class VaultClient {
             headers: this.headers(),
             signal: this.signal(timeoutMs),
         });
-        if (resp.status === 403 && this.apiKey) {
+        if (resp.status === 401 && this.apiKey) {
             const rePaired = await this.tryRePair();
             if (rePaired) {
                 const retry = await fetch(`${this.baseUrl}${path}`, {
@@ -65,7 +65,7 @@ class VaultClient {
             body: body !== undefined ? JSON.stringify(body) : undefined,
             signal: this.signal(timeoutMs),
         });
-        if (resp.status === 403 && this.apiKey) {
+        if (resp.status === 401 && this.apiKey) {
             const rePaired = await this.tryRePair();
             if (rePaired) {
                 const retry = await fetch(`${this.baseUrl}${path}`, {
@@ -92,7 +92,7 @@ class VaultClient {
             signal: this.signal(timeoutMs),
         });
         let resp = await request();
-        if (resp.status === 403 && this.apiKey) {
+        if (resp.status === 401 && this.apiKey) {
             const rePaired = await this.tryRePair();
             if (rePaired)
                 resp = await request();
@@ -108,7 +108,7 @@ class VaultClient {
             headers: this.headers(),
             signal: this.signal(),
         });
-        if (resp.status === 403 && this.apiKey) {
+        if (resp.status === 401 && this.apiKey) {
             const rePaired = await this.tryRePair();
             if (rePaired) {
                 const retry = await fetch(`${this.baseUrl}${path}`, {
@@ -179,8 +179,9 @@ class VaultClient {
         }
     }
     /**
-     * Attempt to re-pair when a 403 is received.
-     * Uses a mutex so concurrent 403s only trigger one re-pair attempt.
+     * Attempt to re-pair only when authentication fails (401). A 403 can mean
+     * that the user rejected signing; replaying that request is unsafe.
+     * Uses a mutex so concurrent 401s only trigger one re-pair attempt.
      */
     async tryRePair() {
         if (this.rePairPromise)

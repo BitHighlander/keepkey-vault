@@ -328,6 +328,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       getAddressBookHistory: { params: { entryId: string }; response: AddressBookTx[] }
 
       // ── Recent Activity ──────────────────────────────────────────────────
+      // limit omitted = every row for the wallet (the activity list shows full history)
       getRecentActivity: { params: { limit?: number; chainId?: string } | void; response: RecentActivity[] }
       scanChainHistory: { params: { chainId: string }; response: { count: number } }
       // True while the engine's startup/background bulk history scan is in flight,
@@ -521,6 +522,10 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
        *  replace the "No indexed activity yet" placeholder without a manual
        *  navigate-away. inserted/chains are for logging/telemetry only. */
       'activity-scan-complete': { inserted: number; chains: number }
+      /** Activity rows changed: a send/broadcast (in-app or REST), swap status,
+      *  a scan, or a watched tx's confirmations. Activity views refetch
+      *  getRecentActivity. Coalesced backend-side (one push per burst). */
+      'activity-changed': {}
       /** Seed-staleness purge: the backend detected the in-memory wallet data
        *  belonged to a DIFFERENT seed than the device (passphrase toggle,
        *  hidden↔standard transition, cached-passphrase reconnect) and dropped

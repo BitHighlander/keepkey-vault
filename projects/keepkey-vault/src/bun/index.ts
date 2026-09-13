@@ -204,13 +204,15 @@ import { fetchDefiPositions } from "./zerion"
 import { loadSupportedChains } from "../shared/swap-support-matrix"
 import { PioneerSocket } from "./pioneer-socket"
 import { startEventStream, stopEventStream, type AddressEntry } from "./event-stream"
-import { rebuildActivityHistory } from "./activity-history"
+import { rebuildActivityHistory, clearHistoryQueryCache } from "./activity-history"
+import { createTxWatch, MAX_WATCH_MS, UNSEEN_GIVE_UP_MS } from "./tx-watch"
+import { getRequiredConfs } from "../shared/confirmations"
 import { addSessionActivity, getSessionActivity, clearSessionActivity } from "./session-activity"
 import { buildTx, broadcastTx } from "./txbuilder"
 import { buildCosmosStakingTx, buildCosmosNameRegTx } from "./txbuilder/cosmos"
 import { initializeOrchardFromDevice, scanOrchardNotes, getShieldedBalance, sendShielded, ensureFvkLoaded, displayOrchardAddressOnDevice } from "./txbuilder/zcash-shielded"
 import { findZcashCliBinary, isSidecarReady, startSidecar, stopSidecar, wipeSidecarWalletDb, hasFvkLoaded, getCachedFvk, onScanProgress, getScanState, updateSyncedTo, beginZcashSend, endZcashSend, isZcashSendInFlight } from "./zcash-sidecar"
-import { CHAINS, customChainToChainDef, isChainSupported, hiveRolePath, btcTaprootSupported } from "../shared/chains"
+import { CHAINS, customChainToChainDef, isChainSupported, hiveRolePath, btcTaprootSupported, findChainByNetwork } from "../shared/chains"
 import { versionCompare } from "../shared/firmware-versions"
 import { supportsZcashPrivacyBuild } from "./zcash-capability"
 import type { ChainDef } from "../shared/chains"
@@ -900,6 +902,8 @@ function deferredInit() {
 				if (msg === 'swap-update') rpc.send['swap-update'](data)
 				else if (msg === 'swap-complete') rpc.send['swap-complete'](data)
 				else console.error(`[swap-tracker] Unknown message: ${msg}`)
+				// swap_history status/output moved — activity rows show it
+				if (msg === 'swap-update' || msg === 'swap-complete') notifyActivityChanged()
 			} catch (e: any) {
 				console.warn(`[swap-tracker] Failed to send '${msg}':`, e.message)
 			}
@@ -1491,9 +1495,11 @@ function flushPendingScopedApiLogs() {
 	if (!scope || engine.isPassphraseWallet || pendingScopedApiLogs.length === 0) return
 	const pending = pendingScopedApiLogs.splice(0)
 	for (const entry of pending) {
+		if (entryIsStale(entry)) continue // queued before a seed change
 		const scopedEntry = { ...entry, ...scope }
 		try { insertApiLog(scopedEntry) } catch { /* db not ready */ }
 		try { rpc.send['api-log'](scopedEntry) } catch { /* webview not ready */ }
+		if (scopedEntry.activityType) onActivityLogged(scopedEntry)
 	}
 }
 
@@ -1515,6 +1521,10 @@ async function deviceSwapAssets() {
 // Callbacks bridge REST → RPC UI
 const restCallbacks: RestApiCallbacks = {
 	onApiLog: (entry: ApiLogEntry) => {
+		if (entryIsStale(entry)) {
+			console.warn(`[api-log] dropped ${entry.method} ${entry.route}: wallet session changed mid-request`)
+			return
+		}
 		const scope = getWalletDbScope()
 		const scopedEntry = scope ? { ...entry, ...scope } : entry
 		try { rpc.send['api-log'](scopedEntry) } catch { /* webview not ready */ }
@@ -1525,7 +1535,13 @@ const restCallbacks: RestApiCallbacks = {
 			pendingScopedApiLogs.push(entry)
 			if (pendingScopedApiLogs.length > 100) pendingScopedApiLogs.shift()
 		}
-	},
+		// REST broadcasts/signs (kkclient etc.) reach the activity list, balances and
+		// confirmation tracking here. Queued (pre-scope) rows are announced on flush.
+		if (entry.activityType && (scope || engine.isPassphraseWallet)) onActivityLogged(scopedEntry)
+		},
+		onActivityChanged: () => notifyActivityChanged(),
+		getSessionEpoch: () => activitySessionEpoch,
+		resolveChain: (networkId: string) => findChainByNetwork(networkId, undefined, getAllChains()),
 	onSigningRequest: async (info: SigningRequestInfo) => {
 		attachSigningPolicySnapshot(info)
 		try { rpc.send['signing-request'](info) } catch { /* webview not ready */ }
@@ -1745,7 +1761,7 @@ const zcashTAddrFromXpub = (() => {
 // without this record a private send is invisible in history forever.
 // Same privacy rule as broadcastTx: DB write is standard-wallet only
 // (api_log is part of hidden-wallet deniability), UI push always.
-function logZcashShieldedActivity(activityType: 'broadcast' | 'shield' | 'unshield', txid: string, amountZat: number, to?: string) {
+function logZcashShieldedActivity(activityType: 'broadcast' | 'shield' | 'unshield', txid: string, amountZat: number, to?: string, sessionEpoch?: number) {
 	if (!txid) return
 	const scope = getWalletDbScope()
 	const n = Number(amountZat)
@@ -1755,10 +1771,172 @@ function logZcashShieldedActivity(activityType: 'broadcast' | 'shield' | 'unshie
 		to,
 		chainId: 'zcash',
 		chainSymbol: 'ZEC',
-	}
-	const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: `zcashShielded/${activityType}`, timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid, chain: 'ZEC', activityType, responseBody: meta }
+		shielded: true,
+		}
+		const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: `zcashShielded/${activityType}`, timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid, chain: 'ZEC', activityType, responseBody: meta, sessionEpoch }
+	if (entryIsStale(logEntry)) return // session ended mid-send: never attribute it to the next wallet
 	if (scope && !engine.isPassphraseWallet) insertApiLog(logEntry)
 	try { rpc.send['api-log'](logEntry) } catch { /* webview not ready */ }
+	onActivityLogged(logEntry)
+}
+
+// ── Live activity ────────────────────────────────────────────────────────
+// Every activity write ends in notifyActivityChanged(); the activity views
+// refetch on 'activity-changed'. Coalesced so a burst (a scan upserting 40
+// rows, swap-status polling) costs the UI one refetch.
+let activityChangedTimer: ReturnType<typeof setTimeout> | undefined
+function notifyActivityChanged(): void {
+	if (activityChangedTimer) return
+	activityChangedTimer = setTimeout(() => {
+		activityChangedTimer = undefined
+		try { rpc.send['activity-changed']({}) } catch { /* webview not ready */ }
+	}, 250)
+}
+
+// Balance servers need a moment to index a just-broadcast tx — resyncing at
+// once re-reads the pre-send balance.
+const POST_BROADCAST_RESYNC_MS = 4000
+
+/** Resync one chain's balance through the UI's always-mounted tx-push listener
+*  (App.tsx → getBalance → 'balance-updated'), the same path Pioneer pushes take. */
+function requestBalanceRefresh(chainId: string, txid: string | undefined, type: 'outgoing' | 'confirmed', delayMs = 0): void {
+	const chain = getAllChains().find(c => c.id === chainId)
+	if (!chain) return
+	setTimeout(() => {
+		if (!engine.wallet) return // unplugged meanwhile — getBalance would throw
+		try { rpc.send['tx-push-received']({ chain: chain.caip, networkId: chain.networkId, txid, type }) } catch { /* webview not ready */ }
+	}, delayMs)
+}
+
+// Bumped wherever the hidden-session RAM store is cleared, so a scan or request
+// that started in one wallet session can never write into the next one.
+let activitySessionEpoch = 0
+
+/** Stamped in a wallet session that has since ended (unplug, passphrase switch,
+*  seed change): attributing it to the current scope would put one wallet's tx
+*  in another's history — on disk or in the hidden RAM store. */
+function entryIsStale(entry: ApiLogEntry): boolean {
+	return entry.sessionEpoch !== undefined && entry.sessionEpoch !== activitySessionEpoch
+}
+
+/** Rescan ONE chain's history. Standard wallets upsert api_log; hidden sessions
+*  fetch live and keep rows in RAM only (zero disk trace). */
+async function scanOneChain(chainId: string, forceRefresh = false) {
+	if (!engine.wallet) throw new Error('No device connected')
+	// Only a settled session scans: while a PIN/passphrase prompt is up, a derive
+	// queues behind it and can come back from a DIFFERENT (hidden) wallet.
+	if (engine.getDeviceState().state !== 'ready') throw new Error('Device is not ready')
+	const hidden = engine.isPassphraseWallet
+	const epoch = activitySessionEpoch
+	const deviceId = engine.getDeviceState().deviceId || 'unknown'
+	// Hidden scope is normally set in-memory by sendPassphrase; the fallback covers
+	// reconnect-with-cached-passphrase where no identity probe ran. Nothing is written.
+	const dbScope = getWalletDbScope()
+	const scope = dbScope || (hidden ? { deviceId, walletId: `${deviceId}:hidden-session` } : null)
+	if (!scope) throw new Error('Wallet scope is not ready. Unlock the device and wait for seed identity.')
+	// Re-checked after the device derive and before every cache set / DB write.
+	const isCurrent = () => epoch === activitySessionEpoch
+		&& engine.getDeviceState().state === 'ready'
+		&& engine.isPassphraseWallet === hidden
+		&& getWalletDbScope()?.walletId === dbScope?.walletId
+	const result = await rebuildActivityHistory({
+		wallet: engine.wallet,
+		scope,
+		chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
+		firmwareVersion: engine.getDeviceState().firmwareVersion,
+		options: { chainId, dryRun: hidden, collectRows: true, forceRefresh },
+		isCurrent,
+	})
+	if (!isCurrent()) return { rows: [], added: 0, txs: 0, updated: 0 }
+	const chainResult = result.chains.find(c => c.chainId === chainId)
+	if (chainResult?.error) throw new Error(chainResult.error)
+	const rows = result.rows || []
+	const added = hidden ? addSessionActivity(rows) : (chainResult?.inserted || 0)
+	notifyActivityChanged()
+	return { rows, added, txs: chainResult?.txs || 0, updated: chainResult?.updated || 0 }
+}
+
+// Follows each broadcast / pushed tx until it confirms: rescans its chain past
+// Pioneer's history cache (upserting the activity rows) and resyncs the balance
+// when the tx lands in a block.
+const txWatch = createTxWatch({
+	scanChain: async (chainId) => (await scanOneChain(chainId, true)).rows,
+	onConfirmed: (chainId, txid) => requestBalanceRefresh(chainId, txid, 'confirmed'),
+	requiredConfs: (row) => getRequiredConfs(row.chain),
+})
+
+/** Every new activity row (in-app send, REST broadcast/sign, swap, shielded
+*  flow) funnels through here: the activity views refetch, and a broadcast is
+*  followed on-chain — balance resync now, confirmations as they land. */
+function onActivityLogged(entry: ApiLogEntry): void {
+	if (entryIsStale(entry)) return
+	const meta = entry.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : {}
+	const chainId: string | undefined = typeof meta.chainId === 'string' ? meta.chainId : undefined
+	// Hidden sessions never persist api_log: mirror the row into the RAM store so
+	// it shows now (the chain's next rescan replaces it with the indexed row). Only
+	// in a settled session — during a passphrase prompt the hidden flag still
+	// describes the wallet being left, not the one about to open.
+	if (engine.isPassphraseWallet && engine.getDeviceState().state === 'ready' && entry.txid && chainId && entry.activityType !== 'swap') {
+		addSessionActivity([{
+			id: `live-${chainId}-${entry.txid}`,
+			txid: entry.txid,
+			chain: meta.chainSymbol || entry.chain || '?',
+			chainId,
+			type: (entry.activityType === 'broadcast' ? 'send' : entry.activityType) as RecentActivity['type'],
+			source: entry.method === 'RPC' ? 'app' : 'api',
+			appName: entry.method === 'RPC' ? undefined : entry.appName,
+			status: 'broadcast',
+			createdAt: entry.timestamp,
+			amount: meta.value,
+			fee: meta.fee,
+			to: meta.to,
+			asset: meta.asset,
+		}])
+	}
+	notifyActivityChanged()
+	// Shielded txs never appear in transparent history; the zcash sidecar's own
+	// post-tx rescans own that balance.
+	if (entry.txid && chainId && !meta.shielded && (entry.activityType === 'broadcast' || entry.activityType === 'swap')) {
+		txidRecentlyPushed(entry.txid) // our own tx: the SSE/socket echo must not refetch it again
+		requestBalanceRefresh(chainId, entry.txid, 'outgoing', POST_BROADCAST_RESYNC_MS)
+		txWatch.watch(chainId, entry.txid)
+	}
+}
+
+/** Watches live in RAM: after an unplug or restart, pick still-pending rows back
+*  up from api_log so their confirmations keep ticking. Standard wallets only —
+*  hidden-session rows never survive a disconnect. */
+function rearmPendingWatches(scannedWalletId: string): void {
+	const scope = getWalletDbScope()
+	if (!scope || !engine.wallet || engine.isPassphraseWallet) return
+	// A passphrase prompt may have opened mid-scan: arm nothing for a wallet
+	// that is no longer the settled, scanned one.
+	if (engine.getDeviceState().state !== 'ready' || scope.walletId !== scannedWalletId) return
+	const now = Date.now()
+	const cutoff = now - MAX_WATCH_MS
+	for (const r of getRecentActivityFromLog(undefined, undefined, scope.deviceId, scope.walletId)) {
+		if (!r.txid || !r.chainId || r.createdAt < cutoff) continue
+		const pending = typeof r.confirmations === 'number'
+			? r.confirmations < getRequiredConfs(r.chain)
+			// Not indexed yet: our own broadcast, or a swap deposit still in flight.
+			// (Unannotated chains settle on their first scan. Zcash rows may be
+			// shielded — never in transparent history — so those are left out.)
+			// Its live watch already spent the unseen window at broadcast, so only a
+			// row still inside that window is re-armed — no fresh 15 min of forced
+			// rescans per reconnect for a tx the indexer never shows (TON msg hash,
+			// custom EVM, dropped).
+			: r.createdAt >= now - UNSEEN_GIVE_UP_MS && r.source !== 'scan' && r.chainId !== 'zcash' && (r.type === 'send' || (r.type === 'swap' && r.status === 'broadcast'))
+		if (pending) txWatch.watch(r.chainId, r.txid)
+	}
+}
+
+/** A chain push (SSE / Pioneer socket) names a tx on a watched address: follow
+*  it so it shows in activity and its confirmations tick up. */
+function followPushedTx(networkId: string | undefined, caip: string | undefined, txid: string | undefined): void {
+	const chain = findChainByNetwork(networkId, caip, getAllChains())
+	if (!chain) return
+	if (txid) txWatch.watch(chain.id, txid)
+	else txWatch.poke(chain.id)
 }
 
 // Race engine.getEmulatorMnemonic() against a 3s deadline. The DebugLink
@@ -2110,6 +2288,7 @@ async function headlessSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
 }
 
 async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (stage: SwapSubStage) => void): Promise<SwapResult> {
+	const sessionEpoch = activitySessionEpoch // the wallet session this swap belongs to
 	if (!engine.wallet) throw new Error('No device connected')
 
 	// Firmware gate ENFORCED at execute time, not just quote time: /api/v2/swap/
@@ -2139,6 +2318,8 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 				if (msg === 'swap-update') rpc.send['swap-update'](data)
 				else if (msg === 'swap-complete') rpc.send['swap-complete'](data)
 				else console.error(`[swap-tracker] Unknown message: ${msg}`)
+				// swap_history status/output moved — activity rows show it
+				if (msg === 'swap-update' || msg === 'swap-complete') notifyActivityChanged()
 			} catch (e: any) {
 				console.warn(`[swap-tracker] Failed to send '${msg}':`, e.message)
 			}
@@ -2203,8 +2384,11 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 		throw error
 	})
 	const scope = getWalletDbScope()
+	// Session ended while signing/broadcasting (unplug, passphrase switch): the
+	// swap belongs to the wallet that was open — never track it under this one.
+	const staleSession = sessionEpoch !== activitySessionEpoch
 	// Register swap for tracking (non-blocking)
-	try {
+	if (!staleSession) try {
 		const trackParams = cachedQuote?.netFromAmount
 			? { ...execParams, amount: cachedQuote.netFromAmount }
 			: execParams
@@ -2226,10 +2410,12 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 		console.warn('[index] Failed to register swap for tracking:', e.message)
 	}
 	// Track swap in api_log. PRIVACY: Skip DB write for passphrase wallets.
-	if (!engine.isPassphraseWallet && scope) {
-		const fromChain = getAllChains().find(c => c.id === params.fromChainId)
-		insertApiLog({ ...scope, method: 'RPC', route: 'executeSwap', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: fromChain?.symbol || params.fromChainId, activityType: 'swap' })
-	}
+	const fromChain = getAllChains().find(c => c.id === params.fromChainId)
+	const swapEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: 'executeSwap', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: fromChain?.symbol || params.fromChainId, activityType: 'swap', responseBody: { chainId: params.fromChainId, chainSymbol: fromChain?.symbol }, sessionEpoch }
+	if (!engine.isPassphraseWallet && scope && !entryIsStale(swapEntry)) insertApiLog(swapEntry)
+	// Source-chain balance + deposit confirmations follow the tx; swap status
+	// itself arrives through the swap tracker.
+	onActivityLogged(swapEntry)
 	return result
 }
 
@@ -4476,6 +4662,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 								// balance) but only shows the "Incoming payment" toast for 'incoming'.
 								// Mark the txid so the Pioneer-socket leg doesn't re-forward it.
 								if (txidRecentlyPushed(event.data.txid)) return
+								followPushedTx(event.data.networkId, event.data.caip, event.data.txid)
 								console.log(`[event-stream] ${event.data.type} tx ${event.data.txid} → ${event.data.address} (${event.data.networkId})`)
 								try { rpc.send['tx-push-received']({
 									chain: event.data.caip,
@@ -4487,6 +4674,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 							}
 							if (event.type === 'tx:confirmed') {
 								console.log(`[event-stream] Confirmed tx ${event.data.txid} (${event.data.confirmations} confs)`)
+								followPushedTx(event.data.networkId, undefined, event.data.txid)
 								// Debounce per network: the stream re-fires tx:confirmed on every
 								// confirmation update, and each forward costs a forced getBalance.
 								const confKey = `confirmed:${event.data.networkId}`
@@ -5190,6 +5378,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 
 			broadcastTx: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!params.signedTx) throw new Error('Missing signedTx payload')
 				const chain = getAllChains().find(c => c.id === params.chainId)
 				if (!chain) throw new Error(`Unknown chain: ${params.chainId}`)
@@ -5238,11 +5427,11 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					chainId: chain.id,
 					chainSymbol: chain.symbol,
 				}
-				const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: 'broadcastTx', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: chain.symbol, activityType: 'broadcast', responseBody: txMeta }
+				const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: 'broadcastTx', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: chain.symbol, activityType: 'broadcast', responseBody: txMeta, sessionEpoch }
 				let abEntry: { entryId: string; isNew: boolean; unsaved: boolean } | null = null
 				if (scope) {
 					// api_log is part of hidden-wallet deniability — keep it standard-only.
-					if (!engine.isPassphraseWallet) insertApiLog(logEntry)
+					if (!engine.isPassphraseWallet && !entryIsStale(logEntry)) insertApiLog(logEntry)
 					// Address Book (R3/R4/R7) is wallet-agnostic: capture the recipient +
 					// outbound-history row in any session (incl. hidden). Best-effort.
 					if (params.to) {
@@ -5258,7 +5447,10 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 						} catch (e: any) { console.warn('[broadcastTx] addressbook recordOutbound failed:', e?.message) }
 					}
 				}
-				try { rpc.send['api-log'](logEntry) } catch { /* webview not ready */ }
+				if (!entryIsStale(logEntry)) {
+					try { rpc.send['api-log'](logEntry) } catch { /* webview not ready */ }
+					onActivityLogged(logEntry)
+				}
 
 				return { ...result, addressBookEntryId: abEntry?.entryId, recipientUnsaved: abEntry?.unsaved }
 			},
@@ -5886,6 +6078,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				return await getShieldedBalance()
 			},
 			zcashShieldedSend: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!zcashPrivacyEnabled) throw new Error('Zcash privacy feature is disabled')
 				if (!engine.wallet) throw new Error('No device connected')
 				const account = (params as any)?.account ?? 0
@@ -5920,7 +6113,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					memo: params.memo,
 				}, { signWrap, onProgress })
 				try { rpc.send['send-progress']({ step: 'complete', detail: result.txid }) } catch { /* webview not ready */ }
-				logZcashShieldedActivity('broadcast', result.txid, params.amount, params.recipient)
+				logZcashShieldedActivity('broadcast', result.txid, params.amount, params.recipient, sessionEpoch)
 				schedulePostZcashTxRescans()
 				return result
 			},
@@ -5948,6 +6141,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 			},
 			zcashShieldZec: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!zcashPrivacyEnabled) throw new Error('Zcash privacy feature is disabled')
 				if (!engine.wallet) throw new Error('No device connected')
 				const account = params.account ?? 0
@@ -5978,12 +6172,13 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					account,
 				}, { signWrap, onProgress })
 				try { rpc.send['shield-progress']({ step: 'complete', detail: result.txid }) } catch { /* webview not ready */ }
-				logZcashShieldedActivity('shield', result.txid, params.amount)
+				logZcashShieldedActivity('shield', result.txid, params.amount, undefined, sessionEpoch)
 				schedulePostZcashTxRescans()
 				return result
 			},
 
 			zcashDeshieldZec: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!zcashPrivacyEnabled) throw new Error('Zcash privacy feature is disabled')
 				if (!engine.wallet) throw new Error('No device connected')
 				const account = params.account ?? 0
@@ -6008,7 +6203,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					account,
 				}, { signWrap, onProgress })
 				try { rpc.send['deshield-progress']({ step: 'complete', detail: result.txid }) } catch { /* webview not ready */ }
-				logZcashShieldedActivity('unshield', result.txid, params.amount, params.recipient)
+				logZcashShieldedActivity('unshield', result.txid, params.amount, params.recipient, sessionEpoch)
 				schedulePostZcashTxRescans()
 				return result
 			},
@@ -7128,54 +7323,19 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				// PRIVACY: Don't expose standard-wallet activity during hidden sessions.
 				// Hidden sessions get the RAM-only session store instead (populated by
 				// scanChainHistory's live fetch below) — display without persistence.
-				if (engine.isPassphraseWallet) return relabelZcashShieldedRows(getSessionActivity(params?.limit || 50, params?.chainId))
+				if (engine.isPassphraseWallet) return relabelZcashShieldedRows(getSessionActivity(params?.limit, params?.chainId))
 				const scope = getWalletDbScope()
 				if (!scope) return []
-				return relabelZcashShieldedRows(getRecentActivityFromLog(params?.limit || 50, params?.chainId, scope.deviceId, scope.walletId))
+				return relabelZcashShieldedRows(getRecentActivityFromLog(params?.limit, params?.chainId, scope.deviceId, scope.walletId))
 			},
 			getActivityScanState: async () => ({ running: activityScanRunning }),
 			scanChainHistory: async (params) => {
 				const chain = getAllChains().find(c => c.id === params.chainId)
 				if (!chain) throw new Error(`Unknown chain: ${params.chainId}`)
-				if (!engine.wallet) throw new Error('No device connected')
-
-				// PRIVACY: hidden sessions never write api_log — but the server lookup
-				// only needs an address. Fetch the same Pioneer history live (dryRun)
-				// and hold the rows in RAM only; cleared on needs_passphrase/disconnect.
-				if (engine.isPassphraseWallet) {
-					const deviceId = engine.getDeviceState().deviceId || 'unknown'
-					// Scope is normally set in-memory by sendPassphrase; the fallback covers
-					// reconnect-with-cached-passphrase where no identity probe ran. Only used
-					// for the (empty-by-invariant) dedup read + result echo — nothing is written.
-					const scope = getWalletDbScope() || { deviceId, walletId: `${deviceId}:hidden-session` }
-					const result = await rebuildActivityHistory({
-						wallet: engine.wallet,
-						scope,
-						chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
-						firmwareVersion: engine.getDeviceState().firmwareVersion,
-						options: { chainId: params.chainId, dryRun: true, collectRows: true },
-					})
-					const chainResult = result.chains.find(c => c.chainId === params.chainId)
-					if (chainResult?.error) throw new Error(chainResult.error)
-					const added = addSessionActivity(result.rows || [])
-					console.log(`[activity] Live-scanned ${chain.symbol} (hidden session): ${chainResult?.txs || 0} txs, ${added} new — RAM only`)
-					return { count: added }
-				}
-				const scope = getWalletDbScope()
-				if (!scope) throw new Error('Wallet scope is not ready. Unlock the device and wait for seed identity.')
-
-				const result = await rebuildActivityHistory({
-					wallet: engine.wallet,
-					scope,
-					chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
-					firmwareVersion: engine.getDeviceState().firmwareVersion,
-					options: { chainId: params.chainId },
-				})
-				const chainResult = result.chains.find(c => c.chainId === params.chainId)
-				if (chainResult?.error) throw new Error(chainResult.error)
-
-				console.log(`[activity] Scanned ${chain.symbol}: ${chainResult?.txs || 0} txs, ${chainResult?.inserted || 0} new, ${chainResult?.updated || 0} updated`)
-				return { count: chainResult?.inserted || 0 }
+				// PRIVACY: hidden sessions fetch live and hold rows in RAM only (scanOneChain).
+				const { added, txs, updated } = await scanOneChain(params.chainId)
+				console.log(`[activity] Scanned ${chain.symbol}${engine.isPassphraseWallet ? ' (hidden session, RAM only)' : ''}: ${txs} txs, ${added} new, ${updated} updated`)
+				return { count: added }
 			},
 			dismissActivity: async (_params) => {
 				// No-op: api_log entries are audit records, not dismissible
@@ -8673,6 +8833,7 @@ engine.on('state-change', (state) => {
 					if (def) { chain = def.caip; break }
 				}
 				if (!chain) return
+				followPushedTx(undefined, chain, txid)
 				// Debounce per network (CAIP-2 prefix) so rapid-fire events on the same
 				// network collapse into one refresh. When replacing a pending forward,
 				// keep 'incoming' if either had it — a confirmation update arriving in
@@ -8706,7 +8867,10 @@ engine.on('state-change', (state) => {
 				scope,
 				chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
 				firmwareVersion: engine.getDeviceState().firmwareVersion,
-			}).then(result => {
+				// A PIN/passphrase prompt mid-scan must not let another wallet's
+				// history land on disk under this walletId.
+				isCurrent: () => !engine.isPassphraseWallet && engine.getDeviceState().state === 'ready' && getWalletDbScope()?.walletId === scope.walletId,
+				}).then(result => {
 				console.log(`[activity] Auto-scan complete: ${result.totals.inserted} new txs across ${result.totals.chains} chains`)
 				try { rpc.send['activity-scan-complete']({ inserted: result.totals.inserted, chains: result.totals.chains }) } catch { /* webview not ready */ }
 			}).catch(e => {
@@ -8714,6 +8878,8 @@ engine.on('state-change', (state) => {
 				try { rpc.send['activity-scan-complete']({ inserted: 0, chains: 0 }) } catch { /* webview not ready */ }
 			}).finally(() => {
 				activityScanRunning = false
+				notifyActivityChanged()
+				rearmPendingWatches(scope.walletId)
 			})
 		}, 3000)
 	}
@@ -8730,8 +8896,13 @@ engine.on('state-change', (state) => {
 		clearPioneerEventDebounce() // pending timers would getBalance a gone device
 		stopEventStream()
 	}
-	if (state.state === 'disconnected' || state.state === 'needs_passphrase') {
+	// needs_init = wiped: the seed that queued/owned anything here is gone.
+	if (state.state === 'disconnected' || state.state === 'needs_passphrase' || state.state === 'needs_init') {
 		pendingScopedApiLogs.splice(0)
+		// Watched txs + cached history addresses belong to the session that is ending.
+		txWatch.clear()
+		clearHistoryQueryCache()
+		activitySessionEpoch++
 		// PRIVACY: hidden-session activity must not outlive its session — drop the
 		// RAM store the moment the session ends (unplug) or a new one starts
 		// (device requests a passphrase). No-op for standard sessions (store empty).
@@ -8772,6 +8943,12 @@ engine.on('seed-changed', ({ deviceId, oldAddress, newAddress }) => {
 	console.warn(`[Vault] SEED CHANGED on ${deviceId}: ${oldAddress?.slice(0, 10)} → ${newAddress?.slice(0, 10)}`)
 	resetSeedManagers()
 	clearSessionActivity()
+	txWatch.clear()
+	clearHistoryQueryCache()
+	// Rows queued while scope was null can only be for the seed now on the device
+	// (disconnect/needs_passphrase already emptied the queue) — carry them over.
+	for (const e of pendingScopedApiLogs) e.sessionEpoch = activitySessionEpoch + 1
+	activitySessionEpoch++
 	// Zcash sidecar holds a per-seed FVK + scanned notes both in memory and in
 	// ~/.keepkey/zcash_wallet.db. After a seed change those are wrong for the
 	// new wallet — but `hasFvkLoaded()` would still return true (cache is

@@ -233,11 +233,13 @@ export interface SolanaInstructionSchema {
     signerKeyId: number;
 }
 export interface TronSignTxParams {
-    addressNList: number[];
-    from: string;
-    to: string;
-    amount: number;
-    memo?: string;
+    addressNList?: number[];
+    /** Serialized protocol.Transaction.raw_data protobuf, hex-encoded. */
+    raw_tx: string;
+    /** Optional display hints. Vault and device decode the signed raw_tx
+     * independently; these fields cannot override its amount or recipient. */
+    to_address?: string;
+    amount?: string;
 }
 export interface TonSignTxParams {
     address_n?: number[];

@@ -315,7 +315,7 @@ class KeepKeySdk {
         // ═══════════════════════════════════════════════════════════════════
         /** TRON (TRX) signing, including TRC-20 tokens. */
         this.tron = {
-            /** Sign a TRON transaction. `amount` is in sun (1 TRX = 1,000,000 sun). */
+            /** Sign serialized TRON raw_data. Any display hints are untrusted. */
             tronSignTransaction: (params) => this.client.post('/tron/sign-transaction', params, this.client.signingTimeoutMs),
             /**
              * Sign a message under TIP-191 (TRON's analog of EIP-191 personal_sign):

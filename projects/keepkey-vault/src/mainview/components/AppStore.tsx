@@ -4,6 +4,9 @@ import supportIcon from "../assets/apps/support.svg"
 import docsIcon from "../assets/apps/docs.svg"
 import affiliatesIcon from "../assets/apps/affiliates.svg"
 import bexIcon from "../assets/apps/bex.svg"
+import keepkeyIcon from "../assets/apps/keepkey.png"
+import shapeshiftIcon from "../assets/apps/shapeshift.png"
+import swapsproIcon from "../assets/apps/swapspro.png"
 
 interface AppDef {
 	id: string
@@ -26,7 +29,7 @@ function useApps(): AppDef[] {
 			id: "keepkey",
 			name: t("keepkeyName"),
 			description: t("keepkeyDescription"),
-			icon: "https://pioneers.dev/coins/keepkey.png",
+			icon: keepkeyIcon,
 			url: "https://keepkey.com",
 			enabled: true,
 			accent: "var(--gold)",
@@ -44,8 +47,17 @@ function useApps(): AppDef[] {
 			id: "shapeshift",
 			name: t("shapeshiftName"),
 			description: t("shapeshiftDescription"),
-			icon: "https://pioneers.dev/coins/fox.png",
+			icon: shapeshiftIcon,
 			url: "https://app.shapeshift.com",
+			enabled: true,
+			accent: "var(--teal)",
+		},
+		{
+			id: "swapspro",
+			name: t("swapsproName"),
+			description: t("swapsproDescription"),
+			icon: swapsproIcon,
+			url: "https://swaps.pro",
 			enabled: true,
 			accent: "var(--teal)",
 		},

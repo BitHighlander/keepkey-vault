@@ -42,9 +42,31 @@ const NATIVE_IDENTITIES = new Set([
   'OSMO', 'OSMOSIS',
 ])
 
-/** True if `symbol` is (case-insensitively) a major chain's ticker or name. */
-export function impersonatesNativeIdentity(symbol: string | undefined): boolean {
-  return !!symbol && NATIVE_IDENTITIES.has(symbol.trim().toUpperCase())
+// Chain NAMES long enough to be unambiguous inside a longer string. Short
+// tickers are excluded on purpose: "SOL" lives inside SOLEND, "TON" inside
+// BUTTON, "ADA" inside ADAPT — substring-matching those would flag everything.
+const UNAMBIGUOUS_NAMES = [...NATIVE_IDENTITIES].filter(n => n.length >= 5)
+
+/**
+ * True if `text` is (case-insensitively) a major chain's ticker or name, or
+ * wears one inside a longer string.
+ *
+ * Exact match alone is not enough: the squatters that get through call
+ * themselves "Barbie Solana", not "SOLANA". Two passes:
+ *  - word match — any whitespace/punctuation-delimited word is an identity
+ *    ("Barbie Solana" → BARBIE | SOLANA → hit). Safe for short tickers.
+ *  - substring match — an unambiguous chain NAME anywhere in the squashed
+ *    string ("BarbieSolana" → hit). Long names only, see above.
+ */
+export function impersonatesNativeIdentity(text: string | undefined): boolean {
+  if (!text) return false
+  const upper = text.trim().toUpperCase()
+  if (NATIVE_IDENTITIES.has(upper)) return true
+  for (const word of upper.split(/[^A-Z0-9]+/)) {
+    if (word && NATIVE_IDENTITIES.has(word)) return true
+  }
+  const squashed = upper.replace(/[^A-Z]/g, '')
+  return UNAMBIGUOUS_NAMES.some(n => squashed.includes(n))
 }
 
 /** Pure decision with dependencies injected (unit-testable without the catalog). */
@@ -53,11 +75,15 @@ export function decideSquatter(o: {
   catalogReady: boolean
   knownAsset: boolean
   symbol?: string
+  name?: string
 }): boolean {
   if (!o.catalogReady) return false   // can't verify yet → don't cry wolf
   if (!o.isToken) return false        // native asset (CAIP /slip44:) is legit by definition
   if (o.knownAsset) return false      // curated/known token (e.g. MATIC's ERC-20)
-  return impersonatesNativeIdentity(o.symbol)
+  // Both fields: the display name is squatted as often as the ticker, and a
+  // token showing symbol "BARBIE" with name "Solana" reads as Solana in any
+  // list that renders the name.
+  return impersonatesNativeIdentity(o.symbol) || impersonatesNativeIdentity(o.name)
 }
 
 /**
@@ -66,12 +92,17 @@ export function decideSquatter(o: {
  * an unverified token impersonating a native coin. Fails open (false) while the
  * asset catalog is still loading.
  */
-export function isSymbolSquatter(caip: string | undefined, symbol: string | undefined): boolean {
+export function isSymbolSquatter(
+  caip: string | undefined,
+  symbol: string | undefined,
+  name?: string,
+): boolean {
   if (!caip) return false
   return decideSquatter({
     isToken: parseCaip(caip).isToken,
     catalogReady: isAssetMapReady(),
     knownAsset: isKnownAsset(caip),
     symbol,
+    name,
   })
 }

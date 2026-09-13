@@ -1,0 +1,19 @@
+import Foundation
+import Vision
+import AppKit
+
+guard CommandLine.arguments.count == 2,
+      let image = NSImage(contentsOfFile: CommandLine.arguments[1]),
+      let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+    fputs("usage: swift ocr-oled.swift SCREENSHOT.png\n", stderr)
+    exit(2)
+}
+
+let request = VNRecognizeTextRequest()
+request.recognitionLevel = .accurate
+request.usesLanguageCorrection = false
+try VNImageRequestHandler(cgImage: cgImage).perform([request])
+let lines = (request.results ?? [])
+  .sorted { $0.boundingBox.midY > $1.boundingBox.midY }
+  .compactMap { $0.topCandidates(1).first?.string }
+for line in lines { print(line) }

@@ -32,8 +32,9 @@ export declare class VaultClient {
     /** Verify current API key is valid */
     verifyAuth(): Promise<boolean>;
     /**
-     * Attempt to re-pair when a 403 is received.
-     * Uses a mutex so concurrent 403s only trigger one re-pair attempt.
+     * Attempt to re-pair only when authentication fails (401). A 403 can mean
+     * that the user rejected signing; replaying that request is unsafe.
+     * Uses a mutex so concurrent 401s only trigger one re-pair attempt.
      */
     private tryRePair;
 }
