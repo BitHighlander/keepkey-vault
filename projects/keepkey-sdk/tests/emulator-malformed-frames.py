@@ -3,6 +3,7 @@
 
 Usage: python3 tests/emulator-malformed-frames.py /path/to/libkkemu.dylib
 Each case runs in a fresh process: a C crash or hang cannot poison later cases.
+After the bad frame, a valid GetFeatures must still receive a reply.
 No seed, network, physical device, or broadcast path is involved. This is a
 parser resilience smoke, not coverage-guided fuzzing or a signing assertion.
 """
@@ -21,6 +22,8 @@ def worker(path, seed):
     lib.kkemu_init.restype = ctypes.c_int
     lib.kkemu_write.argtypes = (ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int)
     lib.kkemu_write.restype = ctypes.c_int
+    lib.kkemu_read.argtypes = (ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int)
+    lib.kkemu_read.restype = ctypes.c_int
     lib.kkemu_poll.restype = ctypes.c_int
     lib.kkemu_shutdown.restype = None
     flash = (ctypes.c_uint8 * (1 << 20))()
@@ -43,6 +46,23 @@ def worker(path, seed):
     assert rc == 0, f'write returned {rc}'
     for _ in range(100):
         lib.kkemu_poll()
+        out = (ctypes.c_uint8 * 64)()
+        lib.kkemu_read(out, 64, 0)
+
+    # A live process is not enough: the parser must recover and answer an
+    # ordinary request after the malformed input. MessageType_GetFeatures=55;
+    # the response begins with MessageType_Features=17.
+    valid = (ctypes.c_uint8 * 64).from_buffer_copy((b'?##' + (55).to_bytes(2, 'big') + b'\0\0\0\0').ljust(64, b'\0'))
+    assert lib.kkemu_write(valid, 64, 0) == 0
+    answered = False
+    for _ in range(200):
+        lib.kkemu_poll()
+        out = (ctypes.c_uint8 * 64)()
+        n = lib.kkemu_read(out, 64, 0)
+        if n >= 9 and bytes(out[:5]) == b'?##\x00\x11':
+            answered = True
+            break
+    assert answered, 'valid GetFeatures was not answered after malformed input'
     lib.kkemu_shutdown()
 
 

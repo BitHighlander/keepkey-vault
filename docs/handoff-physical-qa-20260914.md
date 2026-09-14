@@ -41,7 +41,7 @@ inapplicable; no storage-retention claim is made. No bootloader image was sent.
 The matching CI emulator dylib, SHA-256
 `22fbf94caed62bbf7182ab864f1b7827897f125ebdfe88016c713eb9bfa7bdc5`,
 passed 100 deterministic malformed HID/protobuf-frame crash-smoke cases with
-zero process crashes or timeouts. The reusable driver is
+zero process crashes, timeouts, or lost `GetFeatures` replies. The reusable driver is
 `projects/keepkey-sdk/tests/emulator-malformed-frames.py`; it checks parser
 resilience only, not semantic signing or coverage-guided fuzzing. Loading a
 public disposable test seed on hardware is pending device confirmation so the
@@ -51,4 +51,4 @@ The same 100-case driver also passed against the 7.15 candidate dylib from
 CI run `34895896789` / source head
 `d33f1711c3b2b205f64c5dc35fdec02926a6dc63`, SHA-256
 `748f28a343a6d073e82ee5454a5b4c5332c05bd3a379dc655bb8044c5ae2080e`,
-with zero crashes or timeouts.
+with zero crashes, timeouts, or lost `GetFeatures` replies.
