@@ -8059,7 +8059,10 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			emulatorInit: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
 				const { initEmulator } = await import('./emulator')
-				const status = initEmulator(params?.flashName)
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selected = selectedEmulatorBuild()
+				if (selected && params?.flashName && params.flashName !== emulatorBuildFlashName(selected)) throw new Error('This build has its own flash; switch builds to use another wallet')
+				const status = initEmulator(selected ? emulatorBuildFlashName(selected) : (params?.flashName || 'default'))
 				if (status.state !== 'running') throw new Error(status.error || 'Emulator failed to start')
 				// Open the emulator device window
 				const { openEmulatorWindow } = await import('./emulator-window')
@@ -8088,11 +8091,59 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				const { getEmulatorStatus } = await import('./emulator')
 				return getEmulatorStatus()
 			},
+			emulatorListBuilds: async () => {
+				const { listEmulatorBuilds, selectedEmulatorBuild } = await import('./emulator-library')
+				return { builds: listEmulatorBuilds(), selected: selectedEmulatorBuild() }
+			},
+			emulatorSelectBuild: async (params) => {
+				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { getEmulatorStatus } = await import('./emulator')
+				if (getEmulatorStatus().state === 'running') throw new Error('Stop the emulator before changing builds')
+				const { listEmulatorBuilds, selectEmulatorBuild } = await import('./emulator-library')
+				if (!listEmulatorBuilds().some(build => build.id === params.id)) throw new Error('Emulator build is not installed')
+				selectEmulatorBuild(params.id)
+				return { builds: listEmulatorBuilds(), selected: params.id }
+			},
+			emulatorActivateBuild: async (params) => {
+				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { listEmulatorBuilds, selectEmulatorBuild, selectedEmulatorBuild, clearSelectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				if (!listEmulatorBuilds().some(build => build.id === params.id)) throw new Error('Emulator build is not installed')
+				const { getEmulatorStatus, getActiveFlashName, stopEmulator, initEmulator } = await import('./emulator')
+				const previousBuild = selectedEmulatorBuild()
+				const previousFlash = getEmulatorStatus().state === 'running' ? getActiveFlashName() : null
+				const { closeEmulatorWindow, openEmulatorWindow } = await import('./emulator-window')
+				if (previousFlash) {
+					closeEmulatorWindow()
+					engine.disconnectEmulator()
+					stopEmulator()
+				}
+				try {
+					selectEmulatorBuild(params.id)
+					const flashName = emulatorBuildFlashName(params.id)
+					const status = initEmulator(flashName)
+					if (status.state !== 'running') throw new Error(status.error || 'Emulator failed to start')
+					openEmulatorWindow()
+					await engine.connectEmulator()
+					const version = engine.getDeviceState().firmwareVersion
+					const { recordEmulatorBuildVersion } = await import('./emulator-library')
+					if (/^\d+\.\d+\.\d+$/.test(version || '')) recordEmulatorBuildVersion(params.id, version)
+					return { status, flashName }
+				} catch (error) {
+					closeEmulatorWindow()
+					engine.disconnectEmulator()
+					stopEmulator()
+					if (previousBuild) selectEmulatorBuild(previousBuild)
+					else clearSelectedEmulatorBuild()
+					if (previousFlash) {
+						const restored = initEmulator(previousFlash)
+						if (restored.state === 'running') { openEmulatorWindow(); await engine.connectEmulator() }
+					}
+					throw error
+				}
+			},
 			emulatorInstallDylib: async (params) => {
-				// Copy a user-supplied emulator library into ~/.keepkey/emulator/
-				// (libkkemu.dylib on macOS, libkkemu.dll on Windows) so subsequent
-				// emulatorInit() loads it. Auto-flips emulator_enabled since the user
-				// has explicitly opted in by dropping a binary.
+				// Keep user-supplied libraries side by side under their content IDs.
+				// Auto-enable emulator tools because dropping a binary is an explicit opt-in.
 				const isWin = process.platform === 'win32'
 				if (process.platform !== 'darwin' && !isWin) throw new Error('Emulator is only available on macOS and Windows')
 				if (!params?.data) throw new Error('Missing emulator library payload')
@@ -8113,21 +8164,15 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					}
 				}
 
-				// Stop any running emulator before swapping the dylib — replacing
-				// a dlopen'd file mid-flight is undefined behavior on macOS.
-				const { getEmulatorStatus, stopEmulator, getDylibPath } = await import('./emulator')
-				if (getEmulatorStatus().state === 'running') {
-					const { closeEmulatorWindow } = await import('./emulator-window')
-					closeEmulatorWindow()
-					engine.disconnectEmulator()
-					stopEmulator()
-				}
-
-				// Write to a temp file then atomically rename so a partial copy
+				// Content-addressed paths let us install while another build runs;
+				// no loaded dylib is replaced. Write to a temp file then atomically rename so a partial copy
 				// can never leave a half-written dylib in place.
 				const { writeFileSync, renameSync, mkdirSync, statSync } = await import('fs')
 				const { dirname } = await import('path')
-				const finalPath = getDylibPath()
+				const { createHash } = await import('crypto')
+				const { emulatorBuildPath } = await import('./emulator-library')
+				const buildId = createHash('sha256').update(buf).digest('hex')
+				const finalPath = emulatorBuildPath(buildId)
 				const dir = dirname(finalPath)
 				mkdirSync(dir, { recursive: true, mode: 0o700 })
 				const tmp = `${finalPath}.tmp-${Date.now()}`
@@ -8143,7 +8188,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					setSetting('emulator_enabled', '1')
 					console.log('[settings] Emulator enabled by dylib install')
 				}
-				return { path: finalPath, size, emulatorEnabled }
+				return { path: finalPath, size, buildId, emulatorEnabled }
 			},
 			emulatorDeleteFlash: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
@@ -8179,10 +8224,12 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				const { listFlashImages, hasMnemonic } = await import('./emulator-keychain')
 				const { getActiveFlashName, getEmulatorStatus } = await import('./emulator')
 				const { getAllEmulatorWalletMeta } = await import('./db')
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selectedBuild = selectedEmulatorBuild()
 				const status = getEmulatorStatus()
 				const activeFlash = status.state === 'running' ? getActiveFlashName() : null
 				const metaByName = new Map(getAllEmulatorWalletMeta().map(m => [m.name, m]))
-				return listFlashImages().map(name => {
+				return listFlashImages().filter(name => !selectedBuild || name === emulatorBuildFlashName(selectedBuild)).map(name => {
 					const meta = metaByName.get(name)
 					return {
 						name,
@@ -8198,6 +8245,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 			emulatorImportWallet: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selectedBuild = selectedEmulatorBuild()
+				if (selectedBuild && params.name !== emulatorBuildFlashName(selectedBuild)) throw new Error('This build has its own flash; import into its active wallet')
 				// Wallet name validation lives in emulator-keychain.validateFlashName
 				// (called by every path builder) — call here too so we surface the
 				// error before doing any work.
@@ -8295,6 +8345,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 			emulatorSwitchWallet: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selectedBuild = selectedEmulatorBuild()
+				if (selectedBuild && params.name !== emulatorBuildFlashName(selectedBuild)) throw new Error('This build has its own flash; switch builds to use another wallet')
 				const { stopEmulator, initEmulator, getEmulatorStatus } = await import('./emulator')
 
 				// Stop current emulator if running

@@ -29,7 +29,7 @@ import { emulatorLibFilename, resolveEmulatorLibPath } from './emulator-library'
 const TAG = '[emulator]'
 const FLASH_SIZE = 1048576  // 1 MB
 
-// ── Dylib resolution (single user-installed slot) ───────────────────────
+// ── Dylib resolution (selected development build, legacy override, bundle) ──
 
 /** Directory for the user-installed emulator binary. */
 function getEmulatorBinDir(): string {

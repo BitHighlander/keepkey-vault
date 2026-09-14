@@ -8,6 +8,29 @@ This SOP does **not** gate, select, or modify a hardware firmware release. In
 particular, never inspect or change the `modules/keepkey-firmware` gitlink to
 make this gate pass.
 
+## Development build switching
+
+Vault's emulator Settings can keep multiple local `libkkemu` builds. Install a
+build with **Change Version…** or drop its library on Vault, then choose an
+installed build from the picker. Vault stores each library under its SHA-256
+content ID in `~/.keepkey/emulator/builds/`; it never overwrites a loaded
+library. The picker shows the firmware version only after that build has started
+and Vault has read Features from it. Keep the content ID in QA evidence so two
+different builds that report the same version remain distinguishable.
+
+Switching stops the running emulator, selects the new library, and starts it
+with an encrypted flash image named `build-<first 16 hash characters>`. A build
+may use only its own flash through the normal Vault wallet selector. Import a
+test seed into that build's flash if cross-version signing comparisons require
+the same addresses. If startup fails, Vault restores the previous build and
+flash when possible; record any failure before retrying. The legacy
+`~/.keepkey/emulator/libkkemu.*` override and bundled release library still
+work when no development build is selected.
+
+Emulator QA does not satisfy a physical OLED or signed firmware update gate.
+Record the hardware firmware version and test result separately before
+marking a release candidate ready.
+
 ## Release identity
 
 For the current Vault release train, the approved emulator release is

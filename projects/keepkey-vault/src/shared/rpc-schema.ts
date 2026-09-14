@@ -380,12 +380,15 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       emulatorStop: { params: void; response: EmulatorStatus }
       emulatorSave: { params: void; response: void }
       emulatorStatus: { params: void; response: EmulatorStatus }
+      emulatorListBuilds: { params: void; response: { builds: Array<{ id: string; path: string; selected: boolean; version?: string }>; selected: string | null } }
+      emulatorSelectBuild: { params: { id: string }; response: { builds: Array<{ id: string; path: string; selected: boolean; version?: string }>; selected: string } }
+      emulatorActivateBuild: { params: { id: string }; response: { status: EmulatorStatus; flashName: string } }
       emulatorDeleteFlash: { params: { name: string }; response: EmulatorStatus }
       emulatorListWallets: { params: void; response: EmulatorWalletInfo[] }
       emulatorImportWallet: { params: { name: string; mnemonic: string; label?: string }; response: EmulatorStatus }
       emulatorSwitchWallet: { params: { name: string }; response: EmulatorStatus }
-      /** Install a libkkemu.dylib from a base64-encoded payload into ~/.keepkey/emulator/. macOS only. */
-      emulatorInstallDylib: { params: { data: string }; response: { path: string; size: number; emulatorEnabled: boolean } }
+      /** Store a content-addressed emulator build, then select it for the next start. */
+      emulatorInstallDylib: { params: { data: string }; response: { path: string; size: number; buildId: string; emulatorEnabled: boolean } }
       /** Wipes the active flash and loads a freshly generated mnemonic. */
       emulatorCreateWallet: { params: { wordCount?: 12 | 18 | 24 }; response: { seedDisplayed: true } }
       emulatorGetMnemonic: { params: void; response: string | null }
