@@ -43,12 +43,26 @@ The matching CI emulator dylib, SHA-256
 passed 100 deterministic malformed HID/protobuf-frame crash-smoke cases with
 zero process crashes, timeouts, or lost `GetFeatures` replies. The reusable driver is
 `projects/keepkey-sdk/tests/emulator-malformed-frames.py`; it checks parser
-resilience only, not semantic signing or coverage-guided fuzzing. Loading a
-public disposable test seed on hardware is pending device confirmation so the
-post-flash signing smoke can run.
+resilience only, not semantic signing or coverage-guided fuzzing.
+
+The device did accept the public BIP39 test vector (`abandon` × 11, `about`),
+and `GetFeatures` then reported `7.14.3`, initialized, label `QA-PUBLIC-7143`.
+A direct Bitcoin `SignMessage` for
+`KeepKey 7.14.3 physical smoke: no transaction` returned a 65-byte signature.
+This closes the short 7.14.3 boot/load/sign smoke, not the human OLED wording
+gate. Hashes of BTC and ETH addresses under the public test seed were saved for
+the next update check.
 
 The same 100-case driver also passed against the 7.15 candidate dylib from
 CI run `34895896789` / source head
 `d33f1711c3b2b205f64c5dc35fdec02926a6dc63`, SHA-256
 `748f28a343a6d073e82ee5454a5b4c5332c05bd3a379dc655bb8044c5ae2080e`,
 with zero crashes, timeouts, or lost `GetFeatures` replies.
+
+The full 7.15 application artifact from CI run `34895896789` / source head
+`d33f1711c3b2b205f64c5dc35fdec02926a6dc63` was downloaded and matched
+against its manifest: SHA-256
+`e52502cdb1bac9fce1539c9ac332eb8a4372cfb0c559ad31847fe09057c16984`.
+`verify-signatures.py` reports `sig_index1 = 0`, `NOT VERIFIED`; it is an
+unsigned draft. The application-only physical flash is queued for the
+disposable test device's next bootloader entry.
