@@ -25,7 +25,23 @@ export { normalizeBchAddress } from './utxo'
 
 const TRON_SUN_PER_TRX = 1_000_000n
 const TRON_NATIVE_MAX_RESERVE_SUN = TRON_SUN_PER_TRX * 11n / 10n
-const TRON_TOKEN_CONTRACT_RE = /^tron:[^/]+\/(?:token|trc20):(T[1-9A-HJ-NP-Za-km-z]{33})$/
+const TRON_TOKEN_CAIP_RE = /^tron:[^/]+\/(?:token|trc20):(.+)$/i
+const TRON_BASE58_CONTRACT_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/
+const KNOWN_TRON_CONTRACTS_BY_LOWERCASE = new Map([
+  ['tr7nhqjekqxgtci8q8zy4pl8otszgjlj6t', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'],
+])
+
+/** Resolve a case-sensitive TRON token contract without ever falling back to TRX. */
+export function tronTokenContractFromCaip(caip?: string): string | null {
+  if (!caip) return null
+  const match = caip.match(TRON_TOKEN_CAIP_RE)
+  if (!match) return null
+  const supplied = match[1]
+  if (TRON_BASE58_CONTRACT_RE.test(supplied)) return supplied
+  const recovered = KNOWN_TRON_CONTRACTS_BY_LOWERCASE.get(supplied.toLowerCase())
+  if (recovered) return recovered
+  throw new Error(`Invalid case-sensitive TRON token contract in CAIP: ${caip}`)
+}
 
 async function fetchTronNativeBalanceSun(address: string): Promise<bigint> {
   const resp = await fetch('https://api.trongrid.io/wallet/getaccount', {
@@ -293,11 +309,7 @@ export async function buildTx(
       // TRC-20 detection: pioneer-router quote returns `txParams.token: "USDT-T..."`
       // for tokens, and upstream CAIPs may use `tron:.../token:T...` or
       // `tron:.../trc20:T...`.
-      const tokenContractFromCaip = (() => {
-        if (!params.caip) return null
-        const m = params.caip.match(TRON_TOKEN_CONTRACT_RE)
-        return m ? m[1] : null
-      })()
+      const tokenContractFromCaip = tronTokenContractFromCaip(params.caip)
       const isTrc20 = !!tokenContractFromCaip
 
       // ── TRC-20 path (TriggerSmartContract → transfer(address,uint256)) ──
@@ -534,11 +546,13 @@ export async function buildTx(
 
       // Check wallet state — uninitialized wallets need StateInit in first tx
       let walletState: { initialized: boolean; balance: string }
+      let destinationState: { initialized: boolean; balance: string }
       let seqno: number
       try {
-        ;[seqno, walletState] = await Promise.all([
+        ;[seqno, walletState, destinationState] = await Promise.all([
           getTonSeqno(params.fromAddress),
           getTonWalletState(params.fromAddress),
+          getTonWalletState(params.to),
         ])
       } catch (e: any) {
         throw new Error(`TON network error — cannot determine wallet state: ${e.message}`)
@@ -561,6 +575,7 @@ export async function buildTx(
         expireAt,
         needsDeploy,
         publicKeyHex: params.publicKeyHex,
+        bounce: destinationState.initialized ? undefined : false,
       })
 
       const tonUnsignedTx = {
@@ -818,6 +833,31 @@ export async function broadcastTx(
   // hdwallet's ethSignTx returns raw hex without 0x — add it here.
   if (chain.chainFamily === 'evm' && serializedTx && !serializedTx.startsWith('0x')) {
     serializedTx = '0x' + serializedTx
+  }
+
+  // Pioneer's Arbitrum broadcaster historically returned success:true plus a
+  // locally calculated hash even when the sequencer rejected the transaction.
+  // Submit to the sequencer RPC and require its accepted hash instead.
+  if (chain.chainFamily === 'evm' && chain.chainId === '42161') {
+    const rpcUrl = 'https://arb1.arbitrum.io/rpc'
+    const resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [serializedTx] }),
+    })
+    const rpc = await resp.json() as { result?: string; error?: { code?: number; message?: string } }
+    if (!resp.ok || rpc.error) {
+      throw new Error(`Arbitrum broadcast rejected: ${rpc.error?.message || `HTTP ${resp.status}`}`)
+    }
+    if (!rpc.result || !/^0x[0-9a-fA-F]{64}$/.test(rpc.result)) {
+      throw new Error('Arbitrum broadcast failed: sequencer returned no transaction hash')
+    }
+    const { utils } = await import('ethers')
+    const expectedHash = utils.keccak256(serializedTx)
+    if (rpc.result.toLowerCase() !== expectedHash.toLowerCase()) {
+      throw new Error(`Arbitrum broadcast failed: sequencer hash ${rpc.result} does not match signed transaction ${expectedHash}`)
+    }
+    return { txid: rpc.result }
   }
 
   // BTC self-host: broadcast via the node, not Pioneer (no auto-fallback).

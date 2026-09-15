@@ -3,6 +3,7 @@ import { buildEvmTx } from '../src/bun/txbuilder/evm'
 import { CHAINS } from '../src/shared/chains'
 
 const ethereum = CHAINS.find(c => c.id === 'ethereum')!
+const arbitrum = CHAINS.find(c => c.id === 'arbitrum')!
 const fromAddress = '0x000000000000000000000000000000000000bEEF'
 const toAddress = '0x000000000000000000000000000000000000dEaD'
 const tokenAddress = '0x000000000000000000000000000000000000c0fe'
@@ -52,5 +53,14 @@ describe('EVM max send', () => {
 
     expect(result.to).toBe(tokenAddress)
     expect(BigInt(`0x${result.data.slice(-64)}`)).toBe(27_495_919_310_000_000_000n)
+  })
+
+  test('Arbitrum native transfers never use the invalid 21000 gas limit', async () => {
+    const result = await buildEvmTx(pioneerWithBalance('1'), arbitrum, {
+      to: toAddress,
+      amount: '0.01',
+      fromAddress,
+    })
+    expect(BigInt(result.gasLimit)).toBeGreaterThanOrEqual(30_000n)
   })
 })

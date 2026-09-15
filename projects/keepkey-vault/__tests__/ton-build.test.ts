@@ -7,7 +7,8 @@
  * and silently signs over a different body) stays locked down.
  */
 import { describe, test, expect } from 'bun:test'
-import { buildTonTransfer, computeTonBodyHash } from '../src/bun/txbuilder/ton'
+import { Address, Cell, loadMessage, loadMessageRelaxed } from '@ton/core'
+import { assembleTonSignedBoc, buildTonTransfer, computeTonBodyHash } from '../src/bun/txbuilder/ton'
 
 // Raw "workchain:hex" addresses skip CRC16 validation (user-friendly base64
 // addresses embed a checksum and would break if drifted). All we need here
@@ -16,6 +17,16 @@ const FROM_ADDR = '0:11111111111111111111111111111111111111111111111111111111111
 const SAFE_TO   = '0:2222222222222222222222222222222222222222222222222222222222222222'
 
 describe('TON build → bodyHash round-trip', () => {
+  test('refuses to construct a zero-value transfer', () => {
+    expect(() => buildTonTransfer({
+      fromAddress: FROM_ADDR,
+      to: SAFE_TO,
+      amountNano: '0',
+      seqno: 7,
+      expireAt: 1_700_000_000,
+    })).toThrow(/greater than zero/)
+  })
+
   test('computeTonBodyHash matches build.bodyHash for a clean build', () => {
     const build = buildTonTransfer({
       fromAddress: FROM_ADDR,
@@ -125,5 +136,28 @@ describe('TON build → bodyHash round-trip', () => {
     })
     const bad = { ...build, _internal: { ...build._internal, amountNano: '' } }
     expect(() => computeTonBodyHash(bad)).toThrow(/amountNano/)
+  })
+
+  test('final BOC independently decodes to the requested non-zero transfer', () => {
+    const build = buildTonTransfer({
+      fromAddress: FROM_ADDR,
+      to: SAFE_TO,
+      amountNano: '1000000000',
+      seqno: 7,
+      expireAt: 1_700_000_000,
+      bounce: false,
+    })
+    const assembled = assembleTonSignedBoc(build, Buffer.alloc(64, 0x42))
+    const root = Cell.fromBase64(assembled.boc)
+    const external = loadMessage(root.beginParse())
+    const body = external.body.beginParse()
+    body.skip(512 + 32 + 32 + 32 + 8 + 8)
+    const transfer = loadMessageRelaxed(body.loadRef().beginParse())
+
+    expect(transfer.info.type).toBe('internal')
+    if (transfer.info.type !== 'internal') throw new Error('expected internal message')
+    expect(transfer.info.value.coins).toBe(1_000_000_000n)
+    expect(transfer.info.dest.equals(Address.parseRaw(SAFE_TO))).toBe(true)
+    expect(transfer.info.bounce).toBe(false)
   })
 })
