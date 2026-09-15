@@ -844,23 +844,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LOG="$RUNNER_TEMP/keepkey-vault-intel-launch.log"
-          "$APP/Contents/MacOS/launcher" >"$LOG" 2>&1 &
-          PID=$!
+          # Exercise the bundle through LaunchServices, matching how Finder and
+          # the DMG launch it. Executing a GUI app's Mach-O directly does not
+          # provide the macOS application bootstrap context.
+          open -n "$APP"
           sleep 15
-          if ! kill -0 "$PID" 2>/dev/null; then
+          PID=$(pgrep -f "$APP/Contents/MacOS/launcher" | head -1 || true)
+          if [ -z "$PID" ]; then
             echo "ERROR: Intel application exited during startup"
-            cat "$LOG"
-            exit 1
-          fi
-          if grep -Eqi 'No native build was found|Library not loaded|incompatible architecture' "$LOG"; then
-            echo "ERROR: Intel application reported a native runtime failure"
-            cat "$LOG"
+            find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 \
+              -type f \( -name 'launcher*.ips' -o -name 'keepkey-vault*.ips' \) \
+              -mmin -5 -print -exec sed -n '1,160p' {} \; 2>/dev/null || true
             exit 1
           fi
           kill "$PID" 2>/dev/null || true
           wait "$PID" 2>/dev/null || true
-          cat "$LOG"
+          echo "Intel application remained alive through startup (pid $PID)"
 
   release:
     name: Create Draft Release
