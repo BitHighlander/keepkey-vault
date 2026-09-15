@@ -2,6 +2,7 @@ PROJECT_DIR := projects/keepkey-vault
 VERSION := $(shell grep '"version"' $(PROJECT_DIR)/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
 ARCH := $(shell uname -m)
 DMG_NAME := KeepKey-Vault-$(VERSION)-$(ARCH).dmg
+MACOS_DEPLOYMENT_TARGET ?= 13.0
 STAMP_DIR := .make
 SUBMODULES_STAMP := $(STAMP_DIR)/submodules.stamp
 PROTO_INSTALL_STAMP := $(STAMP_DIR)/proto-install.stamp
@@ -22,7 +23,7 @@ include .env
 export ELECTROBUN_DEVELOPER_ID ELECTROBUN_TEAMID ELECTROBUN_APPLEID ELECTROBUN_APPLEIDPASS
 endif
 
-.PHONY: install dev dev-hmr build build-stable build-canary build-signed prune-bundle dmg clean help vault sign-check verify verify-entitlements publish release upload-dmg upload-all-dmgs sign-release sign-release-intel verify-arch submodules modules-install modules-build modules-clean audit build-zcash-cli build-zcash-cli-debug build-zcash-cli-intel test test-unit test-rest test-sign-gating test-zcash-cli test-emu build-intel build-signed-intel build-electrobun-x64-core publish-electrobun-x64-core build-electrobun-linux-x64-core publish-electrobun-linux-x64-core preflight build-emulator build-emulator-windows build-emulator-macos-release build-emulator-release clean-emulator test-emu-python
+.PHONY: install dev dev-hmr build build-stable build-canary build-signed prune-bundle dmg clean help vault sign-check verify verify-entitlements publish release upload-dmg upload-all-dmgs sign-release sign-release-intel verify-arch audit-macos-bundle submodules modules-install modules-build modules-clean audit build-zcash-cli build-zcash-cli-debug build-zcash-cli-intel test test-unit test-rest test-sign-gating test-zcash-cli test-emu build-intel build-signed-intel build-electrobun-x64-core publish-electrobun-x64-core build-electrobun-linux-x64-core publish-electrobun-linux-x64-core preflight build-emulator build-emulator-windows build-emulator-macos-release build-emulator-release clean-emulator test-emu-python
 
 # --- Submodules (auto-init on fresh worktrees/clones) ---
 
@@ -171,6 +172,12 @@ verify-arch:
 	fi; \
 	echo "Architecture verified: $(EXPECTED_ARCH)"
 
+# Audit a fully assembled .app before it is signed or published.
+# Usage: make audit-macos-bundle APP=/path/to/keepkey-vault.app EXPECTED_ARCH=x86_64
+audit-macos-bundle:
+	@test -n "$(APP)" || (echo "ERROR: pass APP=/path/to/keepkey-vault.app"; exit 2)
+	./scripts/audit-macos-bundle.sh "$(APP)" "$(EXPECTED_ARCH)" "$(MACOS_DEPLOYMENT_TARGET)"
+
 # --- Intel Mac Build (DEPRECATED) ---
 # WARNING: arch -x86_64 does NOT make Bun/Electrobun produce x86_64 output.
 # Bun is ARM64-only — the resulting binary will STILL be ARM64 regardless.
@@ -221,12 +228,14 @@ publish-electrobun-x64-core: build-electrobun-x64-core
 	@test -f artifacts/electrobun-core-darwin-x64.tar.gz || (echo "ERROR: tarball not found"; exit 1)
 	@SUBMOD_VER=$$(cd modules/electrobun && git describe --tags --always 2>/dev/null || git rev-parse --short HEAD); \
 	echo "Publishing Electrobun x64 core to $(ELECTROBUN_X64_REPO) (submodule: $$SUBMOD_VER)..."; \
-	gh release view $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) >/dev/null 2>&1 && \
-		gh release upload $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) --clobber \
-			artifacts/electrobun-core-darwin-x64.tar.gz || \
-		gh release create $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) \
+	if gh release view $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) >/dev/null 2>&1; then \
+		echo "ERROR: immutable core tag $(ELECTROBUN_X64_TAG) already exists."; \
+		echo "Choose a new ELECTROBUN_X64_TAG; production core assets are never overwritten."; \
+		exit 1; \
+	fi; \
+	gh release create $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) \
 			--title "Electrobun x64 Core (macOS 13.0+, upstream $$SUBMOD_VER)" \
-			--notes "Cross-compiled Electrobun core for macOS 13.0+ Intel. Built from upstream blackboardsh/electrobun $$SUBMOD_VER. Bun 1.3.9. Adhoc-signed." \
+			--notes "Cross-compiled Electrobun core for macOS 13.0+ Intel. Built from upstream blackboardsh/electrobun $$SUBMOD_VER. Bun 1.3.13. Adhoc-signed." \
 			artifacts/electrobun-core-darwin-x64.tar.gz; \
 	echo "Published: https://github.com/$(ELECTROBUN_X64_REPO)/releases/tag/$(ELECTROBUN_X64_TAG)"; \
 	echo ""; \
@@ -702,12 +711,11 @@ _sign-one-dmg:
 	rm "$$STAGING/app.tar"; \
 	APP=$$(find "$$STAGING" -name "*.app" -maxdepth 1 | head -1); \
 	if [ -z "$$APP" ]; then echo "ERROR: No .app found after extraction"; exit 1; fi; \
-	echo "  Verifying architecture ($(_DMG_ARCH))..."; \
-	ACTUAL=$$(lipo -archs "$$APP/Contents/MacOS/launcher" 2>/dev/null); \
-	if [ "$$ACTUAL" != "$(_DMG_ARCH)" ]; then \
-		echo "ERROR: Binary is $$ACTUAL but expected $(_DMG_ARCH)"; exit 1; \
-	fi; \
+	echo "  Running mandatory pre-sign bundle audit ($(_DMG_ARCH))..."; \
+	./scripts/audit-macos-bundle.sh "$$APP" "$(_DMG_ARCH)" "$(MACOS_DEPLOYMENT_TARGET)"; \
 	./scripts/sign-macos-app.sh "$$APP" "$(PROJECT_DIR)/entitlements.plist"; \
+	echo "  Running post-sign structural audit..."; \
+	./scripts/audit-macos-bundle.sh "$$APP" "$(_DMG_ARCH)" "$(MACOS_DEPLOYMENT_TARGET)"; \
 	echo "  Re-packing signed app into tar.zst for auto-update..."; \
 	SIGNED_TAR="$$(pwd)/$(PROJECT_DIR)/artifacts/$$(basename $(_SRC_TAR))"; \
 	(cd "$$STAGING" && tar cf - "$$(basename $$APP)") | zstd -o "$$SIGNED_TAR" --force; \

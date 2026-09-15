@@ -275,7 +275,7 @@ jobs:
 
           # Download x64 Electrobun core from keepkey/keepkey-vault releases.
           # Built locally via `make build-electrobun-x64-core` (cross-compiled from upstream source).
-          # Targets macOS 13.0+, Bun 1.3.9, adhoc-signed binaries.
+          # Targets macOS 13.0+, Bun 1.3.13, adhoc-signed binaries.
           #
           # IMPORTANT: When bumping modules/electrobun, rebuild + republish the x64 core:
           #   make publish-electrobun-x64-core
@@ -317,9 +317,13 @@ jobs:
           APP=$(find "$WORK" -name "*.app" -maxdepth 1 | head -1)
           if [ -z "$APP" ]; then echo "::error::No .app found after extraction"; exit 1; fi
 
+          # The arm64 source is itself a release artifact. Validate it before
+          # any Intel substitutions so one architecture cannot mask another.
+          ./scripts/audit-macos-bundle.sh "$APP" arm64 13.0
+
           # Swap Electrobun runtime binaries with x64 versions
           echo "Swapping Electrobun binaries for x86_64..."
-          for BIN in launcher bun libNativeWrapper.dylib libasar.dylib; do
+          for BIN in launcher bun libNativeWrapper.dylib libasar.dylib extractor zig-asar zig-zstd bsdiff bspatch; do
             SRC="$X64_BIN_DIR/$BIN"
             DEST=$(find "$APP" -name "$BIN" -type f | head -1)
             if [ -f "$SRC" ] && [ -n "$DEST" ]; then
@@ -348,21 +352,9 @@ jobs:
           rm "$ZCASH_DEST"
           echo "  zcash-cli: removed (Intel not supported; privacy capability will stay disabled)"
 
-          # Verify key binaries are now x86_64
-          echo "Verifying swapped binaries:"
-          FAIL=0
-          for BIN in launcher bun; do
-            FOUND=$(find "$APP" -name "$BIN" -path "*/MacOS/*" | head -1)
-            if [ -n "$FOUND" ]; then
-              ACTUAL=$(lipo -archs "$FOUND" 2>/dev/null)
-              echo "  $BIN: $ACTUAL"
-              if [ "$ACTUAL" != "x86_64" ]; then
-                echo "::error::$BIN is $ACTUAL, expected x86_64"
-                FAIL=1
-              fi
-            fi
-          done
-          if [ "$FAIL" = "1" ]; then exit 1; fi
+          # Audit every executable/native module, its deployment target, and
+          # the required x64 node-hid runtime before this artifact can ship.
+          ./scripts/audit-macos-bundle.sh "$APP" x86_64 13.0
 
           # Verify libNativeWrapper has no resign-swizzle (macOS 12 crash fix)
           NATIVE_LIB=$(find "$APP" -name "libNativeWrapper.dylib" | head -1)
@@ -797,9 +789,75 @@ jobs:
             projects/keepkey-vault/artifacts/*
           retention-days: 30
 
+  intel-smoke:
+    name: Intel macOS packaged-app smoke test
+    needs: build
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout audit tooling
+        uses: actions/checkout@v4
+
+      - name: Download assembled macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: keepkey-vault-macos-${{ github.sha }}
+          path: artifacts
+
+      - name: Extract Intel application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          TAR="artifacts/stable-macos-x64-keepkey-vault.app.tar.zst"
+          test -f "$TAR"
+          mkdir -p intel-smoke
+          zstd -d "$TAR" -o intel-smoke/app.tar --force
+          tar xf intel-smoke/app.tar -C intel-smoke
+          APP=$(find "$PWD/intel-smoke" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$APP"
+          echo "APP=$APP" >> "$GITHUB_ENV"
+
+      - name: Audit complete Intel bundle
+        run: ./scripts/audit-macos-bundle.sh "$APP" x86_64 13.0
+
+      - name: Load packaged node-hid with packaged Bun
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP/Contents/Resources/app"
+          "$APP/Contents/MacOS/bun" -e \
+            "await import('@keepkey/hdwallet-keepkey-nodehid'); console.log('node-hid x64 import passed')"
+
+      - name: Launch packaged Intel application
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/keepkey-vault-intel-launch.log"
+          "$APP/Contents/MacOS/launcher" >"$LOG" 2>&1 &
+          PID=$!
+          sleep 15
+          if ! kill -0 "$PID" 2>/dev/null; then
+            echo "ERROR: Intel application exited during startup"
+            cat "$LOG"
+            exit 1
+          fi
+          if grep -Eqi 'No native build was found|Library not loaded|incompatible architecture' "$LOG"; then
+            echo "ERROR: Intel application reported a native runtime failure"
+            cat "$LOG"
+            exit 1
+          fi
+          kill "$PID" 2>/dev/null || true
+          wait "$PID" 2>/dev/null || true
+          cat "$LOG"
+
   release:
     name: Create Draft Release
-    needs: build
+    needs: [build, intel-smoke]
     if: (!cancelled()) && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:

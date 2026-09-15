@@ -20,7 +20,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ELECTROBUN_PKG="$REPO_ROOT/modules/electrobun/package"
 ZIG="$ELECTROBUN_PKG/vendors/zig/zig"
-BUN_X64_VERSION="1.3.9"
+BUN_X64_VERSION="1.3.13"
 MACOS_TARGET="13.0"
 OUTPUT_DIR="$REPO_ROOT/artifacts"
 TARBALL="$OUTPUT_DIR/electrobun-core-darwin-x64.tar.gz"
@@ -32,8 +32,7 @@ for F in "$ZIG" \
          "$ELECTROBUN_PKG/src/launcher/build.zig" \
          "$ELECTROBUN_PKG/src/extractor/build.zig" \
          "$ELECTROBUN_PKG/src/native/macos/nativeWrapper.mm" \
-         "$ELECTROBUN_PKG/vendors/cef/include" \
-         "$ELECTROBUN_PKG/vendors/zig-asar/libasar-x64.dylib"; do
+         "$ELECTROBUN_PKG/vendors/cef/include"; do
   if [ ! -e "$F" ]; then
     echo "ERROR: Missing prerequisite: $F"
     echo "Run: cd modules/electrobun/package && bun install && bun build.ts"
@@ -62,6 +61,30 @@ fi
 STAGING=$(mktemp -d)
 trap 'rm -rf "$STAGING"' EXIT
 mkdir -p "$STAGING/core"
+
+echo "--- Building native helpers from pinned upstream source ---"
+HELPER_ROOT=$(mktemp -d)
+git clone --quiet --depth 1 --branch v0.2.2 \
+  https://github.com/blackboardsh/zig-asar.git "$HELPER_ROOT/zig-asar"
+(cd "$HELPER_ROOT/zig-asar" && \
+  "$ZIG" build -Dtarget=x86_64-macos.${MACOS_TARGET} -Dcpu=baseline -Doptimize=ReleaseFast)
+cp "$HELPER_ROOT/zig-asar/zig-out/bin/zig-asar" "$STAGING/core/zig-asar"
+cp "$HELPER_ROOT/zig-asar/zig-out/lib/libasar.dylib" "$STAGING/core/libasar.dylib"
+
+git clone --quiet --recurse-submodules --shallow-submodules --depth 1 --branch v0.1.3 \
+  https://github.com/blackboardsh/zig-zstd.git "$HELPER_ROOT/zig-zstd"
+(cd "$HELPER_ROOT/zig-zstd" && \
+  "$ZIG" build -Dtarget=x86_64-macos.${MACOS_TARGET} -Dcpu=baseline -Doptimize=ReleaseFast)
+cp "$HELPER_ROOT/zig-zstd/zig-out/bin/zig-zstd" "$STAGING/core/zig-zstd"
+
+git clone --quiet --recurse-submodules --shallow-submodules --depth 1 --branch v0.1.20 \
+  https://github.com/blackboardsh/zig-bsdiff.git "$HELPER_ROOT/zig-bsdiff"
+(cd "$HELPER_ROOT/zig-bsdiff" && \
+  node scripts/setup.js && \
+  "$ZIG" build -Dtarget=x86_64-macos.${MACOS_TARGET} -Dcpu=baseline -Doptimize=ReleaseFast)
+cp "$HELPER_ROOT/zig-bsdiff/zig-out/bin/bsdiff" "$STAGING/core/bsdiff"
+cp "$HELPER_ROOT/zig-bsdiff/zig-out/bin/bspatch" "$STAGING/core/bspatch"
+rm -rf "$HELPER_ROOT"
 
 # 1. Build launcher for x86_64
 echo "--- Building launcher (x86_64-macos.${MACOS_TARGET}) ---"
@@ -114,7 +137,7 @@ clang++ \
   -mmacosx-version-min=${MACOS_TARGET} \
   -o "$STAGING/core/libNativeWrapper.dylib" \
   "$OBJ_DIR/nativeWrapper.o" \
-  "$ELECTROBUN_PKG/vendors/zig-asar/libasar-x64.dylib" \
+  "$STAGING/core/libasar.dylib" \
   -framework Cocoa \
   -framework WebKit \
   -framework QuartzCore \
@@ -132,11 +155,10 @@ clang++ \
 
 echo "  libNativeWrapper.dylib: $(lipo -archs "$STAGING/core/libNativeWrapper.dylib")"
 
-# 4. Copy libasar.dylib (x64 version already vendored)
-cp "$ELECTROBUN_PKG/vendors/zig-asar/libasar-x64.dylib" "$STAGING/core/libasar.dylib"
+# 4. libasar.dylib was rebuilt from pinned source above.
 echo "  libasar.dylib: $(lipo -archs "$STAGING/core/libasar.dylib")"
 
-# 5. Download bun 1.1.20 for darwin-x64 (matches arm64 Electrobun build)
+# 5. Download the Bun version declared by the pinned Electrobun release.
 echo "--- Downloading bun $BUN_X64_VERSION for darwin-x64 ---"
 BUN_ZIP="$STAGING/bun.zip"
 curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_X64_VERSION}/bun-darwin-x64.zip" \
@@ -146,42 +168,56 @@ cp "$STAGING/bun-darwin-x64/bun" "$STAGING/core/bun"
 rm -rf "$STAGING/bun-darwin-x64" "$BUN_ZIP"
 echo "  bun: $(lipo -archs "$STAGING/core/bun") (v$BUN_X64_VERSION)"
 
-# 6. Copy zig-zstd and zig-bsdiff if available (used by Electrobun for updates)
-for TOOL in zig-zstd bsdiff bspatch; do
-  SRC="$ELECTROBUN_PKG/vendors/zig-bsdiff/$TOOL"
-  [ -f "$SRC" ] || SRC="$ELECTROBUN_PKG/vendors/zig-zstd/$TOOL"
-  if [ -f "$SRC" ]; then
-    # These are only available for the host arch, skip if not x64
-    TOOL_ARCH=$(lipo -archs "$SRC" 2>/dev/null || echo "unknown")
-    if [ "$TOOL_ARCH" = "x86_64" ]; then
-      cp "$SRC" "$STAGING/core/$TOOL"
-    fi
-  fi
-done
+# 6. Update helpers were rebuilt from pinned source above.
 
 # Ad-hoc sign x64 binaries — matches arm64 behavior where linker auto-adds adhoc signature.
 # Without this, sign-release-intel cannot Developer-ID-sign them
 # ("code object is not signed at all" → notarization fails).
 echo ""
 echo "=== Ad-hoc signing x64 binaries ==="
-for BIN in launcher extractor libNativeWrapper.dylib libasar.dylib bun; do
+for BIN in launcher extractor libNativeWrapper.dylib libasar.dylib bun zig-asar zig-zstd bsdiff bspatch; do
   if [ -f "$STAGING/core/$BIN" ]; then
     codesign --force --sign - "$STAGING/core/$BIN"
     echo "  $BIN: adhoc-signed"
   fi
 done
 
-# Verify all core binaries are x86_64
+# Verify all core binaries are x86_64 and honor the declared OS floor.
 echo ""
 echo "=== Verifying all binaries ==="
 FAIL=0
-for BIN in launcher bun libNativeWrapper.dylib libasar.dylib; do
+for BIN in launcher extractor bun libNativeWrapper.dylib libasar.dylib zig-asar zig-zstd bsdiff bspatch; do
   ACTUAL=$(lipo -archs "$STAGING/core/$BIN" 2>/dev/null)
   echo "  $BIN: $ACTUAL"
   if [ "$ACTUAL" != "x86_64" ]; then
     echo "  ERROR: Expected x86_64, got $ACTUAL"
     FAIL=1
   fi
+  MINOS_VALUES=$(otool -l "$STAGING/core/$BIN" 2>/dev/null | awk '
+    $1 == "cmd" { command = $2 }
+    (command == "LC_BUILD_VERSION" && $1 == "minos") ||
+    (command == "LC_VERSION_MIN_MACOSX" && $1 == "version") { print $2 }
+  ')
+  if [ -z "$MINOS_VALUES" ]; then
+    echo "  ERROR: $BIN has no readable macOS deployment target"
+    FAIL=1
+  fi
+  while IFS= read -r MINOS; do
+    [ -n "$MINOS" ] || continue
+    if awk -v left="$MINOS" -v right="$MACOS_TARGET" 'BEGIN {
+      split(left, a, "."); split(right, b, ".")
+      for (i = 1; i <= 3; i++) {
+        av = (a[i] == "" ? 0 : a[i]) + 0; bv = (b[i] == "" ? 0 : b[i]) + 0
+        if (av > bv) exit 0; if (av < bv) exit 1
+      }
+      exit 1
+    }'; then
+      echo "  ERROR: $BIN requires macOS $MINOS (ceiling is $MACOS_TARGET)"
+      FAIL=1
+    fi
+  done <<EOF
+$MINOS_VALUES
+EOF
   # Also verify signature is present (adhoc at minimum)
   SIG_OUT=$(codesign -dvv "$STAGING/core/$BIN" 2>&1)
   if ! echo "$SIG_OUT" | grep -q "Signature"; then
