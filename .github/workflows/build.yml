@@ -838,7 +838,7 @@ jobs:
           set -euo pipefail
           cd "$APP/Contents/Resources/app"
           "$APP/Contents/MacOS/bun" -e \
-            "await import('@keepkey/hdwallet-keepkey-nodehid'); console.log('node-hid x64 import passed')"
+            "await import('node-hid'); console.log('node-hid x64 import passed')"
 
       - name: Launch packaged Intel application
         shell: bash
