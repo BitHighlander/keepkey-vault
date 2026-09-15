@@ -40,8 +40,17 @@ echo "  maximum deployment target: $MAX_MIN_MACOS"
 
 while IFS= read -r -d '' candidate; do
   file -b "$candidate" 2>/dev/null | grep -q 'Mach-O' || continue
-  count=$((count + 1))
   relative="${candidate#"$APP_PATH"/}"
+
+  # node-hid intentionally carries both Darwin prebuilds so an arm64-built
+  # staging app can be converted to x64. Audit only the runtime selected for
+  # this artifact; the required directory is checked explicitly below.
+  case "$EXPECTED_ARCH:$relative" in
+    x86_64:*'/node-hid/prebuilds/HID-darwin-arm64/'*) continue ;;
+    arm64:*'/node-hid/prebuilds/HID-darwin-x64/'*) continue ;;
+  esac
+
+  count=$((count + 1))
   arches="$(lipo -archs "$candidate" 2>/dev/null || true)"
   if ! echo " $arches " | grep -q " $EXPECTED_ARCH "; then
     echo "ERROR: $relative has architectures [$arches], missing $EXPECTED_ARCH"
