@@ -64,5 +64,22 @@ The full 7.15 application artifact from CI run `34895896789` / source head
 against its manifest: SHA-256
 `e52502cdb1bac9fce1539c9ac332eb8a4372cfb0c559ad31847fe09057c16984`.
 `verify-signatures.py` reports `sig_index1 = 0`, `NOT VERIFIED`; it is an
-unsigned draft. The application-only physical flash is queued for the
-disposable test device's next bootloader entry.
+unsigned draft.
+
+## 7.15 physical smoke
+
+The disposable device entered its existing bootloader `2.1.4`. During the
+application-only update, the owner visually confirmed that the OLED showed
+`Verify Backup` and asked whether the recovery sentence was available. The
+host upload returned `True`. After reconnecting normally, direct
+`GetFeatures` reported firmware `7.15.0`, normal mode, uninitialized; the owner
+reported the expected Welcome screen. The public 7.14.3 test seed did not
+survive this unsigned update. No bootloader image was sent.
+
+A button-protected Ping with body
+`DISPLAY CHECK 7.15 - NO TRANSACTION` was then held through WebUSB. The owner
+did not report seeing the expected `Ping` title or body; earlier reports said
+the 7.14.3 LoadDevice and SignMessage prompts showed nothing. The Ping later
+returned success, but protocol completion proves neither disclosure nor
+informed approval. Keep physical confirmation-screen content open and do not
+count those signing/load screens as verified.
