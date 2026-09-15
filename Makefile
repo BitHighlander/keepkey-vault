@@ -218,7 +218,7 @@ build-signed-intel:
 
 ELECTROBUN_X64_REPO ?= keepkey/keepkey-vault
 # Tag format: electrobun-x64-core-vN — increment N when rebuilding
-ELECTROBUN_X64_TAG ?= electrobun-x64-core-v1
+ELECTROBUN_X64_TAG ?= electrobun-x64-core-v2
 
 build-electrobun-x64-core:
 	@echo "Cross-compiling Electrobun x64 core from upstream..."

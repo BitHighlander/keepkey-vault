@@ -280,7 +280,8 @@ jobs:
           # IMPORTANT: When bumping modules/electrobun, rebuild + republish the x64 core:
           #   make publish-electrobun-x64-core
           # Then update X64_CORE_TAG below to match ELECTROBUN_X64_TAG in the Makefile.
-          X64_CORE_TAG="electrobun-x64-core-v1"
+          X64_CORE_TAG="electrobun-x64-core-v2"
+          X64_CORE_SHA256="9694a33c672fdb74b695d02b86bf1c6fa20289d7adb57f3d61e2fcbd89d1217b"
 
           # Warn if the submodule was bumped but the x64 core tag wasn't updated.
           # The release description includes the submodule version it was built from.
@@ -294,6 +295,7 @@ jobs:
           echo "Downloading Electrobun x64 core from keepkey/keepkey-vault @ $X64_CORE_TAG..."
           curl -fsSL "https://github.com/keepkey/keepkey-vault/releases/download/${X64_CORE_TAG}/electrobun-core-darwin-x64.tar.gz" \
             -o /tmp/electrobun-core-x64.tar.gz
+          echo "${X64_CORE_SHA256}  /tmp/electrobun-core-x64.tar.gz" | shasum -a 256 -c -
           mkdir -p /tmp/electrobun-x64
           tar xzf /tmp/electrobun-core-x64.tar.gz -C /tmp/electrobun-x64/
 
