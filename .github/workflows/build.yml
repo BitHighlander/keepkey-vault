@@ -350,16 +350,13 @@ jobs:
           rm "$ZCASH_DEST"
           echo "  zcash-cli: removed (Intel not supported; privacy capability will stay disabled)"
 
-          # The certified emulator artifact is currently arm64-only. It is an
-          # optional developer capability, so omit it from the Intel release
-          # rather than shipping an executable dyld can never load.
+          # The certified emulator artifact currently requires macOS 14. It is
+          # an optional developer capability, so omit it from the Intel release
+          # until a certified macOS 13 Intel build is available.
           EMULATOR_DEST=$(find "$APP/Contents/Resources/app/emulator" -name 'libkkemu.dylib' -type f | head -1)
           if [ -n "$EMULATOR_DEST" ]; then
-            EMULATOR_ARCH=$(lipo -archs "$EMULATOR_DEST" 2>/dev/null || echo "non-macho")
-            if [[ "$EMULATOR_ARCH" != *"x86_64"* ]]; then
-              rm "$EMULATOR_DEST"
-              echo "  libkkemu.dylib: removed (no certified Intel emulator artifact)"
-            fi
+            rm "$EMULATOR_DEST"
+            echo "  libkkemu.dylib: removed (no certified macOS 13 Intel emulator artifact)"
           fi
 
           # Audit every executable/native module, its deployment target, and
