@@ -36,7 +36,7 @@ const pid=Number(execFileSync('lsof',['-tiTCP:1646','-sTCP:LISTEN'],{encoding:'u
 const sdkDir=resolve(import.meta.dir,'../..'),ax=join(import.meta.dir,'ax-ui.swift-source'),ocr=join(import.meta.dir,'ocr-oled.swift-source')
 const swift=(sourcePath:string,args:string[])=>execFileSync('swift',['-',...args],{input:readFileSync(sourcePath),encoding:'utf8'})
 const call=(title:string,button:string,action:string)=>swift(ax,[String(pid),title,button,action])
-const vault=()=>call('KeepKey Vault v1.5.4','*','dumptext')
+const vault=()=>call('KeepKey Vault v1.5.5','*','dumptext')
 const press=(title:string,button:string)=>call(title,button,'press')
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms))
 const pages:Array<{image:string;sha256:string;ocr:string}>=[]
@@ -80,7 +80,7 @@ try{
  const required=[`${display(amount)} ${h.from_asset}`,parts[1],parts[2],`${minimum} ${output[1]}`,fee,mode==='clear'?m.memo:'']
  if(required.some(s=>s&&!vaultText.toLowerCase().includes(s.toLowerCase())))throw Error('Vault omitted signed deposit term')
  writeFileSync(join(dir,'vault.txt'),vaultText)
- press('KeepKey Vault v1.5.4','Approve')
+ press('KeepKey Vault v1.5.5','Approve')
  const expectedKinds=['account','send','asset','destination','minimum','fee','asset','destination','minimum','fee','final']
  for(let i=0;i<expectedKinds.length;i++){
   const page=await capture(i);pages.push(page);const text=page.ocr.replace(/,/g,'.')
@@ -104,7 +104,7 @@ try{
   press('KeepKey Emulator','Confirm');await sleep(300)
  }
  if(!decision)throw Error('Decision not reached')
-}catch(cause){error=String(cause);try{press('KeepKey Emulator','Reject')}catch{};try{press('KeepKey Vault v1.5.4','Reject')}catch{}}
+}catch(cause){error=String(cause);try{press('KeepKey Emulator','Reject')}catch{};try{press('KeepKey Vault v1.5.5','Reject')}catch{}}
 const code=await Promise.race([done,sleep(10000).then(()=>-1)]);if(code===-1)child.kill('SIGTERM')
 const rows=db.query("SELECT timestamp,route,status,activity_type,request_body FROM api_log WHERE timestamp>=? AND app_name='KeepKey SDK Tests' ORDER BY timestamp").all(started) as Array<{timestamp:number;route:string;status:number;activity_type:string|null;request_body:string|null}>
 const sign=rows.filter(r=>r.route==='/thorchain/sign-amino-deposit')
