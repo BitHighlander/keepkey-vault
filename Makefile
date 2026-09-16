@@ -367,6 +367,7 @@ dmg: verify-arch
 	hdiutil create -volname "KeepKey Vault" -srcfolder "$$STAGING" -ov -format UDZO "$$DMG_OUT"; \
 	echo "Signing DMG..."; \
 	codesign --force --timestamp --sign "Developer ID Application: $$ELECTROBUN_DEVELOPER_ID ($$ELECTROBUN_TEAMID)" "$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
 	echo "Notarizing DMG..."; \
 	ZIP_TMP=$$(mktemp).zip; \
 	(cd "$$(dirname "$$DMG_OUT")" && zip -q "$$ZIP_TMP" "$$(basename "$$DMG_OUT")"); \
@@ -374,6 +375,9 @@ dmg: verify-arch
 	rm -f "$$ZIP_TMP"; \
 	echo "Stapling notarization ticket..."; \
 	xcrun stapler staple "$$DMG_OUT"; \
+	xcrun stapler validate "$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
+	spctl --assess --type open --context context:primary-signature --verbose=4 "$$DMG_OUT"; \
 	echo "DMG ready: $$DMG_OUT"
 
 # --- Testing ---
@@ -555,7 +559,8 @@ sign-check:
 	@echo "  DEVELOPER_ID: $$ELECTROBUN_DEVELOPER_ID"
 	@echo "  TEAM_ID:      $$ELECTROBUN_TEAMID"
 	@echo "  APPLE_ID:     $$ELECTROBUN_APPLEID"
-	@security find-identity -v -p codesigning | grep "$$ELECTROBUN_DEVELOPER_ID" || echo "WARNING: Certificate not found in keychain"
+	@security find-identity -v -p codesigning | grep "$$ELECTROBUN_DEVELOPER_ID" || \
+		(echo "ERROR: Developer ID signing identity not found in the active keychains" && exit 1)
 
 verify:
 	@APP=$$(find $(PROJECT_DIR)/_build -name "*.app" -maxdepth 2 | head -1); \
@@ -753,6 +758,7 @@ _sign-one-dmg:
 	codesign --force --timestamp \
 		--sign "Developer ID Application: $$ELECTROBUN_DEVELOPER_ID ($$ELECTROBUN_TEAMID)" \
 		"$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
 	echo "  Notarizing DMG..."; \
 	ZIP_TMP=$$(mktemp).zip; \
 	(cd "$$(dirname "$$DMG_OUT")" && zip -q "$$ZIP_TMP" "$$(basename "$$DMG_OUT")"); \
@@ -761,6 +767,9 @@ _sign-one-dmg:
 	rm -f "$$ZIP_TMP"; \
 	echo "  Stapling notarization ticket..."; \
 	xcrun stapler staple "$$DMG_OUT"; \
+	xcrun stapler validate "$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
+	spctl --assess --type open --context context:primary-signature --verbose=4 "$$DMG_OUT"; \
 	echo "  Done: $$DMG_OUT"
 
 # Verify that all MacOS/ executables have required entitlements (allow-jit).
