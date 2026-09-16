@@ -3919,7 +3919,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const result = await rebuildActivityHistory({
             wallet,
             scope,
-            chains: CHAINS,
             chains: bitcoinOnlyChainList(CHAINS, deviceIsBitcoinOnly()),
             firmwareVersion: engine.getDeviceState().firmwareVersion,
             options: body,

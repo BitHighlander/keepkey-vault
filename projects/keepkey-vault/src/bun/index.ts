@@ -7479,12 +7479,12 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				// Hidden sessions get the RAM-only session store instead (populated by
 				// scanChainHistory's live fetch below) — display without persistence.
 				if (engine.isPassphraseWallet) {
-					const rows = relabelZcashShieldedRows(getSessionActivity(params?.limit, params?.chainId))
+					const rows = await relabelZcashShieldedRows(getSessionActivity(params?.limit, params?.chainId))
 					return bitcoinOnlyActivityList(rows, isBitcoinOnlyVariant(engine.getDeviceState().firmwareVariant))
 				}
 				const scope = getWalletDbScope()
 				if (!scope) return []
-				const rows = relabelZcashShieldedRows(getRecentActivityFromLog(params?.limit, params?.chainId, scope.deviceId, scope.walletId))
+				const rows = await relabelZcashShieldedRows(getRecentActivityFromLog(params?.limit, params?.chainId, scope.deviceId, scope.walletId))
 				return bitcoinOnlyActivityList(rows, isBitcoinOnlyVariant(engine.getDeviceState().firmwareVariant))
 			},
 			getActivityScanState: async () => ({ running: activityScanRunning }),
