@@ -88,15 +88,14 @@ rm -rf "$HELPER_ROOT"
 
 # 1. Build launcher for x86_64
 echo "--- Building launcher (x86_64-macos.${MACOS_TARGET}) ---"
-# Zig 0.13 ReleaseSmall miscompiles this launcher on Intel macOS (repeatable
-# EXC_BAD_ACCESS in otherwise-valid stdlib path/environment operations).
-# ReleaseSafe keeps runtime safety checks and is exercised on native Intel CI.
-(cd "$ELECTROBUN_PKG/src/launcher" && \
-  rm -rf zig-out .zig-cache && \
-  "../../vendors/zig/zig" build \
-    -Dtarget=x86_64-macos.${MACOS_TARGET} \
-    -Doptimize=ReleaseSafe)
-cp "$ELECTROBUN_PKG/src/launcher/zig-out/bin/launcher" "$STAGING/core/launcher"
+# Zig 0.13 repeatedly miscompiles stdlib process setup for Intel macOS. Build
+# the equivalent native supervisor with the host Apple clang instead.
+clang \
+  -arch x86_64 \
+  -mmacosx-version-min=${MACOS_TARGET} \
+  -Os \
+  "$REPO_ROOT/scripts/electrobun-launcher-macos.c" \
+  -o "$STAGING/core/launcher"
 echo "  launcher: $(lipo -archs "$STAGING/core/launcher")"
 
 # 2. Build extractor for x86_64 (needed for self-extracting archives)
