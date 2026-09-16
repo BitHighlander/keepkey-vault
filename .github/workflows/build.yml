@@ -864,7 +864,7 @@ jobs:
   release:
     name: Create Draft Release
     needs: [build, intel-smoke]
-    if: (!cancelled()) && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') || github.event_name == 'workflow_dispatch')
+    if: success() && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: write

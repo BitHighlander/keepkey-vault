@@ -5,7 +5,7 @@ set -euo pipefail
 # Produces: electrobun-core-darwin-x64.tar.gz containing:
 #   launcher, bun, libNativeWrapper.dylib, libasar.dylib
 #
-# Targets macOS 13.0+ (Ventura). No fork needed — uses upstream blackboardsh/electrobun.
+# Targets macOS 13.0+ (Ventura) from the exact release-pinned Electrobun source.
 #
 # Prerequisites (on ARM64 Mac):
 #   - Zig 0.13.0 vendored in modules/electrobun/package/vendors/zig/
@@ -25,7 +25,7 @@ MACOS_TARGET="13.0"
 OUTPUT_DIR="$REPO_ROOT/artifacts"
 TARBALL="$OUTPUT_DIR/electrobun-core-darwin-x64.tar.gz"
 
-echo "=== Building Electrobun x64 core (upstream, macOS $MACOS_TARGET+) ==="
+echo "=== Building Electrobun x64 core (pinned source, macOS $MACOS_TARGET+) ==="
 
 # Verify prerequisites
 for F in "$ZIG" \

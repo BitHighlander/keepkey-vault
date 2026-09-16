@@ -206,9 +206,9 @@ build-signed-intel:
 	@echo ""
 	@exit 1
 
-# --- Electrobun x64 Core (macOS 13+, upstream) ---
+# --- Electrobun x64 Core (macOS 13+, pinned fork) ---
 # Cross-compiles Electrobun core binaries for Intel Mac from ARM64.
-# Uses upstream blackboardsh/electrobun (no fork). Targets macOS 13.0+.
+# Uses the release-pinned BitHighlander/electrobun branch. Targets macOS 13.0+.
 # Produces: artifacts/electrobun-core-darwin-x64.tar.gz
 # Prerequisites: run `cd modules/electrobun/package && bun install && bun build.ts` once to vendor deps.
 #
@@ -221,7 +221,7 @@ ELECTROBUN_X64_REPO ?= keepkey/keepkey-vault
 ELECTROBUN_X64_TAG ?= electrobun-x64-core-v2
 
 build-electrobun-x64-core:
-	@echo "Cross-compiling Electrobun x64 core from upstream..."
+	@echo "Cross-compiling Electrobun x64 core from the pinned source..."
 	./scripts/build-electrobun-x64-core.sh
 
 publish-electrobun-x64-core: build-electrobun-x64-core
@@ -234,8 +234,8 @@ publish-electrobun-x64-core: build-electrobun-x64-core
 		exit 1; \
 	fi; \
 	gh release create $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) \
-			--title "Electrobun x64 Core (macOS 13.0+, upstream $$SUBMOD_VER)" \
-			--notes "Cross-compiled Electrobun core for macOS 13.0+ Intel. Built from upstream blackboardsh/electrobun $$SUBMOD_VER. Bun 1.3.13. Adhoc-signed." \
+			--title "Electrobun x64 Core (macOS 13.0+, pinned $$SUBMOD_VER)" \
+			--notes "Cross-compiled Electrobun core for macOS 13.0+ Intel. Built from the release-pinned BitHighlander/electrobun commit $$SUBMOD_VER. Bun 1.3.13. Adhoc-signed." \
 			artifacts/electrobun-core-darwin-x64.tar.gz; \
 	echo "Published: https://github.com/$(ELECTROBUN_X64_REPO)/releases/tag/$(ELECTROBUN_X64_TAG)"; \
 	echo ""; \
@@ -860,7 +860,7 @@ preflight: submodules
 	else echo "   ❌ certified emulator artifacts missing or invalid — run scripts/stage-certified-emulator.sh <artifact-dir>"; fail=1; fi; \
 	echo ""; \
 	echo "3. CANONICAL BRANCHES"; \
-	for pair in "modules/hdwallet|origin/master" "modules/proto-tx-builder|origin/main" "modules/device-protocol|origin/master" "modules/electrobun|origin/main"; do \
+	for pair in "modules/hdwallet|origin/codex/certified-metadata-qa" "modules/proto-tx-builder|origin/main" "modules/device-protocol|origin/master" "modules/electrobun|origin/keepkey/launcher-env-lifetime"; do \
 		mod="$${pair%%|*}"; ref="$${pair##*|}"; \
 		behind=$$(cd "$$mod" && git rev-list --count HEAD.."$$ref" 2>/dev/null || echo "?"); \
 		if [ "$$behind" = "0" ]; then echo "   ✅ $$mod"; \
@@ -868,7 +868,7 @@ preflight: submodules
 	done; \
 	echo ""; \
 	echo "4. CI STATUS (checks pinned commit, falls back to fork repo for cross-fork PRs)"; \
-	for pair in "modules/hdwallet|keepkey/hdwallet|keepkey/hdwallet" "modules/proto-tx-builder|BitHighlander/proto-tx-builder|BitHighlander/proto-tx-builder" "modules/device-protocol|BitHighlander/device-protocol|BitHighlander/device-protocol" "modules/electrobun|blackboardsh/electrobun|blackboardsh/electrobun"; do \
+	for pair in "modules/hdwallet|BitHighlander/hdwallet|BitHighlander/hdwallet" "modules/proto-tx-builder|BitHighlander/proto-tx-builder|BitHighlander/proto-tx-builder" "modules/device-protocol|BitHighlander/device-protocol|BitHighlander/device-protocol" "modules/electrobun|BitHighlander/electrobun|BitHighlander/electrobun"; do \
 		mod=$$(echo "$$pair" | cut -d'|' -f1); \
 		repo=$$(echo "$$pair" | cut -d'|' -f2); \
 		fork=$$(echo "$$pair" | cut -d'|' -f3); \
