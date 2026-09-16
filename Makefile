@@ -234,12 +234,17 @@ prepare-electrobun-arm64-core: install
 	@echo "Downloading certified macOS 13-compatible Electrobun arm64 core..."
 	@RUN_ID=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.runId"); \
 	ARTIFACT=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.artifactName"); \
+	CORE_PATH=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.armCorePath"); \
+	CORE_SHA=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.armCoreSha256"); \
 	WORK=$$(mktemp -d); \
 	trap 'rm -rf "$$WORK"' EXIT; \
 	gh run download "$$RUN_ID" --repo $(GITHUB_REPO) --name "$$ARTIFACT" --dir "$$WORK"; \
-	test -f "$$WORK/electrobun-core-darwin-arm64.tar.gz" || \
+	test -f "$$WORK/$$CORE_PATH" || \
 		{ echo "ERROR: certified artifact lacks ARM64 Electrobun core"; exit 1; }; \
-	tar xzf "$$WORK/electrobun-core-darwin-arm64.tar.gz" \
+	ACTUAL_SHA=$$(shasum -a 256 "$$WORK/$$CORE_PATH" | awk '{print $$1}'); \
+	test "$$ACTUAL_SHA" = "$$CORE_SHA" || \
+		{ echo "ERROR: certified ARM64 Electrobun core hash mismatch"; exit 1; }; \
+	tar xzf "$$WORK/$$CORE_PATH" \
 		-C $(PROJECT_DIR)/node_modules/electrobun/dist-macos-arm64
 
 publish-electrobun-x64-core: build-electrobun-x64-core
