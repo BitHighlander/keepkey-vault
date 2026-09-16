@@ -25,8 +25,9 @@ const targets: Record<string, { vault: string; device: RegExp }> = {
 }
 
 const sdkDir = resolve(import.meta.dir, '../..')
-const ax = join(import.meta.dir, 'ax-ui.swift')
-const ocr = join(import.meta.dir, 'ocr-oled.swift')
+const ax = join(import.meta.dir, 'ax-ui.swift-source')
+const ocr = join(import.meta.dir, 'ocr-oled.swift-source')
+const swift = (source: string, args: string[]) => execFileSync('swift', ['-', ...args], { input: readFileSync(source), encoding: 'utf8' })
 const fixture = process.env.KEEPKEY_HISTORY_FIXTURE || join(homedir(), '.keepkey/qa-evidence/historical-thor-eth-usdt.json')
 const fixtureDoc = JSON.parse(readFileSync(fixture, 'utf8'))
 const erc20Input = !!fixtureDoc.transaction && ['USDC', 'USDT'].includes(fixtureDoc.history?.from_symbol)
@@ -60,7 +61,7 @@ if (!pairing?.api_key) throw new Error('Existing SDK pairing unavailable')
 const bearer = pairing.api_key
 const pid = Number(execFileSync('lsof', ['-tiTCP:1646', '-sTCP:LISTEN'], { encoding: 'utf8' }).trim())
 if (!Number.isInteger(pid)) throw new Error('Vault REST listener not found')
-const axCall = (title: string, button: string, action: string) => execFileSync('swift', [ax, String(pid), title, button, action], { encoding: 'utf8' })
+const axCall = (title: string, button: string, action: string) => swift(ax, [String(pid), title, button, action])
 const vault = () => axCall('KeepKey Vault v1.5.5', '*', 'dumptext')
 const press = (title: string, button: string) => axCall(title, button, 'press')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -95,7 +96,7 @@ async function capturePage(index: number) {
     const dataUrl = (await response.json() as { dataUrl: string }).dataUrl
     const png = Buffer.from(dataUrl.split(',')[1] || '', 'base64')
     writeFileSync(path, png)
-    const seen = execFileSync('swift', [ocr, path], { encoding: 'utf8' }).trim()
+    const seen = swift(ocr, [path]).trim()
     if (seen.split('\n').length >= 2 && !/^THOR\s*$/i.test(seen)) {
       return { image: path, sha256: createHash('sha256').update(png).digest('hex'), ocr: seen }
     }

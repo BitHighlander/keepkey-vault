@@ -33,8 +33,9 @@ const row=db.query("SELECT api_key FROM paired_apps WHERE name='KeepKey SDK Test
 if(!row?.api_key)throw Error('SDK pairing missing')
 const bearer=row.api_key
 const pid=Number(execFileSync('lsof',['-tiTCP:1646','-sTCP:LISTEN'],{encoding:'utf8'}).trim())
-const sdkDir=resolve(import.meta.dir,'../..'),ax=join(import.meta.dir,'ax-ui.swift'),ocr=join(import.meta.dir,'ocr-oled.swift')
-const call=(title:string,button:string,action:string)=>execFileSync('swift',[ax,String(pid),title,button,action],{encoding:'utf8'})
+const sdkDir=resolve(import.meta.dir,'../..'),ax=join(import.meta.dir,'ax-ui.swift-source'),ocr=join(import.meta.dir,'ocr-oled.swift-source')
+const swift=(sourcePath:string,args:string[])=>execFileSync('swift',['-',...args],{input:readFileSync(sourcePath),encoding:'utf8'})
+const call=(title:string,button:string,action:string)=>swift(ax,[String(pid),title,button,action])
 const vault=()=>call('KeepKey Vault v1.5.5','*','dumptext')
 const press=(title:string,button:string)=>call(title,button,'press')
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms))
@@ -54,7 +55,7 @@ async function capture(i:number){
   const response=await fetch('http://127.0.0.1:1646/emulator/capture',{method:'POST',headers:{Authorization:`Bearer ${bearer}`,'Content-Type':'application/json'},body:'{}'})
   if(!response.ok)throw Error(`capture HTTP ${response.status}`)
   const body=await response.json() as {dataUrl:string};const bytes=Buffer.from(body.dataUrl.split(',')[1]||'','base64')
-  writeFileSync(image,bytes);const text=execFileSync('swift',[ocr,image],{encoding:'utf8'}).trim()
+  writeFileSync(image,bytes);const text=swift(ocr,[image]).trim()
   const sha256=createHash('sha256').update(bytes).digest('hex')
   if(/(?:THORChain Account|Send |THORCHAIN SWAP|THORCHAIN ACCOUNT)/i.test(text)&&sha256!==pages.at(-1)?.sha256)
    return {image,sha256,ocr:text}
