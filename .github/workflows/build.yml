@@ -912,10 +912,11 @@ jobs:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          RELEASE_JSON=$(gh api "repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}" 2>/dev/null || true)
-          if [ -n "$RELEASE_JSON" ] && [ "$(jq -r '.draft' <<<"$RELEASE_JSON")" != "true" ]; then
-            echo "::error::${RELEASE_TAG} already exists as a public release; refusing to upload or replace assets"
-            exit 1
+          if RELEASE_JSON=$(gh api "repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}" 2>/dev/null); then
+            if [ "$(jq -r '.draft' <<<"$RELEASE_JSON")" != "true" ]; then
+              echo "::error::${RELEASE_TAG} already exists as a public release; refusing to upload or replace assets"
+              exit 1
+            fi
           fi
 
       - name: Create draft release
