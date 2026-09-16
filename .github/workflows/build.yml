@@ -350,14 +350,15 @@ jobs:
           rm "$ZCASH_DEST"
           echo "  zcash-cli: removed (Intel not supported; privacy capability will stay disabled)"
 
-          # The certified emulator artifact currently requires macOS 14. It is
-          # an optional developer capability, so omit it from the Intel release
-          # until a certified macOS 13 Intel build is available.
+          # The certified emulator is universal and audited for macOS 13. Keep
+          # it in the Intel derivative so both macOS release archives satisfy
+          # the bundled-emulator release SOP.
           EMULATOR_DEST=$(find "$APP/Contents/Resources/app/emulator" -name 'libkkemu.dylib' -type f | head -1)
-          if [ -n "$EMULATOR_DEST" ]; then
-            rm "$EMULATOR_DEST"
-            echo "  libkkemu.dylib: removed (no certified macOS 13 Intel emulator artifact)"
+          if [ -z "$EMULATOR_DEST" ]; then
+            echo "::error::Intel derivative is missing certified libkkemu.dylib"
+            exit 1
           fi
+          echo "  libkkemu.dylib: retained (certified macOS 13 universal artifact)"
 
           # Audit every executable/native module, its deployment target, and
           # the required x64 node-hid runtime before this artifact can ship.
