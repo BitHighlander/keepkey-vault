@@ -1,6 +1,8 @@
 name: Build Certified Emulator Artifact
 
 on:
+  push:
+    branches: ['release/*']
   workflow_dispatch:
 
 permissions:
