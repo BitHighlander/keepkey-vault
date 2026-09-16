@@ -280,8 +280,8 @@ jobs:
           # IMPORTANT: When bumping modules/electrobun, rebuild + republish the x64 core:
           #   make publish-electrobun-x64-core
           # Then update X64_CORE_TAG below to match ELECTROBUN_X64_TAG in the Makefile.
-          X64_CORE_TAG="electrobun-x64-core-v4"
-          X64_CORE_SHA256="c1c2339f90530bcc07607cf9aff8ba9fe4bfdac43ce3d1db41140ef3b6c470fa"
+          X64_CORE_TAG="electrobun-x64-core-v6"
+          X64_CORE_SHA256="e287baa487ea9c17ce3887b4f1264a3f0386107b218cfa749d92cfc180b2f2f2"
 
           # Warn if the submodule was bumped but the x64 core tag wasn't updated.
           # The release description includes the submodule version it was built from.
