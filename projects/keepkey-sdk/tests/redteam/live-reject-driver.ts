@@ -62,7 +62,7 @@ const bearer = pairing.api_key
 const pid = Number(execFileSync('lsof', ['-tiTCP:1646', '-sTCP:LISTEN'], { encoding: 'utf8' }).trim())
 if (!Number.isInteger(pid)) throw new Error('Vault REST listener not found')
 const axCall = (title: string, button: string, action: string) => swift(ax, [String(pid), title, button, action])
-const vault = () => axCall('KeepKey Vault v1.5.5', '*', 'dumptext')
+const vault = () => axCall('KeepKey Vault v1.5.4', '*', 'dumptext')
 const press = (title: string, button: string) => axCall(title, button, 'press')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -119,7 +119,7 @@ try {
   if (!vaultText.includes('THORChain') || expectedVault.some(s => !vaultText.toLowerCase().includes(s.toLowerCase()))) {
     throw new Error('Vault preview did not show the expected mutated terms')
   }
-  press('KeepKey Vault v1.5.5', 'Approve')
+  press('KeepKey Vault v1.5.4', 'Approve')
   await sleep(350)
   for (let page = 0; page < 16; page++) {
     const seen = await capturePage(page)
@@ -154,7 +154,7 @@ try {
 } catch (cause) {
   error = String(cause)
   try { press('KeepKey Emulator', 'Reject'); rejected = true } catch {}
-  try { press('KeepKey Vault v1.5.5', 'Reject') } catch {}
+  try { press('KeepKey Vault v1.5.4', 'Reject') } catch {}
 }
 const code = await Promise.race([done, sleep(10_000).then(() => -1)])
 if (code === -1) child.kill('SIGTERM')
