@@ -241,7 +241,7 @@ After release is published:
 | hdwallet | `b4beb59d` | `codex/certified-metadata-qa` | Vault 1.5.5 release pin |
 | proto-tx-builder | `f12f8c39` | `main` | Current vault pin |
 | device-protocol | `bee6cdd6` | `master` | Vault 1.5.5 published v7.18.0 pin; generated `lib/` still must be present on the build machine |
-| electrobun | `df69ac18` | `keepkey/launcher-env-lifetime` | Vault 1.5.5 release pin |
+| electrobun | `7c7d7d5c` | `keepkey/launcher-env-lifetime` | Vault 1.5.5 release pin |
 
 `modules/keepkey-firmware` is intentionally omitted. Its pin is not inventory
 for a Vault release and must not be changed by this SOP.
