@@ -2,6 +2,11 @@ name: Build Electrobun macOS Intel Core
 
 on:
   workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - modules/electrobun
+      - .github/workflows/build-electrobun-x64-core.yml
 
 permissions:
   contents: read
