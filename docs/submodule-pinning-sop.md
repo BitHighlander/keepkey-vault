@@ -21,10 +21,10 @@ never authorizes changing the firmware gitlink. See
 
 | Module | Repo | Expected Branch | Purpose |
 |--------|------|-----------------|---------|
-| **hdwallet** | `keepkey/hdwallet` | `master` | HD wallet core + KeepKey adapter (lodash/rxjs removed) |
+| **hdwallet** | `BitHighlander/hdwallet` | `codex/certified-metadata-qa` | HD wallet core + KeepKey adapter with certified signing metadata |
 | **proto-tx-builder** | `BitHighlander/proto-tx-builder` | `main` | Cosmos/Thorchain/Maya TX builder (`@keepkey/proto-tx-builder`) |
 | **device-protocol** | `BitHighlander/device-protocol` | `master` | Canonical Vault protocol fork and published `@bithighlander/device-protocol` package |
-| **electrobun** | `blackboardsh/electrobun` | `main` | Desktop framework fork/runtime used by Vault |
+| **electrobun** | `BitHighlander/electrobun` | `keepkey/launcher-env-lifetime` | Desktop framework runtime with the Intel launcher lifetime fix |
 
 Ignored for Vault releases:
 
@@ -63,10 +63,10 @@ release branch. Do not include `modules/keepkey-firmware` in this check.**
 echo ""
 echo "=== CI Status on Pinned Commits ==="
 declare -A REPOS=(
-  ["modules/hdwallet"]="keepkey/hdwallet"
+  ["modules/hdwallet"]="BitHighlander/hdwallet"
   ["modules/proto-tx-builder"]="BitHighlander/proto-tx-builder"
   ["modules/device-protocol"]="BitHighlander/device-protocol"
-  ["modules/electrobun"]="blackboardsh/electrobun"
+  ["modules/electrobun"]="BitHighlander/electrobun"
 )
 for mod in "${!REPOS[@]}"; do
   repo="${REPOS[$mod]}"
@@ -93,19 +93,19 @@ done
 
 | Repo | Workflows | Notes |
 |------|-----------|-------|
-| keepkey/hdwallet | CI (build matrix) | Must pass |
+| BitHighlander/hdwallet | CI (build matrix) | Must pass when present; the Vault contract suite is also blocking |
 | BitHighlander/proto-tx-builder | Build & Test | Must pass |
 | BitHighlander/device-protocol | Build & Publish + Protocol CI | Both validation jobs must pass; the exact fork commit must be published |
-| blackboardsh/electrobun | Build and Release + CEF Check | Build must pass; CEF is informational |
+| BitHighlander/electrobun | Vault Intel-core build and packaged-app smoke | Both must pass for the exact pin |
 
 ## Per-Module Rules
 
-### hdwallet (`master`)
+### hdwallet (`codex/certified-metadata-qa`)
 
-- Must be on `master` HEAD (or a tagged release)
+- Must be on the release branch HEAD or a tagged release in `BitHighlander/hdwallet`
 - The `master` branch must have the lodash/rxjs removal commit (`179c5668`)
-- If pinning to a feature branch, the branch MUST be merged to `master` before release
-- Verify: `cd modules/hdwallet && git branch -r --contains HEAD | grep master`
+- The exact pin must pass the Vault host/submodule contract suite
+- Verify: `cd modules/hdwallet && git branch -r --contains HEAD | grep origin/codex/certified-metadata-qa`
 
 ### proto-tx-builder (`main`)
 
@@ -141,10 +141,10 @@ done
 - Firmware changes and emulator artifact production happen in their own
   workflow, outside the Vault release procedure.
 
-### electrobun (`main`)
+### electrobun (`keepkey/launcher-env-lifetime`)
 
-- Pin to `blackboardsh/electrobun` `main`
-- Verify: `cd modules/electrobun && git log --oneline origin/main -1`
+- Pin to `BitHighlander/electrobun` `keepkey/launcher-env-lifetime`
+- Verify: `cd modules/electrobun && git log --oneline origin/keepkey/launcher-env-lifetime -1`
 
 ## CRITICAL: Check for Upstream Fixes Before Release
 
@@ -158,9 +158,13 @@ behind upstream:**
 
 ```bash
 echo "=== Commits behind canonical branches ==="
-for mod in modules/hdwallet modules/proto-tx-builder modules/device-protocol modules/electrobun; do
-  branch=$(cd "$mod" && git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
-  [ -z "$branch" ] && branch="master"
+for pair in \
+  "modules/hdwallet|codex/certified-metadata-qa" \
+  "modules/proto-tx-builder|main" \
+  "modules/device-protocol|master" \
+  "modules/electrobun|keepkey/launcher-env-lifetime"; do
+  mod=${pair%%|*}
+  branch=${pair##*|}
   (cd "$mod" && git fetch origin "$branch" 2>/dev/null)
   behind=$(cd "$mod" && git rev-list --count HEAD..origin/"$branch" 2>/dev/null)
   if [ "$behind" -gt 0 ]; then
@@ -217,8 +221,8 @@ Before `git checkout -b release/X.Y.Z develop`:
 1. Run the pinning checklist (all OK, all clean)
 2. **Run the canonical-branch-behind check** — review and pull any bug fixes
 3. Verify `device-protocol` is on `BitHighlander/device-protocol` fork master and that the exact commit is published as `@bithighlander/device-protocol`
-4. Verify `electrobun` is on `main` HEAD
-5. Verify `hdwallet` is on `master` with lodash/rxjs removal
+4. Verify `electrobun` is on the configured BitHighlander release branch HEAD
+5. Verify `hdwallet` is on the configured BitHighlander release branch HEAD
 6. Do not inspect or modify `modules/keepkey-firmware`.
 7. Run the bundled emulator artifact gate in `docs/emulator-release-sop.md`.
 8. Run `make build-stable` to confirm build succeeds with current runtime pins.
@@ -234,10 +238,10 @@ After release is published:
 
 | Module | Pinned To | Branch | Status |
 |--------|-----------|--------|--------|
-| hdwallet | `d83a65c3` | `master` | Current vault pin |
+| hdwallet | `e36639e3` | `codex/certified-metadata-qa` | Vault 1.5.5 release pin |
 | proto-tx-builder | `f12f8c39` | `main` | Current vault pin |
-| device-protocol | `bf8646b8` | `master` | Current vault pin; generated `lib/` still must be present on the build machine |
-| electrobun | `73519358` | `main` | Current vault pin |
+| device-protocol | `bee6cdd6` | `master` | Vault 1.5.5 published v7.18.0 pin; generated `lib/` still must be present on the build machine |
+| electrobun | `1bffabcf` | `keepkey/launcher-env-lifetime` | Vault 1.5.5 release pin |
 
 `modules/keepkey-firmware` is intentionally omitted. Its pin is not inventory
 for a Vault release and must not be changed by this SOP.

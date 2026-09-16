@@ -23,7 +23,7 @@ include .env
 export ELECTROBUN_DEVELOPER_ID ELECTROBUN_TEAMID ELECTROBUN_APPLEID ELECTROBUN_APPLEIDPASS
 endif
 
-.PHONY: install dev dev-hmr build build-stable build-canary build-signed prune-bundle dmg clean help vault sign-check verify verify-entitlements publish release upload-dmg upload-all-dmgs sign-release sign-release-intel verify-arch audit-macos-bundle submodules modules-install modules-build modules-clean audit build-zcash-cli build-zcash-cli-debug build-zcash-cli-intel test test-unit test-rest test-sign-gating test-zcash-cli test-emu build-intel build-signed-intel build-electrobun-x64-core publish-electrobun-x64-core build-electrobun-linux-x64-core publish-electrobun-linux-x64-core preflight build-emulator build-emulator-windows build-emulator-macos-release build-emulator-release clean-emulator test-emu-python
+.PHONY: install dev dev-hmr build build-stable build-canary build-signed prune-bundle dmg clean help vault sign-check verify verify-entitlements publish release upload-dmg upload-all-dmgs sign-release sign-release-intel verify-arch audit-macos-bundle submodules modules-install modules-build modules-clean audit build-zcash-cli build-zcash-cli-debug build-zcash-cli-intel test test-unit test-rest test-sign-gating test-zcash-cli test-emu build-intel build-signed-intel build-electrobun-x64-core build-electrobun-arm64-core prepare-electrobun-arm64-core publish-electrobun-x64-core build-electrobun-linux-x64-core publish-electrobun-linux-x64-core preflight build-emulator build-emulator-windows build-emulator-macos-release build-emulator-release clean-emulator test-emu-python
 
 # --- Submodules (auto-init on fresh worktrees/clones) ---
 
@@ -206,9 +206,9 @@ build-signed-intel:
 	@echo ""
 	@exit 1
 
-# --- Electrobun x64 Core (macOS 13+, upstream) ---
+# --- Electrobun x64 Core (macOS 13+, pinned fork) ---
 # Cross-compiles Electrobun core binaries for Intel Mac from ARM64.
-# Uses upstream blackboardsh/electrobun (no fork). Targets macOS 13.0+.
+# Uses the release-pinned BitHighlander/electrobun branch. Targets macOS 13.0+.
 # Produces: artifacts/electrobun-core-darwin-x64.tar.gz
 # Prerequisites: run `cd modules/electrobun/package && bun install && bun build.ts` once to vendor deps.
 #
@@ -218,11 +218,34 @@ build-signed-intel:
 
 ELECTROBUN_X64_REPO ?= keepkey/keepkey-vault
 # Tag format: electrobun-x64-core-vN — increment N when rebuilding
-ELECTROBUN_X64_TAG ?= electrobun-x64-core-v2
+ELECTROBUN_X64_TAG ?= electrobun-x64-core-v7
 
 build-electrobun-x64-core:
-	@echo "Cross-compiling Electrobun x64 core from upstream..."
+	@echo "Cross-compiling Electrobun x64 core from the pinned source..."
 	./scripts/build-electrobun-x64-core.sh
+
+# Rebuild ARM helpers with an explicit macOS 13 floor. Upstream release
+# binaries otherwise inherit the build host's deployment target.
+build-electrobun-arm64-core:
+	@echo "Building Electrobun arm64 core from pinned source for macOS $(MACOS_DEPLOYMENT_TARGET)+..."
+	MACOS_TARGET=$(MACOS_DEPLOYMENT_TARGET) ./scripts/build-electrobun-arm64-core.sh
+
+prepare-electrobun-arm64-core: install
+	@echo "Downloading certified macOS 13-compatible Electrobun arm64 core..."
+	@RUN_ID=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.runId"); \
+	ARTIFACT=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.artifactName"); \
+	CORE_PATH=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.armCorePath"); \
+	CORE_SHA=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.armCoreSha256"); \
+	WORK=$$(mktemp -d); \
+	trap 'rm -rf "$$WORK"' EXIT; \
+	gh run download "$$RUN_ID" --repo $(GITHUB_REPO) --name "$$ARTIFACT" --dir "$$WORK"; \
+	test -f "$$WORK/$$CORE_PATH" || \
+		{ echo "ERROR: certified artifact lacks ARM64 Electrobun core"; exit 1; }; \
+	ACTUAL_SHA=$$(shasum -a 256 "$$WORK/$$CORE_PATH" | awk '{print $$1}'); \
+	test "$$ACTUAL_SHA" = "$$CORE_SHA" || \
+		{ echo "ERROR: certified ARM64 Electrobun core hash mismatch"; exit 1; }; \
+	tar xzf "$$WORK/$$CORE_PATH" \
+		-C $(PROJECT_DIR)/node_modules/electrobun/dist-macos-arm64
 
 publish-electrobun-x64-core: build-electrobun-x64-core
 	@test -f artifacts/electrobun-core-darwin-x64.tar.gz || (echo "ERROR: tarball not found"; exit 1)
@@ -234,8 +257,8 @@ publish-electrobun-x64-core: build-electrobun-x64-core
 		exit 1; \
 	fi; \
 	gh release create $(ELECTROBUN_X64_TAG) --repo $(ELECTROBUN_X64_REPO) \
-			--title "Electrobun x64 Core (macOS 13.0+, upstream $$SUBMOD_VER)" \
-			--notes "Cross-compiled Electrobun core for macOS 13.0+ Intel. Built from upstream blackboardsh/electrobun $$SUBMOD_VER. Bun 1.3.13. Adhoc-signed." \
+			--title "Electrobun x64 Core (macOS 13.0+, pinned $$SUBMOD_VER)" \
+			--notes "Cross-compiled Electrobun core for macOS 13.0+ Intel. Built from the release-pinned BitHighlander/electrobun commit $$SUBMOD_VER. Bun 1.3.13. Adhoc-signed." \
 			artifacts/electrobun-core-darwin-x64.tar.gz; \
 	echo "Published: https://github.com/$(ELECTROBUN_X64_REPO)/releases/tag/$(ELECTROBUN_X64_TAG)"; \
 	echo ""; \
@@ -315,6 +338,7 @@ prune-bundle:
 build-signed: sign-check
 	@rm -f $(ZCASH_CLI_STAMP) $(PROTO_BUILD_STAMP) $(HDWALLET_BUILD_STAMP) $(DEVICE_PROTOCOL_BUILD_STAMP)
 	@node scripts/verify-certified-emulator.mjs
+	$(MAKE) prepare-electrobun-arm64-core
 	$(MAKE) build-stable audit prune-bundle dmg
 	@echo ""
 	@echo "=== Build complete ==="
@@ -343,6 +367,7 @@ dmg: verify-arch
 	hdiutil create -volname "KeepKey Vault" -srcfolder "$$STAGING" -ov -format UDZO "$$DMG_OUT"; \
 	echo "Signing DMG..."; \
 	codesign --force --timestamp --sign "Developer ID Application: $$ELECTROBUN_DEVELOPER_ID ($$ELECTROBUN_TEAMID)" "$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
 	echo "Notarizing DMG..."; \
 	ZIP_TMP=$$(mktemp).zip; \
 	(cd "$$(dirname "$$DMG_OUT")" && zip -q "$$ZIP_TMP" "$$(basename "$$DMG_OUT")"); \
@@ -350,6 +375,9 @@ dmg: verify-arch
 	rm -f "$$ZIP_TMP"; \
 	echo "Stapling notarization ticket..."; \
 	xcrun stapler staple "$$DMG_OUT"; \
+	xcrun stapler validate "$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
+	spctl --assess --type open --context context:primary-signature --verbose=4 "$$DMG_OUT"; \
 	echo "DMG ready: $$DMG_OUT"
 
 # --- Testing ---
@@ -531,7 +559,8 @@ sign-check:
 	@echo "  DEVELOPER_ID: $$ELECTROBUN_DEVELOPER_ID"
 	@echo "  TEAM_ID:      $$ELECTROBUN_TEAMID"
 	@echo "  APPLE_ID:     $$ELECTROBUN_APPLEID"
-	@security find-identity -v -p codesigning | grep "$$ELECTROBUN_DEVELOPER_ID" || echo "WARNING: Certificate not found in keychain"
+	@security find-identity -v -p codesigning | grep "$$ELECTROBUN_DEVELOPER_ID" || \
+		(echo "ERROR: Developer ID signing identity not found in the active keychains" && exit 1)
 
 verify:
 	@APP=$$(find $(PROJECT_DIR)/_build -name "*.app" -maxdepth 2 | head -1); \
@@ -729,6 +758,7 @@ _sign-one-dmg:
 	codesign --force --timestamp \
 		--sign "Developer ID Application: $$ELECTROBUN_DEVELOPER_ID ($$ELECTROBUN_TEAMID)" \
 		"$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
 	echo "  Notarizing DMG..."; \
 	ZIP_TMP=$$(mktemp).zip; \
 	(cd "$$(dirname "$$DMG_OUT")" && zip -q "$$ZIP_TMP" "$$(basename "$$DMG_OUT")"); \
@@ -737,6 +767,9 @@ _sign-one-dmg:
 	rm -f "$$ZIP_TMP"; \
 	echo "  Stapling notarization ticket..."; \
 	xcrun stapler staple "$$DMG_OUT"; \
+	xcrun stapler validate "$$DMG_OUT"; \
+	codesign --verify --verbose=2 "$$DMG_OUT"; \
+	spctl --assess --type open --context context:primary-signature --verbose=4 "$$DMG_OUT"; \
 	echo "  Done: $$DMG_OUT"
 
 # Verify that all MacOS/ executables have required entitlements (allow-jit).
@@ -860,7 +893,7 @@ preflight: submodules
 	else echo "   ❌ certified emulator artifacts missing or invalid — run scripts/stage-certified-emulator.sh <artifact-dir>"; fail=1; fi; \
 	echo ""; \
 	echo "3. CANONICAL BRANCHES"; \
-	for pair in "modules/hdwallet|origin/master" "modules/proto-tx-builder|origin/main" "modules/device-protocol|origin/master" "modules/electrobun|origin/main"; do \
+	for pair in "modules/hdwallet|origin/codex/certified-metadata-qa" "modules/proto-tx-builder|origin/main" "modules/device-protocol|origin/master" "modules/electrobun|origin/keepkey/launcher-env-lifetime"; do \
 		mod="$${pair%%|*}"; ref="$${pair##*|}"; \
 		behind=$$(cd "$$mod" && git rev-list --count HEAD.."$$ref" 2>/dev/null || echo "?"); \
 		if [ "$$behind" = "0" ]; then echo "   ✅ $$mod"; \
@@ -868,7 +901,7 @@ preflight: submodules
 	done; \
 	echo ""; \
 	echo "4. CI STATUS (checks pinned commit, falls back to fork repo for cross-fork PRs)"; \
-	for pair in "modules/hdwallet|keepkey/hdwallet|keepkey/hdwallet" "modules/proto-tx-builder|BitHighlander/proto-tx-builder|BitHighlander/proto-tx-builder" "modules/device-protocol|BitHighlander/device-protocol|BitHighlander/device-protocol" "modules/electrobun|blackboardsh/electrobun|blackboardsh/electrobun"; do \
+	for pair in "modules/hdwallet|BitHighlander/hdwallet|BitHighlander/hdwallet" "modules/proto-tx-builder|BitHighlander/proto-tx-builder|BitHighlander/proto-tx-builder" "modules/device-protocol|BitHighlander/device-protocol|BitHighlander/device-protocol" "modules/electrobun|BitHighlander/electrobun|BitHighlander/electrobun"; do \
 		mod=$$(echo "$$pair" | cut -d'|' -f1); \
 		repo=$$(echo "$$pair" | cut -d'|' -f2); \
 		fork=$$(echo "$$pair" | cut -d'|' -f3); \

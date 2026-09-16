@@ -35,9 +35,10 @@ const pairing = db.query("SELECT api_key FROM paired_apps WHERE name='KeepKey SD
 if (!pairing?.api_key) throw Error('SDK pairing unavailable')
 const bearer = pairing.api_key
 const pid = Number(execFileSync('lsof', ['-tiTCP:1646', '-sTCP:LISTEN'], {encoding:'utf8'}).trim())
-const ax = join(import.meta.dir, 'ax-ui.swift')
-const ocr = join(import.meta.dir, 'ocr-oled.swift')
-const axCall = (title:string, button:string, action:string) => execFileSync('swift', [ax, String(pid), title, button, action], {encoding:'utf8'})
+const ax = join(import.meta.dir, 'ax-ui.swift-source')
+const ocr = join(import.meta.dir, 'ocr-oled.swift-source')
+const swift = (source:string, args:string[]) => execFileSync('swift', ['-', ...args], {input:readFileSync(source), encoding:'utf8'})
+const axCall = (title:string, button:string, action:string) => swift(ax, [String(pid), title, button, action])
 const vault = () => axCall('KeepKey Vault v1.5.4', '*', 'dumptext')
 const press = (title:string, button:string) => axCall(title, button, 'press')
 const sleep = (ms:number) => new Promise(r => setTimeout(r,ms))
@@ -65,7 +66,7 @@ async function capture(i:number) {
     const body = await response.json() as {dataUrl:string}
     const bytes = Buffer.from(body.dataUrl.split(',')[1] || '', 'base64')
     writeFileSync(image, bytes)
-    const text = execFileSync('swift',[ocr,image],{encoding:'utf8'}).trim()
+    const text = swift(ocr,[image]).trim()
     const sha256=createHash('sha256').update(bytes).digest('hex')
     if (/(?:Send|THORCHAIN|TRANSACTION|WARNING|Confirm OP_RETURN)/i.test(text)
       && sha256!==pages.at(-1)?.sha256)

@@ -22,6 +22,7 @@ Do not sign or publish a macOS artifact when any of these is true:
 - a KeepKey has not connected successfully on the target architecture;
 - the source commit, submodule pins, release version, and draft tag disagree;
 - notarization, stapling, Gatekeeper assessment, or post-upload hashes fail.
+- the configured Developer ID identity is not present in the active keychains.
 
 If an architecture fails, withhold that architecture. Never publish a known-bad
 binary merely because the other architecture is ready.
@@ -134,7 +135,9 @@ For each architecture:
    ```bash
    codesign --verify --deep --strict --verbose=2 /Applications/keepkey-vault.app
    spctl --assess --type execute --verbose=4 /Applications/keepkey-vault.app
+   codesign --verify --verbose=2 KeepKey-Vault-<version>-<arch>.dmg
    xcrun stapler validate KeepKey-Vault-<version>-<arch>.dmg
+   spctl --assess --type open --context context:primary-signature --verbose=4 KeepKey-Vault-<version>-<arch>.dmg
    make verify-entitlements
    ```
 
@@ -148,6 +151,9 @@ SHA-256, and result. Signing and testing must refer to the same hash.
 ## 6. Publish safely
 
 1. Keep the GitHub release as a draft until both desired architectures pass.
+   CI must fail rather than upload to an existing public release with the same
+   tag; a draft release cannot be used to repair or silently replace public
+   assets.
 2. Upload signed artifacts without making the release public.
 3. Download every uploaded artifact again and compare SHA-256 with the tested
    local files.

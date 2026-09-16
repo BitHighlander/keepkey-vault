@@ -6,3 +6,6 @@
 # explicit rule, these files arrive as CRLF, which breaks bash parsing and
 # fails the Windows preflight check (scripts/preflight-windows.ps1).
 *.sh text eol=lf
+
+# These are interpreted macOS QA helpers, not a standalone Swift product.
+*.swift-source text eol=lf linguist-language=Text
