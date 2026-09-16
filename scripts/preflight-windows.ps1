@@ -336,7 +336,7 @@ try {
             Write-Host "         Run as admin: Add-MpPreference -ExclusionPath 'C:\tmp\kk'" -ForegroundColor DarkGray
         }
         $expectedProcs = @('signtool.exe', 'robocopy.exe', 'bun.exe', 'node.exe', 'cargo.exe', 'ISCC.exe')
-        $missing = $expectedProcs | Where-Object { $_ -notin $exProcs }
+        $missing = @($expectedProcs | Where-Object { $_ -notin $exProcs })
         if ($missing.Count -eq 0) {
             Pass "Defender process exclusions cover build tools"
         } else {
