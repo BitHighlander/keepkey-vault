@@ -88,11 +88,14 @@ rm -rf "$HELPER_ROOT"
 
 # 1. Build launcher for x86_64
 echo "--- Building launcher (x86_64-macos.${MACOS_TARGET}) ---"
+# Zig 0.13 ReleaseSmall miscompiles this launcher on Intel macOS (repeatable
+# EXC_BAD_ACCESS in otherwise-valid stdlib path/environment operations).
+# ReleaseSafe keeps runtime safety checks and is exercised on native Intel CI.
 (cd "$ELECTROBUN_PKG/src/launcher" && \
   rm -rf zig-out .zig-cache && \
   "../../vendors/zig/zig" build \
     -Dtarget=x86_64-macos.${MACOS_TARGET} \
-    -Doptimize=ReleaseSmall)
+    -Doptimize=ReleaseSafe)
 cp "$ELECTROBUN_PKG/src/launcher/zig-out/bin/launcher" "$STAGING/core/launcher"
 echo "  launcher: $(lipo -archs "$STAGING/core/launcher")"
 
