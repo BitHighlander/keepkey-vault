@@ -11,6 +11,7 @@ EXPECTED_VERSION="${EMU_EXPECTED_VERSION:-7.16.0}"
 PROTOC_WRAPPER="$REPO_ROOT/scripts/protoc-nanopb-compat.sh"
 PROTOC_VERSION=21.12
 TC_CACHE="$HOME/.keepkey/emulator/.toolchain"
+MACOS_TARGET="${MACOS_TARGET:-13.0}"
 
 [ "$(uname -s)" = Darwin ] || { echo "ERROR: macOS emulator build requires macOS"; exit 1; }
 command -v cmake >/dev/null || { echo "ERROR: cmake is required"; exit 1; }
@@ -87,6 +88,7 @@ build_arch() {
     -DKK_EMULATOR=ON -DKK_DEBUG_LINK=ON -DKK_BUILD_DYLIB=ON \
     -DKK_CLEARSIGN_ALPHA_ROOT=ON \
     -DCMAKE_OSX_ARCHITECTURES="$arch" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_TARGET" \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DPROTOC_BINARY="$PROTOC_WRAPPER" \
     -DNANOPB_DIR="$NANOPB_DIR" \
@@ -98,6 +100,21 @@ build_arch() {
     --target kkemulator_dylib -j"$CPU_COUNT"
   test -f "$build_dir/lib/libkkemu.dylib" || {
     echo "ERROR: $arch libkkemu.dylib missing"; exit 1; }
+  minos="$(otool -l "$build_dir/lib/libkkemu.dylib" | awk '
+    $1 == "cmd" { command = $2 }
+    (command == "LC_BUILD_VERSION" && $1 == "minos") ||
+    (command == "LC_VERSION_MIN_MACOSX" && $1 == "version") { print $2; exit }
+  ')"
+  [ -n "$minos" ] || { echo "ERROR: $arch emulator has no deployment target"; exit 1; }
+  awk -v actual="$minos" -v ceiling="$MACOS_TARGET" 'BEGIN {
+    split(actual, a, "."); split(ceiling, b, ".")
+    for (i = 1; i <= 3; i++) {
+      av = (a[i] == "" ? 0 : a[i]) + 0; bv = (b[i] == "" ? 0 : b[i]) + 0
+      if (av > bv) exit 1; if (av < bv) exit 0
+    }
+    exit 0
+  }' || { echo "ERROR: $arch emulator requires macOS $minos (ceiling $MACOS_TARGET)"; exit 1; }
+  echo "    $arch deployment target: $minos"
 }
 
 build_arch arm64

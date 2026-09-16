@@ -1,0 +1,89 @@
+name: Build Certified Emulator Artifact
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize pinned firmware inputs
+        run: |
+          git submodule update --init modules/keepkey-firmware modules/electrobun
+          git -C modules/keepkey-firmware submodule update --init \
+            code-signing-keys deps/crypto/trezor-firmware deps/device-protocol \
+            deps/googletest deps/python-keepkey deps/qrenc/QR-Code-generator \
+            deps/sca-hardening/SecAESSTM32
+          git -C modules/keepkey-firmware/deps/python-keepkey submodule update --init \
+            keepkeylib/eth/ethereum-lists
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.5'
+
+      - name: Install deterministic emulator toolchain
+        run: |
+          python -m pip install nanopb==0.3.9.4.post3 protobuf==3.20.3
+          brew install mingw-w64
+
+      - name: Build macOS 13 universal library and Windows x64 library
+        env:
+          EMU_PYTHON: python
+          MACOS_TARGET: '13.0'
+        run: make build-emulator-release
+
+      - name: Build macOS 13 ARM64 Electrobun core
+        env:
+          MACOS_TARGET: '13.0'
+        run: |
+          cd modules/electrobun/package
+          bun install
+          bun build.ts
+          cd ../../..
+          make build-electrobun-arm64-core
+
+      - name: Audit release libraries
+        run: |
+          test "$(lipo -archs projects/keepkey-vault/emulator-bundle/libkkemu.dylib)" = "x86_64 arm64" || \
+            test "$(lipo -archs projects/keepkey-vault/emulator-bundle/libkkemu.dylib)" = "arm64 x86_64"
+          exports="$(nm -gU projects/keepkey-vault/emulator-bundle/libkkemu.dylib)"
+          for symbol in kkemu_init kkemu_shutdown kkemu_write kkemu_read kkemu_poll \
+            kkemu_is_running kkemu_pop_frame kkemu_start kkemu_stop kkemu_lock \
+            kkemu_unlock kkemu_trylock; do
+            grep -Eq "[[:space:]]_${symbol}$" <<<"$exports"
+          done
+          file projects/keepkey-vault/emulator-bundle/libkkemu.dll | grep -q 'x86-64'
+          for arch in arm64 x86_64; do
+            thin="$(mktemp)"
+            lipo projects/keepkey-vault/emulator-bundle/libkkemu.dylib \
+              -thin "$arch" -output "$thin"
+            minos="$(otool -l "$thin" | awk '
+              $1 == "cmd" { command = $2 }
+              (command == "LC_BUILD_VERSION" && $1 == "minos") ||
+              (command == "LC_VERSION_MIN_MACOSX" && $1 == "version") { print $2; exit }
+            ')"
+            test "$minos" = 13.0
+          done
+          shasum -a 256 projects/keepkey-vault/emulator-bundle/libkkemu.dylib \
+            projects/keepkey-vault/emulator-bundle/libkkemu.dll
+
+      - name: Upload immutable certified artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: certified-emulator-7.16.0-macos13-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            projects/keepkey-vault/emulator-bundle/libkkemu.dylib
+            projects/keepkey-vault/emulator-bundle/libkkemu.dll
+            artifacts/electrobun-core-darwin-arm64.tar.gz

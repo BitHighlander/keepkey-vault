@@ -23,7 +23,7 @@ include .env
 export ELECTROBUN_DEVELOPER_ID ELECTROBUN_TEAMID ELECTROBUN_APPLEID ELECTROBUN_APPLEIDPASS
 endif
 
-.PHONY: install dev dev-hmr build build-stable build-canary build-signed prune-bundle dmg clean help vault sign-check verify verify-entitlements publish release upload-dmg upload-all-dmgs sign-release sign-release-intel verify-arch audit-macos-bundle submodules modules-install modules-build modules-clean audit build-zcash-cli build-zcash-cli-debug build-zcash-cli-intel test test-unit test-rest test-sign-gating test-zcash-cli test-emu build-intel build-signed-intel build-electrobun-x64-core publish-electrobun-x64-core build-electrobun-linux-x64-core publish-electrobun-linux-x64-core preflight build-emulator build-emulator-windows build-emulator-macos-release build-emulator-release clean-emulator test-emu-python
+.PHONY: install dev dev-hmr build build-stable build-canary build-signed prune-bundle dmg clean help vault sign-check verify verify-entitlements publish release upload-dmg upload-all-dmgs sign-release sign-release-intel verify-arch audit-macos-bundle submodules modules-install modules-build modules-clean audit build-zcash-cli build-zcash-cli-debug build-zcash-cli-intel test test-unit test-rest test-sign-gating test-zcash-cli test-emu build-intel build-signed-intel build-electrobun-x64-core build-electrobun-arm64-core prepare-electrobun-arm64-core publish-electrobun-x64-core build-electrobun-linux-x64-core publish-electrobun-linux-x64-core preflight build-emulator build-emulator-windows build-emulator-macos-release build-emulator-release clean-emulator test-emu-python
 
 # --- Submodules (auto-init on fresh worktrees/clones) ---
 
@@ -224,6 +224,24 @@ build-electrobun-x64-core:
 	@echo "Cross-compiling Electrobun x64 core from the pinned source..."
 	./scripts/build-electrobun-x64-core.sh
 
+# Rebuild ARM helpers with an explicit macOS 13 floor. Upstream release
+# binaries otherwise inherit the build host's deployment target.
+build-electrobun-arm64-core:
+	@echo "Building Electrobun arm64 core from pinned source for macOS $(MACOS_DEPLOYMENT_TARGET)+..."
+	MACOS_TARGET=$(MACOS_DEPLOYMENT_TARGET) ./scripts/build-electrobun-arm64-core.sh
+
+prepare-electrobun-arm64-core: install
+	@echo "Downloading certified macOS 13-compatible Electrobun arm64 core..."
+	@RUN_ID=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.runId"); \
+	ARTIFACT=$$(node -p "require('./$(PROJECT_DIR)/emulator-bundle/manifest.json').source.artifactName"); \
+	WORK=$$(mktemp -d); \
+	trap 'rm -rf "$$WORK"' EXIT; \
+	gh run download "$$RUN_ID" --repo $(GITHUB_REPO) --name "$$ARTIFACT" --dir "$$WORK"; \
+	test -f "$$WORK/electrobun-core-darwin-arm64.tar.gz" || \
+		{ echo "ERROR: certified artifact lacks ARM64 Electrobun core"; exit 1; }; \
+	tar xzf "$$WORK/electrobun-core-darwin-arm64.tar.gz" \
+		-C $(PROJECT_DIR)/node_modules/electrobun/dist-macos-arm64
+
 publish-electrobun-x64-core: build-electrobun-x64-core
 	@test -f artifacts/electrobun-core-darwin-x64.tar.gz || (echo "ERROR: tarball not found"; exit 1)
 	@SUBMOD_VER=$$(cd modules/electrobun && git describe --tags --always 2>/dev/null || git rev-parse --short HEAD); \
@@ -315,6 +333,7 @@ prune-bundle:
 build-signed: sign-check
 	@rm -f $(ZCASH_CLI_STAMP) $(PROTO_BUILD_STAMP) $(HDWALLET_BUILD_STAMP) $(DEVICE_PROTOCOL_BUILD_STAMP)
 	@node scripts/verify-certified-emulator.mjs
+	$(MAKE) prepare-electrobun-arm64-core
 	$(MAKE) build-stable audit prune-bundle dmg
 	@echo ""
 	@echo "=== Build complete ==="
