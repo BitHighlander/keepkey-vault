@@ -147,7 +147,7 @@ export function FirmwareDropZone() {
 				binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
 			}
 			const b64 = btoa(binary)
-			await rpcRequest("emulatorInstallDylib", { data: b64 }, 30000)
+			const installed = await rpcRequest<{ buildId: string }>("emulatorInstallDylib", { data: b64 }, 30000)
 			// Backend auto-flips emulator_enabled when a dylib is installed; tell
 			// the rest of the app to re-pull settings so DeviceGrid stops
 			// short-circuiting emulator RPCs.
@@ -157,18 +157,10 @@ export function FirmwareDropZone() {
 			// emulator so the device hits needs_init and the OOB wizard takes over.
 			// Replacement install (wallets already on disk) — leave them as-is, just
 			// confirm the swap. The user can Start any existing card from DeviceGrid.
-			const wallets = await rpcRequest<Array<{ name: string }>>("emulatorListWallets").catch(() => [])
-			if (wallets.length === 0) {
-				setPhase("emu-starting")
-				try { await rpcRequest("emulatorPair", undefined, 10000) } catch { /* may already be paired */ }
-				await rpcRequest("emulatorInit", { flashName: "default" }, 30000)
-				// Engine.connectEmulator() flips device state to needs_init; App.tsx
-				// transitions phase to 'setup' which mounts OobSetupWizard. Drop our
-				// own dialog so the wizard isn't covered.
-				setPhase("idle")
-				return
-			}
-			setPhase("emu-installed")
+			setPhase("emu-starting")
+			try { await rpcRequest("emulatorPair", undefined, 10000) } catch { /* may already be paired */ }
+			await rpcRequest("emulatorActivateBuild", { id: installed.buildId }, 30000)
+			setPhase("idle")
 		} catch (err: any) {
 			setError(err?.message || "Failed to install emulator")
 			setPhase("error")

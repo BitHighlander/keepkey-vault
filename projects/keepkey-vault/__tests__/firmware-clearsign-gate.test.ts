@@ -24,9 +24,14 @@ const erc20Approve = '0x095ea7b3' + word + word
 
 describe('firmwareClearSigns mirrors the rc3 native clear-sign allowlist', () => {
   test('THORChain/Maya deposit to the pinned router → clear-signs', () => {
-    expect(firmwareClearSigns(THOR, '0x1fece7b4' + word)).toBe(true)
-    expect(firmwareClearSigns(THOR, '0x44bc937b' + word)).toBe(true)
-    expect(firmwareClearSigns(MAYA, '0x1fece7b4' + word)).toBe(true)
+    expect(firmwareClearSigns(THOR, '0x1fece7b4' + word, 1)).toBe(true)
+    expect(firmwareClearSigns(THOR, '0x44bc937b' + word, 1)).toBe(true)
+    expect(firmwareClearSigns(MAYA, '0x1fece7b4' + word, 1)).toBe(true)
+  })
+
+  test('THORChain/Maya deposit without an explicit chain id → blind', () => {
+    expect(firmwareClearSigns(THOR, '0x1fece7b4' + word)).toBe(false)
+    expect(firmwareClearSigns(MAYA, '0x1fece7b4' + word)).toBe(false)
   })
 
   test('deposit selector to a DIFFERENT address → blind (spoof guard)', () => {

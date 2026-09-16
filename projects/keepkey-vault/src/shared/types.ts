@@ -646,6 +646,8 @@ export interface SigningRequestInfo {
   solanaMessageDecoded?: SolanaMessageDecodedInfo
   /** Clear-signing: decoded Solana tx — per-instruction rows + resolved ALT accounts */
   solanaDecoded?: SolanaTxDecodedInfo
+  /** Parsed only from the exact TRON raw_data protobuf bytes being signed. */
+  tronDecoded?: TronTxPreview
   /**
    * Populated when a Solana transaction was received but clear-sign decoding
    * failed (malformed wire layout, unsupported message version, RPC outage,
@@ -667,6 +669,21 @@ export interface SigningRequestInfo {
   firmwareVersion?: string
   /** Full raw request body from the REST API caller — shown in UI for debugging/transparency */
   rawRequestBody?: Record<string, unknown>
+}
+
+export interface TronTxPreview {
+  kind: 'TRX transfer' | 'TRC-20 transfer'
+  owner: string
+  to: string
+  amount: string
+  tokenContract?: string
+  feeLimit?: string
+  memo?: string
+  outputAsset?: string
+  outputDestination?: string
+  minimumOutput?: string
+  affiliateFee?: string
+  warning: string
 }
 
 /**
@@ -725,6 +742,7 @@ export interface ApiLogEntry {
   txid?: string          // blockchain txid (computed from signed tx or from broadcast response)
   chain?: string         // chain symbol (BTC, ETH, ATOM, etc.)
   activityType?: string  // sign | broadcast | swap | message
+  sessionEpoch?: number  // wallet session the request began in (RAM only, never persisted)
 }
 
 // Supported fiat currencies

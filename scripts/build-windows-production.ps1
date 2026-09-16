@@ -469,8 +469,10 @@ if (-not $SkipBuild) {
     New-Item -ItemType Directory -Force -Path $DpNestedLib | Out-Null
     Copy-Item -Path (Join-Path $DpTopLib "*") -Destination $DpNestedLib -Recurse -Force
     Write-Host "  Seeded hdwallet @keepkey/device-protocol/lib from top-level device-protocol (pinned commit)"
-    yarn build
-    if ($LASTEXITCODE -ne 0) { throw "yarn build failed for hdwallet (exit $LASTEXITCODE)" }
+    # Force project references to rebuild: a restored .tsbuildinfo can claim
+    # outputs are current even when the gitignored lib/ directories are absent.
+    yarn tsc --build --force
+    if ($LASTEXITCODE -ne 0) { throw "TypeScript build failed for hdwallet (exit $LASTEXITCODE)" }
     Pop-Location
 
     Write-Step "Installing keepkey-vault dependencies"
@@ -491,6 +493,30 @@ if (-not $SkipBuild) {
             throw "bun install failed for keepkey-vault (exit $vaultInstallExit)"
         }
     }
+
+    # Bun on Windows can create empty directories for file: dependencies and
+    # then report EPERM while copying from its cache. Hydrate the declared local
+    # packages from their exact pinned, already-built sources and verify each
+    # destination before packaging.
+    $localPackages = @(
+        @{ Source = (Join-Path $RepoRoot "modules\device-protocol"); Destination = (Join-Path $ProjectDir "node_modules\@keepkey\device-protocol") },
+        @{ Source = (Join-Path $RepoRoot "modules\hdwallet\packages\hdwallet-core"); Destination = (Join-Path $ProjectDir "node_modules\@keepkey\hdwallet-core") },
+        @{ Source = (Join-Path $RepoRoot "modules\hdwallet\packages\hdwallet-keepkey"); Destination = (Join-Path $ProjectDir "node_modules\@keepkey\hdwallet-keepkey") },
+        @{ Source = (Join-Path $RepoRoot "modules\hdwallet\packages\hdwallet-keepkey-nodehid"); Destination = (Join-Path $ProjectDir "node_modules\@keepkey\hdwallet-keepkey-nodehid") },
+        @{ Source = (Join-Path $RepoRoot "modules\hdwallet\packages\hdwallet-keepkey-nodewebusb"); Destination = (Join-Path $ProjectDir "node_modules\@keepkey\hdwallet-keepkey-nodewebusb") },
+        @{ Source = (Join-Path $RepoRoot "modules\proto-tx-builder"); Destination = (Join-Path $ProjectDir "node_modules\@keepkey\proto-tx-builder") }
+    )
+    foreach ($package in $localPackages) {
+        New-Item -ItemType Directory -Force -Path $package.Destination | Out-Null
+        & robocopy $package.Source $package.Destination /E /XD .git node_modules /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -gt 7) {
+            throw "Failed to hydrate local package from $($package.Source) (robocopy exit $LASTEXITCODE)"
+        }
+        if (-not (Test-Path (Join-Path $package.Destination "package.json"))) {
+            throw "Hydrated local package is missing package.json: $($package.Destination)"
+        }
+    }
+    Write-Host "  Hydrated and verified $($localPackages.Count) pinned local packages"
     Pop-Location
 
     Write-Step "Building zcash-cli sidecar (Rust)"

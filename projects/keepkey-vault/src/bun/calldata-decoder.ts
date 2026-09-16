@@ -12,6 +12,7 @@
  *  allowlist below, which mirrors the device's own `ethereum_contractHandled`.)
  */
 import type { CalldataDecodedInfo, CalldataDecodedField } from '../shared/types'
+import { thorDepositFields } from './thor-swap-preview'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ function formatUint256(raw: string): string {
 interface LocalDecoder {
   selector: string
   method: string
-  decode: (data: string) => CalldataDecodedField[]
+  decode: (data: string, chainId?: number) => CalldataDecodedField[] | null
 }
 
 // THORChain/Maya router deposit head layout: vault (word0), asset (word1) and
@@ -47,18 +48,7 @@ interface LocalDecoder {
 // otherwise the plain deposit() path decodes as source:'none', the signing
 // overlay flags needsBlindSigning and forces AdvancedMode ON, which turns OFF
 // the device's own blind-sign gate and defeats the router-pin fix (PR #261).
-function decodeThorDeposit(data: string): CalldataDecodedField[] {
-  const vault = formatAddress('0x' + data.slice(10, 74))
-  const asset = formatAddress('0x' + data.slice(74, 138))
-  const amount = formatUint256('0x' + data.slice(138, 202))
-  const isNativeAsset = asset === '0x0000000000000000000000000000000000000000'
-  return [
-    { name: 'Protocol', type: 'string', value: 'THORChain Router', format: 'raw' },
-    { name: 'Vault', type: 'address', value: vault, format: 'address' },
-    { name: 'Asset', type: 'string', value: isNativeAsset ? 'Native (ETH)' : asset, format: isNativeAsset ? 'raw' : 'address' },
-    { name: 'Amount', type: 'uint256', value: amount, format: 'amount' },
-  ]
-}
+const decodeUnverifiedRouterDeposit = (data: string, chainId?: number) => thorDepositFields(data, chainId, 'Unverified')
 
 const LOCAL_DECODERS: LocalDecoder[] = [
   // ERC-20 transfer(address,uint256)
@@ -358,8 +348,8 @@ const LOCAL_DECODERS: LocalDecoder[] = [
   // depositWithExpiry(vault, asset, amount, memo, expiry) [0x44bc937b].
   // Firmware clear-signs both; recognize both so the plain deposit() path is
   // not over-gated into blind-signing. (keepkey-firmware thortx.h selectors.)
-  { selector: '0x1fece7b4', method: 'Deposit (THORChain)', decode: decodeThorDeposit },
-  { selector: '0x44bc937b', method: 'Deposit (THORChain)', decode: decodeThorDeposit },
+  { selector: '0x1fece7b4', method: 'Deposit (router identity unavailable)', decode: decodeUnverifiedRouterDeposit },
+  { selector: '0x44bc937b', method: 'Deposit (router identity unavailable)', decode: decodeUnverifiedRouterDeposit },
 ]
 
 /**
@@ -376,9 +366,10 @@ export function decodeCalldataLocal(
   for (const d of LOCAL_DECODERS) {
     if (d.selector === selector) {
       try {
-        return { method: d.method, selector, fields: d.decode(data) }
+        const fields = d.decode(data)
+        return fields ? { method: d.method, selector, fields } : null
       } catch {
-        return { method: d.method, selector, fields: [] }
+        return null
       }
     }
   }
@@ -403,16 +394,18 @@ const ADDR = {
   THOR_ROUTER:       '0xd37bbe5744d730a1d98d8dc97c42f0ca46ad7146', // Ethereum
   THOR_ROUTER_AVAX:  '0x00dc6100103bc402d490aee3f9a5560cbd91f1d4', // Avalanche C-Chain
   MAYA_ROUTER:       '0xd89dce570de35a6f42d3bca7dba50a6d89bfc2a2',
+  MAYA_ROUTER_V4:    '0xe3985e6b61b814f7cdb188766562ba71b446b46d', // current MAYANode ETH inbound router
 }
 
 // THORChain's Router lives at a DIFFERENT address on each EVM chain, so the
 // clear-sign pin is (address, chainId) together — mirrors thor_router_for_chain
 // in firmware ethereum_contracts/thortx.c. Keep this in lockstep with that
 // switch; a chain listed here but not there (or vice versa) makes the overlay
-// mispredict clear-signability. chainId defaults to 1 (Ethereum) when absent.
+// mispredict clear-signability. Missing chainId is not a trusted mainnet pin.
 const THOR_ROUTER_BY_CHAIN: Record<number, string> = {
   1:     ADDR.THOR_ROUTER,
   43114: ADDR.THOR_ROUTER_AVAX,
+  8453:  ADDR.THOR_ROUTER_AVAX, // Base currently uses the same address
 }
 
 // selector → the ONE contract address the firmware pins that selector to.
@@ -450,10 +443,12 @@ export function firmwareClearSigns(to?: string, data?: string, chainId?: number)
   if (ERC20_NATIVE.has(selector) && (data.length - 2) === 136) return true
 
   if (THOR_MAYA_DEPOSIT.has(selector)) {
-    // THORChain's router is chain-specific (see THOR_ROUTER_BY_CHAIN); Maya's
-    // single ETH router is accepted regardless of chain.
-    const thorRouter = THOR_ROUTER_BY_CHAIN[chainId ?? 1]
-    return (thorRouter != null && dest === thorRouter) || dest === ADDR.MAYA_ROUTER
+    // The firmware binds both protocols' router pins to an explicit chainId.
+    // Its legacy Maya pin is ETH-mainnet only; the current v4 router remains
+    // behind the Advanced Mode gate until firmware supports it.
+    const thorRouter = chainId == null ? undefined : THOR_ROUTER_BY_CHAIN[chainId]
+    return (thorRouter != null && dest === thorRouter) ||
+      (chainId === 1 && dest === ADDR.MAYA_ROUTER)
   }
   const pinned = FIRMWARE_PINNED[selector]
   return pinned != null && dest === pinned
@@ -473,6 +468,22 @@ export async function decodeCalldata(
 
   const selector = data.slice(0, 10).toLowerCase()
 
+  // Deposit selectors are shared by THORChain and Mayachain. Protocol identity
+  // comes from the destination router, never from the selector or memo text.
+  if (THOR_MAYA_DEPOSIT.has(selector)) {
+    const dest = contractAddress.toLowerCase()
+    const thor = _chainId != null && THOR_ROUTER_BY_CHAIN[_chainId] === dest
+    const maya = _chainId === 1 && (dest === ADDR.MAYA_ROUTER || dest === ADDR.MAYA_ROUTER_V4)
+    const protocol = thor ? 'THORChain' : maya ? 'Mayachain' : null
+    const fields = protocol ? thorDepositFields(data, _chainId, protocol) : null
+    if (fields) return {
+      dappName: protocol, contractName: contractAddress,
+      method: `Deposit (${protocol})`, selector, fields, source: 'local',
+    }
+    return { dappName: 'Unknown', contractName: contractAddress,
+      method: `Unknown (${selector})`, selector, fields: [], source: 'none' }
+  }
+
   // Tier 1: Local decoders (offline, instant)
   for (const decoder of LOCAL_DECODERS) {
     if (selector === decoder.selector && data.length >= 10) {
@@ -485,12 +496,14 @@ export async function decodeCalldata(
       else if (method.includes('Wrap') || method.includes('Unwrap')) dappName = 'WETH'
       else if (method.includes('NFT')) dappName = 'NFT'
 
+      const fields = decoder.decode(data, _chainId)
+      if (!fields) break
       return {
         dappName,
         contractName: contractAddress,
         method: decoder.method,
         selector,
-        fields: decoder.decode(data),
+        fields,
         source: 'local',
       }
     }

@@ -6,6 +6,8 @@
 	"keepkeyDescription": "Manage your KeepKey hardware wallet",
 	"shapeshiftName": "ShapeShift",
 	"shapeshiftDescription": "Trade, track, and manage your crypto across chains",
+	"swapsproName": "SwapsPro",
+	"swapsproDescription": "Cross-chain swaps at the best rates",
 	"supportName": "Support",
 	"supportDescription": "Get help and answers from the KeepKey team",
 	"docsName": "Docs",

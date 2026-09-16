@@ -351,7 +351,7 @@ export declare class KeepKeySdk {
     };
     /** TRON (TRX) signing, including TRC-20 tokens. */
     tron: {
-        /** Sign a TRON transaction. `amount` is in sun (1 TRX = 1,000,000 sun). */
+        /** Sign serialized TRON raw_data. Any display hints are untrusted. */
         tronSignTransaction: (params: TronSignTxParams) => Promise<SignedTx>;
         /**
          * Sign a message under TIP-191 (TRON's analog of EIP-191 personal_sign):

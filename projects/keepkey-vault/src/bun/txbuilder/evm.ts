@@ -8,7 +8,7 @@
 import type { ChainDef } from '../../shared/chains'
 import { evmAddressPath } from '../../shared/chains'
 import { tokenMaxSpendableBaseUnits } from '../../shared/max-send'
-import { getEvmGasPrice, getEvmNonce, getEvmBalance } from '../evm-rpc'
+import { estimateGas, getEvmGasPrice, getEvmNonce, getEvmBalance } from '../evm-rpc'
 
 const TAG = '[txbuilder:evm]'
 
@@ -343,7 +343,20 @@ export async function buildEvmTx(
   // never go below it — a memo arriving via URI/deep link would otherwise build
   // an under-gassed tx that reverts. Clamp up to intrinsic; honor higher values.
   const intrinsicGas = 21000n + memoGas
-  const gasLimit = gasLimitOverride !== null && gasLimitOverride > intrinsicGas ? gasLimitOverride : intrinsicGas
+  // Arbitrum accounts for additional L1/data overhead even on a plain ETH
+  // transfer, so its sequencer rejects the Ethereum-only 21,000 limit.
+  const networkFloor = chainId === 42161 ? 30000n + memoGas : intrinsicGas
+  const requestedValue = isMax ? '0x0' : toHex(parseUnits(String(params.amount), 18))
+  const estimatedGas = rpcUrl
+    ? await estimateGas(rpcUrl, {
+        from: fromAddress,
+        to,
+        data: memo ? '0x' + memoBytes!.toString('hex') : '0x',
+        value: requestedValue,
+      }, networkFloor)
+    : networkFloor
+  const minimumGas = estimatedGas > networkFloor ? estimatedGas : networkFloor
+  const gasLimit = gasLimitOverride !== null && gasLimitOverride > minimumGas ? gasLimitOverride : minimumGas
   const gasFee = gasPrice * gasLimit
 
   let amountWei: bigint

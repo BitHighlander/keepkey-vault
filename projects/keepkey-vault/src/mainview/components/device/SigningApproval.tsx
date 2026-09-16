@@ -5,6 +5,11 @@ import { Z } from "../../lib/z-index"
 import { rpcRequest } from "../../lib/rpc"
 import type { SigningRequestInfo, EIP712DecodedInfo, CalldataDecodedInfo, SolanaTxDecodedInfo, EthMessageDecodedInfo, SolanaMessageDecodedInfo } from "../../../shared/types"
 import { versionCompare } from "../../../shared/firmware-versions"
+import { erc20Preview } from "../../../shared/erc20Preview"
+import { evmMaxFee, evmNativeValue } from "../../../shared/evmFeePreview"
+import { isRelayBridgeDeposit } from "../../../shared/relayBridgePreview"
+import { utxoPreview } from "../../../shared/utxoPreview"
+import { cosmosDepositPreview } from "../../../shared/cosmosDepositPreview"
 
 interface SigningApprovalProps {
 	request: SigningRequestInfo
@@ -95,9 +100,9 @@ function Row({ label, value, mono = true }: { label: string; value?: string; mon
 
 // ── Trust badge (inline) ──────────────────────────────────────────────
 
-function TrustBadge({ level, hasSigned, t }: { level: 'verified' | 'known' | 'unknown'; hasSigned?: boolean; t: (k: string, f?: string) => string }) {
+function TrustBadge({ level, hasSigned, schemaOnly, t }: { level: 'verified' | 'known' | 'unknown'; hasSigned?: boolean; schemaOnly?: boolean; t: (k: string, f?: string) => string }) {
 	const cfg = level === 'verified'
-		? { bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)", color: "var(--teal)", label: hasSigned ? t("signing.signedVerified", "Signed & Verified") : t("signing.verified", "Verified Contract") }
+		? { bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)", color: "var(--teal)", label: schemaOnly ? "Call schema verified" : hasSigned ? t("signing.signedVerified", "Signed & Verified") : t("signing.verified", "Verified Contract") }
 		: level === 'known'
 			? { bg: "rgba(233,196,106,0.12)", border: "rgba(233,196,106,0.3)", color: "var(--gold)", label: t("signing.knownPattern", "Known Pattern") }
 			: { bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.3)", color: "var(--rose)", label: t("signing.unverifiedContract", "Unverified Contract") }
@@ -353,7 +358,8 @@ function RawPayload({ data, label }: { data: unknown; label: string }) {
 
 // ── Calldata decoded section ──────────────────────────────────────────
 
-function CalldataSection({ decoded, t }: { decoded: CalldataDecodedInfo; t: (k: string, f?: string) => string }) {
+function CalldataSection({ decoded, request, t }: { decoded: CalldataDecodedInfo; request: SigningRequestInfo; t: (k: string, f?: string) => string }) {
+	const erc20 = erc20Preview(request.to, request.chainId, request.data)
 	return (
 		<VStack gap="1.5" w="100%" bg="rgba(0,0,0,0.25)" borderRadius="xl" p="3">
 			<Flex gap="2" align="center" w="100%">
@@ -364,14 +370,43 @@ function CalldataSection({ decoded, t }: { decoded: CalldataDecodedInfo; t: (k: 
 					{decoded.method}
 				</Text>
 			</Flex>
+			{erc20 && <Text fontSize="sm" fontWeight="700" color="kk.textPrimary" alignSelf="flex-start" wordBreak="break-word">{erc20.summary}</Text>}
 			{decoded.fields.map((field, i) => (
-				<Row key={i} label={field.name} value={field.value} />
+				<Row key={i} label={field.name} value={field.name === 'Amount' && erc20 ? `${erc20.amount} (raw: ${erc20.rawAmount})` : field.value} />
 			))}
 			{decoded.functionType && (
 				<Text fontSize="2xs" color="kk.textMuted" alignSelf="flex-start">
 					{t("signing.functionType", "Type")}: {decoded.functionType}
 				</Text>
 			)}
+		</VStack>
+	)
+}
+
+function SwapDecisionCard({ decoded }: { decoded: CalldataDecodedInfo }) {
+	const fields = new Map(decoded.fields.map(field => [field.name, field.value]))
+	const input = fields.get('Input amount')
+	const output = fields.get('Output asset')
+	const chain = fields.get('Output chain')
+	const minimum = fields.get('Minimum output')
+	const destination = fields.get('Output destination')
+	const noMinimum = !minimum || minimum === 'No minimum specified' || /^0(?:\.0+)?\s/.test(minimum)
+	const warning = fields.get('Token warning') || fields.get('Input token warning')
+	return (
+		<VStack w="100%" align="stretch" gap="3" p="4" borderRadius="xl"
+			bg={noMinimum || warning ? 'rgba(239,68,68,0.09)' : 'rgba(233,196,106,0.08)'}
+			border="1px solid" borderColor={noMinimum || warning ? 'rgba(239,68,68,0.55)' : 'rgba(233,196,106,0.3)'}>
+			<Text fontSize="2xs" fontWeight="700" color="kk.textSecondary" textTransform="uppercase" letterSpacing="wide">Review this swap</Text>
+			<Text fontSize="lg" fontWeight="700" color="white" lineHeight="short" wordBreak="break-word">
+				Send {input || 'an unknown amount'}
+			</Text>
+			<Text fontSize="sm" color="kk.textPrimary" lineHeight="tall" wordBreak="break-word">
+				Receive {noMinimum ? 'an unguaranteed amount' : `at least ${minimum}`} on {chain || 'an unknown chain'}
+			</Text>
+			{destination && <Text fontSize="xs" color="kk.textSecondary" wordBreak="break-all">To <Box as="span" color="white" fontFamily="mono">{destination}</Box></Text>}
+			{noMinimum && <Text fontSize="sm" fontWeight="700" color="var(--rose)">No minimum output is guaranteed. You could send the input and receive far less than expected.</Text>}
+			{warning && <Text fontSize="xs" fontWeight="700" color="var(--rose)">{warning}</Text>}
+			<Text fontSize="2xs" color="kk.textMuted">Via {fields.get('Protocol') || decoded.dappName}{output ? ` · ${output}` : ''}{fields.get('Affiliate fee') ? ` · Affiliate fee ${fields.get('Affiliate fee')}` : ''}</Text>
 		</VStack>
 	)
 }
@@ -757,11 +792,20 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 		: false
 
 	const decoded = request.calldataDecoded
+	const swapDecision = decoded?.fields.some(field => field.name === 'Action' && field.value.startsWith('Swap '))
+		&& decoded.fields.some(field => field.name === 'Protocol' && /^(THORChain|Mayachain) Router$/.test(field.value))
 	const hasCalldata = fwSupportsBlindSignGate
 		&& (request.needsBlindSigning !== undefined || (decoded && decoded.source !== undefined))
 	const hasSignedBlob = !!decoded?.signedInsightBlob
+	const relayBridgeDeposit = request.method === '/eth/sign-transaction'
+		&& isRelayBridgeDeposit(request.to, request.data, request.chainId)
+	const utxo = request.method === '/utxo/sign-transaction' ? utxoPreview(request.rawRequestBody) : undefined
+	const cosmosDeposit = request.method === '/thorchain/sign-amino-deposit'
+		? cosmosDepositPreview(request.rawRequestBody, 'THORChain')
+		: request.method === '/mayachain/sign-amino-deposit'
+			? cosmosDepositPreview(request.rawRequestBody, 'Maya') : undefined
 
-	let trustLevel: 'verified' | 'known' | 'unknown' = 'verified'
+	let trustLevel: 'verified' | 'known' | 'unknown' = hasCalldata ? 'unknown' : 'verified'
 	if (hasCalldata) {
 		// needsBlindSigning is authoritative: it mirrors what the FIRMWARE
 		// clear-signs. A contract our decoder recognizes (source 'local') but the
@@ -851,7 +895,15 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 
 	const safeAppName = (request.appName || 'Unknown').replace(/[^\w\s\-.:()]/g, '').slice(0, 50)
 	const labelKey = METHOD_LABEL_KEYS[request.method]
-	const methodLabel = labelKey ? t(labelKey) : request.method
+	const evmChainName = request.method === '/eth/sign-transaction'
+		? request.chainId === 43114 ? 'Avalanche C-Chain'
+			: request.chainId === 8453 ? 'Base'
+				: request.chainId === 1 ? 'Ethereum' : undefined
+		: undefined
+	const methodLabel = request.method === '/utxo/sign-transaction' && utxo
+		? `${utxo.coin} Sign Transaction`
+		: evmChainName ? `${evmChainName} Sign Transaction`
+		: labelKey ? t(labelKey) : request.method
 	const remaining = Math.max(0, 120 - elapsed)
 	const timeStr = `${Math.floor(remaining / 60)}:${(remaining % 60).toString().padStart(2, "0")}`
 
@@ -1004,7 +1056,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 						  EVM verified-contract trust signal, so hide it there too.
 						*/}
 						{!isSimpleTransfer && !request.ethMessageDecoded && !isSolanaRequest && (
-							<TrustBadge level={trustLevel} hasSigned={hasSignedBlob} t={t} />
+							<TrustBadge level={trustLevel} hasSigned={hasSignedBlob} schemaOnly={relayBridgeDeposit} t={t} />
 						)}
 						<Text fontSize="2xs" color={remaining <= 30 ? "red.400" : "kk.textMuted"} fontWeight={remaining <= 30 ? "600" : "400"}>
 							{timeStr}
@@ -1020,6 +1072,58 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 				<VStack flex="1" minH="0" overflowY="auto" w="100%" gap="3">
 				{/* ── Method ── */}
 				<Text fontSize="sm" fontWeight="600" color="white" alignSelf="flex-start">{methodLabel}</Text>
+				{swapDecision && decoded && <SwapDecisionCard decoded={decoded} />}
+				{cosmosDeposit && (
+					<VStack w="100%" align="stretch" gap="1.5" bg="rgba(0,0,0,0.25)" borderRadius="xl" p="3">
+						<Text fontSize="xs" fontWeight="700" color="white">{cosmosDeposit.chain} deposit</Text>
+						<Row label="Input" value={`${cosmosDeposit.inputAmount} ${cosmosDeposit.inputAsset}`} />
+						<Row label="Signer" value={cosmosDeposit.signer} />
+						<Row label="Memo output asset" value={cosmosDeposit.outputAsset} />
+						<Row label="Memo destination" value={cosmosDeposit.destination} />
+						<Row label="Memo minimum" value={cosmosDeposit.minimum} />
+						<Row label="Memo affiliate fee" value={cosmosDeposit.affiliateFee} />
+						<Row label="Exact memo" value={cosmosDeposit.memo} />
+						<Text fontSize="2xs" color="var(--rose)">{cosmosDeposit.warning}</Text>
+					</VStack>
+				)}
+				{request.method === '/tron/sign-transaction' && request.tronDecoded && (
+					<VStack w="100%" align="stretch" gap="1.5" bg="rgba(0,0,0,0.25)" borderRadius="xl" p="3">
+						<Text fontSize="xs" fontWeight="700" color="white">TRON signed transaction</Text>
+						<Row label="Action" value={`Send ${request.tronDecoded.amount} to ${request.tronDecoded.to}`} />
+						<Row label="Owner" value={request.tronDecoded.owner} />
+						<Row label="Token contract" value={request.tronDecoded.tokenContract} />
+						<Row label="Max network fee" value={request.tronDecoded.feeLimit} />
+						<Row label="Memo output asset" value={request.tronDecoded.outputAsset} />
+						<Row label="Memo destination" value={request.tronDecoded.outputDestination} />
+						<Row label="Memo minimum" value={request.tronDecoded.minimumOutput} />
+						<Row label="Memo affiliate fee" value={request.tronDecoded.affiliateFee} />
+						<Row label="Exact signed memo" value={request.tronDecoded.memo} />
+						<Text fontSize="2xs" color="var(--rose)">{request.tronDecoded.warning}</Text>
+					</VStack>
+				)}
+				{request.method === '/tron/sign-transaction' && !request.tronDecoded && (
+					<Box w="100%" bg="rgba(239,68,68,0.15)" border="1px solid rgba(239,68,68,0.6)" borderRadius="lg" px="3" py="2">
+						<Text fontSize="xs" fontWeight="700" color="var(--rose)">TRON transaction cannot be verified from signed bytes</Text>
+						<Text fontSize="2xs" color="kk.textSecondary">Amount and destination in the request are untrusted. The device requires Advanced Mode for unsupported TRON payloads.</Text>
+					</Box>
+				)}
+				{utxo && (
+					<VStack w="100%" align="stretch" gap="1.5" bg="rgba(0,0,0,0.25)" borderRadius="xl" p="3">
+						<Text fontSize="xs" fontWeight="700" color="white">{utxo.coin} transaction</Text>
+						{utxo.sends.map((send, index) => <Box key={index}><Row label={`Send ${index + 1}`} value={send.amount} /><Row label="To" value={send.address} /></Box>)}
+						{utxo.change.map((amount, index) => <Row key={index} label={`Change ${index + 1}`} value={amount} />)}
+						<Row label="Network fee" value={utxo.fee} />
+						{utxo.swap && <><Row label="Memo output asset" value={utxo.swap.asset} /><Row label="Memo destination" value={utxo.swap.destination} /><Row label="Memo minimum" value={utxo.swap.minimum} /><Row label="Memo affiliate fee" value={utxo.swap.affiliate} /></>}
+						<Row label="OP_RETURN memo" value={utxo.memo} />
+						{utxo.warning && <Text fontSize="2xs" color="var(--rose)">{utxo.warning}</Text>}
+					</VStack>
+				)}
+				{relayBridgeDeposit && (
+					<Box w="100%" bg="rgba(239,68,68,0.15)" border="1px solid rgba(239,68,68,0.6)" borderRadius="lg" px="3" py="2">
+						<Text fontSize="xs" fontWeight="700" color="var(--rose)">Relay output cannot be verified from this signature</Text>
+						<Text fontSize="2xs" color="kk.textSecondary">The verified schema covers bridgeDeposit, the ETH amount, depositor, and opaque order ID. This signed call does not contain the output chain, asset, recipient, or minimum. Do not treat schema verification as approval of the swap outcome.</Text>
+					</Box>
+				)}
 
 				{/* ── AdvancedMode gate ── */}
 				{advancedModeRequired && (
@@ -1058,6 +1162,8 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 				)}
 
 				{/* ── Two-column: decoded info (left) + tx details (right) ── */}
+				<Box as={swapDecision ? 'details' : 'div'} w="100%">
+					{swapDecision && <Box as="summary" cursor="pointer" px="3" py="2" mb="2" borderRadius="lg" bg="rgba(0,0,0,0.2)" color="kk.textSecondary" fontSize="xs">Verify contract, addresses and exact memo</Box>}
 				<Flex w="100%" gap="3" direction={{ base: "column", sm: "row" }}>
 					{/* Left: decoded calldata, typed data, Solana tx, or message payload */}
 					{(request.solanaDecoded || request.solanaMessageDecoded || request.typedDataDecoded || request.ethMessageDecoded || (decoded && decoded.source !== 'none')) && (
@@ -1070,7 +1176,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 										? <TypedDataSection decoded={request.typedDataDecoded} t={t} />
 										: request.ethMessageDecoded
 											? <EthMessageSection decoded={request.ethMessageDecoded} t={t} />
-											: decoded && decoded.source !== 'none' && <CalldataSection decoded={decoded} t={t} />
+											: decoded && decoded.source !== 'none' && <CalldataSection decoded={decoded} request={request} t={t} />
 							}
 						</Box>
 					)}
@@ -1082,10 +1188,12 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 								<Text fontSize="2xs" fontWeight="600" color="kk.textSecondary" alignSelf="flex-start">
 									Transaction
 								</Text>
-								<Row label="Chain" value={request.chain?.toUpperCase()} />
+								<Row label="Chain" value={evmChainName ?? request.chain?.toUpperCase()} />
 								<Row label="From" value={request.from} />
 								<Row label="To" value={request.to} />
-								<Row label="Value" value={request.value} />
+								<Row label="Value" value={request.method === '/eth/sign-transaction'
+									? (evmNativeValue(request.value, request.chainId) ?? request.value) : request.value} />
+								{request.method === '/eth/sign-transaction' && <Row label="Max network fee" value={evmMaxFee(request.rawRequestBody, request.chainId) ?? undefined} />}
 								{request.chainId !== undefined && <Row label="ChainID" value={String(request.chainId)} />}
 								{request.data && (!decoded || decoded.source === 'none') && (
 									<CalldataInspector data={request.data} t={t} />
@@ -1094,6 +1202,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 						</Box>
 					)}
 				</Flex>
+				</Box>
 
 				{/* ── Full raw payload (collapsible) ── */}
 				<RawPayload data={request.rawRequestBody} label="Full Request Payload" />

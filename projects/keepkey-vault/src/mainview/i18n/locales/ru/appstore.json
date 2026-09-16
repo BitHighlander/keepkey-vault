@@ -6,6 +6,8 @@
 	"keepkeyDescription": "Управляйте аппаратным кошельком KeepKey",
 	"shapeshiftName": "ShapeShift",
 	"shapeshiftDescription": "Обменивайте, отслеживайте и управляйте криптовалютой между сетями",
+	"swapsproName": "SwapsPro",
+	"swapsproDescription": "Кроссчейн-обмены по лучшим курсам",
 	"supportName": "Поддержка",
 	"supportDescription": "Получите помощь и ответы от команды KeepKey",
 	"docsName": "Документация",

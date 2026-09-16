@@ -2,6 +2,7 @@ import type { EngineController } from './engine-controller'
 import type { AuthStore } from './auth'
 import { HttpError } from './auth'
 import type { SigningRequestInfo, ApiLogEntry, EIP712DecodedInfo } from '../shared/types'
+import { tronPreview } from './tron-preview'
 import type { ClearSignEvent } from '../shared/types'
 import { createHash } from 'crypto'
 import { decodeEIP712 } from './eip712-decoder'
@@ -21,6 +22,7 @@ import * as S from './schemas'
 import { parseRequest, validateResponse } from './validate'
 import { SIGNING_ROUTES, requiredSigningFields } from './signing-routes'
 import { handleV2DataRoute } from './rest-pioneer'
+import { createSignedTxRegistry } from './signed-tx-registry'
 import { handleSwapRoute } from './rest-swap'
 import { handleSweepRoute } from './rest-sweep'
 import { handleLedgerRoute } from './rest-ledger'
@@ -67,8 +69,21 @@ export interface SigningApprovalDecision {
   allowBlindSigning?: boolean
 }
 
+/** Activity fields for a REST response's audit row. `meta` is merged into the
+*  stored response body — getRecentActivityFromLog reads chainId/chainSymbol/
+*  value/to from there. */
+export type RestActivityTag = { txid?: string; chain?: string; activityType?: string; meta?: Record<string, unknown> }
+
 export interface RestApiCallbacks {
   onApiLog: (entry: ApiLogEntry) => void
+  /** Activity rows changed outside onApiLog (e.g. a REST history rebuild). */
+  onActivityChanged?: () => void
+  /** Current wallet-session stamp. Captured at request start and carried on the
+  *  log entry, so a request that outlives its session (unplug, passphrase
+  *  switch) is never attributed to the next wallet. */
+  getSessionEpoch?: () => number
+  /** networkId → chain over the FULL list (built-in + user-added chains). */
+  resolveChain?: (networkId: string) => import('../shared/chains').ChainDef | undefined
   onSigningRequest: (info: SigningRequestInfo) => Promise<SigningApprovalDecision>
   onSigningDismissed?: (id: string) => void
   onPairRequest: (info: { name: string; url: string; imageUrl: string }) => void
@@ -1083,6 +1098,17 @@ function addressNListToBIP32(addressNList: number[]): string {
 const startTime = Date.now()
 
 /** Route prefix → chain symbol for activity tracking */
+// Shielded flows are invisible to history scans (z-addresses touch no
+// transparent output), so the vault's own record is the only one. Same row the
+// in-app logZcashShieldedActivity writes; `shielded` tells the backend not to
+// wait for the tx in transparent history.
+function zcashActivity(activityType: 'broadcast' | 'shield' | 'unshield', result: any, amountZat?: number, to?: string): RestActivityTag | undefined {
+  const txid = typeof result?.txid === 'string' && result.txid ? result.txid : undefined
+  if (!txid) return undefined
+  const value = typeof amountZat === 'number' ? (amountZat / 1e8).toFixed(8).replace(/\.?0+$/, '') : undefined
+  return { txid, chain: 'ZEC', activityType, meta: { value, to, chainId: 'zcash', chainSymbol: 'ZEC', shielded: true } }
+}
+
 const ROUTE_TO_CHAIN: Record<string, string> = {
   eth: 'ETH', utxo: 'BTC', cosmos: 'ATOM', osmosis: 'OSMO',
   thorchain: 'RUNE', mayachain: 'CACAO', xrp: 'XRP',
@@ -1090,6 +1116,14 @@ const ROUTE_TO_CHAIN: Record<string, string> = {
 }
 
 export function startRestApi(engine: EngineController, auth: AuthStore, port = 1646, callbacks?: RestApiCallbacks) {
+  // Split-flow shielded sends: the sidecar's /broadcast reply carries no reliable
+  // txid ("" when a node already had the tx), so the activity row takes the
+  // authoritative one from the matching /finalize. The sidecar holds a single
+  // pending PCZT, so one slot suffices.
+  let lastShieldedFinalize: { rawTx: string; txid: string; sessionEpoch?: number } | undefined
+  // What this vault signed over REST, per wallet session — /api/v2/tx/broadcast
+  // lists only those as activity (see signed-tx-registry.ts).
+  const signedTxs = createSignedTxRegistry()
   const getWalletDbScope = (): { deviceId: string; walletId: string } | null => {
     const deviceId = engine.getDeviceState().deviceId
     if (!deviceId) return null
@@ -1176,6 +1210,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
       const path = url.pathname
       const method = req.method
       const requestStart = Date.now()
+      const sessionEpoch = callbacks?.getSessionEpoch?.()
 
       // Human-gated device ops (signing + the clear-sign trust confirm) block
       // the socket while the user presses the physical button. Disable the idle
@@ -1205,7 +1240,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
       let reqBody: any = undefined
 
       // Per-request response helpers (capture req for CORS origin check)
-      const json = (data: unknown, status = 200, activity?: { txid?: string; chain?: string; activityType?: string }) => {
+      const json = (data: unknown, status = 200, activity?: RestActivityTag) => {
         const resp = new Response(JSON.stringify(data), {
           status, headers: { 'Content-Type': 'application/json', ...corsHeaders(req) },
         })
@@ -1215,6 +1250,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const chainForRoute = ROUTE_TO_CHAIN[path.split('/')[1]]
           if (chainForRoute) resolvedActivity = { chain: chainForRoute, activityType: 'sign' }
         }
+        if (method === 'POST' && SIGNING_ROUTES.has(path) && status >= 200 && status < 300) signedTxs.remember(data, sessionEpoch)
         // Log the request with body + response + duration.
         // Sanitize: strip sensitive fields from signing payloads to prevent
         // leaking signatures, transaction data, or typed-data content to audit log.
@@ -1262,9 +1298,12 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             requestBody: reqBody,
             // Response body trims large or sensitive output blobs but leaves compact
             // fields intact for local debugging.
-            responseBody: trimOutputs(data),
-            ...resolvedActivity,
-          })
+              responseBody: resolvedActivity?.meta ? { ...trimOutputs(data), ...resolvedActivity.meta } : trimOutputs(data),
+              txid: resolvedActivity?.txid,
+              chain: resolvedActivity?.chain,
+                activityType: resolvedActivity?.activityType,
+                sessionEpoch,
+              })
         }
         return resp
       }
@@ -1707,9 +1746,18 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               signingInfo.to = preview.to_address
               signingInfo.value = preview.amount
             } else if (path === '/tron/sign-transaction') {
-              // Tron: field names differ from EVM (to_address, amount, raw_tx)
-              signingInfo.to = preview.to_address
-              signingInfo.value = preview.amount
+              // Only raw_tx is signed. The optional to_address/amount side
+              // channel is untrusted, even if it looks like a useful preview.
+              signingInfo.chain = 'tron'
+              signingInfo.tronDecoded = tronPreview(preview.raw_tx) ?? undefined
+              if (signingInfo.tronDecoded) {
+                signingInfo.from = signingInfo.tronDecoded.owner
+                signingInfo.to = signingInfo.tronDecoded.to
+                signingInfo.value = signingInfo.tronDecoded.amount
+              } else {
+                signingInfo.needsBlindSigning = true
+                signingInfo.requiresAdvancedMode = true
+              }
             } else if (path === '/solana/sign-message') {
               const raw = typeof preview.message === 'string' ? preview.message : ''
               const messageEncoding = /^[0-9a-fA-F]+$/.test(raw) ? 'hex' : 'base64'
@@ -3851,9 +3899,13 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             wallet,
             scope,
             chains: CHAINS,
-            firmwareVersion: engine.getDeviceState().firmwareVersion,
-            options: body,
-          })
+              firmwareVersion: engine.getDeviceState().firmwareVersion,
+              options: body,
+              // A PIN/passphrase prompt mid-rebuild must not let another wallet's
+              // addresses be cached or its history written under this walletId.
+              isCurrent: () => !engine.isPassphraseWallet && engine.getDeviceState().state === 'ready' && getWalletDbScope()?.walletId === scope.walletId,
+            })
+            callbacks?.onActivityChanged?.()
           return json(result)
         }
 
@@ -4310,7 +4362,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             { signWrap: <T,>(fn: () => Promise<T>) => emuWrap(fn, details) },
           )
           callbacks?.zcashSchedulePostTxRescans?.()
-          return json(result)
+          return json(result, 200, zcashActivity('broadcast', result, body.amount, body.recipient))
         }
 
         // Headless DESHIELD (z→t): spend a shielded note to a transparent addr.
@@ -4342,7 +4394,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const result = await deshieldZec(wallet, { recipient: body.recipient!, amount: body.amount!, account },
             { signWrap: <T,>(fn: () => Promise<T>) => emuWrap(fn, details) })
           callbacks?.zcashSchedulePostTxRescans?.()
-          return json(result)
+          return json(result, 200, zcashActivity('unshield', result, body.amount, body.recipient))
         }
 
         // Headless SHIELD (t→z): move transparent funds into a fresh shielded note.
@@ -4373,7 +4425,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const result = await shieldZec(wallet, pioneer, { amount: body.amount!, account },
             { signWrap: <T,>(fn: () => Promise<T>) => emuWrap(fn, details) })
           callbacks?.zcashSchedulePostTxRescans?.()
-          return json(result)
+          return json(result, 200, zcashActivity('shield', result, body.amount))
         }
 
         // Read-only diagnostic: does the cached shielded balance belong to the
@@ -4427,6 +4479,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const body = await parseRequest(req, S.ZcashFinalizeRequest)
           const result = await finalizeShieldedTx(body.signatures)
+          lastShieldedFinalize = { rawTx: result.raw_tx, txid: result.txid, sessionEpoch }
           return json(result)
         }
 
@@ -4438,7 +4491,12 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           // reconciliation rescans the one-shot send paths get, or split-flow
           // callers see an understated balance until change notes are found.
           callbacks?.zcashSchedulePostTxRescans?.()
-          return json(result)
+          // A raw_tx this vault never finalized — or finalized in an earlier wallet
+          // session — gets no row rather than a guessed or misattributed txid.
+          const finalized = lastShieldedFinalize?.rawTx === body.raw_tx && lastShieldedFinalize.sessionEpoch === sessionEpoch ? lastShieldedFinalize : undefined
+          if (finalized) lastShieldedFinalize = undefined
+          const { txidToDisplayOrder } = await import('./txbuilder/zcash-shield')
+          return json(result, 200, finalized ? zcashActivity('broadcast', { txid: txidToDisplayOrder(finalized.txid) }) : undefined)
         }
 
         // ── Ledger / accounting auditor routes ──────────────────────
@@ -4458,7 +4516,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
 
         // ── REST v2 data routes (balances, market, UTXOs, etc.) ──
         if (path.startsWith('/api/v2/') && !path.startsWith('/api/v2/devices') && !path.startsWith('/api/v2/sweep/') && !path.startsWith('/api/v2/swap')) {
-          const resp = await handleV2DataRoute(path, method, req, auth, json)
+          const resp = await handleV2DataRoute(path, method, req, auth, json, (serialized) => signedTxs.signedIn(serialized, sessionEpoch), callbacks?.resolveChain)
           if (resp) return resp
         }
 

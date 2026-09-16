@@ -10,10 +10,24 @@ import { getPioneer } from './pioneer'
 import { parseRequest } from './validate'
 import * as S from './schemas'
 import { utxoDiscoveryKey } from './btc-backend/types'
+import { CHAINS, type ChainDef } from '../shared/chains'
+import type { RestActivityTag } from './rest-api'
 
 const TAG = '[rest-v2]'
 
-type JsonFn = (data: unknown, status?: number) => Response
+type JsonFn = (data: unknown, status?: number, activity?: RestActivityTag) => Response
+
+/** txid from a Pioneer Broadcast reply, or undefined when it reports a failure
+*  (Pioneer answers HTTP 200 with { success:false } or a Tendermint code != 0). */
+function broadcastTxid(data: any): string | undefined {
+  if (!data) return undefined
+  if (typeof data === 'string') return data.length >= 32 ? data : undefined
+  if (data.success === false) return undefined
+  const code = data.results?.raw?.tx_response?.code
+  if (typeof code === 'number' && code !== 0) return undefined
+  const txid = data.txid || data.tx_hash || data.hash
+  return typeof txid === 'string' && txid ? txid : undefined
+}
 
 /**
  * Handle /api/v2/ data routes. Returns a Response if matched, null otherwise.
@@ -22,9 +36,13 @@ export async function handleV2DataRoute(
   path: string,
   method: string,
   req: Request,
-  auth: AuthStore,
-  json: JsonFn,
-): Promise<Response | null> {
+    auth: AuthStore,
+    json: JsonFn,
+      /** True when this vault signed `serialized` over REST in the current wallet session. */
+      signedHereThisSession?: (serialized: string) => boolean,
+      /** Full chain list incl. user-added chains (CHAINS holds built-ins only). */
+      resolveChain?: (networkId: string) => ChainDef | undefined,
+    ): Promise<Response | null> {
   try {
     // ── Portfolio & Market ──────────────────────────────────────────
 
@@ -104,7 +122,21 @@ export async function handleV2DataRoute(
       const body = await parseRequest(req, S.BroadcastRequest)
       const pioneer = await getPioneer()
       const resp = await pioneer.Broadcast({ networkId: body.networkId, serialized: body.serialized })
-      return json({ data: resp?.data || resp })
+      const data = resp?.data || resp
+      // External clients (kkclient) broadcast here. Log it as activity so the
+      // vault lists the tx, resyncs the balance and follows its confirmations —
+      // only when a real txid came back (never a rejected broadcast) AND this
+      // device signed the tx in the current wallet session (hidden-wallet txs
+      // must never be attributed to the standard wallet).
+      const parsedTxid = broadcastTxid(data)
+      const txid = parsedTxid && signedHereThisSession?.(body.serialized) ? parsedTxid : undefined
+      const chain = txid ? (resolveChain?.(body.networkId) ?? CHAINS.find(c => c.networkId === body.networkId)) : undefined
+      return json({ data }, 200, txid ? {
+        txid,
+        chain: chain?.symbol,
+        activityType: 'broadcast',
+        meta: { chainId: chain?.id, chainSymbol: chain?.symbol, networkId: body.networkId },
+      } : undefined)
     }
 
     // ── Network info ───────────────────────────────────────────────

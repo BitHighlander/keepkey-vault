@@ -8,6 +8,19 @@
  * (contract code + initial data with public key) to deploy the wallet on-chain.
  */
 import { createHash } from 'crypto'
+import {
+  Address,
+  beginCell,
+  Cell as TonCell,
+  comment,
+  external,
+  internal,
+  loadMessage,
+  loadMessageRelaxed,
+  storeMessage,
+  storeMessageRelaxed,
+  type StateInit,
+} from '@ton/core'
 
 // ── v4r2 wallet contract code (well-known constant) ──────────────────
 // Source: https://github.com/ton-blockchain/wallet-contract
@@ -64,9 +77,6 @@ function tonCrc16(data: Buffer): number {
 }
 
 // ── TON user-friendly address parsing ─────────────────────────────────
-
-const BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-const BASE64STD = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 /** Parse a TON user-friendly or raw address → { workchain, hash } */
 export function parseTonAddress(addr: string): { workchain: number; hash: Buffer } {
@@ -223,7 +233,7 @@ function cellDepth(cell: Cell): number {
 // ── BOC serialization ─────────────────────────────────────────────────
 
 /** Serialize a cell tree to BOC (Bag of Cells) → base64 string */
-function serializeBoc(root: Cell): string {
+export function serializeBoc(root: Cell): string {
   // Collect all unique cells (topological order: root first, leaves last)
   const allCells: Cell[] = []
   const hashToIdx = new Map<string, number>()
@@ -296,7 +306,7 @@ function serializeBoc(root: Cell): string {
 const V4R2_WALLET_ID = 698983191 // 0x29A9A317
 
 /** Build the internal message cell (transfer to recipient) */
-function buildInternalMessage(
+export function buildInternalMessage(
   destWorkchain: number,
   destHash: Buffer,
   amountNano: bigint,
@@ -340,7 +350,7 @@ function buildInternalMessage(
 }
 
 /** Build the unsigned body cell (what gets hashed → signed) */
-function buildUnsignedBody(
+export function buildUnsignedBody(
   seqno: number,
   expireAt: number,
   internalMsg: Cell,
@@ -358,7 +368,7 @@ function buildUnsignedBody(
 }
 
 /** Build the signed body cell (signature prepended to unsigned body) */
-function buildSignedBody(
+export function buildSignedBody(
   signature: Buffer,
   seqno: number,
   expireAt: number,
@@ -388,13 +398,10 @@ function deserializeBocToCell(bocB64: string): Cell {
   if (magic !== 0xB5EE9C72) throw new Error('Invalid BOC magic')
   const flagsByte = buf[4]
   const refSize = flagsByte & 0x07
-  const hasCrc = (flagsByte >> 6) & 1
   const offsetSize = buf[5]
   const p = 6
   const cellCount = readBE(buf, p, refSize)
   const rootCount = readBE(buf, p + refSize, refSize)
-  const absentCount = readBE(buf, p + refSize * 2, refSize)
-  const dataSize = readBE(buf, p + refSize * 3, offsetSize)
   const rootIdx = readBE(buf, p + refSize * 3 + offsetSize, refSize)
 
   const cellDataStart = p + refSize * 3 + offsetSize + refSize * rootCount
@@ -454,13 +461,13 @@ function readBE(buf: Buffer, offset: number, size: number): number {
 
 /** Cached v4r2 code cell (parsed once) */
 let _v4r2CodeCell: Cell | null = null
-function getV4R2CodeCell(): Cell {
+export function getV4R2CodeCell(): Cell {
   if (!_v4r2CodeCell) _v4r2CodeCell = deserializeBocToCell(V4R2_CODE_BOC_B64)
   return _v4r2CodeCell
 }
 
 /** Build the initial data cell for a v4r2 wallet: seqno(32) + wallet_id(32) + pubkey(256) */
-function buildV4R2DataCell(publicKey: Buffer): Cell {
+export function buildV4R2DataCell(publicKey: Buffer): Cell {
   const { cell, bits } = newCell()
   bits.writeUint(0, 32) // seqno = 0
   bits.writeUint(V4R2_WALLET_ID, 32) // wallet_id
@@ -470,7 +477,7 @@ function buildV4R2DataCell(publicKey: Buffer): Cell {
 }
 
 /** Build a StateInit cell: split_depth:nothing + special:nothing + code:just + data:just + library:nothing */
-function buildStateInit(code: Cell, data: Cell): Cell {
+export function buildStateInit(code: Cell, data: Cell): Cell {
   const { cell, bits } = newCell()
   bits.writeBit(false) // split_depth = nothing
   bits.writeBit(false) // special = nothing
@@ -483,7 +490,7 @@ function buildStateInit(code: Cell, data: Cell): Cell {
 }
 
 /** Build the external message cell wrapping the signed body, with optional StateInit */
-function buildExternalMessage(
+export function buildExternalMessage(
   destWorkchain: number,
   destHash: Buffer,
   signedBody: Cell,
@@ -549,6 +556,7 @@ export function buildTonTransfer(params: {
   expireAt: number
   needsDeploy?: boolean
   publicKeyHex?: string
+  bounce?: boolean
 }): TonBuildResult {
   const from = parseTonAddress(params.fromAddress)
   const dest = parseTonAddress(params.to)
@@ -558,7 +566,9 @@ export function buildTonTransfer(params: {
   // Raw "workchain:hex" format has no tag → default bounceable
   // Falls back to string prefix check if decoding fails
   let bounce: boolean
-  try {
+  if (params.bounce !== undefined) {
+    bounce = params.bounce
+  } else try {
     const rawMatch = params.to.match(/^(-?\d+):([0-9a-fA-F]{64})$/)
     if (rawMatch) {
       // Raw format has no bounce info — default to bounceable
@@ -584,9 +594,10 @@ export function buildTonTransfer(params: {
   }
 
   const amountNano = BigInt(params.amountNano)
-  const internalMsg = buildInternalMessage(dest.workchain, dest.hash, amountNano, bounce, params.memo)
-  const unsignedBody = buildUnsignedBody(params.seqno, params.expireAt, internalMsg)
-  const bodyHashBuf = cellHash(unsignedBody)
+  if (amountNano <= 0n) throw new Error('TON transfer amount must be greater than zero')
+  const internalMsg = buildTonCoreInternalMessage(dest.workchain, dest.hash, amountNano, bounce, params.memo)
+  const unsignedBody = buildTonCoreUnsignedBody(params.seqno, params.expireAt, internalMsg)
+  const bodyHashBuf = unsignedBody.hash()
 
   return {
     bodyHash: bodyHashBuf.toString('hex'),
@@ -640,9 +651,32 @@ export function computeTonBodyHash(build: TonBuildResult): string {
   }
   const destHash = Buffer.from(int.destHash, 'hex')
   const amountNano = BigInt(int.amountNano) // throws on malformed
-  const internalMsg = buildInternalMessage(int.destWorkchain, destHash, amountNano, !!int.bounce, int.memo)
-  const unsignedBody = buildUnsignedBody(build.seqno, build.expireAt, internalMsg)
-  return cellHash(unsignedBody).toString('hex')
+  const internalMsg = buildTonCoreInternalMessage(int.destWorkchain, destHash, amountNano, !!int.bounce, int.memo)
+  return buildTonCoreUnsignedBody(build.seqno, build.expireAt, internalMsg).hash().toString('hex')
+}
+
+function tonCoreAddress(workchain: number, hash: Buffer): Address {
+  return new Address(workchain, hash)
+}
+
+function buildTonCoreInternalMessage(workchain: number, hash: Buffer, amount: bigint, bounce: boolean, memo?: string): TonCell {
+  return beginCell().store(storeMessageRelaxed(internal({
+    to: tonCoreAddress(workchain, hash),
+    value: amount,
+    bounce,
+    body: memo ? comment(memo) : undefined,
+  }))).endCell()
+}
+
+function buildTonCoreUnsignedBody(seqno: number, expireAt: number, internalMessage: TonCell): TonCell {
+  return beginCell()
+    .storeUint(V4R2_WALLET_ID, 32)
+    .storeUint(expireAt, 32)
+    .storeUint(seqno, 32)
+    .storeUint(0, 8)
+    .storeUint(3, 8)
+    .storeRef(internalMessage)
+    .endCell()
 }
 
 /** Assemble the signed BOC from build result + 64-byte Ed25519 signature → { boc, extMsgHash } */
@@ -654,24 +688,48 @@ export function assembleTonSignedBoc(
   // Reconstruct Buffers from hex (survives JSON round-trip through RPC)
   const destHash = Buffer.from(int.destHash, 'hex')
   const fromHash = Buffer.from(int.fromHash, 'hex')
-  const internalMsg = buildInternalMessage(int.destWorkchain, destHash, BigInt(int.amountNano), int.bounce, int.memo)
-  const signedBody = buildSignedBody(signature, buildResult.seqno, buildResult.expireAt, internalMsg)
+  if (signature.length !== 64) throw new Error(`TON signature must be 64 bytes, got ${signature.length}`)
+  const internalMsg = buildTonCoreInternalMessage(int.destWorkchain, destHash, BigInt(int.amountNano), int.bounce, int.memo)
+  const unsignedBody = buildTonCoreUnsignedBody(buildResult.seqno, buildResult.expireAt, internalMsg)
+  const signedBody = beginCell().storeBuffer(signature).storeSlice(unsignedBody.beginParse()).endCell()
 
   // For uninitialized wallets, include StateInit (deploys the wallet contract)
-  let stateInit: Cell | undefined
+  let stateInit: StateInit | undefined
   if (buildResult.needsDeploy && buildResult.publicKeyHex) {
     const pubKey = Buffer.from(buildResult.publicKeyHex, 'hex')
-    const codeCell = getV4R2CodeCell()
-    const dataCell = buildV4R2DataCell(pubKey)
-    stateInit = buildStateInit(codeCell, dataCell)
+    const codeCell = TonCell.fromBase64(V4R2_CODE_BOC_B64)
+    const dataCell = beginCell()
+      .storeUint(0, 32)
+      .storeUint(V4R2_WALLET_ID, 32)
+      .storeBuffer(pubKey)
+      .storeBit(false)
+      .endCell()
+    stateInit = { code: codeCell, data: dataCell }
     console.debug(`[assembleTonBoc] Including StateInit for wallet deployment`)
   }
 
   console.debug(`[assembleTonBoc] Building extMsg: needsDeploy=${buildResult.needsDeploy}, hasStateInit=${!!stateInit}, seqno=${buildResult.seqno}`)
-  const extMsg = buildExternalMessage(int.fromWorkchain, fromHash, signedBody, stateInit)
-  // The external message cell hash is the real TON transaction ID
-  const extMsgHash = cellHash(extMsg).toString('hex')
-  return { boc: serializeBoc(extMsg), extMsgHash }
+  const extMsg = beginCell().store(storeMessage(external({
+    to: tonCoreAddress(int.fromWorkchain, fromHash),
+    body: signedBody,
+    init: stateInit,
+  }))).endCell()
+
+  // Decode the exact BOC about to be sent and fail closed if serialization
+  // changed any user-visible transfer field.
+  const decodedExternal = loadMessage(extMsg.beginParse())
+  const body = decodedExternal.body.beginParse()
+  body.skip(512 + 32 + 32 + 32 + 8 + 8)
+  const decodedTransfer = loadMessageRelaxed(body.loadRef().beginParse())
+  if (decodedTransfer.info.type !== 'internal' ||
+      decodedTransfer.info.value.coins !== BigInt(int.amountNano) ||
+      !decodedTransfer.info.dest.equals(tonCoreAddress(int.destWorkchain, destHash)) ||
+      decodedTransfer.info.bounce !== int.bounce) {
+    throw new Error('TON BOC verification failed: value, destination, or bounce flag changed during assembly')
+  }
+
+  const extMsgHash = extMsg.hash().toString('hex')
+  return { boc: extMsg.toBoc().toString('base64'), extMsgHash }
 }
 
 const TON_API_TIMEOUT_MS = 30_000

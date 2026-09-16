@@ -2,22 +2,24 @@
   "version": "7.16.0",
   "source": {
     "repository": "keepkey/keepkey-vault",
-    "runId": 33047449262,
-    "headSha": "7f802ba261fadebe71ee794042d0ac89d564a82d",
-    "artifactId": 9636414855,
-    "artifactName": "keepkey-vault-macos-7f802ba261fadebe71ee794042d0ac89d564a82d",
-    "artifactDigest": "sha256:62f2f4a829290552b1f6d45260644f9e6227ff3bac9d4ff2af51098db9d3112d",
-    "macArchive": "stable-macos-x64-keepkey-vault.app.tar.zst",
-    "macLibraryPath": "keepkey-vault.app/Contents/Resources/app/emulator/libkkemu.dylib",
-    "windowsLibrary": "emulator-build-input-libkkemu-7.16.0-win-x64.dll"
+    "runId": 35066907070,
+    "headSha": "a7bf83d98d01d4b685967cd0aa4198aa9a53e4d9",
+    "artifactId": 10434508722,
+    "artifactName": "certified-emulator-7.16.0-macos13-a7bf83d98d01d4b685967cd0aa4198aa9a53e4d9",
+    "artifactDigest": "sha256:42fd9fe57a7eabbc91877921b580c8da1a511c8b728f9b2695ef754dcc156e45",
+    "macArchive": "",
+    "macLibraryPath": "projects/keepkey-vault/emulator-bundle/libkkemu.dylib",
+    "windowsLibrary": "projects/keepkey-vault/emulator-bundle/libkkemu.dll",
+    "armCorePath": "artifacts/electrobun-core-darwin-arm64.tar.gz",
+    "armCoreSha256": "06eb1f9fd23638da27f6a4f62fd5aff6996012e7ec9f9a5f2499d09c4b1f9f1b"
   },
   "files": {
     "libkkemu.dylib": {
-      "sha256": "4494fb6494a9340f6bf7eec9920fdafcd48ab9f8839e9ef2b60238ff336e55a3",
+      "sha256": "328c5784648b56ba29eb80fee5e2784de33f792292902605d7d93e0e0e5e51b7",
       "architectures": ["arm64", "x86_64"]
     },
     "libkkemu.dll": {
-      "sha256": "611d6b51427c0d22eaac568ebc10405bab353e60805205000f808466f0ea5354",
+      "sha256": "f93495818a6d4349fffdccacdf00a8fa3684dee6a7567ff5a082032d8074b55d",
       "architecture": "x86_64"
     }
   },

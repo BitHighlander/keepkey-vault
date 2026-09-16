@@ -10,6 +10,7 @@ import { rpcRequest } from "../lib/rpc"
 import { Z } from "../lib/z-index"
 import { CHAINS, getExplorerTxUrl } from "../../shared/chains"
 import { caipToIcon } from "../../shared/assetLookup"
+import { getRequiredConfs } from "../../shared/confirmations"
 import type { RecentActivity, PendingSwap, ChainBalance, SwapTrackingStatus } from "../../shared/types"
 
 interface ActivityPanelProps {
@@ -77,14 +78,6 @@ function SwapStatusBadge({ status }: { status?: SwapTrackingStatus | string }) {
   )
 }
 
-// Required confirmations per chain family before considered "confirmed"
-const CONF_REQUIRED: Record<string, number> = {
-  BTC: 6, LTC: 6, DOGE: 6, DASH: 6, BCH: 6, DGB: 6, ZEC: 24,
-  ETH: 12, MATIC: 128, AVAX: 12, BNB: 15, ARB: 12, OP: 12, BASE: 12,
-  ATOM: 1, RUNE: 1, CACAO: 1, OSMO: 1,
-  XRP: 1, SOL: 32, TRX: 19, TON: 1, MON: 12, HYPE: 12,
-}
-function getRequiredConfs(symbol: string): number { return CONF_REQUIRED[symbol] || 6 }
 
 /** Confirmation badge: red = unconfirmed, yellow = partial, green = confirmed */
 function ConfBadge({ confirmations, chain }: { confirmations?: number; chain: string }) {
@@ -850,10 +843,14 @@ export function ActivityPanel({ open, onClose, activities, pendingSwaps, onRefre
     return recentFirst(next)
   }, [activeSwaps, selectedDef])
 
+  // Hide any row for a swap's deposit tx (the swap row itself, or a hidden
+  // session's scanned "send") only while its live SwapRow is actually rendered.
+  // Terminal swaps stay in pendingSwaps all session; suppressing against those
+  // made completed swaps vanish from History.
   const nonSwapActivities = useMemo(() => {
-    const swapTxids = new Set(pendingSwaps.map(s => s.txid))
-    return recentFirst(filteredActivities.filter(a => !(a.type === 'swap' && a.txid && swapTxids.has(a.txid))))
-  }, [filteredActivities, pendingSwaps])
+    const renderedSwapTxids = new Set(filteredSwaps.map(s => s.txid))
+    return recentFirst(filteredActivities.filter(a => !(a.txid && renderedSwapTxids.has(a.txid))))
+  }, [filteredActivities, filteredSwaps])
 
   const activityTimeline = useMemo<ActivityTimelineItem[]>(() => {
     return recentFirst([

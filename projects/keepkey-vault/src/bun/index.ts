@@ -50,6 +50,69 @@ function requireClearsignAdvancedMode(): void {
 	}
 }
 
+const AUTHENTICATOR_SLOT_COUNT = 10
+
+function normalizeAuthenticatorLabel(value: unknown, field: string): string {
+	const normalized = String(value || '').trim()
+	if (!normalized) throw new Error(`${field} is required`)
+	if (/[:\x00-\x1f\x7f]/.test(normalized)) {
+		throw new Error(`${field} cannot contain a colon or control character`)
+	}
+	if (Buffer.byteLength(normalized, 'utf8') > 11) {
+		throw new Error(`${field} is limited to 11 characters by the current firmware`)
+	}
+	return normalized
+}
+
+function normalizeAuthenticatorSecret(value: unknown): string {
+	const normalized = String(value || '').toUpperCase().replace(/[\s-]+/g, '')
+	if (!normalized) throw new Error('Authenticator secret is required')
+	if (!/^[A-Z2-7]+={0,6}$/.test(normalized)) {
+		throw new Error('Authenticator secret must be RFC 4648 Base32')
+	}
+	const unpadded = normalized.replace(/=+$/, '')
+	const decodedBytes = Math.floor(unpadded.length * 5 / 8)
+	if (decodedBytes < 16) throw new Error('Authenticator secret must contain at least 128 bits')
+	if (decodedBytes > 20) throw new Error('Authenticator secret exceeds the firmware\'s 20-byte limit')
+	return unpadded
+}
+
+function authenticatorErrorMessage(cause: unknown): string {
+	if (cause instanceof Error) return cause.message
+	if (typeof cause === 'string') return cause
+	if (cause && typeof cause === 'object') {
+		const value = cause as Record<string, unknown>
+		for (const key of ['message', 'msg', 'error', 'reason']) {
+			if (typeof value[key] === 'string') return value[key]
+		}
+		// hdwallet rejects device failures as an Event whose `message` field is
+		// the protobuf's plain object (for example, message.message contains the
+		// firmware's "Account not found" text).
+		if (value.message && typeof value.message === 'object') {
+			const nested = value.message as Record<string, unknown>
+			for (const key of ['message', 'msg', 'error', 'reason']) {
+				if (typeof nested[key] === 'string') return nested[key]
+			}
+		}
+	}
+	return String(cause)
+}
+
+async function settleAuthenticatorTransport(wallet: any): Promise<void> {
+	// Legacy Authenticator lookups report an empty slot as Failure_ActionCancelled.
+	// hdwallet intentionally propagates that failure to the next queued call, so
+	// consume it with a harmless ping before allowing a mutation to begin.
+	for (let attempt = 0; attempt < 2; attempt++) {
+		try {
+			await wallet.ping({ msg: 'authenticator-ready', passphrase: false })
+			return
+		} catch (cause) {
+			if (attempt === 0 && /Action cancelled|Account not found/i.test(authenticatorErrorMessage(cause))) continue
+			throw cause
+		}
+	}
+}
+
 const LOG_DIR = (process.platform === 'win32' ? process.env.LOCALAPPDATA : (process.env.HOME + "/Library/Application Support")) + "/com.keepkey.vault"
 const LOG_FILE = LOG_DIR + "/vault-backend.log"
 try { fs.mkdirSync(LOG_DIR, { recursive: true }) } catch {}
@@ -73,8 +136,9 @@ function _writeLogSync(line: string): void {
 
 const _ts = () => new Date().toISOString()
 const _fmt = (...args: any[]) => args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
-const _origLog = console.log, _origWarn = console.warn, _origError = console.error
+const _origLog = console.log, _origInfo = console.info, _origWarn = console.warn, _origError = console.error
 console.log = (...args: any[]) => { _writeLogSync(`[${_ts()}] ${_fmt(...args)}\n`); _origLog(...args) }
+console.info = (...args: any[]) => { _writeLogSync(`[${_ts()}] INFO: ${_fmt(...args)}\n`); _origInfo(...args) }
 console.warn = (...args: any[]) => { _writeLogSync(`[${_ts()}] WARN: ${_fmt(...args)}\n`); _origWarn(...args) }
 console.error = (...args: any[]) => { _writeLogSync(`[${_ts()}] ERR: ${_fmt(...args)}\n`); _origError(...args) }
 _writeLogSync(`\n=== New session: ${_ts()} ===\n`)
@@ -133,20 +197,22 @@ import { runUsbDiagnostic as runUsbDiagnosticProbe } from "./windows-usb-probe"
 import { startRestApi, clearFeaturesCache, setUiActive, uiHeartbeat, type RestApiCallbacks } from "./rest-api"
 import { signSolanaWireTransaction } from "./solana-signing"
 import { AuthStore } from "./auth"
-import { getPioneer, getPioneerApiBase, resetPioneer, DEFAULT_API_BASE, getQueryKey as getPioneerQueryKey } from "./pioneer"
+import { ensurePioneerQueryKeyRegistered, getPioneer, getPioneerApiBase, resetPioneer, DEFAULT_API_BASE, getQueryKey as getPioneerQueryKey } from "./pioneer"
 import { setBtcBackendOffline, setBtcNodeConfig, setBtcNodeDeviceEligible, isBtcNodeActive, getBtcBackend, broadcastBtcTx } from "./btc-backend"
 import { isBitcoinOnlyVariant } from "../shared/flags"
-import { fetchDefiPositions } from "./zapper"
+import { fetchDefiPositions } from "./zerion"
 import { loadSupportedChains } from "../shared/swap-support-matrix"
 import { PioneerSocket } from "./pioneer-socket"
 import { startEventStream, stopEventStream, type AddressEntry } from "./event-stream"
-import { rebuildActivityHistory } from "./activity-history"
+import { rebuildActivityHistory, clearHistoryQueryCache } from "./activity-history"
+import { createTxWatch, MAX_WATCH_MS, UNSEEN_GIVE_UP_MS } from "./tx-watch"
+import { getRequiredConfs } from "../shared/confirmations"
 import { addSessionActivity, getSessionActivity, clearSessionActivity } from "./session-activity"
 import { buildTx, broadcastTx } from "./txbuilder"
 import { buildCosmosStakingTx, buildCosmosNameRegTx } from "./txbuilder/cosmos"
 import { initializeOrchardFromDevice, scanOrchardNotes, getShieldedBalance, sendShielded, ensureFvkLoaded, displayOrchardAddressOnDevice } from "./txbuilder/zcash-shielded"
 import { findZcashCliBinary, isSidecarReady, startSidecar, stopSidecar, wipeSidecarWalletDb, hasFvkLoaded, getCachedFvk, onScanProgress, getScanState, updateSyncedTo, beginZcashSend, endZcashSend, isZcashSendInFlight } from "./zcash-sidecar"
-import { CHAINS, customChainToChainDef, isChainSupported, hiveRolePath, btcTaprootSupported } from "../shared/chains"
+import { CHAINS, customChainToChainDef, isChainSupported, hiveRolePath, btcTaprootSupported, findChainByNetwork } from "../shared/chains"
 import { versionCompare } from "../shared/firmware-versions"
 import { supportsZcashPrivacyBuild } from "./zcash-capability"
 import type { ChainDef } from "../shared/chains"
@@ -173,7 +239,9 @@ import {
 	validateProviderCeremony,
 	writeProviderKeyFile,
 } from "../shared/clearsign-provider-key"
-import { EVM_RPC_URLS, getTokenMetadata, broadcastEvmTx, verifyEvmSigner } from "./evm-rpc"
+import { getTokenMetadata, broadcastEvmTx, verifyEvmSigner } from "./evm-rpc"
+import { evmSourceForChain } from "./pioneer-evm"
+import { deviceErrorMessage } from "../shared/device-error"
 import type { ChainBalance, TokenBalance, CustomToken, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, EvmAddressSet, Bip85SeedMeta, StakingPosition, SwapAsset, AuditToken, DefiPosition, RecentActivity, ClearSignEvent, ClearSignSolanaSchemaArtifact } from "../shared/types"
 import type { VaultRPCSchema } from "../shared/rpc-schema"
 import { collectAndAnalyze, MAX_CHUNK_BYTES } from "./rng-audit"
@@ -834,6 +902,8 @@ function deferredInit() {
 				if (msg === 'swap-update') rpc.send['swap-update'](data)
 				else if (msg === 'swap-complete') rpc.send['swap-complete'](data)
 				else console.error(`[swap-tracker] Unknown message: ${msg}`)
+				// swap_history status/output moved — activity rows show it
+				if (msg === 'swap-update' || msg === 'swap-complete') notifyActivityChanged()
 			} catch (e: any) {
 				console.warn(`[swap-tracker] Failed to send '${msg}':`, e.message)
 			}
@@ -848,15 +918,15 @@ function getAllChains(): ChainDef[] {
 	return [...CHAINS, ...customChainDefs]
 }
 
-/** Lookup RPC URL for a chain (custom chains from DB on miss, built-in chains from EVM_RPC_URLS) */
-function getRpcUrl(chain: ChainDef): string | undefined {
+/** Built-in EVM chains use Pioneer by network ID. Custom chains use only the
+ * RPC URL the user explicitly configured. Never embed public node URLs here. */
+function getEvmRpcSource(chain: ChainDef): string | undefined {
 	// Custom chains: query DB only for custom chain IDs (avoids per-call overhead for built-in chains)
 	if (chain.id.startsWith('evm-custom-')) {
 		const stored = getCustomChains().find(c => `evm-custom-${c.chainId}` === chain.id)
-		if (stored) return stored.rpcUrl
+		return evmSourceForChain(chain, stored?.rpcUrl)
 	}
-	// Built-in chains: lookup from EVM_RPC_URLS
-	return chain.chainId ? EVM_RPC_URLS[chain.chainId] : undefined
+	return evmSourceForChain(chain)
 }
 
 // ── REST API Server (on by default, can be disabled in Settings) ───────
@@ -1187,6 +1257,7 @@ function getOrCreateWcManager(): WalletConnectManager {
 					return address
 				},
 				'walletconnect:solanaSignTransaction',
+				() => engine.getDeviceState().firmwareVersion,
 			)
 			if (!result?.signature || !result.serializedTx) {
 				throw new Error('Device returned no Solana transaction signature')
@@ -1424,9 +1495,11 @@ function flushPendingScopedApiLogs() {
 	if (!scope || engine.isPassphraseWallet || pendingScopedApiLogs.length === 0) return
 	const pending = pendingScopedApiLogs.splice(0)
 	for (const entry of pending) {
+		if (entryIsStale(entry)) continue // queued before a seed change
 		const scopedEntry = { ...entry, ...scope }
 		try { insertApiLog(scopedEntry) } catch { /* db not ready */ }
 		try { rpc.send['api-log'](scopedEntry) } catch { /* webview not ready */ }
+		if (scopedEntry.activityType) onActivityLogged(scopedEntry)
 	}
 }
 
@@ -1448,6 +1521,10 @@ async function deviceSwapAssets() {
 // Callbacks bridge REST → RPC UI
 const restCallbacks: RestApiCallbacks = {
 	onApiLog: (entry: ApiLogEntry) => {
+		if (entryIsStale(entry)) {
+			console.warn(`[api-log] dropped ${entry.method} ${entry.route}: wallet session changed mid-request`)
+			return
+		}
 		const scope = getWalletDbScope()
 		const scopedEntry = scope ? { ...entry, ...scope } : entry
 		try { rpc.send['api-log'](scopedEntry) } catch { /* webview not ready */ }
@@ -1458,7 +1535,13 @@ const restCallbacks: RestApiCallbacks = {
 			pendingScopedApiLogs.push(entry)
 			if (pendingScopedApiLogs.length > 100) pendingScopedApiLogs.shift()
 		}
-	},
+		// REST broadcasts/signs (kkclient etc.) reach the activity list, balances and
+		// confirmation tracking here. Queued (pre-scope) rows are announced on flush.
+		if (entry.activityType && (scope || engine.isPassphraseWallet)) onActivityLogged(scopedEntry)
+		},
+		onActivityChanged: () => notifyActivityChanged(),
+		getSessionEpoch: () => activitySessionEpoch,
+		resolveChain: (networkId: string) => findChainByNetwork(networkId, undefined, getAllChains()),
 	onSigningRequest: async (info: SigningRequestInfo) => {
 		attachSigningPolicySnapshot(info)
 		try { rpc.send['signing-request'](info) } catch { /* webview not ready */ }
@@ -1581,7 +1664,7 @@ async function emuSigningOp(
 	details: { operation: string; opLabel?: string; chain?: string; to?: string; toLabel?: string; value?: string; fee?: string; memo?: string },
 ): Promise<any> {
 	const { emuInteractiveConfirm } = await import('./emulator-window')
-	return emuInteractiveConfirm(fn, details, engine.emuDelegate)
+	return emuInteractiveConfirm(fn, details, engine.emuDelegate, (engine.wallet as any)?.transport)
 }
 
 // F5: best-effort confirm fields for the Cosmos-family tx shape (Cosmos/THOR/
@@ -1678,7 +1761,7 @@ const zcashTAddrFromXpub = (() => {
 // without this record a private send is invisible in history forever.
 // Same privacy rule as broadcastTx: DB write is standard-wallet only
 // (api_log is part of hidden-wallet deniability), UI push always.
-function logZcashShieldedActivity(activityType: 'broadcast' | 'shield' | 'unshield', txid: string, amountZat: number, to?: string) {
+function logZcashShieldedActivity(activityType: 'broadcast' | 'shield' | 'unshield', txid: string, amountZat: number, to?: string, sessionEpoch?: number) {
 	if (!txid) return
 	const scope = getWalletDbScope()
 	const n = Number(amountZat)
@@ -1688,10 +1771,172 @@ function logZcashShieldedActivity(activityType: 'broadcast' | 'shield' | 'unshie
 		to,
 		chainId: 'zcash',
 		chainSymbol: 'ZEC',
-	}
-	const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: `zcashShielded/${activityType}`, timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid, chain: 'ZEC', activityType, responseBody: meta }
+		shielded: true,
+		}
+		const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: `zcashShielded/${activityType}`, timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid, chain: 'ZEC', activityType, responseBody: meta, sessionEpoch }
+	if (entryIsStale(logEntry)) return // session ended mid-send: never attribute it to the next wallet
 	if (scope && !engine.isPassphraseWallet) insertApiLog(logEntry)
 	try { rpc.send['api-log'](logEntry) } catch { /* webview not ready */ }
+	onActivityLogged(logEntry)
+}
+
+// ── Live activity ────────────────────────────────────────────────────────
+// Every activity write ends in notifyActivityChanged(); the activity views
+// refetch on 'activity-changed'. Coalesced so a burst (a scan upserting 40
+// rows, swap-status polling) costs the UI one refetch.
+let activityChangedTimer: ReturnType<typeof setTimeout> | undefined
+function notifyActivityChanged(): void {
+	if (activityChangedTimer) return
+	activityChangedTimer = setTimeout(() => {
+		activityChangedTimer = undefined
+		try { rpc.send['activity-changed']({}) } catch { /* webview not ready */ }
+	}, 250)
+}
+
+// Balance servers need a moment to index a just-broadcast tx — resyncing at
+// once re-reads the pre-send balance.
+const POST_BROADCAST_RESYNC_MS = 4000
+
+/** Resync one chain's balance through the UI's always-mounted tx-push listener
+*  (App.tsx → getBalance → 'balance-updated'), the same path Pioneer pushes take. */
+function requestBalanceRefresh(chainId: string, txid: string | undefined, type: 'outgoing' | 'confirmed', delayMs = 0): void {
+	const chain = getAllChains().find(c => c.id === chainId)
+	if (!chain) return
+	setTimeout(() => {
+		if (!engine.wallet) return // unplugged meanwhile — getBalance would throw
+		try { rpc.send['tx-push-received']({ chain: chain.caip, networkId: chain.networkId, txid, type }) } catch { /* webview not ready */ }
+	}, delayMs)
+}
+
+// Bumped wherever the hidden-session RAM store is cleared, so a scan or request
+// that started in one wallet session can never write into the next one.
+let activitySessionEpoch = 0
+
+/** Stamped in a wallet session that has since ended (unplug, passphrase switch,
+*  seed change): attributing it to the current scope would put one wallet's tx
+*  in another's history — on disk or in the hidden RAM store. */
+function entryIsStale(entry: ApiLogEntry): boolean {
+	return entry.sessionEpoch !== undefined && entry.sessionEpoch !== activitySessionEpoch
+}
+
+/** Rescan ONE chain's history. Standard wallets upsert api_log; hidden sessions
+*  fetch live and keep rows in RAM only (zero disk trace). */
+async function scanOneChain(chainId: string, forceRefresh = false) {
+	if (!engine.wallet) throw new Error('No device connected')
+	// Only a settled session scans: while a PIN/passphrase prompt is up, a derive
+	// queues behind it and can come back from a DIFFERENT (hidden) wallet.
+	if (engine.getDeviceState().state !== 'ready') throw new Error('Device is not ready')
+	const hidden = engine.isPassphraseWallet
+	const epoch = activitySessionEpoch
+	const deviceId = engine.getDeviceState().deviceId || 'unknown'
+	// Hidden scope is normally set in-memory by sendPassphrase; the fallback covers
+	// reconnect-with-cached-passphrase where no identity probe ran. Nothing is written.
+	const dbScope = getWalletDbScope()
+	const scope = dbScope || (hidden ? { deviceId, walletId: `${deviceId}:hidden-session` } : null)
+	if (!scope) throw new Error('Wallet scope is not ready. Unlock the device and wait for seed identity.')
+	// Re-checked after the device derive and before every cache set / DB write.
+	const isCurrent = () => epoch === activitySessionEpoch
+		&& engine.getDeviceState().state === 'ready'
+		&& engine.isPassphraseWallet === hidden
+		&& getWalletDbScope()?.walletId === dbScope?.walletId
+	const result = await rebuildActivityHistory({
+		wallet: engine.wallet,
+		scope,
+		chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
+		firmwareVersion: engine.getDeviceState().firmwareVersion,
+		options: { chainId, dryRun: hidden, collectRows: true, forceRefresh },
+		isCurrent,
+	})
+	if (!isCurrent()) return { rows: [], added: 0, txs: 0, updated: 0 }
+	const chainResult = result.chains.find(c => c.chainId === chainId)
+	if (chainResult?.error) throw new Error(chainResult.error)
+	const rows = result.rows || []
+	const added = hidden ? addSessionActivity(rows) : (chainResult?.inserted || 0)
+	notifyActivityChanged()
+	return { rows, added, txs: chainResult?.txs || 0, updated: chainResult?.updated || 0 }
+}
+
+// Follows each broadcast / pushed tx until it confirms: rescans its chain past
+// Pioneer's history cache (upserting the activity rows) and resyncs the balance
+// when the tx lands in a block.
+const txWatch = createTxWatch({
+	scanChain: async (chainId) => (await scanOneChain(chainId, true)).rows,
+	onConfirmed: (chainId, txid) => requestBalanceRefresh(chainId, txid, 'confirmed'),
+	requiredConfs: (row) => getRequiredConfs(row.chain),
+})
+
+/** Every new activity row (in-app send, REST broadcast/sign, swap, shielded
+*  flow) funnels through here: the activity views refetch, and a broadcast is
+*  followed on-chain — balance resync now, confirmations as they land. */
+function onActivityLogged(entry: ApiLogEntry): void {
+	if (entryIsStale(entry)) return
+	const meta = entry.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : {}
+	const chainId: string | undefined = typeof meta.chainId === 'string' ? meta.chainId : undefined
+	// Hidden sessions never persist api_log: mirror the row into the RAM store so
+	// it shows now (the chain's next rescan replaces it with the indexed row). Only
+	// in a settled session — during a passphrase prompt the hidden flag still
+	// describes the wallet being left, not the one about to open.
+	if (engine.isPassphraseWallet && engine.getDeviceState().state === 'ready' && entry.txid && chainId && entry.activityType !== 'swap') {
+		addSessionActivity([{
+			id: `live-${chainId}-${entry.txid}`,
+			txid: entry.txid,
+			chain: meta.chainSymbol || entry.chain || '?',
+			chainId,
+			type: (entry.activityType === 'broadcast' ? 'send' : entry.activityType) as RecentActivity['type'],
+			source: entry.method === 'RPC' ? 'app' : 'api',
+			appName: entry.method === 'RPC' ? undefined : entry.appName,
+			status: 'broadcast',
+			createdAt: entry.timestamp,
+			amount: meta.value,
+			fee: meta.fee,
+			to: meta.to,
+			asset: meta.asset,
+		}])
+	}
+	notifyActivityChanged()
+	// Shielded txs never appear in transparent history; the zcash sidecar's own
+	// post-tx rescans own that balance.
+	if (entry.txid && chainId && !meta.shielded && (entry.activityType === 'broadcast' || entry.activityType === 'swap')) {
+		txidRecentlyPushed(entry.txid) // our own tx: the SSE/socket echo must not refetch it again
+		requestBalanceRefresh(chainId, entry.txid, 'outgoing', POST_BROADCAST_RESYNC_MS)
+		txWatch.watch(chainId, entry.txid)
+	}
+}
+
+/** Watches live in RAM: after an unplug or restart, pick still-pending rows back
+*  up from api_log so their confirmations keep ticking. Standard wallets only —
+*  hidden-session rows never survive a disconnect. */
+function rearmPendingWatches(scannedWalletId: string): void {
+	const scope = getWalletDbScope()
+	if (!scope || !engine.wallet || engine.isPassphraseWallet) return
+	// A passphrase prompt may have opened mid-scan: arm nothing for a wallet
+	// that is no longer the settled, scanned one.
+	if (engine.getDeviceState().state !== 'ready' || scope.walletId !== scannedWalletId) return
+	const now = Date.now()
+	const cutoff = now - MAX_WATCH_MS
+	for (const r of getRecentActivityFromLog(undefined, undefined, scope.deviceId, scope.walletId)) {
+		if (!r.txid || !r.chainId || r.createdAt < cutoff) continue
+		const pending = typeof r.confirmations === 'number'
+			? r.confirmations < getRequiredConfs(r.chain)
+			// Not indexed yet: our own broadcast, or a swap deposit still in flight.
+			// (Unannotated chains settle on their first scan. Zcash rows may be
+			// shielded — never in transparent history — so those are left out.)
+			// Its live watch already spent the unseen window at broadcast, so only a
+			// row still inside that window is re-armed — no fresh 15 min of forced
+			// rescans per reconnect for a tx the indexer never shows (TON msg hash,
+			// custom EVM, dropped).
+			: r.createdAt >= now - UNSEEN_GIVE_UP_MS && r.source !== 'scan' && r.chainId !== 'zcash' && (r.type === 'send' || (r.type === 'swap' && r.status === 'broadcast'))
+		if (pending) txWatch.watch(r.chainId, r.txid)
+	}
+}
+
+/** A chain push (SSE / Pioneer socket) names a tx on a watched address: follow
+*  it so it shows in activity and its confirmations tick up. */
+function followPushedTx(networkId: string | undefined, caip: string | undefined, txid: string | undefined): void {
+	const chain = findChainByNetwork(networkId, caip, getAllChains())
+	if (!chain) return
+	if (txid) txWatch.watch(chain.id, txid)
+	else txWatch.poke(chain.id)
 }
 
 // Race engine.getEmulatorMnemonic() against a 3s deadline. The DebugLink
@@ -1965,7 +2210,6 @@ async function headlessSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
 	// shortfall. Fix: re-quote with the actual net delivery amount.
 	if (
 		quote.swapper === 'NEAR Intents'
-		&& params.isMax
 		&& params.fromCaip.startsWith('bip122:')
 		&& engine.wallet
 	) {
@@ -2020,7 +2264,7 @@ async function headlessSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
 						? { allXpubs: estXpubs }
 						: { xpub: estXpub, accountPath: estAccountPath }),
 				})
-				if (est && est.feeSat > 0) {
+				if (est && est.feeSat > 0 && est.netSat > 0 && (est.netSat / 10 ** fromChain.decimals) < Number(params.amount)) {
 					const netAmount = (est.netSat / 1e8).toFixed(8)
 					console.log(`[swap] NEAR Intents sendMax: re-quoting ${fromChain.symbol} with net ${netAmount} (fee=${est.feeSat} sat)`)
 					quote = { ...await getSwapQuote({ ...params, amount: netAmount, isMax: false }), netFromAmount: netAmount }
@@ -2044,6 +2288,7 @@ async function headlessSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
 }
 
 async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (stage: SwapSubStage) => void): Promise<SwapResult> {
+	const sessionEpoch = activitySessionEpoch // the wallet session this swap belongs to
 	if (!engine.wallet) throw new Error('No device connected')
 
 	// Firmware gate ENFORCED at execute time, not just quote time: /api/v2/swap/
@@ -2073,6 +2318,8 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 				if (msg === 'swap-update') rpc.send['swap-update'](data)
 				else if (msg === 'swap-complete') rpc.send['swap-complete'](data)
 				else console.error(`[swap-tracker] Unknown message: ${msg}`)
+				// swap_history status/output moved — activity rows show it
+				if (msg === 'swap-update' || msg === 'swap-complete') notifyActivityChanged()
 			} catch (e: any) {
 				console.warn(`[swap-tracker] Failed to send '${msg}':`, e.message)
 			}
@@ -2098,7 +2345,6 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 	let execParams = params
 	if (
 		cachedQuote?.netFromAmount
-		&& params.isMax
 		&& params.fromCaip.startsWith('bip122:')
 		&& (params.swapper === 'NEAR Intents' || params.integration === 'nearIntents')
 	) {
@@ -2109,7 +2355,7 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 	const result = await executeSwap(execParams, {
 		wallet: engine.wallet,
 		getAllChains,
-		getRpcUrl,
+		getEvmRpcSource,
 		getBtcXpub: () => {
 			if (btcAccounts.isInitialized) {
 				const selected = btcAccounts.getSelectedXpub()
@@ -2133,10 +2379,16 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 			source: 'vault-rpc',
 			...event,
 		}),
+	}).catch((error: any) => {
+		console.error(`[swap] execute failed (${params.fromChainId}): ${deviceErrorMessage(error)}`)
+		throw error
 	})
 	const scope = getWalletDbScope()
+	// Session ended while signing/broadcasting (unplug, passphrase switch): the
+	// swap belongs to the wallet that was open — never track it under this one.
+	const staleSession = sessionEpoch !== activitySessionEpoch
 	// Register swap for tracking (non-blocking)
-	try {
+	if (!staleSession) try {
 		const trackParams = cachedQuote?.netFromAmount
 			? { ...execParams, amount: cachedQuote.netFromAmount }
 			: execParams
@@ -2158,10 +2410,12 @@ async function headlessExecuteSwap(params: ExecuteSwapParams, pushSubStage: (sta
 		console.warn('[index] Failed to register swap for tracking:', e.message)
 	}
 	// Track swap in api_log. PRIVACY: Skip DB write for passphrase wallets.
-	if (!engine.isPassphraseWallet && scope) {
-		const fromChain = getAllChains().find(c => c.id === params.fromChainId)
-		insertApiLog({ ...scope, method: 'RPC', route: 'executeSwap', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: fromChain?.symbol || params.fromChainId, activityType: 'swap' })
-	}
+	const fromChain = getAllChains().find(c => c.id === params.fromChainId)
+	const swapEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: 'executeSwap', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: fromChain?.symbol || params.fromChainId, activityType: 'swap', responseBody: { chainId: params.fromChainId, chainSymbol: fromChain?.symbol }, sessionEpoch }
+	if (!engine.isPassphraseWallet && scope && !entryIsStale(swapEntry)) insertApiLog(swapEntry)
+	// Source-chain balance + deposit confirmations follow the tx; swap status
+	// itself arrives through the swap tracker.
+	onActivityLogged(swapEntry)
 	return result
 }
 
@@ -2654,6 +2908,100 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				if (!engine.wallet) throw new Error('No device connected')
 				return await engine.wallet.ping({ msg: params.msg || 'pong', passphrase: false })
 			},
+			authenticatorListAccounts: async () => {
+				if (!engine.wallet) throw new Error('No device connected')
+				const list = async () => {
+					const accounts: Array<{ slot: number; issuer: string; account: string }> = []
+					for (let slot = 0; slot < AUTHENTICATOR_SLOT_COUNT; slot++) {
+						try {
+							// passphrase=true selects hdwallet's long interactive timeout. The
+							// firmware authenticator handler performs its own PIN/passphrase gate.
+							const result = await engine.wallet!.ping({
+								msg: `\x17getAccount:${slot}`,
+								passphrase: true,
+							})
+							const separator = result.msg.indexOf(':')
+							if (separator <= 0) {
+								console.warn(`[authenticator] slot ${slot} returned an unparseable account label`)
+								continue
+							}
+							accounts.push({
+								slot,
+								issuer: result.msg.slice(0, separator),
+								account: result.msg.slice(separator + 1),
+							})
+						} catch (cause) {
+							const message = authenticatorErrorMessage(cause)
+							if (/Account not found|Slot request out of range/i.test(message)) continue
+							throw cause
+						}
+					}
+					return accounts
+				}
+				return engine.isEmulator
+					? await emuSigningOp(list, { operation: 'authenticatorListAccounts', opLabel: 'Unlock authenticator accounts' })
+					: await list()
+			},
+			authenticatorAddAccount: async (params) => {
+				if (!engine.wallet) throw new Error('No device connected')
+				const issuer = normalizeAuthenticatorLabel(params.issuer, 'Issuer')
+				const account = normalizeAuthenticatorLabel(params.account, 'Account')
+				const secret = normalizeAuthenticatorSecret(params.secret)
+				await settleAuthenticatorTransport(engine.wallet)
+				const add = () => engine.wallet!.ping({
+					msg: `\x15initializeAuth:${issuer}:${account}:${secret}`,
+					passphrase: true,
+				})
+				if (engine.isEmulator) {
+					await emuSigningOp(add, { operation: 'authenticatorAddAccount', opLabel: `Add ${issuer} authenticator account` })
+				} else {
+					await add()
+				}
+			},
+			authenticatorGenerateOtp: async (params) => {
+				if (!engine.wallet) throw new Error('No device connected')
+				const issuer = normalizeAuthenticatorLabel(params.issuer, 'Issuer')
+				const account = normalizeAuthenticatorLabel(params.account, 'Account')
+				const interval = 30
+				const seconds = Math.floor(Date.now() / 1000)
+				const timeSlice = Math.floor(seconds / interval)
+				const timeRemaining = interval - (seconds % interval)
+				await settleAuthenticatorTransport(engine.wallet)
+				const generate = () => engine.wallet!.ping({
+					msg: `\x16generateOTPFrom:${issuer}:${account}:${timeSlice}:${timeRemaining}`,
+					passphrase: true,
+				})
+				if (engine.isEmulator) {
+					await emuSigningOp(generate, { operation: 'authenticatorGenerateOtp', opLabel: `Show ${issuer} verification code` })
+				} else {
+					await generate()
+				}
+			},
+			authenticatorRemoveAccount: async (params) => {
+				if (!engine.wallet) throw new Error('No device connected')
+				const issuer = normalizeAuthenticatorLabel(params.issuer, 'Issuer')
+				const account = normalizeAuthenticatorLabel(params.account, 'Account')
+				await settleAuthenticatorTransport(engine.wallet)
+				const remove = () => engine.wallet!.ping({
+					msg: `\x18removeAccount:${issuer}:${account}`,
+					passphrase: true,
+				})
+				if (engine.isEmulator) {
+					await emuSigningOp(remove, { operation: 'authenticatorRemoveAccount', opLabel: `Remove ${issuer} authenticator account` })
+				} else {
+					await remove()
+				}
+			},
+			authenticatorWipe: async () => {
+				if (!engine.wallet) throw new Error('No device connected')
+				await settleAuthenticatorTransport(engine.wallet)
+				const wipe = () => engine.wallet!.ping({ msg: '\x19wipeAuthdata:', passphrase: true })
+				if (engine.isEmulator) {
+					await emuSigningOp(wipe, { operation: 'authenticatorWipe', opLabel: 'Delete every device-resident authenticator account' })
+				} else {
+					await wipe()
+				}
+			},
 			openExternal: async (params) => {
 				// Validate up front — only open http(s) URLs, never local file://
 				// or javascript: schemes. The WebView passes user-visible URLs
@@ -3004,6 +3352,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 							return address
 						},
 						'solanaSignTx',
+						() => engine.getDeviceState().firmwareVersion,
 					)
 					if (payload) recordClearSignEvent({
 						kind: 'transaction', outcome: 'signed', source: 'vault-rpc', chain: 'Solana',
@@ -3168,6 +3517,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				if (!engine.wallet) throw new Error('No device connected')
 				const username = params?.username
 				if (!username) throw new Error('hiveCreateAccount requires a username')
+				if (!await ensurePioneerQueryKeyRegistered()) throw new Error('Pioneer query-key registration failed')
 				const wallet = engine.wallet as any
 				const accountIndex = params?.accountIndex ?? 0
 
@@ -3229,7 +3579,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				const base = getPioneerApiBase()
 				const resp = await fetch(`${base}/api/v1/hive/create-account`, {
 					method: 'POST',
-					headers: { 'content-type': 'application/json' },
+					headers: { 'content-type': 'application/json', Authorization: getPioneerQueryKey() },
 					body: JSON.stringify({
 						username,
 						ownerKey: keys.owner, activeKey: keys.active,
@@ -3518,7 +3868,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					const swapDestinationContracts: PortfolioExtraContract[] = []
 					// Post-swap reconcile: for a just-received EVM token (swap output),
 					// force Pioneer to do a direct on-chain balanceOf via extraContracts —
-					// the indexed (Zapper) source lags a few blocks after a swap and can
+					// the indexed (Zerion) source lags a few blocks after a swap and can
 					// return a stale pre-swap balance marked fresh, which would persist.
 					const discoveryLookup = discoveryAssetData as unknown as Record<string, { symbol?: string; name?: string; icon?: string; decimals?: number }>
 					for (const destCaip of swapDestCaips) {
@@ -3577,9 +3927,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					const pubkeyChunks = chunkArray(pubkeysForPioneer, PIONEER_PORTFOLIO_CHUNK_SIZE)
 					const chunkResults = pubkeyChunks.length === 0 ? [] : await withTimeout(
 						mapWithConcurrency(pubkeyChunks, PIONEER_PORTFOLIO_MAX_CONCURRENCY, async (chunk, i) => {
-							// Opt the dashboard refresh into the server's DeFi merge. Server-side
-							// is cached, so the per-pubkey Zapper lookup is typically a Redis
-							// read; misses degrade to [] without blocking balances. Pre-v1.4
+							// Opt the dashboard refresh into the server's Zerion DeFi merge. The
+							// gateway serves its PostgreSQL-backed demand cache; misses degrade to
+							// [] without blocking balances. Pre-v1.4
 							// servers ignore the field and return the legacy shape unchanged.
 							const chunkBody: any = { pubkeys: chunk.map(p => ({ caip: p.caip, pubkey: p.pubkey })), includeDefi: true }
 							if (extraContracts.length > 0) chunkBody.extraContracts = extraContracts
@@ -3604,12 +3954,42 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 									)
 								}
 								const { entries, meta, defiPositions } = unwrapPortfolioResponse(resp)
-								return { entries, meta, defiPositions, error: null as string | null }
+								return { entries, meta, defiPositions, error: null as string | null, failed: null as typeof chunk | null }
 							} catch (err: any) {
 								const sampleChains = chunk.map((p: any) => String(p.caip || '').split('/')[0]).join(', ')
 								const error = getPioneerPortfolioErrorMessage(err)
 								console.warn(`[getBalances] Portfolio chunk ${i + 1}/${pubkeyChunks.length} failed (${sampleChains}):`, error)
-								return { entries: [] as any[], meta: null as PortfolioMeta | null, defiPositions: null as ServerDefiPosition[] | null, error }
+								if (chunk.length === 1) {
+									return { entries: [] as any[], meta: null as PortfolioMeta | null, defiPositions: null as ServerDefiPosition[] | null, error, failed: chunk }
+								}
+								// One sick chain (or a 503 on the whole request) must not brand all 8
+								// chains in the chunk degraded — that's what made the banner list 14
+								// chains for ~3 real faults. Re-ask per pubkey so the blame lands on
+								// the chains that actually failed. One extra round, only on failure.
+								// ponytail: retried without extraContracts — the retry exists to
+								// attribute the failure and salvage native balances, not custom tokens.
+								const singles = await Promise.all(chunk.map(async (p: any) => {
+									try {
+										const resp = await withTimeout(
+											pioneer.GetPortfolioBalances({ pubkeys: [{ caip: p.caip, pubkey: p.pubkey }], includeDefi: true }, { forceRefresh }),
+											PIONEER_PORTFOLIO_CHUNK_TIMEOUT_MS,
+											`GetPortfolioBalances retry ${p.caip}`
+										)
+										return { p, ...unwrapPortfolioResponse(resp), bad: false }
+									} catch (e: any) {
+										console.warn(`[getBalances] Per-chain retry failed for ${p.caip}:`, getPioneerPortfolioErrorMessage(e))
+										return { p, entries: [] as any[], meta: null as PortfolioMeta | null, defiPositions: null as ServerDefiPosition[] | null, bad: true }
+									}
+								}))
+								const failed = singles.filter(s => s.bad).map(s => s.p)
+								console.warn(`[getBalances] Chunk ${i + 1} split-retry: ${chunk.length - failed.length}/${chunk.length} recovered`)
+								return {
+									entries: singles.flatMap(s => s.entries),
+									meta: mergeMetas(singles.map(s => s.meta).filter(Boolean) as PortfolioMeta[]),
+									defiPositions: singles.flatMap(s => s.defiPositions || []),
+									error: failed.length > 0 ? error : null,
+									failed,
+								}
 							}
 						}),
 						PIONEER_PORTFOLIO_TOTAL_TIMEOUT_MS,
@@ -3625,7 +4005,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 						console.warn(`[getBalances] Partial portfolio response: ${succeeded}/${pubkeyChunks.length} chunks succeeded — failed chains will show 0`)
 						for (let i = 0; i < chunkResults.length; i++) {
 							if (chunkResults[i].error) {
-								const chains = pubkeyChunks[i].map((p: any) => p.chainId || String(p.caip).split(':')[0]).join(', ')
+								const chains = (chunkResults[i].failed ?? pubkeyChunks[i]).map((p: any) => p.chainId || String(p.caip).split(':')[0]).join(', ')
 								console.warn(`[getBalances] Chunk ${i + 1} failed — excluded chains: ${chains}`)
 							}
 						}
@@ -3637,7 +4017,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 						const failedPubkeySet = new Set<string>()
 						for (let i = 0; i < chunkResults.length; i++) {
 							if (chunkResults[i].error) {
-								for (const p of pubkeyChunks[i]) failedPubkeySet.add(`${p.caip}:${p.pubkey}`)
+								// `failed` is the per-chain retry's verdict — only the pubkeys that
+								// failed twice. Absent (single-pubkey chunk / older path) → whole chunk.
+								for (const p of (chunkResults[i].failed ?? pubkeyChunks[i])) failedPubkeySet.add(`${p.caip}:${p.pubkey}`)
 							}
 						}
 						effectivePubkeys = pubkeys.filter(p => !failedPubkeySet.has(`${p.caip}:${p.pubkey}`))
@@ -4083,7 +4465,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 							symbol: agg.symbol,
 							balance: agg.balance > 0 ? agg.balance.toFixed(18).replace(/0+$/, '').replace(/\.$/, '') : '0',
 							// Chain total folds DeFi in so the dashboard $ keeps parity
-							// with zapper.xyz net worth. Wallet tokens are no longer
+							// with the indexed Zerion position total. Wallet tokens are no longer
 							// suppressed, so a wallet-held app-token (e.g. stETH) that the
 							// position also reports can double-count — accepted as the
 							// lesser evil vs hiding sendable balances (see note above).
@@ -4260,16 +4642,14 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 
 				// ── Start SSE event stream for real-time tx notifications ──
-				// Build address list: EVM individual accounts + non-UTXO non-EVM chains.
-				// BTC/LTC/DOGE xpubs are excluded — watchtower derives and watches those server-side.
+				// Build one watch list for every provider-backed chain. UTXO entries are
+				// xpubs (including script-type discovery keys for BTC); the self-contained
+				// gateway watches them only for the lifetime of this SSE connection.
 				const streamAddresses: AddressEntry[] = []
 				for (const a of evmAddresses.toAddressSet().addresses) {
 					if (a.address && a.networkId) streamAddresses.push({ address: a.address, networkId: a.networkId })
 				}
 				for (const p of pubkeys) {
-					if (p.caip.startsWith('bip122:')) continue // UTXO — skip xpubs
-					if (p.pubkey.startsWith('xpub') || p.pubkey.startsWith('ypub') || p.pubkey.startsWith('zpub') ||
-					    p.pubkey.startsWith('dgub') || p.pubkey.startsWith('Ltub') || p.pubkey.startsWith('Mtub')) continue
 					if (p.networkId && p.pubkey) streamAddresses.push({ address: p.pubkey, networkId: p.networkId })
 				}
 				if (streamAddresses.length > 0) {
@@ -4282,6 +4662,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 								// balance) but only shows the "Incoming payment" toast for 'incoming'.
 								// Mark the txid so the Pioneer-socket leg doesn't re-forward it.
 								if (txidRecentlyPushed(event.data.txid)) return
+								followPushedTx(event.data.networkId, event.data.caip, event.data.txid)
 								console.log(`[event-stream] ${event.data.type} tx ${event.data.txid} → ${event.data.address} (${event.data.networkId})`)
 								try { rpc.send['tx-push-received']({
 									chain: event.data.caip,
@@ -4293,6 +4674,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 							}
 							if (event.type === 'tx:confirmed') {
 								console.log(`[event-stream] Confirmed tx ${event.data.txid} (${event.data.confirmations} confs)`)
+								followPushedTx(event.data.networkId, undefined, event.data.txid)
 								// Debounce per network: the stream re-fires tx:confirmed on every
 								// confirmation update, and each forward costs a forced getBalance.
 								const confKey = `confirmed:${event.data.networkId}`
@@ -4488,7 +4870,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					const portfolioBody: any = { pubkeys: pubkeys.map(p => ({ caip: p.caip, pubkey: p.pubkey })) }
 					if (extraContracts.length > 0) portfolioBody.extraContracts = extraContracts
 					// Single-chain refresh: only worth fetching DeFi for EVM chains.
-					// Other families can't have Zapper apps and the extra round-trip is wasted.
+					// Other families cannot have Zerion EVM positions; skip that round-trip.
 					if (isEvm) portfolioBody.includeDefi = true
 					let resp: any
 					try {
@@ -4926,7 +5308,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					}
 				}
 
-				const rpcUrl = chain.id.startsWith('evm-custom-') ? getRpcUrl(chain) : undefined
+				const rpcUrl = chain.id.startsWith('evm-custom-') ? getEvmRpcSource(chain) : undefined
 				const evmIdx = chain.chainFamily === 'evm' ? (params.evmAddressIndex ?? evmAddresses.getSelectedAddress()?.addressIndex ?? 0) : undefined
 
 				// TON: derive Ed25519 public key for wallet deployment (StateInit)
@@ -4996,6 +5378,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 
 			broadcastTx: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!params.signedTx) throw new Error('Missing signedTx payload')
 				const chain = getAllChains().find(c => c.id === params.chainId)
 				if (!chain) throw new Error(`Unknown chain: ${params.chainId}`)
@@ -5003,7 +5386,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				let result: { txid: string }
 
 				// Custom chains: broadcast via direct RPC
-				const rpcUrl = chain.id.startsWith('evm-custom-') ? getRpcUrl(chain) : undefined
+				const rpcUrl = chain.id.startsWith('evm-custom-') ? getEvmRpcSource(chain) : undefined
 				if (rpcUrl) {
 					const serialized = params.signedTx?.serializedTx || params.signedTx?.serialized || (typeof params.signedTx === 'string' ? params.signedTx : undefined)
 					if (!serialized || typeof serialized !== 'string') throw new Error(`Cannot extract serialized tx from: ${JSON.stringify(params.signedTx).slice(0, 200)}`)
@@ -5044,11 +5427,11 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					chainId: chain.id,
 					chainSymbol: chain.symbol,
 				}
-				const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: 'broadcastTx', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: chain.symbol, activityType: 'broadcast', responseBody: txMeta }
+				const logEntry: ApiLogEntry = { ...(scope || {}), method: 'RPC', route: 'broadcastTx', timestamp: Date.now(), durationMs: 0, status: 200, appName: 'vault', txid: result.txid, chain: chain.symbol, activityType: 'broadcast', responseBody: txMeta, sessionEpoch }
 				let abEntry: { entryId: string; isNew: boolean; unsaved: boolean } | null = null
 				if (scope) {
 					// api_log is part of hidden-wallet deniability — keep it standard-only.
-					if (!engine.isPassphraseWallet) insertApiLog(logEntry)
+					if (!engine.isPassphraseWallet && !entryIsStale(logEntry)) insertApiLog(logEntry)
 					// Address Book (R3/R4/R7) is wallet-agnostic: capture the recipient +
 					// outbound-history row in any session (incl. hidden). Best-effort.
 					if (params.to) {
@@ -5064,7 +5447,10 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 						} catch (e: any) { console.warn('[broadcastTx] addressbook recordOutbound failed:', e?.message) }
 					}
 				}
-				try { rpc.send['api-log'](logEntry) } catch { /* webview not ready */ }
+				if (!entryIsStale(logEntry)) {
+					try { rpc.send['api-log'](logEntry) } catch { /* webview not ready */ }
+					onActivityLogged(logEntry)
+				}
 
 				return { ...result, addressBookEntryId: abEntry?.entryId, recipientUnsaved: abEntry?.unsaved }
 			},
@@ -5100,8 +5486,8 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 			},
 
-			// ── DeFi positions (Zapper) ───────────────────────────────
-			// Live-fetched per EVM address from the KeepKey Zapper proxy.
+			// ── DeFi positions (Zerion) ───────────────────────────────
+			// Live-fetched per EVM address from the authenticated Zerion gateway.
 			// Display-only and not persisted — supplementary to the Pioneer
 			// token list, so failures degrade to an empty section.
 			getDefiPositions: async (params) => {
@@ -5441,7 +5827,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 
 				if (!chain.chainId) throw new Error('Chain has no EVM chainId')
-				const rpcUrl = getRpcUrl(chain) || EVM_RPC_URLS[chain.chainId]
+				const rpcUrl = getEvmRpcSource(chain)
 				if (!rpcUrl) throw new Error(`No RPC URL for chain ${chain.coin}`)
 				const addr = params.contractAddress.trim()
 				if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) throw new Error('Invalid contract address')
@@ -5692,6 +6078,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				return await getShieldedBalance()
 			},
 			zcashShieldedSend: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!zcashPrivacyEnabled) throw new Error('Zcash privacy feature is disabled')
 				if (!engine.wallet) throw new Error('No device connected')
 				const account = (params as any)?.account ?? 0
@@ -5726,7 +6113,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					memo: params.memo,
 				}, { signWrap, onProgress })
 				try { rpc.send['send-progress']({ step: 'complete', detail: result.txid }) } catch { /* webview not ready */ }
-				logZcashShieldedActivity('broadcast', result.txid, params.amount, params.recipient)
+				logZcashShieldedActivity('broadcast', result.txid, params.amount, params.recipient, sessionEpoch)
 				schedulePostZcashTxRescans()
 				return result
 			},
@@ -5754,6 +6141,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 			},
 			zcashShieldZec: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!zcashPrivacyEnabled) throw new Error('Zcash privacy feature is disabled')
 				if (!engine.wallet) throw new Error('No device connected')
 				const account = params.account ?? 0
@@ -5784,12 +6172,13 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					account,
 				}, { signWrap, onProgress })
 				try { rpc.send['shield-progress']({ step: 'complete', detail: result.txid }) } catch { /* webview not ready */ }
-				logZcashShieldedActivity('shield', result.txid, params.amount)
+				logZcashShieldedActivity('shield', result.txid, params.amount, undefined, sessionEpoch)
 				schedulePostZcashTxRescans()
 				return result
 			},
 
 			zcashDeshieldZec: async (params) => {
+				const sessionEpoch = activitySessionEpoch // the wallet session this send belongs to
 				if (!zcashPrivacyEnabled) throw new Error('Zcash privacy feature is disabled')
 				if (!engine.wallet) throw new Error('No device connected')
 				const account = params.account ?? 0
@@ -5814,7 +6203,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					account,
 				}, { signWrap, onProgress })
 				try { rpc.send['deshield-progress']({ step: 'complete', detail: result.txid }) } catch { /* webview not ready */ }
-				logZcashShieldedActivity('unshield', result.txid, params.amount, params.recipient)
+				logZcashShieldedActivity('unshield', result.txid, params.amount, params.recipient, sessionEpoch)
 				schedulePostZcashTxRescans()
 				return result
 			},
@@ -6687,18 +7076,14 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				}
 				const lower = raw.toLowerCase()
 
-				/* When the user specifies a chainId, only probe that one. Otherwise
-				 * try every EVM RPC we have configured in parallel — direct
-				 * on-chain ERC20 reads (name/symbol/decimals) work even for
-				 * tokens Pioneer hasn't indexed yet. */
+				/* Pioneer resolves token metadata on-chain, including unindexed
+				 * tokens. Probe built-in EVM networks or the requested custom chain. */
+				const allChains = getAllChains()
 				const chainsToProbe = params.chainId
 					? [params.chainId.replace(/^eip155:/, '')]
-					: Object.keys(EVM_RPC_URLS)
+					: CHAINS.filter(c => c.chainFamily === 'evm' && c.chainId).map(c => c.chainId!)
 
-				const allChains = getAllChains()
 				const hits = (await Promise.all(chainsToProbe.map(async (numericId) => {
-					const rpcUrl = EVM_RPC_URLS[numericId]
-					if (!rpcUrl) return null
 					// Resolve vault's internal chain id (e.g. 'base') from the EIP-155
 					// network id. SwapAsset.chainId per types.ts is the vault id, NOT
 					// CAIP-2 — every downstream consumer (balance lookup, addCustomToken
@@ -6709,6 +7094,8 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					const networkId = `eip155:${numericId}`
 					const vaultChain = allChains.find(c => c.networkId === networkId)
 					if (!vaultChain) return null
+					const rpcUrl = getEvmRpcSource(vaultChain)
+					if (!rpcUrl) return null
 					try {
 						const meta = await withTimeout(
 							getTokenMetadata(rpcUrl, lower),
@@ -6766,7 +7153,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				return previewSwapBuild(params, {
 					wallet: engine.wallet,
 					getAllChains,
-					getRpcUrl,
+					getEvmRpcSource,
 					getBtcXpub: () => {
 						if (btcAccounts.isInitialized) {
 							const selected = btcAccounts.getSelectedXpub()
@@ -6780,6 +7167,10 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					},
 					wrapSign: (fn) => fn(), // unused in preview
 					pushSubStage: NOOP_PUSH_SUBSTAGE,
+					getFirmwareVersion: () => engine.getDeviceState().firmwareVersion,
+				}).catch((error: any) => {
+					console.error(`[swap] preview failed (${params.fromChainId}): ${deviceErrorMessage(error)}`)
+					throw error
 				})
 			},
 
@@ -6932,54 +7323,19 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				// PRIVACY: Don't expose standard-wallet activity during hidden sessions.
 				// Hidden sessions get the RAM-only session store instead (populated by
 				// scanChainHistory's live fetch below) — display without persistence.
-				if (engine.isPassphraseWallet) return relabelZcashShieldedRows(getSessionActivity(params?.limit || 50, params?.chainId))
+				if (engine.isPassphraseWallet) return relabelZcashShieldedRows(getSessionActivity(params?.limit, params?.chainId))
 				const scope = getWalletDbScope()
 				if (!scope) return []
-				return relabelZcashShieldedRows(getRecentActivityFromLog(params?.limit || 50, params?.chainId, scope.deviceId, scope.walletId))
+				return relabelZcashShieldedRows(getRecentActivityFromLog(params?.limit, params?.chainId, scope.deviceId, scope.walletId))
 			},
 			getActivityScanState: async () => ({ running: activityScanRunning }),
 			scanChainHistory: async (params) => {
 				const chain = getAllChains().find(c => c.id === params.chainId)
 				if (!chain) throw new Error(`Unknown chain: ${params.chainId}`)
-				if (!engine.wallet) throw new Error('No device connected')
-
-				// PRIVACY: hidden sessions never write api_log — but the server lookup
-				// only needs an address. Fetch the same Pioneer history live (dryRun)
-				// and hold the rows in RAM only; cleared on needs_passphrase/disconnect.
-				if (engine.isPassphraseWallet) {
-					const deviceId = engine.getDeviceState().deviceId || 'unknown'
-					// Scope is normally set in-memory by sendPassphrase; the fallback covers
-					// reconnect-with-cached-passphrase where no identity probe ran. Only used
-					// for the (empty-by-invariant) dedup read + result echo — nothing is written.
-					const scope = getWalletDbScope() || { deviceId, walletId: `${deviceId}:hidden-session` }
-					const result = await rebuildActivityHistory({
-						wallet: engine.wallet,
-						scope,
-						chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
-						firmwareVersion: engine.getDeviceState().firmwareVersion,
-						options: { chainId: params.chainId, dryRun: true, collectRows: true },
-					})
-					const chainResult = result.chains.find(c => c.chainId === params.chainId)
-					if (chainResult?.error) throw new Error(chainResult.error)
-					const added = addSessionActivity(result.rows || [])
-					console.log(`[activity] Live-scanned ${chain.symbol} (hidden session): ${chainResult?.txs || 0} txs, ${added} new — RAM only`)
-					return { count: added }
-				}
-				const scope = getWalletDbScope()
-				if (!scope) throw new Error('Wallet scope is not ready. Unlock the device and wait for seed identity.')
-
-				const result = await rebuildActivityHistory({
-					wallet: engine.wallet,
-					scope,
-					chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
-					firmwareVersion: engine.getDeviceState().firmwareVersion,
-					options: { chainId: params.chainId },
-				})
-				const chainResult = result.chains.find(c => c.chainId === params.chainId)
-				if (chainResult?.error) throw new Error(chainResult.error)
-
-				console.log(`[activity] Scanned ${chain.symbol}: ${chainResult?.txs || 0} txs, ${chainResult?.inserted || 0} new, ${chainResult?.updated || 0} updated`)
-				return { count: chainResult?.inserted || 0 }
+				// PRIVACY: hidden sessions fetch live and hold rows in RAM only (scanOneChain).
+				const { added, txs, updated } = await scanOneChain(params.chainId)
+				console.log(`[activity] Scanned ${chain.symbol}${engine.isPassphraseWallet ? ' (hidden session, RAM only)' : ''}: ${txs} txs, ${added} new, ${updated} updated`)
+				return { count: added }
 			},
 			dismissActivity: async (_params) => {
 				// No-op: api_log entries are audit records, not dismissible
@@ -7703,7 +8059,10 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			emulatorInit: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
 				const { initEmulator } = await import('./emulator')
-				const status = initEmulator(params?.flashName)
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selected = selectedEmulatorBuild()
+				if (selected && params?.flashName && params.flashName !== emulatorBuildFlashName(selected)) throw new Error('This build has its own flash; switch builds to use another wallet')
+				const status = initEmulator(selected ? emulatorBuildFlashName(selected) : (params?.flashName || 'default'))
 				if (status.state !== 'running') throw new Error(status.error || 'Emulator failed to start')
 				// Open the emulator device window
 				const { openEmulatorWindow } = await import('./emulator-window')
@@ -7732,11 +8091,59 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				const { getEmulatorStatus } = await import('./emulator')
 				return getEmulatorStatus()
 			},
+			emulatorListBuilds: async () => {
+				const { listEmulatorBuilds, selectedEmulatorBuild } = await import('./emulator-library')
+				return { builds: listEmulatorBuilds(), selected: selectedEmulatorBuild() }
+			},
+			emulatorSelectBuild: async (params) => {
+				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { getEmulatorStatus } = await import('./emulator')
+				if (getEmulatorStatus().state === 'running') throw new Error('Stop the emulator before changing builds')
+				const { listEmulatorBuilds, selectEmulatorBuild } = await import('./emulator-library')
+				if (!listEmulatorBuilds().some(build => build.id === params.id)) throw new Error('Emulator build is not installed')
+				selectEmulatorBuild(params.id)
+				return { builds: listEmulatorBuilds(), selected: params.id }
+			},
+			emulatorActivateBuild: async (params) => {
+				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { listEmulatorBuilds, selectEmulatorBuild, selectedEmulatorBuild, clearSelectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				if (!listEmulatorBuilds().some(build => build.id === params.id)) throw new Error('Emulator build is not installed')
+				const { getEmulatorStatus, getActiveFlashName, stopEmulator, initEmulator } = await import('./emulator')
+				const previousBuild = selectedEmulatorBuild()
+				const previousFlash = getEmulatorStatus().state === 'running' ? getActiveFlashName() : null
+				const { closeEmulatorWindow, openEmulatorWindow } = await import('./emulator-window')
+				if (previousFlash) {
+					closeEmulatorWindow()
+					engine.disconnectEmulator()
+					stopEmulator()
+				}
+				try {
+					selectEmulatorBuild(params.id)
+					const flashName = emulatorBuildFlashName(params.id)
+					const status = initEmulator(flashName)
+					if (status.state !== 'running') throw new Error(status.error || 'Emulator failed to start')
+					openEmulatorWindow()
+					await engine.connectEmulator()
+					const version = engine.getDeviceState().firmwareVersion
+					const { recordEmulatorBuildVersion } = await import('./emulator-library')
+					if (/^\d+\.\d+\.\d+$/.test(version || '')) recordEmulatorBuildVersion(params.id, version)
+					return { status, flashName }
+				} catch (error) {
+					closeEmulatorWindow()
+					engine.disconnectEmulator()
+					stopEmulator()
+					if (previousBuild) selectEmulatorBuild(previousBuild)
+					else clearSelectedEmulatorBuild()
+					if (previousFlash) {
+						const restored = initEmulator(previousFlash)
+						if (restored.state === 'running') { openEmulatorWindow(); await engine.connectEmulator() }
+					}
+					throw error
+				}
+			},
 			emulatorInstallDylib: async (params) => {
-				// Copy a user-supplied emulator library into ~/.keepkey/emulator/
-				// (libkkemu.dylib on macOS, libkkemu.dll on Windows) so subsequent
-				// emulatorInit() loads it. Auto-flips emulator_enabled since the user
-				// has explicitly opted in by dropping a binary.
+				// Keep user-supplied libraries side by side under their content IDs.
+				// Auto-enable emulator tools because dropping a binary is an explicit opt-in.
 				const isWin = process.platform === 'win32'
 				if (process.platform !== 'darwin' && !isWin) throw new Error('Emulator is only available on macOS and Windows')
 				if (!params?.data) throw new Error('Missing emulator library payload')
@@ -7757,21 +8164,15 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					}
 				}
 
-				// Stop any running emulator before swapping the dylib — replacing
-				// a dlopen'd file mid-flight is undefined behavior on macOS.
-				const { getEmulatorStatus, stopEmulator, getDylibPath } = await import('./emulator')
-				if (getEmulatorStatus().state === 'running') {
-					const { closeEmulatorWindow } = await import('./emulator-window')
-					closeEmulatorWindow()
-					engine.disconnectEmulator()
-					stopEmulator()
-				}
-
-				// Write to a temp file then atomically rename so a partial copy
+				// Content-addressed paths let us install while another build runs;
+				// no loaded dylib is replaced. Write to a temp file then atomically rename so a partial copy
 				// can never leave a half-written dylib in place.
 				const { writeFileSync, renameSync, mkdirSync, statSync } = await import('fs')
 				const { dirname } = await import('path')
-				const finalPath = getDylibPath()
+				const { createHash } = await import('crypto')
+				const { emulatorBuildPath } = await import('./emulator-library')
+				const buildId = createHash('sha256').update(buf).digest('hex')
+				const finalPath = emulatorBuildPath(buildId)
 				const dir = dirname(finalPath)
 				mkdirSync(dir, { recursive: true, mode: 0o700 })
 				const tmp = `${finalPath}.tmp-${Date.now()}`
@@ -7787,7 +8188,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					setSetting('emulator_enabled', '1')
 					console.log('[settings] Emulator enabled by dylib install')
 				}
-				return { path: finalPath, size, emulatorEnabled }
+				return { path: finalPath, size, buildId, emulatorEnabled }
 			},
 			emulatorDeleteFlash: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
@@ -7823,10 +8224,12 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				const { listFlashImages, hasMnemonic } = await import('./emulator-keychain')
 				const { getActiveFlashName, getEmulatorStatus } = await import('./emulator')
 				const { getAllEmulatorWalletMeta } = await import('./db')
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selectedBuild = selectedEmulatorBuild()
 				const status = getEmulatorStatus()
 				const activeFlash = status.state === 'running' ? getActiveFlashName() : null
 				const metaByName = new Map(getAllEmulatorWalletMeta().map(m => [m.name, m]))
-				return listFlashImages().map(name => {
+				return listFlashImages().filter(name => !selectedBuild || name === emulatorBuildFlashName(selectedBuild)).map(name => {
 					const meta = metaByName.get(name)
 					return {
 						name,
@@ -7842,6 +8245,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 			emulatorImportWallet: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selectedBuild = selectedEmulatorBuild()
+				if (selectedBuild && params.name !== emulatorBuildFlashName(selectedBuild)) throw new Error('This build has its own flash; import into its active wallet')
 				// Wallet name validation lives in emulator-keychain.validateFlashName
 				// (called by every path builder) — call here too so we surface the
 				// error before doing any work.
@@ -7939,6 +8345,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 			emulatorSwitchWallet: async (params) => {
 				if (!emulatorEnabled) throw new Error('Emulator is disabled')
+				const { selectedEmulatorBuild, emulatorBuildFlashName } = await import('./emulator-library')
+				const selectedBuild = selectedEmulatorBuild()
+				if (selectedBuild && params.name !== emulatorBuildFlashName(selectedBuild)) throw new Error('This build has its own flash; switch builds to use another wallet')
 				const { stopEmulator, initEmulator, getEmulatorStatus } = await import('./emulator')
 
 				// Stop current emulator if running
@@ -8477,6 +8886,7 @@ engine.on('state-change', (state) => {
 					if (def) { chain = def.caip; break }
 				}
 				if (!chain) return
+				followPushedTx(undefined, chain, txid)
 				// Debounce per network (CAIP-2 prefix) so rapid-fire events on the same
 				// network collapse into one refresh. When replacing a pending forward,
 				// keep 'incoming' if either had it — a confirmation update arriving in
@@ -8510,7 +8920,10 @@ engine.on('state-change', (state) => {
 				scope,
 				chains: getAllChains().filter(c => c.id !== 'hive' || hiveEnabled),
 				firmwareVersion: engine.getDeviceState().firmwareVersion,
-			}).then(result => {
+				// A PIN/passphrase prompt mid-scan must not let another wallet's
+				// history land on disk under this walletId.
+				isCurrent: () => !engine.isPassphraseWallet && engine.getDeviceState().state === 'ready' && getWalletDbScope()?.walletId === scope.walletId,
+				}).then(result => {
 				console.log(`[activity] Auto-scan complete: ${result.totals.inserted} new txs across ${result.totals.chains} chains`)
 				try { rpc.send['activity-scan-complete']({ inserted: result.totals.inserted, chains: result.totals.chains }) } catch { /* webview not ready */ }
 			}).catch(e => {
@@ -8518,6 +8931,8 @@ engine.on('state-change', (state) => {
 				try { rpc.send['activity-scan-complete']({ inserted: 0, chains: 0 }) } catch { /* webview not ready */ }
 			}).finally(() => {
 				activityScanRunning = false
+				notifyActivityChanged()
+				rearmPendingWatches(scope.walletId)
 			})
 		}, 3000)
 	}
@@ -8534,8 +8949,13 @@ engine.on('state-change', (state) => {
 		clearPioneerEventDebounce() // pending timers would getBalance a gone device
 		stopEventStream()
 	}
-	if (state.state === 'disconnected' || state.state === 'needs_passphrase') {
+	// needs_init = wiped: the seed that queued/owned anything here is gone.
+	if (state.state === 'disconnected' || state.state === 'needs_passphrase' || state.state === 'needs_init') {
 		pendingScopedApiLogs.splice(0)
+		// Watched txs + cached history addresses belong to the session that is ending.
+		txWatch.clear()
+		clearHistoryQueryCache()
+		activitySessionEpoch++
 		// PRIVACY: hidden-session activity must not outlive its session — drop the
 		// RAM store the moment the session ends (unplug) or a new one starts
 		// (device requests a passphrase). No-op for standard sessions (store empty).
@@ -8576,6 +8996,12 @@ engine.on('seed-changed', ({ deviceId, oldAddress, newAddress }) => {
 	console.warn(`[Vault] SEED CHANGED on ${deviceId}: ${oldAddress?.slice(0, 10)} → ${newAddress?.slice(0, 10)}`)
 	resetSeedManagers()
 	clearSessionActivity()
+	txWatch.clear()
+	clearHistoryQueryCache()
+	// Rows queued while scope was null can only be for the seed now on the device
+	// (disconnect/needs_passphrase already emptied the queue) — carry them over.
+	for (const e of pendingScopedApiLogs) e.sessionEpoch = activitySessionEpoch + 1
+	activitySessionEpoch++
 	// Zcash sidecar holds a per-seed FVK + scanned notes both in memory and in
 	// ~/.keepkey/zcash_wallet.db. After a seed change those are wrong for the
 	// new wallet — but `hasFvkLoaded()` would still return true (cache is

@@ -328,6 +328,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       getAddressBookHistory: { params: { entryId: string }; response: AddressBookTx[] }
 
       // ── Recent Activity ──────────────────────────────────────────────────
+      // limit omitted = every row for the wallet (the activity list shows full history)
       getRecentActivity: { params: { limit?: number; chainId?: string } | void; response: RecentActivity[] }
       scanChainHistory: { params: { chainId: string }; response: { count: number } }
       // True while the engine's startup/background bulk history scan is in flight,
@@ -379,12 +380,15 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       emulatorStop: { params: void; response: EmulatorStatus }
       emulatorSave: { params: void; response: void }
       emulatorStatus: { params: void; response: EmulatorStatus }
+      emulatorListBuilds: { params: void; response: { builds: Array<{ id: string; path: string; selected: boolean; version?: string }>; selected: string | null } }
+      emulatorSelectBuild: { params: { id: string }; response: { builds: Array<{ id: string; path: string; selected: boolean; version?: string }>; selected: string } }
+      emulatorActivateBuild: { params: { id: string }; response: { status: EmulatorStatus; flashName: string } }
       emulatorDeleteFlash: { params: { name: string }; response: EmulatorStatus }
       emulatorListWallets: { params: void; response: EmulatorWalletInfo[] }
       emulatorImportWallet: { params: { name: string; mnemonic: string; label?: string }; response: EmulatorStatus }
       emulatorSwitchWallet: { params: { name: string }; response: EmulatorStatus }
-      /** Install a libkkemu.dylib from a base64-encoded payload into ~/.keepkey/emulator/. macOS only. */
-      emulatorInstallDylib: { params: { data: string }; response: { path: string; size: number; emulatorEnabled: boolean } }
+      /** Store a content-addressed emulator build, then select it for the next start. */
+      emulatorInstallDylib: { params: { data: string }; response: { path: string; size: number; buildId: string; emulatorEnabled: boolean } }
       /** Wipes the active flash and loads a freshly generated mnemonic. */
       emulatorCreateWallet: { params: { wordCount?: 12 | 18 | 24 }; response: { seedDisplayed: true } }
       emulatorGetMnemonic: { params: void; response: string | null }
@@ -521,6 +525,10 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
        *  replace the "No indexed activity yet" placeholder without a manual
        *  navigate-away. inserted/chains are for logging/telemetry only. */
       'activity-scan-complete': { inserted: number; chains: number }
+      /** Activity rows changed: a send/broadcast (in-app or REST), swap status,
+      *  a scan, or a watched tx's confirmations. Activity views refetch
+      *  getRecentActivity. Coalesced backend-side (one push per burst). */
+      'activity-changed': {}
       /** Seed-staleness purge: the backend detected the in-memory wallet data
        *  belonged to a DIFFERENT seed than the device (passphrase toggle,
        *  hidden↔standard transition, cached-passphrase reconnect) and dropped

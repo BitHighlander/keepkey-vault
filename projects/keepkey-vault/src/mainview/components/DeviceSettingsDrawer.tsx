@@ -358,6 +358,23 @@ export function DeviceSettingsDrawer({ open, onClose, deviceState, onCheckForUpd
 	const emuFileRef = useRef<HTMLInputElement>(null)
 	const [installingEmu, setInstallingEmu] = useState(false)
 	const [emuInstallMsg, setEmuInstallMsg] = useState<string | null>(null)
+	const [emuBuilds, setEmuBuilds] = useState<Array<{ id: string; path: string; selected: boolean; version?: string }>>([])
+	const [selectedEmuBuild, setSelectedEmuBuild] = useState<string | null>(null)
+	const reloadEmuBuilds = useCallback(async () => {
+		const result = await rpcRequest<{ builds: Array<{ id: string; path: string; selected: boolean; version?: string }>; selected: string | null }>("emulatorListBuilds", undefined, 10000)
+		setEmuBuilds(result.builds); setSelectedEmuBuild(result.selected)
+	}, [])
+	useEffect(() => { if (deviceState.isEmulator) reloadEmuBuilds().catch(console.error) }, [deviceState.isEmulator, reloadEmuBuilds])
+	async function activateEmuBuild(id: string) {
+		setInstallingEmu(true); setEmuInstallMsg(null); setRevealedSeed(null)
+		try {
+			const result = await rpcRequest<{ flashName: string }>("emulatorActivateBuild", { id }, 30000)
+			await reloadEmuBuilds()
+			await reloadEmuWallets()
+			setEmuInstallMsg(`Build ${id.slice(0, 12)} running with isolated flash ${result.flashName}.`)
+		} catch (err: any) { setEmuInstallMsg(err?.message || "Build switch failed") }
+		setInstallingEmu(false)
+	}
 	const handleEmuFilePick = useCallback(async (input: HTMLInputElement) => {
 		const file = input.files?.[0]
 		input.value = "" // let the user re-pick the same file after a failure
@@ -373,25 +390,21 @@ export function DeviceSettingsDrawer({ open, onClose, deviceState, onCheckForUpd
 			const CHUNK = 8192
 			let binary = ""
 			for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-			await rpcRequest("emulatorInstallDylib", { data: btoa(binary) }, 30000)
+			const installed = await rpcRequest<{ buildId: string }>("emulatorInstallDylib", { data: btoa(binary) }, 30000)
 			// Backend auto-enables the emulator; nudge the app to re-pull settings.
 			window.dispatchEvent(new Event("keepkey-settings-changed"))
 			// First-time install (no existing wallets) — DeviceGrid only shows a
 			// Start card for wallets emulatorListWallets returns, so with none it
 			// has nothing to click. Bootstrap one, same as the drag-drop path.
-			const wallets = await rpcRequest<Array<{ name: string }>>("emulatorListWallets").catch(() => [])
-			if (wallets.length === 0) {
-				try { await rpcRequest("emulatorPair", undefined, 10000) } catch { /* may already be paired */ }
-				await rpcRequest("emulatorInit", { flashName: "default" }, 30000)
-				setEmuInstallMsg("Installed and started.")
-			} else {
-				setEmuInstallMsg("Installed. Start the emulator from the device list.")
-			}
+			try { await rpcRequest("emulatorPair", undefined, 10000) } catch { /* may already be paired */ }
+			await rpcRequest("emulatorActivateBuild", { id: installed.buildId }, 30000)
+			await reloadEmuBuilds()
+			setEmuInstallMsg(`Build ${installed.buildId.slice(0, 12)} installed with its own flash.`)
 		} catch (err: any) {
 			setEmuInstallMsg(err?.message || "Install failed")
 		}
 		setInstallingEmu(false)
-	}, [])
+	}, [reloadEmuBuilds])
 
 	// Emulator wallet (seed) management — switch between saved seeds, generate
 	// or import a new one for the active flash, and reveal the active seed for
@@ -893,6 +906,14 @@ export function DeviceSettingsDrawer({ open, onClose, deviceState, onCheckForUpd
 								>
 									{installingEmu ? "Installing…" : "Change Version…"}
 								</Button>
+								{emuBuilds.length > 0 && (
+									<Box as="select" aria-label="Emulator build" value={selectedEmuBuild || ""}
+										disabled={installingEmu || emuBusy}
+										onChange={(e: React.ChangeEvent<HTMLSelectElement>) => activateEmuBuild(e.target.value)}
+										fontSize="xs" color="kk.textPrimary" bg="kk.bgSecondary" border="1px solid" borderColor="kk.border" borderRadius="md" p="2">
+										{emuBuilds.map(build => <option key={build.id} value={build.id}>{build.version ? `v${build.version}` : 'Unverified build'} · {build.id.slice(0, 12)}</option>)}
+									</Box>
+								)}
 								{emuInstallMsg && <Text fontSize="xs" color="kk.textSecondary">{emuInstallMsg}</Text>}
 							</Flex>
 

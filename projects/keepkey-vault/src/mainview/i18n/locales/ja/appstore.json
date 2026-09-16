@@ -6,6 +6,8 @@
 	"keepkeyDescription": "KeepKeyハードウェアウォレットを管理",
 	"shapeshiftName": "ShapeShift",
 	"shapeshiftDescription": "チェーン間で暗号資産を交換、追跡、管理",
+	"swapsproName": "SwapsPro",
+	"swapsproDescription": "最良レートのクロスチェーンスワップ",
 	"supportName": "サポート",
 	"supportDescription": "KeepKeyチームからヘルプと回答を得る",
 	"docsName": "ドキュメント",

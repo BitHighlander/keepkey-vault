@@ -3,7 +3,8 @@ import { Box, Flex, Text, VStack, HStack, Image, Spinner } from "@chakra-ui/reac
 import { rpcRequest, onRpcMessage } from "../lib/rpc"
 import { CHAINS } from "../../shared/chains"
 import { caipToIcon } from "../../shared/assetLookup"
-import type { RecentActivity, PendingSwap, ChainBalance, SwapStatusUpdate, ApiLogEntry } from "../../shared/types"
+import type { RecentActivity, PendingSwap, ChainBalance, SwapStatusUpdate } from "../../shared/types"
+import { useRecentActivity } from "../hooks/useRecentActivity"
 import {
   ActivityRow, SwapRow, TxDetailDialog,
   recentFirst, nativePriceByChain,
@@ -182,10 +183,11 @@ function ChainFilterDropdown({
 }
 
 export function ActivityPage({ defaultChainId, onBack, onResumeSwap }: ActivityPageProps) {
-  const [activities, setActivities] = useState<RecentActivity[]>([])
+  // Every activity row (no cap), kept live by the backend's 'activity-changed' push.
+  const { activities, loaded, refresh: fetchActivities } = useRecentActivity()
   const [pendingSwaps, setPendingSwaps] = useState<PendingSwap[]>([])
   const [availableChains, setAvailableChains] = useState<ChainBalance[]>([])
-  const [loading, setLoading] = useState(true)
+  const loading = !loaded
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<string | null>(null)
   const [selectedDetail, setSelectedDetail] = useState<TxDetail | null>(null)
@@ -197,12 +199,6 @@ export function ActivityPage({ defaultChainId, onBack, onResumeSwap }: ActivityP
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'recent' | 'oldest'>('recent')
 
-  const fetchActivities = useCallback(() => {
-    rpcRequest<RecentActivity[]>('getRecentActivity', { limit: 200 }, 10000)
-      .then(r => { if (r) setActivities(r) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
 
   const fetchSwaps = useCallback(() => {
     rpcRequest<PendingSwap[]>('getPendingSwaps', undefined, 5000)
@@ -217,23 +213,17 @@ export function ActivityPage({ defaultChainId, onBack, onResumeSwap }: ActivityP
   }, [])
 
   useEffect(() => {
-    fetchActivities()
     fetchSwaps()
     fetchChains()
-  }, [fetchActivities, fetchSwaps, fetchChains])
+  }, [fetchSwaps, fetchChains])
 
-  // Listen for new activity
+  // Swap lifecycle. Activity rows (incl. the swap's own row) follow via
+  // 'activity-changed' inside useRecentActivity.
   useEffect(() => {
-    const u1 = onRpcMessage('api-log', (entry: ApiLogEntry) => {
-      if (entry.activityType) fetchActivities()
-    })
-    const u2 = onRpcMessage('swap-update', (_u: SwapStatusUpdate) => { fetchSwaps() })
-    const u3 = onRpcMessage('swap-complete', () => { fetchSwaps(); fetchActivities() })
-    // Background history scans write rows directly via DB helpers (no api-log) —
-    // refresh on the scan-complete signal so the timeline isn't stale until manual refresh.
-    const u4 = onRpcMessage('activity-scan-complete', () => { fetchActivities() })
-    return () => { u1(); u2(); u3(); u4() }
-  }, [fetchActivities, fetchSwaps])
+    const u1 = onRpcMessage('swap-update', (_u: SwapStatusUpdate) => { fetchSwaps() })
+    const u2 = onRpcMessage('swap-complete', () => { fetchSwaps() })
+    return () => { u1(); u2() }
+  }, [fetchSwaps])
 
   const nativePrices = useMemo(() => nativePriceByChain(availableChains), [availableChains])
 
@@ -244,28 +234,9 @@ export function ActivityPage({ defaultChainId, onBack, onResumeSwap }: ActivityP
 
   // Merge + filter timeline
   const filteredTimeline = useMemo<ActivityTimelineItem[]>(() => {
-    const swapTxids = new Set(pendingSwaps.map(s => s.txid))
     const activeSwaps = pendingSwaps.filter(
       s => s.status !== 'completed' && s.status !== 'failed' && s.status !== 'refunded'
     )
-
-    // Filter activities
-    let filteredActs = activities.filter(a => {
-      if (typeFilters.size > 0 && !typeFilters.has(a.type)) return false
-      if (chainFilter) {
-        const chainDef = CHAINS.find(c => c.id === chainFilter)
-        if (chainDef && !(a.chainId === chainDef.id || a.chain === chainDef.symbol || a.chain === chainDef.id)) return false
-      }
-      // Don't show activities that are also in activeSwaps (avoid double rendering)
-      if (a.type === 'swap' && a.txid && swapTxids.has(a.txid)) return false
-      if (search) {
-        const q = search.toLowerCase()
-        const hay = [a.txid, a.to, a.appName, a.asset, a.chain, a.chainId].filter(Boolean).join(' ').toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-
     // Filter swaps (only include if type filter includes 'swap' or no type filter)
     let filteredSwaps: PendingSwap[] = []
     if (typeFilters.size === 0 || typeFilters.has('swap')) {
@@ -283,6 +254,28 @@ export function ActivityPage({ defaultChainId, onBack, onResumeSwap }: ActivityP
       })
     }
 
+    // Hide a swap's deposit row only while its live swap row is actually rendered
+    // under the current filters — terminal swaps stay in pendingSwaps all
+    // session, and a filtered-out swap must not take its deposit row with it.
+    const swapTxids = new Set(filteredSwaps.map(s => s.txid))
+
+    // Filter activities
+    let filteredActs = activities.filter(a => {
+      if (typeFilters.size > 0 && !typeFilters.has(a.type)) return false
+      if (chainFilter) {
+        const chainDef = CHAINS.find(c => c.id === chainFilter)
+        if (chainDef && !(a.chainId === chainDef.id || a.chain === chainDef.symbol || a.chain === chainDef.id)) return false
+      }
+      // Don't show activities that are also rendered as a live swap row (avoid double rendering)
+      if (a.txid && swapTxids.has(a.txid)) return false
+      if (search) {
+        const q = search.toLowerCase()
+        const hay = [a.txid, a.to, a.appName, a.asset, a.chain, a.chainId].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+
     const merged: ActivityTimelineItem[] = [
       ...filteredSwaps.map(s => ({ kind: 'swap' as const, id: `swap-${s.txid}`, createdAt: s.createdAt, swap: s })),
       ...filteredActs.map(a => ({ kind: 'activity' as const, id: `act-${a.id}`, createdAt: a.createdAt, activity: a })),
@@ -296,7 +289,9 @@ export function ActivityPage({ defaultChainId, onBack, onResumeSwap }: ActivityP
   // Stats
   const stats = useMemo(() => {
     const activeSwaps = pendingSwaps.filter(s => s.status !== 'completed' && s.status !== 'failed' && s.status !== 'refunded')
-    const total = activities.length + activeSwaps.length
+    // An active swap already present as an activity row is one event, not two.
+    const activityTxids = new Set(activities.map(a => a.txid).filter(Boolean))
+    const total = activities.length + activeSwaps.filter(s => !activityTxids.has(s.txid)).length
     const sent = activities.filter(a => a.type === 'send').length
     const received = activities.filter(a => a.type === 'receive').length
     const swaps = activeSwaps.length

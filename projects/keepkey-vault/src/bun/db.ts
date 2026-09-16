@@ -1160,16 +1160,17 @@ export function insertApiLog(entry: ApiLogEntry) {
         entry.activityType || null,
       ]
     )
-    // Periodic prune (every ~100 inserts). Keep rebuilt chain-history rows;
-    // cap only generic API audit noise so a full wallet rebuild cannot be
-    // hollowed out by /docs, balance, or address polling entries.
+    // Periodic prune (every ~100 inserts). Keep rebuilt chain-history rows AND
+    // every activity row (sends, REST broadcasts, swaps, signs) — the activity
+    // list shows the wallet's full history; cap only generic API audit noise
+    // (/docs, balance, address polling).
     if (Math.random() < 0.01) {
       db.run(
         `DELETE FROM api_log
-          WHERE method <> 'SCAN'
+          WHERE method <> 'SCAN' AND activity_type IS NULL
             AND id NOT IN (
               SELECT id FROM api_log
-              WHERE method <> 'SCAN'
+              WHERE method <> 'SCAN' AND activity_type IS NULL
               ORDER BY timestamp DESC
               LIMIT ?
             )`,
@@ -1374,9 +1375,15 @@ const VALID_ACTIVITY_TYPES = new Set(['send', 'receive', 'swap', 'sign', 'messag
 // display formatting. We prefer an explicit app/api send as primary (clean human
 // amount + recipient) and overlay only the on-chain truth the primary can't know
 // (confirmations / block height / counterparty) from the scan row.
-function mergeTxRows(a: RecentActivity, b: RecentActivity): RecentActivity {
+export function mergeTxRows(a: RecentActivity, b: RecentActivity): RecentActivity {
   const primary = a.source !== 'scan' ? a : b.source !== 'scan' ? b : a
   const secondary = primary === a ? b : a
+  // A REST broadcast logs no amount (the client sends only the raw tx). Then the
+  // scan row owns amount/fee — together WITH its source, since scan values are
+  // base units — while the logged row keeps its identity, send type and app.
+  if (primary.source !== 'scan' && primary.amount == null && secondary.source === 'scan') {
+    return { ...secondary, id: primary.id, type: primary.type, appName: primary.appName, createdAt: primary.createdAt }
+  }
   return {
     ...primary,
     confirmations: primary.confirmations ?? secondary.confirmations,
@@ -1386,7 +1393,7 @@ function mergeTxRows(a: RecentActivity, b: RecentActivity): RecentActivity {
   }
 }
 
-export function getRecentActivityFromLog(limit = 50, chainFilter?: string, deviceId?: string, walletId?: string): RecentActivity[] {
+export function getRecentActivityFromLog(limit?: number, chainFilter?: string, deviceId?: string, walletId?: string): RecentActivity[] {
   try {
     if (!db) return []
 
@@ -1406,12 +1413,16 @@ export function getRecentActivityFromLog(limit = 50, chainFilter?: string, devic
       logSql += ` AND (chain = ? OR route = ? OR response_body LIKE ?)`
       logParams.push(chainFilter, `history/${chainFilter}`, `%"chainId":"${chainFilter}"%`)
     }
-    // Over-fetch: an in-app send and the Pioneer scan of the same tx are two
-    // rows that get merged below. Fetching only `limit` rows would let those
-    // duplicates shrink the deduped result below `limit` and hide older unique
-    // rows. 3x covers the worst realistic per-txid row count with headroom.
-    logSql += ` ORDER BY timestamp DESC LIMIT ?`
-    logParams.push(limit * 3)
+    // No limit = every row (the activity list shows the full history). With a
+    // limit, over-fetch: an in-app send and the Pioneer scan of the same tx are
+    // two rows merged below, so fetching only `limit` rows would let duplicates
+    // shrink the deduped result and hide older unique rows. 3x covers the worst
+    // realistic per-txid row count with headroom.
+    logSql += ` ORDER BY timestamp DESC`
+    if (limit) {
+      logSql += ` LIMIT ?`
+      logParams.push(limit * 3)
+    }
 
     const logRows = db.query(logSql).all(...logParams) as Array<{
       id: number; device_id: string | null; wallet_id: string | null; txid: string | null; chain: string | null; activity_type: string;
@@ -1465,8 +1476,11 @@ export function getRecentActivityFromLog(limit = 50, chainFilter?: string, devic
       swapParams.push(chainFilter, chainFilter, chainFilter, chainFilter)
     }
     if (swapWhere.length) swapSql += ` WHERE ${swapWhere.join(' AND ')}`
-    swapSql += ` ORDER BY created_at DESC LIMIT ?`
-    swapParams.push(limit)
+    swapSql += ` ORDER BY created_at DESC`
+    if (limit) {
+      swapSql += ` LIMIT ?`
+      swapParams.push(limit)
+    }
 
     const swapRows = db.query(swapSql).all(...swapParams) as Array<{
       id: string; device_id: string | null; wallet_id: string | null; txid: string; from_symbol: string; to_symbol: string;
@@ -1479,7 +1493,10 @@ export function getRecentActivityFromLog(limit = 50, chainFilter?: string, devic
     const swapLogTxids = new Set(rawLogActivities.filter(a => a.type === 'swap' && a.txid).map(a => a.txid))
     const swapRowTxids = new Set(swapRows.filter(r => r.txid).map(r => r.txid))
     const allSwapTxids = new Set([...swapLogTxids, ...swapRowTxids])
-    const filteredLog = rawLogActivities.filter(a => !(a.txid && a.type !== 'swap' && allSwapTxids.has(a.txid)))
+    // A swap_history row carries the live lifecycle (status, output amount), so
+    // it wins over the bare api_log 'swap' row, which is kept only when no
+    // history row exists (hidden sessions never persist one).
+    const filteredLog = rawLogActivities.filter(a => !(a.txid && allSwapTxids.has(a.txid) && (a.type !== 'swap' || swapRowTxids.has(a.txid))))
     // Dedupe by txid: an in-app send and the Pioneer scan of the same tx each
     // produce a row — merge them into one complete record instead of two.
     const byTxid = new Map<string, RecentActivity>()
@@ -1493,7 +1510,6 @@ export function getRecentActivityFromLog(limit = 50, chainFilter?: string, devic
     }
     const logActivities = [...noTxid, ...txidOrder.map(t => byTxid.get(t)!)]
     const swapActivities: RecentActivity[] = swapRows
-      .filter(r => !swapLogTxids.has(r.txid))
       .map(r => ({
         id: r.id,
         deviceId: r.device_id || undefined,
@@ -1515,9 +1531,8 @@ export function getRecentActivityFromLog(limit = 50, chainFilter?: string, devic
         createdAt: r.created_at,
       }))
 
-    return [...logActivities, ...swapActivities]
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, limit)
+    const all = [...logActivities, ...swapActivities].sort((a, b) => b.createdAt - a.createdAt)
+    return limit ? all.slice(0, limit) : all
   } catch (e: any) {
     console.warn('[db] getRecentActivityFromLog failed:', e.message)
     return []

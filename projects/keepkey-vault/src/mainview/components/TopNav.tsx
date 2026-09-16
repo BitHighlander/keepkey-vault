@@ -6,6 +6,7 @@ import { IS_WINDOWS, IS_MAC } from "../lib/platform"
 import { useWindowDrag } from "../hooks/useWindowDrag"
 import { rpcRequest } from "../lib/rpc"
 import kkIcon from "../assets/icon.png"
+import shapeshiftIcon from "../assets/apps/shapeshift.png"
 import { NAV_HEIGHT } from "../layout"
 import { WalletSelector } from "./WalletSelector"
 
@@ -210,7 +211,7 @@ export function TopNav({
 		{
 			id: "shapeshift",
 			label: t("shapeshift"),
-			icon: <Image src="https://pioneers.dev/coins/fox.png" alt="ShapeShift" w="14px" h="14px" borderRadius="3px" />,
+			icon: <Image src={shapeshiftIcon} alt="ShapeShift" w="14px" h="14px" borderRadius="3px" />,
 		},
 	]
 

@@ -26,7 +26,7 @@ const NameRegistrationPanel = lazy(() => import("./NameRegistrationPanel").then(
 
 import { SweepDialog } from "./SweepDialog"
 import { ActivityTable, TxDetailDialog, recentFirst, nativePriceByChain, type TxDetail } from "./ActivityPanel"
-import type { RecentActivity } from "../../shared/types"
+import { useRecentActivity } from "../hooks/useRecentActivity"
 import { BtcXpubSelector } from "./BtcXpubSelector"
 import { UtxoAccountSelector } from "./UtxoAccountSelector"
 import { EvmAddressSelector } from "./EvmAddressSelector"
@@ -511,26 +511,18 @@ export function AssetPage({ chain, balance, onBack, firmwareVersion, initialActi
 	// 'balance-updated' push flows back into this page via the `balance` prop —
 	// a second subscription here just doubled the forced Pioneer fetch.
 
-	// Activity preview
-	const [previewActivities, setPreviewActivities] = useState<RecentActivity[]>([])
+	// Activity preview: this chain's newest rows from the live, uncapped list, so
+	// sends (in-app or REST), receives, swaps and confirmations show up here as
+	// they happen, and a quiet chain isn't pushed out by busier chains' rows.
+	const { activities: allActivities } = useRecentActivity()
+	const previewActivities = useMemo(() => recentFirst(allActivities.filter(a =>
+		a.chainId ? a.chainId === chain.id : (a.chain === chain.symbol || a.chain === chain.id)
+	)).slice(0, 5), [allActivities, chain.id, chain.symbol])
 	const [previewPrices, setPreviewPrices] = useState<Record<string, number>>({})
 	const [activityDetail, setActivityDetail] = useState<TxDetail | null>(null)
 	const [activityScanning, setActivityScanning] = useState(false)
 
-	const loadPreviewActivity = useCallback(() => {
-		rpcRequest<RecentActivity[]>('getRecentActivity', { limit: 100 }, 10000)
-			.then(result => {
-				if (!result) return
-				const filtered = recentFirst(result.filter(a =>
-					a.chainId === chain.id || a.chain === chain.symbol || a.chain === chain.id
-				)).slice(0, 5)
-				setPreviewActivities(filtered)
-			})
-			.catch(() => {})
-	}, [chain.id, chain.symbol])
-
 	useEffect(() => {
-		loadPreviewActivity()
 		rpcRequest<{ balances: ChainBalance[] } | null>('getCachedBalances')
 			.then(r => { if (r?.balances) setPreviewPrices(nativePriceByChain(r.balances)) })
 			.catch(() => {})
@@ -539,26 +531,13 @@ export function AssetPage({ chain, balance, onBack, firmwareVersion, initialActi
 		rpcRequest<{ running: boolean } | null>('getActivityScanState')
 			.then(r => setActivityScanning(!!r?.running))
 			.catch(() => {})
-	}, [loadPreviewActivity])
+	}, [])
 
-	// The engine fires a background history scan on every device-ready and emits
-	// this when it finishes — refetch so freshly-indexed txs replace the
-	// "No indexed activity yet" placeholder without a manual navigate-away.
+	// The engine's background history scan on device-ready ends with this; the
+	// freshly indexed rows themselves arrive via 'activity-changed'.
 	useEffect(() => {
-		return onRpcMessage('activity-scan-complete', () => {
-			setActivityScanning(false)
-			loadPreviewActivity()
-		})
-	}, [loadPreviewActivity])
-
-	// In-app broadcasts (incl. shielded flows) push an api-log entry the moment
-	// they hit the chain — same pattern as ActivityTracker, so a fresh send/
-	// shield/unshield appears here without navigating away and back.
-	useEffect(() => {
-		return onRpcMessage('api-log', (entry) => {
-			if ((entry as any)?.activityType) loadPreviewActivity()
-		})
-	}, [loadPreviewActivity])
+		return onRpcMessage('activity-scan-complete', () => setActivityScanning(false))
+	}, [])
 	const isEvmChain = chain.chainFamily === 'evm'
 
 	// Toggle token visibility via RPC

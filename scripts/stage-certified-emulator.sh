@@ -15,14 +15,18 @@ MAC_ARCHIVE="$(node -p "require('$MANIFEST').source.macArchive")"
 MAC_LIBRARY_PATH="$(node -p "require('$MANIFEST').source.macLibraryPath")"
 WINDOWS_LIBRARY="$(node -p "require('$MANIFEST').source.windowsLibrary")"
 
-test -f "$INPUT_DIR/$MAC_ARCHIVE" || { echo "missing certified archive: $INPUT_DIR/$MAC_ARCHIVE" >&2; exit 1; }
 test -f "$INPUT_DIR/$WINDOWS_LIBRARY" || { echo "missing certified DLL: $INPUT_DIR/$WINDOWS_LIBRARY" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-tar --zstd -xf "$INPUT_DIR/$MAC_ARCHIVE" -C "$WORK"
-test -f "$WORK/$MAC_LIBRARY_PATH" || { echo "missing certified dylib in archive: $MAC_LIBRARY_PATH" >&2; exit 1; }
-
-cp "$WORK/$MAC_LIBRARY_PATH" "$BUNDLE_DIR/libkkemu.dylib"
+if [ -n "$MAC_ARCHIVE" ]; then
+  test -f "$INPUT_DIR/$MAC_ARCHIVE" || { echo "missing certified archive: $INPUT_DIR/$MAC_ARCHIVE" >&2; exit 1; }
+  tar --zstd -xf "$INPUT_DIR/$MAC_ARCHIVE" -C "$WORK"
+  test -f "$WORK/$MAC_LIBRARY_PATH" || { echo "missing certified dylib in archive: $MAC_LIBRARY_PATH" >&2; exit 1; }
+  cp "$WORK/$MAC_LIBRARY_PATH" "$BUNDLE_DIR/libkkemu.dylib"
+else
+  test -f "$INPUT_DIR/$MAC_LIBRARY_PATH" || { echo "missing certified dylib: $INPUT_DIR/$MAC_LIBRARY_PATH" >&2; exit 1; }
+  cp "$INPUT_DIR/$MAC_LIBRARY_PATH" "$BUNDLE_DIR/libkkemu.dylib"
+fi
 cp "$INPUT_DIR/$WINDOWS_LIBRARY" "$BUNDLE_DIR/libkkemu.dll"
 node "$ROOT/scripts/verify-certified-emulator.mjs"

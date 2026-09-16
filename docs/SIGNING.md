@@ -1,173 +1,186 @@
-# macOS Code Signing & Dual-Architecture Build Pipeline
+# macOS Release Signing SOP
 
-## Overview
+This is the production procedure for KeepKey Vault macOS releases. Signing,
+notarization, and checksum verification prove artifact identity; they do not
+prove that an application can execute. Structural and runtime verification are
+separate mandatory gates.
 
-KeepKey Vault ships signed+notarized DMGs for two macOS architectures:
+The supported deployment target is macOS 13.0 or later for both Apple Silicon
+and Intel. Changing that floor is a product decision and must not be folded into
+an emergency packaging repair.
 
-| Architecture | Build Method | Electrobun Source | Bun Version |
-|-------------|-------------|-------------------|-------------|
-| **arm64** (Apple Silicon) | Native build on `macos-14` runner | Upstream Electrobun | 1.3.5 |
-| **x86_64** (Intel) | Binary swap from published core artifact | `keepkey/keepkey-vault` release built from `blackboardsh/electrobun` | 1.3.9 |
+## Stop conditions
 
-**Signing stays local.** CI builds unsigned artifacts. A developer with Apple credentials runs `make sign-release` to sign both architectures, create DMGs, notarize, and upload.
+Do not sign or publish a macOS artifact when any of these is true:
 
-## Why a Published Electrobun x64 Core Artifact
+- the complete application bundle has not passed `audit-macos-bundle.sh`;
+- any Mach-O file lacks the advertised architecture;
+- any Mach-O file requires a newer macOS than the declared release floor;
+- the architecture's `node-hid` native prebuild is absent;
+- the Electrobun core provenance, version, or SHA-256 is unknown;
+- the packaged backend has not been launched on the target architecture;
+- a KeepKey has not connected successfully on the target architecture;
+- the source commit, submodule pins, release version, and draft tag disagree;
+- notarization, stapling, Gatekeeper assessment, or post-upload hashes fail.
+- the configured Developer ID identity is not present in the active keychains.
 
-CI builds the macOS app on Apple Silicon, then swaps in a prebuilt x64
-Electrobun core artifact before packaging the Intel update payload. The artifact
-is published on `keepkey/keepkey-vault` as `electrobun-x64-core-vN` and is built
-from upstream `blackboardsh/electrobun`.
+If an architecture fails, withhold that architecture. Never publish a known-bad
+binary merely because the other architecture is ready.
 
-When `modules/electrobun` changes, rebuild and republish the x64 core with
-`make publish-electrobun-x64-core`, then update `X64_CORE_TAG` in
-`.github/workflows/build.yml`.
+## Architecture contract
 
-## The Entitlements Requirement
+| Artifact | Required architecture | Deployment ceiling | Runtime test |
+| --- | --- | --- | --- |
+| `*-arm64.dmg` | every required Mach-O contains `arm64` | 13.0 | Apple Silicon Mac + device |
+| `*-x86_64.dmg` | every required Mach-O contains `x86_64` | 13.0 | Intel Mac + device |
 
-The Bun runtime requires JIT compilation. On macOS with hardened runtime (required for notarization), JIT is blocked unless the binary has `com.apple.security.cs.allow-jit` in its entitlements.
+Universal native libraries are acceptable when they contain the required
+slice. Thin binaries for the other architecture are not.
 
-**Critical**: `codesign` on a `.app` bundle only applies `--entitlements` to the **main executable** (`CFBundleExecutable` = launcher). The `bun` binary must be signed individually with entitlements, or it will crash with SIGTRAP on launch.
+The Intel application is currently derived from the ARM-built application.
+Consequently, the source application must retain both Darwin `node-hid`
+prebuilds until the two architecture-specific artifacts have been assembled.
+The conversion must audit the complete result, not only `launcher` and `bun`.
 
-The entitlements file (`projects/keepkey-vault/entitlements.plist`) contains:
-- `allow-jit` — JIT compilation (required for Bun)
-- `allow-unsigned-executable-memory` — dynamic code execution
-- `disable-library-validation` — load unsigned dylibs
-- `allow-dyld-environment-variables` — runtime environment control
+## 1. Prepare the release commit
 
-Do not add `com.apple.security.device.camera` here. Camera permission for QR
-scanning is handled by `NSCameraUsageDescription` in `Info.plist`; adding the
-sandbox camera entitlement to this Developer ID app makes the entitlement blob
-invalid, and macOS ignores the whole blob.
+1. Work from a clean release branch based on the intended `develop` commit.
+2. Confirm `projects/keepkey-vault/package.json` contains the intended version.
+3. Confirm all submodule gitlinks point to reviewed canonical commits.
+4. Run `make preflight`.
+5. Record the source commit and submodule SHAs in the release evidence.
+6. Do not create a public release or tag yet.
 
-## Three Signing Paths
+## 2. Prepare and pin the Intel Electrobun core
 
-### Path 1: `make build-signed` (local full build)
+The Intel core must be immutable and reproducible. Do not overwrite an existing
+`electrobun-x64-core-vN` asset. Increment the tag for every rebuild and record:
 
-For development/testing. Builds everything locally with signing.
+- Electrobun source commit;
+- Bun version and download SHA-256;
+- build-host macOS and Xcode versions;
+- deployment target;
+- SHA-256 of the resulting core archive;
+- architecture and minimum-OS report for every included Mach-O file.
 
-```
-make build-signed
-```
+Build the candidate with `make build-electrobun-x64-core`.
 
-Pipeline: `build-stable` → `audit` → `prune-bundle` → `dmg`
+Before publishing it, verify `launcher`, `bun`, `extractor`,
+`libNativeWrapper.dylib`, and `libasar.dylib`. Helper executables used by the
+packaged application must either have x86_64 builds or be removed from the
+Intel bundle. A vendored `libasar.dylib` is not trusted solely because its file
+name contains `x64`; its load commands must pass the macOS 13 ceiling.
 
-- Electrobun signs during build (`codesign: true` when CI is not set)
-- `prune-app-bundle.ts` re-signs after pruning (invalidated signatures)
-- `dmg` target creates DMG, signs, notarizes, staples
+Only after review, publish a new, never-before-used core tag and update the
+workflow to its exact tag and SHA-256. Asset replacement with `--clobber` is
+forbidden for production core inputs.
 
-### Path 2: `make sign-release` (sign CI artifacts — production)
+## 3. Build unsigned candidates
 
-The production release flow. CI builds unsigned, developer signs locally.
-
-```
-make sign-release
-```
-
-Pipeline:
-1. Downloads arm64 + x64 tar.zst from GitHub draft release
-2. For each architecture, calls `_sign-one-dmg` which:
-   - Extracts .app from tar.zst
-   - Verifies architecture with `lipo`
-   - Calls `scripts/sign-macos-app.sh` (signs all binaries with entitlements)
-   - Re-packs signed tar.zst (for auto-update)
-   - Creates DMG, signs DMG, notarizes, staples
-3. Uploads signed DMGs + tar.zst to draft release
-
-### Path 3: `make dmg` (standalone DMG from existing build)
-
-Creates a DMG from an already-signed tar.zst artifact.
-
-```
-make dmg
-```
-
-Assumes the .app is already signed (from Path 1 or 2). Only signs the DMG file itself.
-
-## CI Workflow (`.github/workflows/build.yml`)
-
-CI runs on push to `develop`, `release/*`, or `v*` tags.
-
-### arm64 Build
-- Runs on `macos-14` (Apple Silicon)
-- Builds modules, zcash-cli, Vite frontend, Electrobun app
-- Produces unsigned `stable-macos-arm64-keepkey-vault.app.tar.zst`
-
-### x64 Variant (Binary Swap)
-- Downloads pre-built x64 core from `keepkey/keepkey-vault @ electrobun-x64-core-vN`
-- Extracts arm64 .app, swaps 4 binaries: `launcher`, `bun`, `libNativeWrapper.dylib`, `libasar.dylib`
-- Removes `zcash-cli` (Zcash shielded not supported on Intel)
-- Verifies all swapped binaries are x86_64
-- Verifies `libNativeWrapper.dylib` has no resign-swizzle symbols
-- Produces unsigned `stable-macos-x64-keepkey-vault.app.tar.zst`
-
-### Draft Release
-- Creates draft GitHub release with all artifacts
-- Developer signs locally with `make sign-release`
-
-## Signing Script: `scripts/sign-macos-app.sh`
-
-Single source of truth for signing any `.app` bundle. Signs inside-out:
-
-1. Native addons (`.node`, `.dylib`, `.so`) in Resources/ — no entitlements
-2. All Mach-O binaries in `Contents/MacOS/` — **each with entitlements**
-3. The `.app` bundle itself — with entitlements
-4. Verifies with `codesign --verify --deep --strict`
-5. Spot-checks that bun has `allow-jit`
-
-The same pattern is implemented in `prune-app-bundle.ts` for the local build path.
-
-## Verification
+Push the release branch and allow CI to assemble unsigned candidates. CI must
+run this gate against each final application before packaging:
 
 ```bash
-# Check all signed artifacts have entitlements
-make verify-entitlements
-
-# Manual check on a specific binary
-codesign -d --entitlements :- path/to/keepkey-vault.app/Contents/MacOS/bun
-
-# Check Gatekeeper assessment
-spctl --assess --type execute -vvv path/to/keepkey-vault.app
+scripts/audit-macos-bundle.sh /path/to/keepkey-vault.app arm64 13.0
+scripts/audit-macos-bundle.sh /path/to/keepkey-vault.app x86_64 13.0
 ```
 
-## Troubleshooting
+The audit recursively checks Mach-O architecture and minimum OS versions, plus
+the architecture-specific node-hid prebuild. A failed audit is a release
+failure, not a warning.
 
-### App crashes with SIGTRAP on launch
-**Cause**: bun binary missing `allow-jit` entitlement.
-**Fix**: Re-sign with `make sign-release` or `scripts/sign-macos-app.sh`.
-**Verify**: `codesign -d --entitlements :- .../Contents/MacOS/bun | grep allow-jit`
+The required `intel-smoke` job runs on GitHub's native `macos-15-intel`
+runner. It imports the packaged node-hid module using the packaged Bun runtime
+and launches the packaged application. This catches architecture, dyld, native
+module, and immediate-startup failures. It does not replace the physical
+KeepKey connection test because hosted runners have no device attached.
 
-### "Can't be opened" Gatekeeper dialog
-**Cause**: Quarantine flag or missing notarization.
-**Fix**: Right-click → Open, or: `xattr -cr /path/to/app.dmg`
+## 4. Sign locally
 
-### x64 app has stale or swizzled runtime binaries
-**Cause**: `libNativeWrapper.dylib` has resign-swizzle symbols.
-**Verify**: `nm .../libNativeWrapper.dylib | grep resignKeyWindow` (should find nothing)
-**Fix**: Rebuild and publish the x64 core artifact: `make publish-electrobun-x64-core`
-
-## Building the x64 Electrobun Core
-
-If you need to update the pre-built x64 binaries:
-
-```bash
-# Cross-compile from ARM64 Mac
-make build-electrobun-x64-core
-
-# Publish to fork
-make publish-electrobun-x64-core
-```
-
-Prerequisites: `cd modules/electrobun/package && bun install && bun build.ts` (vendors CEF, Zig, etc.)
-
-## Environment Variables
-
-Set in `.env` (never committed):
+Signing credentials live in `.env` and must never be committed:
 
 | Variable | Purpose |
-|----------|---------|
+| --- | --- |
 | `ELECTROBUN_DEVELOPER_ID` | Developer ID certificate name |
 | `ELECTROBUN_TEAMID` | Apple Team ID |
-| `ELECTROBUN_APPLEID` | Apple ID for notarization |
-| `ELECTROBUN_APPLEIDPASS` | App-specific password for notarization |
+| `ELECTROBUN_APPLEID` | notarization Apple ID |
+| `ELECTROBUN_APPLEIDPASS` | app-specific password |
 
-Check with: `make sign-check`
+Run `make sign-check`, then use:
+
+- Intel CI artifact: `make sign-release-intel`
+- locally built Apple Silicon artifact: `make build-signed`
+
+`_sign-one-dmg` performs the structural audit before signing and again after
+signing. `scripts/sign-macos-app.sh` signs native code inside-out and gives the
+Bun runtime the JIT entitlements it requires. Never invoke `codesign --deep` as
+a substitute for the signing script.
+
+The entitlement set is in `projects/keepkey-vault/entitlements.plist`. Bun must
+retain `com.apple.security.cs.allow-jit`. Camera authorization comes from
+`NSCameraUsageDescription`; do not add the sandbox camera entitlement.
+
+## 5. Verify the signed artifacts
+
+For each architecture:
+
+1. Mount the final DMG on a matching physical Mac.
+2. Copy Vault to `/Applications` and launch that exact copy.
+3. Confirm the backend reaches ready state with no native-module error.
+4. Connect a real KeepKey and confirm enumeration plus a non-signing public-key
+   or address operation.
+5. Quit and relaunch once with the device already attached.
+6. Verify signatures, notarization, stapling, and Gatekeeper:
+
+   ```bash
+   codesign --verify --deep --strict --verbose=2 /Applications/keepkey-vault.app
+   spctl --assess --type execute --verbose=4 /Applications/keepkey-vault.app
+   codesign --verify --verbose=2 KeepKey-Vault-<version>-<arch>.dmg
+   xcrun stapler validate KeepKey-Vault-<version>-<arch>.dmg
+   spctl --assess --type open --context context:primary-signature --verbose=4 KeepKey-Vault-<version>-<arch>.dmg
+   make verify-entitlements
+   ```
+
+For Intel, capture the backend log and confirm there is no
+`No native build was found for platform=darwin arch=x64`. Runtime validation on
+Apple Silicon under Rosetta is supplementary and does not replace an Intel Mac.
+
+Record the tester, hardware model, macOS version, device firmware, artifact
+SHA-256, and result. Signing and testing must refer to the same hash.
+
+## 6. Publish safely
+
+1. Keep the GitHub release as a draft until both desired architectures pass.
+   CI must fail rather than upload to an existing public release with the same
+   tag; a draft release cannot be used to repair or silently replace public
+   assets.
+2. Upload signed artifacts without making the release public.
+3. Download every uploaded artifact again and compare SHA-256 with the tested
+   local files.
+4. Confirm filenames and update manifests identify the correct architecture.
+5. Confirm release notes state the tested OS floor and architectures.
+6. Have a second operator review the evidence and approve publication.
+7. Publish the release, then test the public download once more.
+
+Release notes may claim only checks that were actually performed. Use distinct
+language for “signed/notarized,” “structurally audited,” and “runtime tested.”
+
+## 7. Required release evidence
+
+Store or attach:
+
+- release source commit and submodule SHAs;
+- CI run URL and conclusion;
+- Intel-core provenance and SHA-256;
+- recursive bundle-audit output for both architectures;
+- codesign, notarization, stapler, and Gatekeeper results;
+- physical-machine runtime test records;
+- local, uploaded, and re-downloaded SHA-256 values;
+- final release approver and publication time.
+
+## Incident rule
+
+If a published architecture is discovered to be non-runnable, immediately mark
+or remove that asset, post a user-facing advisory, preserve the failing artifact
+for analysis, and require a new versioned artifact. Do not silently replace a
+public binary under the same filename or release input tag.

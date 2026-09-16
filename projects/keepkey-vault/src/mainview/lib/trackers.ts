@@ -12,6 +12,10 @@
 // CoW / Across still return null (with a one-time console warn) until their
 // equivalent IDs are plumbed through.
 
+import thorIcon from "../assets/providers/thorchain.png"
+import mayaIcon from "../assets/providers/mayachain.png"
+import nearIcon from "../assets/providers/near.svg"
+
 export type ProviderTracker = {
   url: string
   label: string
@@ -29,9 +33,10 @@ export type ProviderTrackerOpts = {
 }
 
 const ICON = {
-  thor: 'https://pioneers.dev/coins/thorchain.png',
-  maya: 'https://pioneers.dev/coins/mayachain.png',
-  near: 'https://pioneers.dev/coins/near.png',
+  // Vendored locally — pioneers.dev, the previous host, 503s.
+  thor: thorIcon,
+  maya: mayaIcon,
+  near: nearIcon,
   // Inline orange "R" badge — keeps the tracker button branded without
   // depending on Relay's CDN (which is bot-protected and 429s for this client).
   relay:

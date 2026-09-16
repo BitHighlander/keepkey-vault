@@ -6,6 +6,8 @@
 	"keepkeyDescription": "管理您的 KeepKey 硬件钱包",
 	"shapeshiftName": "ShapeShift",
 	"shapeshiftDescription": "跨链交易、追踪和管理您的加密资产",
+	"swapsproName": "SwapsPro",
+	"swapsproDescription": "以最优汇率进行跨链兑换",
 	"supportName": "支持",
 	"supportDescription": "获取 KeepKey 团队的帮助和解答",
 	"docsName": "文档",

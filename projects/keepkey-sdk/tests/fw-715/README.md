@@ -71,3 +71,8 @@ firmware hash at all.
 have dedicated suites (`tests/zcash/`, `tests/hive/`, `tests/evm-clearsign/`).
 Duplicating them here would recreate the problem this directory exists to
 solve. Run those directly when the feature is what changed.
+
+For clear-sign screen QA, follow
+[`tests/evm-clearsign/README.md`](../evm-clearsign/README.md). The 7.16
+KeepKey-certified path is distinct from 7.15's Advanced Mode session-loaded
+signer path; the latter cannot display a KeepKey-certified identity screen.

@@ -617,7 +617,7 @@ function AssetSelector({ label, selected, onOpenPicker, disabled }: AssetSelecto
     // Symbol squatter: an unverified token wearing a major chain's ticker/name
     // (e.g. an ERC-20 that calls itself "SOLANA"). Strip its server icon so it
     // can't wear the native logo, and warn — see shared/symbolSquatter.
-    const squatter = isSymbolSquatter(selected.caip, selected.symbol)
+    const squatter = isSymbolSquatter(selected.caip, selected.symbol, selected.name)
     return (
       <Box>
         <Flex justify="space-between" align="center" mb="3">
@@ -1175,8 +1175,15 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
     if (liveStatus === 'completed') return 3
     if (liveStatus === 'output_detected' || liveStatus === 'output_confirming' || liveStatus === 'output_confirmed') return 2
     if (liveStatus === 'confirming') return 1
+    // Once the inbound tx has ANY confirmation it is mined and the protocol
+    // owns the deposit — counting confs is no longer the story to tell. Pioneer
+    // can sit on 'pending' well past that point, which stranded the stepper on
+    // "Input Transaction · 4 confirmations". Confirmations arrive independently
+    // of Pioneer's status, so derive the promotion locally.
+    // Excludes failed/refunded: a mined-but-reverted tx must never read as progress.
+    if (liveConfirmations > 0 && liveStatus !== 'failed' && liveStatus !== 'refunded') return 1
     return 0 // pending
-  }, [liveStatus])
+  }, [liveStatus, liveConfirmations])
 
   // ── Load cached balances ──────────────────────────────────────────
   // Cache-first; when the cache is null/empty (hidden wallets always — the
@@ -1789,13 +1796,16 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
     setInputMode(prev => prev === 'crypto' ? 'fiat' : 'crypto')
   }, [])
 
-  // USD preview of the entered amount
+  // USD preview of the amount actually being sent. Uses `sendAmount`, not
+  // `amount`, so it still resolves under MAX — where the figure is the
+  // fee-reserved max rather than anything typed. Suppressing it under MAX left
+  // the user with a bare native number and no idea what it was worth.
   const amountUsdPreview = useMemo(() => {
-    if (!hasFromPrice || isMax) return null
-    const n = parseFloat(amount)
+    if (!hasFromPrice) return null
+    const n = parseFloat(sendAmount)
     if (isNaN(n) || n <= 0) return null
     return n * fromPriceUsd
-  }, [amount, hasFromPrice, fromPriceUsd, isMax])
+  }, [sendAmount, hasFromPrice, fromPriceUsd])
 
   const amountNum = parseFloat(amount)
   const balanceNum = fromBalance ? parseFloat(fromBalance) : 0
@@ -4504,8 +4514,19 @@ export function SwapDialog({ open, onClose, chain, balance, address, resumeSwap,
                             _focus={{ borderColor: exceedsBalance ? "kk.error" : "kk.gold", boxShadow: exceedsBalance ? "none" : "0 0 0 1px rgba(233,196,106,0.3)" }}
                           />
                         </Box>
-                        {!isMax && hasFromPrice && (
-                          inputMode === 'crypto' && amountUsdPreview !== null ? (
+                        {hasFromPrice && (
+                          // Under MAX the input is pinned to the native figure,
+                          // so the counterpart is always the USD value — show it
+                          // rather than dropping the row and hiding the worth.
+                          isMax ? (
+                            amountUsdPreview !== null ? (
+                              <Box px="1">
+                                <Text fontSize="xs" color="kk.textSecondary" fontFamily="mono" whiteSpace="nowrap">
+                                  ≈ {fmtCompact(amountUsdPreview)}
+                                </Text>
+                              </Box>
+                            ) : null
+                          ) : inputMode === 'crypto' && amountUsdPreview !== null ? (
                             <Box as="button" onClick={toggleInputMode} cursor="pointer"
                               title={t("switchToFiat") || "Switch to fiat input"}
                               px="1"

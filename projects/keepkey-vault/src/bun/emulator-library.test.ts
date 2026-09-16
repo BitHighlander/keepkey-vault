@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { bundledEmulatorCandidates, emulatorLibFilename, resolveEmulatorLibPath } from './emulator-library'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { bundledEmulatorCandidates, emulatorBuildFlashName, emulatorBuildPath, emulatorLibFilename, listEmulatorBuilds, resolveEmulatorLibPath, selectEmulatorBuild } from './emulator-library'
 
 describe('emulator release library resolution', () => {
   test('uses the correct platform filenames', () => {
@@ -29,5 +32,24 @@ describe('emulator release library resolution', () => {
       platform: 'win32',
       exists: path => path === override || path.endsWith('/emulator/libkkemu.dll'),
     })).toBe(override)
+  })
+
+  test('selects installed builds by content ID and refuses a missing selected build', () => {
+    const home = mkdtempSync(join(tmpdir(), 'kk-emu-builds-'))
+    const first = 'a'.repeat(64)
+    const second = 'b'.repeat(64)
+    try {
+      const firstPath = emulatorBuildPath(first, 'darwin', home)
+      const secondPath = emulatorBuildPath(second, 'darwin', home)
+      mkdirSync(join(home, '.keepkey', 'emulator', 'builds'), { recursive: true })
+      writeFileSync(firstPath, 'first')
+      writeFileSync(secondPath, 'second')
+      selectEmulatorBuild(second, home)
+      expect(emulatorBuildFlashName(second)).toBe(`build-${'b'.repeat(16)}`)
+      expect(listEmulatorBuilds('darwin', home).map(b => [b.id, b.selected])).toEqual([[first, false], [second, true]])
+      expect(resolveEmulatorLibPath({ importDir: '/unused', home, platform: 'darwin' })).toBe(secondPath)
+      rmSync(secondPath)
+      expect(resolveEmulatorLibPath({ importDir: '/unused', home, platform: 'darwin' })).toBeNull()
+    } finally { rmSync(home, { recursive: true, force: true }) }
   })
 })

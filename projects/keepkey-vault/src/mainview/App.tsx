@@ -111,6 +111,38 @@ function App() {
 	const [pendingAppUrl, setPendingAppUrl] = useState<string | null>(null)
 	const [pendingWcOpen, setPendingWcOpen] = useState(false)
 	const [enablingApi, setEnablingApi] = useState(false)
+	const [startingEmulator, setStartingEmulator] = useState(false)
+	const [emulatorStartError, setEmulatorStartError] = useState<string | null>(null)
+
+	// Escape hatch for hardware onboarding: development must never strand an
+	// operator in Welcome/Intro when they intend to use an emulator instead.
+	const startEmulatorFromSetup = useCallback(async () => {
+		if (startingEmulator) return
+		setStartingEmulator(true)
+		setEmulatorStartError(null)
+		try {
+			if (!emulatorEnabled) {
+				const settings = await rpcRequest<AppSettings>('setEmulatorEnabled', { enabled: true }, 10000)
+				setEmulatorEnabled(settings.emulatorEnabled)
+			}
+			try { await rpcRequest('emulatorPair', undefined, 10000) } catch { /* already paired */ }
+			const wallets = await rpcRequest<Array<{ name: string; isActive?: boolean }>>('emulatorListWallets', undefined, 10000).catch(() => [])
+			if (wallets.length > 0) {
+				const wallet = wallets.find(w => w.isActive) || wallets[0]
+				await rpcRequest('emulatorSwitchWallet', { name: wallet.name }, 30000)
+			} else {
+				// Omit flashName so a selected content-addressed build receives its
+				// own isolated build-<hash> flash from the backend.
+				await rpcRequest('emulatorInit', undefined, 30000)
+			}
+			oobEnteredRef.current = false
+			setSetupInProgress(false)
+		} catch (error: any) {
+			setEmulatorStartError(error?.message || 'Emulator failed to start')
+		} finally {
+			setStartingEmulator(false)
+		}
+	}, [emulatorEnabled, startingEmulator])
 
 	// ── WalletConnect sidebar ────────────────────────────────────
 	const [wcPanelOpen, setWcPanelOpen] = useState(false)
@@ -992,6 +1024,21 @@ function App() {
 		return (
 			<>{splashNav}{resizeHandles}{updateBanner}{firmwareDropZone}{signingOverlay}{pairingOverlay}{passphraseOverlay}{charOverlay}{pinOverlay}
 				<OobSetupWizard onComplete={() => { setWizardComplete(true); setSetupInProgress(false) }} onSkipFirmware={() => { setFirmwareSkipped(true); setWizardComplete(true); setSetupInProgress(false) }} onSetupInProgress={setSetupInProgress} onWordCountChange={setRecoveryWordCount} />
+				<Box position="fixed" right="24px" bottom="24px" zIndex={1900} textAlign="right">
+					{emulatorStartError && <Text mb="2" maxW="340px" fontSize="12px" color="kk.error">{emulatorStartError}</Text>}
+					<Button
+						onClick={startEmulatorFromSetup}
+						disabled={startingEmulator}
+						bg="rgba(168,85,247,0.16)"
+						border="1px solid rgba(168,85,247,0.55)"
+						color="white"
+						borderRadius="full"
+						px="5"
+						_hover={{ bg: "rgba(168,85,247,0.28)" }}
+					>
+						{startingEmulator ? "Starting Emulator…" : "Use Emulator"}
+					</Button>
+				</Box>
 			</>
 		)
 	}

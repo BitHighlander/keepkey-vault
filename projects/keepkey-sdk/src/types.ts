@@ -263,11 +263,13 @@ export interface SolanaInstructionSchema {
 
 // ── Tron Types ─────────────────────────────────────────────────────
 export interface TronSignTxParams {
-  addressNList: number[]
-  from: string
-  to: string
-  amount: number  // amount in sun (1 TRX = 1,000,000 sun)
-  memo?: string
+  addressNList?: number[]
+  /** Serialized protocol.Transaction.raw_data protobuf, hex-encoded. */
+  raw_tx: string
+  /** Optional display hints. Vault and device decode the signed raw_tx
+   * independently; these fields cannot override its amount or recipient. */
+  to_address?: string
+  amount?: string
 }
 
 // ── TON Types ──────────────────────────────────────────────────────
