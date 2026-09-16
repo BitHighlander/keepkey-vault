@@ -38,7 +38,7 @@ const pid = Number(execFileSync('lsof', ['-tiTCP:1646', '-sTCP:LISTEN'], {encodi
 const ax = join(import.meta.dir, 'ax-ui.swift')
 const ocr = join(import.meta.dir, 'ocr-oled.swift')
 const axCall = (title:string, button:string, action:string) => execFileSync('swift', [ax, String(pid), title, button, action], {encoding:'utf8'})
-const vault = () => axCall('KeepKey Vault v1.5.4', '*', 'dumptext')
+const vault = () => axCall('KeepKey Vault v1.5.5', '*', 'dumptext')
 const press = (title:string, button:string) => axCall(title, button, 'press')
 const sleep = (ms:number) => new Promise(r => setTimeout(r,ms))
 const normalized = (s:string) => s.replace(/[^a-z0-9]/gi,'').toLowerCase()
@@ -81,7 +81,7 @@ try {
   const expected = [btc(targetInputSats),targetVaultAddress,btc(feeSats),parts[1],targetDestination,targetMinimum,targetFee]
   if(expected.some(x=>!vaultText.toLowerCase().includes(x.toLowerCase())))throw Error('Vault omitted expected BTC or memo term')
   writeFileSync(join(dir,'vault.txt'),vaultText)
-  press('KeepKey Vault v1.5.4','Approve')
+  press('KeepKey Vault v1.5.5','Approve')
   const seen = new Set<string>()
   for(let i=0;i<6;i++) {
     const page=await capture(i);pages.push(page)
@@ -111,7 +111,7 @@ try {
 } catch(cause) {
   error=String(cause)
   try{press('KeepKey Emulator','Reject')}catch{}
-  try{press('KeepKey Vault v1.5.4','Reject')}catch{}
+  try{press('KeepKey Vault v1.5.5','Reject')}catch{}
 }
 code=await Promise.race([done,sleep(10000).then(()=>-1)])
 if(code===-1)child.kill('SIGTERM')
