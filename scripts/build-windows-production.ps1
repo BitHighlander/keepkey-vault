@@ -469,8 +469,10 @@ if (-not $SkipBuild) {
     New-Item -ItemType Directory -Force -Path $DpNestedLib | Out-Null
     Copy-Item -Path (Join-Path $DpTopLib "*") -Destination $DpNestedLib -Recurse -Force
     Write-Host "  Seeded hdwallet @keepkey/device-protocol/lib from top-level device-protocol (pinned commit)"
-    yarn build
-    if ($LASTEXITCODE -ne 0) { throw "yarn build failed for hdwallet (exit $LASTEXITCODE)" }
+    # Force project references to rebuild: a restored .tsbuildinfo can claim
+    # outputs are current even when the gitignored lib/ directories are absent.
+    yarn tsc --build --force
+    if ($LASTEXITCODE -ne 0) { throw "TypeScript build failed for hdwallet (exit $LASTEXITCODE)" }
     Pop-Location
 
     Write-Step "Installing keepkey-vault dependencies"

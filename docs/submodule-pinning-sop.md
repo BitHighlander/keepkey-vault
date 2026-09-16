@@ -238,7 +238,7 @@ After release is published:
 
 | Module | Pinned To | Branch | Status |
 |--------|-----------|--------|--------|
-| hdwallet | `b4beb59d` | `codex/certified-metadata-qa` | Vault 1.5.5 release pin |
+| hdwallet | `e36639e3` | `codex/certified-metadata-qa` | Vault 1.5.5 release pin |
 | proto-tx-builder | `f12f8c39` | `main` | Current vault pin |
 | device-protocol | `bee6cdd6` | `master` | Vault 1.5.5 published v7.18.0 pin; generated `lib/` still must be present on the build machine |
 | electrobun | `1bffabcf` | `keepkey/launcher-env-lifetime` | Vault 1.5.5 release pin |
