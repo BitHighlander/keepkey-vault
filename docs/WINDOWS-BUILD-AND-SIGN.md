@@ -314,6 +314,8 @@ Before tagging and uploading:
 - [ ] Verify the single-file installer signature via `signtool verify /pa /v`
 - [ ] **Smart App Control:** download and run the installer EXE on a machine with **SAC ON (Enforce)** — installs with **no** CodeIntegrity 3077/3033. This is mandatory and non-negotiable; SAC-off machines are NOT a valid test.
 - [ ] Smoke-test the installer on a clean Windows VM
+- [ ] **No-window recovery:** exercise a controlled startup failure where the native wrapper runs but no Vault window appears. After 30 seconds, confirm a native “KeepKey Vault could not open” message appears, the splash closes, and the clipboard contains only the version, platform, `no application window` failure, launcher state, and exit code. Paste it into a text editor and confirm the message directs the tester to `keepkey.com/support`. It must not contain a username, filesystem path, environment variable, wallet/device identifier, address, xpub, transaction data, credential, or log contents.
+- [ ] **No-window privacy:** repeat the recovery test with networking disabled. The same support message and clipboard report must work; confirm the wrapper makes no telemetry request and sends no report automatically.
 - [ ] **Non-AVX (if hardware available):** app launches past the splash on a no-AVX CPU (Gemini Lake N5030/N4020) instead of `0xC000001D`
 - [ ] Compare `SHA256SUMS-windows.txt` against the installer EXE hash
 - [ ] Upload the signed single installer EXE and `SHA256SUMS-windows.txt` to the GitHub release
