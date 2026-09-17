@@ -42,7 +42,7 @@ export async function resolveRuntimeEvmMetadata(tx: any): Promise<RuntimeEvmMeta
     throw new Error(`7.15 ClearSign provider unavailable (${signerResponse.status}/${signResponse.status})`)
   }
   const publicKeyHex = String(signer?.publicKeyHex || '').replace(/^0x/i, '').toLowerCase()
-  const fingerprint = createHash('sha256').update(Buffer.from(publicKeyHex, 'hex')).digest('hex').slice(0, 8)
+  const fingerprint = createHash('sha256').update(Uint8Array.from(Buffer.from(publicKeyHex, 'hex'))).digest('hex').slice(0, 8)
   if (!/^0[23][0-9a-f]{64}$/.test(publicKeyHex) || fingerprint !== String(signer?.fingerprint || '').toLowerCase()) {
     throw new Error('7.15 ClearSign provider signer identity is malformed')
   }

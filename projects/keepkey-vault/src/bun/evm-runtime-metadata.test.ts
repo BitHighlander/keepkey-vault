@@ -14,14 +14,14 @@ afterEach(() => {
 describe('7.15 runtime EVM metadata', () => {
   test('is disabled unless a provider is explicitly configured', async () => {
     delete process.env.CLEARSIGN_RUNTIME_URL
-    globalThis.fetch = (async () => { throw new Error('must not fetch') }) as typeof fetch
+    globalThis.fetch = (async () => { throw new Error('must not fetch') }) as unknown as typeof fetch
     expect(await resolveRuntimeEvmMetadata({ chainId: 1 })).toBeUndefined()
   })
 
   test('sends every signed transaction field and validates signer identity', async () => {
     process.env.CLEARSIGN_RUNTIME_URL = 'http://127.0.0.1:1647/'
     const publicKeyHex = `02${'11'.repeat(32)}`
-    const fingerprint = createHash('sha256').update(Buffer.from(publicKeyHex, 'hex')).digest('hex').slice(0, 8)
+    const fingerprint = createHash('sha256').update(Uint8Array.from(Buffer.from(publicKeyHex, 'hex'))).digest('hex').slice(0, 8)
     let posted: any
     globalThis.fetch = (async (input, init) => {
       const url = String(input)
