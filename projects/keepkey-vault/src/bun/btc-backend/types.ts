@@ -40,6 +40,27 @@ export interface BtcAddressIndices {
   warning?: string
 }
 
+export interface BtcHistoryTx {
+  txid: string
+  timestamp?: number
+  confirmations?: number
+  blockHeight?: number
+  /** Net wallet movement in satoshis, expressed as a positive display amount. */
+  value?: string
+  fee?: string
+  direction: 'sent' | 'received'
+  from?: string[]
+  to?: string[]
+}
+
+export interface BtcAccountInfo {
+  balance: string
+  totalReceived: string
+  totalSent: string
+  txs: number
+  tokens: Array<{ name: string; path?: string; transfers?: number }>
+}
+
 export interface BtcBackend {
   readonly kind: BtcBackendKind
   /** history=false → e.g. a pruned Core node via scantxoutset (balance+UTXO only). */
@@ -51,6 +72,11 @@ export interface BtcBackend {
   feeRate(network: string): Promise<BtcFeeRates>
   broadcast(q: { network: string; rawTxHex: string }): Promise<{ txid: string }>
   rawTxHex(q: { network: string; txid: string }): Promise<string | undefined>
+
+  /** Full account history when the backend indexes addresses (e.g. Blockbook).
+   * Bitcoin Core's UTXO-set scan deliberately cannot implement this. */
+  transactionHistory?(q: { network: string; xpub: string; scriptType?: string }): Promise<BtcHistoryTx[]>
+  accountInfo?(q: { network: string; xpub: string; scriptType?: string }): Promise<BtcAccountInfo>
 
   /** Next-unused receive/change indexes require address history, not just the
    * current UTXO set. Core's scantxoutset backend deliberately omits this. */

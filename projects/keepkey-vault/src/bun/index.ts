@@ -221,6 +221,7 @@ import { supportsZcashPrivacyBuild } from "./zcash-capability"
 import type { ChainDef } from "../shared/chains"
 import { BtcAccountManager } from "./btc-accounts"
 import { unwrapUtxoDiscoveryKey, utxoDiscoveryKey } from "./btc-backend/types"
+import { marketPriceUsd } from "../shared/market-price"
 import { EvmAddressManager, evmAddressPath } from "./evm-addresses"
 import { shouldResetManagersOnReady, nextReadyDeviceId } from "../shared/device-switch"
 import { isManagerSeedStale } from "../shared/seed-reconcile"
@@ -4172,8 +4173,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 						let btcPriceUsd = 0
 						try {
 							const mi: any = await withTimeout(pioneer.GetMarketInfo([btcChain.caip]), PIONEER_TIMEOUT_MS, 'GetMarketInfo(BTC)')
-							const md = Array.isArray(mi?.data) ? mi.data[0] : (Array.isArray(mi) ? mi[0] : mi?.data ?? mi)
-							btcPriceUsd = Number(md?.priceUsd ?? md?.price ?? 0) || 0
+							btcPriceUsd = marketPriceUsd(mi)
 						} catch (e: any) { console.warn('[getBalances] BTC price fetch failed (USD may show 0):', e?.message) }
 						for (const e of btcPubkeyEntries) {
 							const queryPubkey = utxoDiscoveryKey(e.pubkey, e.scriptType)
@@ -4926,8 +4926,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 						try {
 							const marketPioneer = await getPioneer()
 							const market: any = await withTimeout(marketPioneer.GetMarketInfo([chain.caip]), PIONEER_TIMEOUT_MS, 'GetMarketInfo(BTC)')
-							const row = Array.isArray(market?.data) ? market.data[0] : (Array.isArray(market) ? market[0] : market?.data ?? market)
-							priceUsd = Number(row?.priceUsd ?? row?.price ?? 0) || 0
+							priceUsd = marketPriceUsd(market)
 						} catch (error: any) {
 							console.warn('[getBalance] BTC price fetch failed (USD may show 0):', error?.message)
 						}
@@ -6953,10 +6952,6 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				requireOnline('report generation')
 				const deviceId = engine.getDeviceState().deviceId
 				if (!deviceId) throw new Error('No device connected')
-				const reportBackend = getBtcBackend()
-				if (reportBackend.kind !== 'pioneer') {
-					throw new Error(`Detailed BTC reports are unavailable with the ${reportBackend.kind} backend because Vault cannot silently use Pioneer for address history.`)
-				}
 
 				// PRIVACY: Reports read from DB cache, which is intentionally empty
 				// for passphrase wallets. Generating a report would either fail or
@@ -9091,8 +9086,10 @@ engine.on('state-change', (state) => {
 		}
 	}
 	if (state.state === 'ready') startPioneerSocketIfAllowed()
-	const btcOnlySelfHost = isBitcoinOnlyVariant(state.firmwareVariant) && getBtcBackend().kind !== 'pioneer'
-	if (state.state === 'ready' && !engine.isPassphraseWallet && !offlineMode && !btcOnlySelfHost) {
+	const btcBackendForHistory = getBtcBackend()
+	const btcOnlyHistoryUnavailable = isBitcoinOnlyVariant(state.firmwareVariant)
+		&& btcBackendForHistory.kind !== 'pioneer' && !btcBackendForHistory.capabilities.history
+	if (state.state === 'ready' && !engine.isPassphraseWallet && !offlineMode && !btcOnlyHistoryUnavailable) {
 		// Fire-and-forget background history scan on every ready transition (startup + reconnect).
 		// 3s delay lets wallet address derivation settle before hitting Pioneer.
 		activityScanRunning = true
