@@ -248,7 +248,7 @@ import { evmSourceForChain } from "./pioneer-evm"
 import { deviceErrorMessage } from "../shared/device-error"
 import type { ChainBalance, TokenBalance, CustomToken, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, EvmAddressSet, Bip85SeedMeta, StakingPosition, SwapAsset, AuditToken, DefiPosition, RecentActivity, ClearSignEvent, ClearSignSolanaSchemaArtifact } from "../shared/types"
 import type { VaultRPCSchema } from "../shared/rpc-schema"
-import { collectAndAnalyze, MAX_CHUNK_BYTES } from "./rng-audit"
+import { collectAndAnalyzeWithGate, MAX_CHUNK_BYTES } from "./rng-audit"
 
 // L3 fix: withTimeout imported from engine-controller (was duplicated here)
 const PIONEER_TIMEOUT_MS = 60_000
@@ -2748,12 +2748,13 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					throw new Error(`rngAuditRun: bytes must be an integer in [${MAX_CHUNK_BYTES}, 8388608]`)
 				}
 				const wallet = engine.wallet as any
-				return await collectAndAnalyze(
+				return await collectAndAnalyzeWithGate(
 					(size) => wallet.getEntropy(size),
 					bytes,
 					(collected, total) => {
 						try { rpc.send['rng-audit-progress']({ collected, total }) } catch {}
 					},
+					engine.isEmulator ? (run) => emuConfirmOp(run) : undefined,
 				)
 			},
 			clearsignGetStudioStatus: async () => ({

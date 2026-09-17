@@ -34,12 +34,16 @@ OutputBaseFilename=KeepKey-Vault-{#MyAppVersion}-win-x64-setup
 SetupIconFile={#MySourceDir}\Resources\app-real.ico
 Compression=lzma2
 SolidCompression=yes
-; Smart App Control / WDAC: a normal (UseSetupLdr=yes) single-exe installer extracts
-; an UNSIGNED setup.tmp engine to %TEMP% and runs it; SAC blocks unsigned code, so the
-; installer dies with "failed to initialize" (Code Integrity 3077/3033). UseSetupLdr=no
-; makes the signed setup.exe the engine itself (no tmp extraction) so SAC only evaluates
-; the EV-signed exe. Trade-off: output is setup.exe + setup-*.bin, shipped as a .zip.
-UseSetupLdr=no
+; Produce a true one-file x64 installer. Signing must happen *inside* ISCC, not
+; only after compilation: Inno then signs Setup, its extracted temporary engine,
+; and the generated uninstaller. This is required by Smart App Control / WDAC.
+UseSetupLdr=x64
+#ifdef EnableSigning
+SignTool=keepkey
+SignedUninstaller=yes
+#else
+SignedUninstaller=no
+#endif
 WizardStyle=modern
 WizardImageFile={#MyScriptDir}\installer-wizard.bmp
 WizardSmallImageFile={#MyScriptDir}\installer-small.bmp
@@ -129,4 +133,3 @@ begin
       Result := False;
     end;
 end;
-
