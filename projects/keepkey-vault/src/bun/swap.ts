@@ -1111,6 +1111,7 @@ export async function executeSwap(params: ExecuteSwapParams, ctx: SwapContext): 
       Number(unsignedTx?.chainId),
       ctx.isAdvancedModeEnabled?.(),
       unsignedTx?.txMetadata,
+      unsignedTx?.erc7730,
     )
   ) {
     swapLog(`${TAG} EVM blind-sign gate: to=${unsignedTx.to} selector=${String(unsignedTx.data).slice(0, 10)} — AdvancedMode is off`)
@@ -1764,6 +1765,11 @@ async function buildRelaySwapTx(
     to: relay.to,
     value: toHex(effectiveRelayValue),
     data: relay.data,
+  }
+
+  if (relay.erc7730) {
+    unsignedTx.erc7730 = relay.erc7730
+    console.info(`${TAG} signed ERC-7730 catalog attached (${relay.erc7730.definitions.length} definitions)`)
   }
 
   // Older firmware uses the ordinary signing/Advanced Mode path, without a

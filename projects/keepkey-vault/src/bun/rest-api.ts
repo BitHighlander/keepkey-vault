@@ -2444,6 +2444,14 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             msg.gasPrice = body.gasPrice || body.gas_price || '0x0'
           }
 
+          // ERC-7730 definitions are reusable signed catalog entries. The
+          // device preloads the primary envelope, then requests bounded chunks
+          // from this catalog while decoding this exact transaction.
+          if (body.erc7730) {
+            msg.erc7730 = body.erc7730
+            console.log(`[REST] ERC-7730 catalog attached (${body.erc7730.definitions.length} definitions)`)
+          }
+
           // ── EVM Clear-Signing: attach signed metadata blob for device OLED ──
           // Priority: 1) caller provides txMetadata in request body (test fixtures)
           //           2) Pioneer signedInsightBlob from calldata decoder
