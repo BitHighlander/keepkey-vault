@@ -152,7 +152,93 @@ describe('assessSigningRisk — rules', () => {
     expect(r.level).toBe('high')
   })
 
-  test('non-Solana requests get no bar yet', () => {
-    expect(assessSigningRisk({ method: '/eth/sign-transaction' } as SigningRequestInfo)).toBeNull()
+  test('chains without rules get no bar yet', () => {
+    expect(assessSigningRisk({ method: '/cosmos/sign-amino' } as SigningRequestInfo)).toBeNull()
+  })
+})
+
+describe('assessSigningRisk — EVM', () => {
+  const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+  const SPENDER = '000000000000000000000000' + '1111111254eeb25477b68fb85ed929f73a960582'
+  const word = (n: bigint) => n.toString(16).padStart(64, '0')
+  const tx = (data: string, extra: Partial<SigningRequestInfo> = {}) =>
+    assessSigningRisk({ method: '/eth/sign-transaction', to: USDC, chainId: 1, value: '0', data, ...extra } as SigningRequestInfo)!
+
+  test('unlimited approve is CRITICAL and says ALL, full spender address', () => {
+    const r = tx('0x095ea7b3' + SPENDER + word((1n << 256n) - 1n))
+    expect(r.level).toBe('critical')
+    expect(r.reasons[0].text).toBe('Lets 0x1111111254eeb25477b68fb85ed929f73a960582 spend ALL of your USDC, now and later, without asking you again.')
+  })
+
+  test('finite approve is still CRITICAL with the amount', () => {
+    const r = tx('0x095ea7b3' + SPENDER + word(1_000_000_000n))
+    expect(r.level).toBe('critical')
+    expect(r.reasons[0].text).toContain('up to 1,000 USDC of your USDC')
+  })
+
+  test('revoke on a known token is LOW', () => {
+    expect(tx('0x095ea7b3' + SPENDER + word(0n)).level).toBe('low')
+  })
+
+  test('approve with a dirty address word is HIGH blind, not a clean fallback', () => {
+    const r = tx('0x095ea7b3' + 'ff' + SPENDER.slice(2) + word(1n), { deviceClearSigns: true })
+    expect(r.level).toBe('high')
+    expect(r.reasons[0].text).toContain('signing blind')
+  })
+
+  test('opaque contract call is HIGH blind', () => {
+    const r = tx('0x12345678' + word(1n), { to: '0x000000000000000000000000000000000000dead' })
+    expect(r.level).toBe('high')
+  })
+
+  test('malformed calldata is HIGH, never "calls no contract"', () => {
+    expect(tx('0xnothex').level).toBe('high')
+  })
+
+  test('plain ETH send is LOW with the amount', () => {
+    const r = tx('0x', { value: '500000000000000000' })
+    expect(r.level).toBe('low')
+    expect(r.reasons[0].text).toContain('0.5 ETH')
+  })
+
+  test('Permit2 signature is CRITICAL plus blind-hash HIGH', () => {
+    const r = assessSigningRisk({
+      method: '/eth/sign-typed-data',
+      typedDataDecoded: {
+        operationName: 'Permit2', primaryType: 'PermitSingle', isKnownType: true,
+        domain: { verifyingContract: '0x000000000022D473030F116dDEE9F6B43aC78BA3' },
+        fields: [
+          { label: 'Amount', value: 'max', format: 'amount', raw: ((1n << 160n) - 1n).toString() },
+          { label: 'Spender', value: '0xabc', format: 'address', raw: '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad' },
+        ],
+      },
+    } as SigningRequestInfo)!
+    expect(r.level).toBe('critical')
+    expect(r.reasons[0].text).toContain('spend ALL of your tokens')
+    expect(r.reasons.some((x) => x.level === 'high' && x.text.includes('hash'))).toBe(true)
+  })
+
+  test('32-byte hash via personal_sign is HIGH', () => {
+    const r = assessSigningRisk({ method: '/eth/sign', data: '0x' + 'ab'.repeat(32) } as SigningRequestInfo)!
+    expect(r.level).toBe('high')
+  })
+})
+
+describe('Solana plain-text rule (mirrors firmware solana_rawMessageIsPlainText)', () => {
+  const { isPlainTextForSigner } = require('../src/bun/solana-message-preview')
+  const SIGNER = 'Gu83nVMD8qh948D1vqe8UPoUHaFuSwcHrvNHetcM4Xux'
+  const login = Buffer.from(LOGIN_MESSAGE_B64, 'base64')
+
+  test('the real SoltoshiDICE login is plain text for its signer', () => {
+    expect(isPlainTextForSigner(login, SIGNER)).toBe(true)
+  })
+  test('unknown signer, tab, or embedded key fails closed', () => {
+    expect(isPlainTextForSigner(login, undefined)).toBe(false)
+    expect(isPlainTextForSigner(Buffer.from('a\tb'), SIGNER)).toBe(false)
+  })
+  test('printable text containing the signer key keeps the gate', () => {
+    const printableSigner = require('bs58').default.encode(Buffer.alloc(32, 'K'))
+    expect(isPlainTextForSigner(Buffer.from('head ' + 'K'.repeat(32) + ' tail'), printableSigner)).toBe(false)
+    expect(isPlainTextForSigner(Buffer.from('head ' + 'K'.repeat(31) + ' tail'), printableSigner)).toBe(true)
   })
 })

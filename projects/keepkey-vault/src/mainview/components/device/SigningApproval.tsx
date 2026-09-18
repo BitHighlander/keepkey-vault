@@ -875,8 +875,9 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 	const isSimpleTransfer =
 		!hasCalldata && !request.typedDataDecoded && !request.ethMessageDecoded && !request.solanaMessageDecoded && !isSolanaRequest
 	const blindSigningConsentRequired = !!request.requiresBlindSigningConsent
+	const solanaPlainText = isSolanaSignMessage && request.solanaMessageDecoded?.plainText === true
 	const advancedModeRequired =
-		isSolanaSignMessage
+		(isSolanaSignMessage && !solanaPlainText)
 		|| !!request.requiresAdvancedMode
 		|| (fwSupportsBlindSignGate && !!request.needsBlindSigning && !blindSigningConsentRequired)
 	const advancedModeBlocked = advancedModeRequired && !advancedModeEnabled
@@ -1185,7 +1186,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 					/>
 				)}
 
-				{isSolanaSignMessage && (
+				{isSolanaSignMessage && !solanaPlainText && (
 					<SolanaUnsafeMessageBanner classification={request.solanaMessageDecoded?.classification} t={t} />
 				)}
 

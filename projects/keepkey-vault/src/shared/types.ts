@@ -598,6 +598,10 @@ export interface SolanaMessageDecodedInfo {
   classification: 'text-message' | 'binary-message' | 'solana-transaction' | 'solana-transaction-message'
   /** Diagnostic from the transaction/message shape check, shown only when useful. */
   sanityCheck?: string
+  /** Mirrors firmware solana_rawMessageIsPlainText: every byte printable ASCII
+   *  or '\n', and the signer's 32-byte key appears nowhere in it. Firmware with
+   *  that rule signs these without AdvancedMode. False when the signer is unknown. */
+  plainText?: boolean
 }
 
 // ── Calldata clear-signing types ─────────────────────────────────────────
@@ -658,6 +662,9 @@ export interface SigningRequestInfo {
   solanaDecodeError?: string
   /** true when tx has calldata that cannot be fully decoded — device will show blind-signing warning */
   needsBlindSigning?: boolean
+  /** firmwareClearSigns(to, data, chainId): the device's own allowlist decodes
+   *  this call. Unlike needsBlindSigning, a caller-supplied blob never sets it. */
+  deviceClearSigns?: boolean
   /** true when the UI must enable AdvancedMode before allowing approval */
   requiresAdvancedMode?: boolean
   /** true when this request needs a separate, explicit one-shot opaque-signing
