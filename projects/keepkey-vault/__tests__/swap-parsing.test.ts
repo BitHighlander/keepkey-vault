@@ -718,6 +718,42 @@ describe('parseQuoteResponse', () => {
     expect(result.relayTx!.isDepositChannel).toBeUndefined()
     expect(result.relayTx!.data).toBe('0x12345678000000000000000000000000000000000000000000')
   })
+
+  test('carries a provider-signed ERC-7730 catalog into the real Relay swap transaction', () => {
+    const id = `0x${'11'.repeat(32)}`
+    const resp = { data: [{
+      integration: 'shapeshift',
+      quote: {
+        swapper: 'Relay', buyAmount: '0.01',
+        txs: [{ txParams: {
+          data: '0x12aa3caf00', to: '0x111111125421ca6dc452d289314280a0f8842a65', value: '0', chainId: 1,
+          erc7730: { primaryDefinitionId: id, definitions: [{
+            definitionId: id, envelope: '0x4b3737330201', kind: 1, chainId: 1,
+            contractAddress: '0x111111125421ca6dc452d289314280a0f8842a65', selectorOrTypeHash: '0x12aa3caf',
+          }] },
+        } }],
+      },
+    }] }
+    const result = parseQuoteResponse(resp, {
+      fromCaip: 'eip155:1/slip44:60',
+      toCaip: 'eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      slippageBps: 100,
+    })
+    expect(result.relayTx?.erc7730?.primaryDefinitionId).toBe(id)
+    expect(result.relayTx?.erc7730?.definitions[0]?.selectorOrTypeHash).toBe('0x12aa3caf')
+  })
+
+  test('rejects malformed provider ERC-7730 metadata instead of silently downgrading', () => {
+    const resp = { data: [{ integration: 'shapeshift', quote: {
+      swapper: 'Relay', buyAmount: '0.01', txs: [{ txParams: {
+        data: '0x12aa3caf00', to: '0x111111125421ca6dc452d289314280a0f8842a65', value: '0', chainId: 1,
+        erc7730: { primaryDefinitionId: '0xdead', definitions: [] },
+      } }],
+    } }] }
+    expect(() => parseQuoteResponse(resp, {
+      fromCaip: 'eip155:1/slip44:60', toCaip: 'eip155:1/slip44:60', slippageBps: 100,
+    })).toThrow(/Invalid ERC-7730 catalog/)
+  })
 })
 
 // ── Assets parsing tests ────────────────────────────────────────────

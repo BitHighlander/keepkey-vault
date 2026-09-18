@@ -74,6 +74,18 @@ export const EthSignTransactionRequest = z.object({
     signedPayload: z.string(),
     keyId: z.number().int().optional(),
   }).optional(),
+  erc7730: z.object({
+    primaryDefinitionId: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/),
+    definitions: z.array(z.object({
+      definitionId: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/),
+      // Firmware accepts at most 16 KiB of program plus bounded proof/certificate framing.
+      envelope: z.string().regex(/^(0x)?(?:[0-9a-fA-F]{2})+$/).max(35_000),
+      kind: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+      chainId: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      contractAddress: z.string().regex(/^(0x)?[0-9a-fA-F]{40}$/).optional(),
+      selectorOrTypeHash: z.string().regex(/^(0x)?(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{64})$/).optional(),
+    }).strict()).min(1).max(32),
+  }).strict().optional(),
 }).strip().refine(
   d => d.from || d.addressNList || d.address_n_list,
   { message: 'Missing from address or addressNList' },

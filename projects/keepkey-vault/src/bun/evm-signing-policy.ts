@@ -15,9 +15,14 @@ export function evmCallRequiresAdvancedMode(
   chainId: number | undefined,
   advancedMode: boolean | undefined,
   metadata?: unknown,
+  erc7730?: unknown,
 ): boolean {
   return typeof data === 'string' && data.length > 2 &&
     !firmwareClearSigns(to, data, chainId) &&
     !isCertifiedEvmMetadata(metadata) &&
+    // The device verifies every signed catalog envelope and refuses signing on
+    // any authentication/identity failure, so a catalog can enter that strict
+    // path without host AdvancedMode. It cannot silently become blind signing.
+    !(erc7730 && typeof erc7730 === 'object') &&
     advancedMode === false
 }

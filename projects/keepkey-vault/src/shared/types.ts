@@ -1132,6 +1132,18 @@ export interface RelayTxParams {
     signature: string           // base64 compact secp256k1 signature (64 bytes)
     signerKeyId: number         // trusted ClearSign key slot (0..3)
   }
+  /** Reusable signed ERC-7730 v2 definitions supplied by the quote/catalog service. */
+  erc7730?: {
+    primaryDefinitionId: string
+    definitions: Array<{
+      definitionId: string
+      envelope: string
+      kind: 1 | 2 | 3 | 4
+      chainId: number
+      contractAddress?: string
+      selectorOrTypeHash?: string
+    }>
+  }
 }
 
 /** Quote response from Pioneer (aggregated across DEXes) */

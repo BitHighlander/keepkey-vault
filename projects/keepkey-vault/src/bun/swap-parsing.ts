@@ -86,6 +86,47 @@ function parseSolanaSwapMetadata(...candidates: unknown[]): RelayTxParams['solan
   return { payload, signature, signerKeyId }
 }
 
+function parseErc7730Catalog(...candidates: unknown[]): RelayTxParams['erc7730'] {
+  const candidate = candidates.find(value => value != null)
+  if (candidate == null) return undefined
+  if (typeof candidate !== 'object') throw new Error('Invalid ERC-7730 catalog: expected an object')
+  const value = candidate as Record<string, any>
+  const hex = (input: unknown, bytes: number, field: string): string => {
+    if (typeof input !== 'string' || !new RegExp(`^(0x)?[0-9a-fA-F]{${bytes * 2}}$`).test(input)) {
+      throw new Error(`Invalid ERC-7730 catalog: ${field} must be ${bytes} bytes of hex`)
+    }
+    return input
+  }
+  if (!Array.isArray(value.definitions) || value.definitions.length < 1 || value.definitions.length > 32) {
+    throw new Error('Invalid ERC-7730 catalog: definitions must contain 1..32 entries')
+  }
+  const definitions = value.definitions.map((raw: any, index: number) => {
+    if (!raw || typeof raw !== 'object') throw new Error(`Invalid ERC-7730 catalog: definition ${index}`)
+    const kind = Number(raw.kind)
+    const chainId = Number(raw.chainId ?? raw.chain_id)
+    if (![1, 2, 3, 4].includes(kind) || !Number.isSafeInteger(chainId) || chainId < 0) {
+      throw new Error(`Invalid ERC-7730 catalog: definition ${index} identity`)
+    }
+    const envelope = raw.envelope
+    if (typeof envelope !== 'string' || !/^(0x)?(?:[0-9a-fA-F]{2})+$/.test(envelope) || envelope.length > 35_000) {
+      throw new Error(`Invalid ERC-7730 catalog: definition ${index} envelope`)
+    }
+    return {
+      definitionId: hex(raw.definitionId ?? raw.definition_id, 32, `definition ${index} id`),
+      envelope,
+      kind: kind as 1 | 2 | 3 | 4,
+      chainId,
+      contractAddress: raw.contractAddress || raw.contract_address
+        ? hex(raw.contractAddress ?? raw.contract_address, 20, `definition ${index} contract`) : undefined,
+      selectorOrTypeHash: raw.selectorOrTypeHash || raw.selector_or_type_hash
+        ? hex(raw.selectorOrTypeHash ?? raw.selector_or_type_hash,
+          String(raw.selectorOrTypeHash ?? raw.selector_or_type_hash).replace(/^0x/, '').length === 8 ? 4 : 32,
+          `definition ${index} selector`) : undefined,
+    }
+  })
+  return { primaryDefinitionId: hex(value.primaryDefinitionId ?? value.primary_definition_id, 32, 'primary id'), definitions }
+}
+
 // ── Asset mapping helpers ───────────────────────────────────────────
 
 /** True for assets that swap via a THORChain/Maya MsgDeposit (no inbound vault
@@ -321,6 +362,13 @@ function parseSingleQuote(
       maxPriorityFeePerGas: txParams.maxPriorityFeePerGas ? String(txParams.maxPriorityFeePerGas) : undefined,
       chainId: txParams.chainId,
       isDepositChannel: isDepositChannel || undefined,
+      erc7730: parseErc7730Catalog(
+        txParams.erc7730,
+        txParams.erc7730Catalog,
+        txParams.erc7730_catalog,
+        quote.erc7730,
+        quote.meta?.erc7730,
+      ),
     }
     console.log(`${TAG} ${integration} (${swapper}) — prebuilt tx extracted (to=${relayTx.to}, depositChannel=${isDepositChannel})`)
   }
