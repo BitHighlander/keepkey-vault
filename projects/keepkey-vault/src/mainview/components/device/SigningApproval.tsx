@@ -851,12 +851,17 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 		// clear-signs. A contract our decoder recognizes (source 'local') but the
 		// firmware blind-signs (e.g. Uniswap) must still read 'unknown' — the badge
 		// can't claim "known" for a tx the device shows as raw hex.
-		if (hasSignedBlob) trustLevel = 'verified'
+		// A caller-supplied blob is unverified on this computer; only the device
+		// checks it, so it earns "known" at most, never a green "verified".
+		if (hasSignedBlob) trustLevel = 'known'
 		else if (request.needsBlindSigning) trustLevel = 'unknown'
 		else if (decoded?.source === 'pioneer' || decoded?.source === 'local') trustLevel = 'known'
 	}
 	if (request.typedDataDecoded) {
-		trustLevel = request.typedDataDecoded.isKnownType ? 'verified' : 'known'
+		// Only x402 is streamed for on-device review; every other typed-data
+		// request is signed as a bare hash (EthereumSignTypedHash) — blind.
+		trustLevel = request.typedDataDecoded.operationName !== 'x402 EIP-3009 Payment' ? 'unknown'
+			: request.typedDataDecoded.isKnownType ? 'verified' : 'known'
 	}
 
 	// Solana is never a "simple transfer". Transactions need a clear-sign

@@ -1716,6 +1716,12 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               signingInfo.chainId = preview.typedData?.domain?.chainId ? Number(preview.typedData.domain.chainId) : undefined
               if (preview.typedData) {
                 signingInfo.typedDataDecoded = decodeEIP712(preview.typedData)
+                // hdwallet signs everything but x402 via EthereumSignTypedHash,
+                // which the device refuses unless AdvancedMode is on.
+                if (signingInfo.typedDataDecoded.operationName !== 'x402 EIP-3009 Payment') {
+                  signingInfo.needsBlindSigning = true
+                  signingInfo.requiresAdvancedMode = true
+                }
               }
             } else if (path === '/eth/sign') {
               // EIP-191 personal_sign: body is { address, addressNList, message }.
