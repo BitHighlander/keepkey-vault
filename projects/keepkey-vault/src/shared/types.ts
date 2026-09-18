@@ -723,6 +723,15 @@ export interface SolanaTxDecodedInfo {
   altResolutionIncomplete?: boolean
   /** True when at least one instruction is from an unknown program. */
   hasUnknownProgram?: boolean
+  /** Names of programs present in the account list that can move native SOL
+   *  or tokens (System, SPL Token, Token-2022). A CPI target must appear in
+   *  the account list, so an unknown program can only move the signer's funds
+   *  when one of these is here. Empty = provably cannot. */
+  assetPrograms?: string[]
+  /** Addresses this tx sends SOL to (known System transfer) whose 32-byte key
+   *  also appears inside an unknown program's instruction data — the shape of
+   *  "fund a session key and register it". */
+  fundedKeysGivenToUnknownProgram?: string[]
 }
 
 export interface ApiLogEntry {
