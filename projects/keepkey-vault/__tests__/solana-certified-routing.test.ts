@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import bs58 from 'bs58'
 
-import { routeExternalSolanaTransaction } from '../src/bun/solana-certified-registry'
+import { certifiedSolanaProofApplies, routeExternalSolanaTransaction, type CertifiedSolanaProof } from '../src/bun/solana-certified-registry'
 import { CERTIFIED_SOLANA_CATALOG, serializeSolanaSchema } from '../src/bun/solana-certified-schema'
 import { buildSolanaDecodedInfo } from '../src/bun/solana-clearsign'
 import { editSolanaTx } from '../scripts/fixtures/solana-message'
 import { syntheticPumpBuy } from '../scripts/fixtures/solana-pump'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
+import relayAltFixture from './fixtures/solana/relay-deposit-native-alt.json'
+import relayFixture from './fixtures/solana/relay-deposit-native-no-alt.json'
 
 const originalFetch = globalThis.fetch
 const originalServiceUrl = process.env.CLEARSIGN_SERVICE_URL
@@ -164,5 +167,58 @@ describe('routeExternalSolanaTransaction (REST pre-approval auto-lookup)', () =>
     expect(await routeExternalSolanaTransaction(nativeOnly, { raw_tx: joinRawTx }, '7.16.0'))
       .toEqual({ requiresBlindSigningConsent: false })
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('swap.ts: a Relay certified proof is attached only when the device will apply it', () => {
+  const relayPayload = serializeSolanaSchema(CERTIFIED_SOLANA_CATALOG.relayDepositNative).toString('hex')
+  const proof = (lutKeys?: number, payload = relayPayload): CertifiedSolanaProof => ({
+    ...(lutKeys === undefined ? {} : {
+      lutProof: {
+        accounts: Array.from({ length: lutKeys }, (_, i) => Buffer.alloc(32, 0x60 + i).toString('base64')),
+        signature: '44'.repeat(64),
+        signerKeyId: 0x80,
+      },
+    }),
+    schema: { payload, signature: '22'.repeat(64), signerKeyId: 0x80 },
+    certificate: '33'.repeat(139),
+  })
+
+  test('real Relay deposits apply with the exact envelope', () => {
+    expect(certifiedSolanaProofApplies(relayFixture.rawTxBase64, 'relayDepositNative', proof())).toBe(true)
+    // Three LUT indices (writable [2], readonly [1, 14]): three proof keys.
+    expect(certifiedSolanaProofApplies(relayAltFixture.rawTxBase64, 'relayDepositNative', proof(3))).toBe(true)
+  })
+
+  test('an envelope the device would refuse falls back to the consent path', () => {
+    // A companion the certified review does not allow (an unknown program).
+    const withUnknownCompanion = editSolanaTx(relayFixture.rawTxBase64, (m) => {
+      m.staticAccounts.push(Buffer.alloc(32, 0x77))
+      m.header[2]++
+      m.instructions.push({ programIdIndex: m.staticAccounts.length - 1, accountIndices: [], data: Buffer.from([1]) })
+    })
+    expect(certifiedSolanaProofApplies(withUnknownCompanion, 'relayDepositNative', proof())).toBe(false)
+    // LUT proof shape: missing, short, surplus, or on a self-contained message.
+    for (const lutKeys of [undefined, 2, 4]) {
+      expect(certifiedSolanaProofApplies(relayAltFixture.rawTxBase64, 'relayDepositNative', proof(lutKeys))).toBe(false)
+    }
+    expect(certifiedSolanaProofApplies(relayFixture.rawTxBase64, 'relayDepositNative', proof(1))).toBe(false)
+    // Not the reviewed schema for the requested catalog entry, or not a catalog entry.
+    const tokenPayload = serializeSolanaSchema(CERTIFIED_SOLANA_CATALOG.relayDepositToken).toString('hex')
+    expect(certifiedSolanaProofApplies(relayFixture.rawTxBase64, 'relayDepositNative', proof(undefined, tokenPayload))).toBe(false)
+    expect(certifiedSolanaProofApplies(relayFixture.rawTxBase64, 'relayDepositToken', proof(undefined, tokenPayload))).toBe(false)
+    expect(certifiedSolanaProofApplies(relayFixture.rawTxBase64, 'noSuchEntry', proof())).toBe(false)
+    expect(certifiedSolanaProofApplies('not a transaction', 'relayDepositNative', proof())).toBe(false)
+  })
+
+  test('swap.ts drops a fetched proof the device would not apply before attaching it', () => {
+    const swap = readFileSync(new URL('../src/bun/swap.ts', import.meta.url), 'utf8')
+    const fetched = swap.indexOf('certifiedProof = await findCertifiedSolanaProof(params.relayTx.serializedTx, catalogKey)')
+    const guard = swap.indexOf('if (certifiedProof && !certifiedSolanaProofApplies(params.relayTx.serializedTx, catalogKey, certifiedProof)) {')
+    const attached = swap.indexOf('schema: certifiedProof.schema, certificate: certifiedProof.certificate')
+    expect(fetched).toBeGreaterThan(-1)
+    expect(guard).toBeGreaterThan(fetched)
+    expect(swap.slice(guard, guard + 400)).toContain('certifiedProof = undefined')
+    expect(attached).toBeGreaterThan(guard)
   })
 })

@@ -194,6 +194,26 @@ export async function findCertifiedSolanaProof(
 }
 
 /**
+ * Whether the device will apply a certified envelope to this transaction:
+ * its schema is the reviewed payload of `catalogKey`, and the firmware's
+ * certified rule holds with the envelope's LUT proof. Otherwise the device
+ * refuses the whole request ("Certified Solana schema does not match
+ * transaction") with no fallback, while the opaque path could still sign.
+ */
+export function certifiedSolanaProofApplies(rawTxBase64: string, catalogKey: string, proof: CertifiedSolanaProof): boolean {
+  const spec = CERTIFIED_SOLANA_CATALOG[catalogKey]
+  if (!spec || proof.schema.payload.toLowerCase() !== serializeSolanaSchema(spec).toString('hex')) return false
+  let message: ParsedSolanaMessage
+  try {
+    const fullTx = Uint8Array.from(Buffer.from(rawTxBase64, 'base64'))
+    message = parseSolanaMessage(solanaMessageSlice(fullTx, parseSolanaTx(fullTx)))
+  } catch {
+    return false
+  }
+  return certifiedSolanaSchemaApplies(message, spec, proof.lutProof?.accounts.length ?? 0) !== undefined
+}
+
+/**
  * External REST callers (dapps) almost never send certified material. Before
  * the approval window opens, look for a reviewed catalog entry this exact
  * transaction certifies under. Only for firmware that verifies certified
@@ -241,11 +261,7 @@ export async function prepareExternalSolanaProof(
     console.warn(`[REST] certified Solana ClearSign lookup unavailable: ${error?.message || error}`)
     return undefined
   }
-  if (
-    !proof || !hasCompleteCertifiedSolanaEnvelope(proof) ||
-    proof.schema.payload.toLowerCase() !== serializeSolanaSchema(match.spec).toString('hex') ||
-    certifiedSolanaSchemaApplies(message, match.spec, proof.lutProof?.accounts.length ?? 0) !== match.instructionIndex
-  ) {
+  if (!proof || !hasCompleteCertifiedSolanaEnvelope(proof) || !certifiedSolanaProofApplies(body.raw_tx, match.catalogKey, proof)) {
     return undefined
   }
   return proof
