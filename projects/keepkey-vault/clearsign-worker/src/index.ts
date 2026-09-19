@@ -18,11 +18,11 @@ import {
 } from '../../src/bun/evm-certified-schema'
 import { signCertifiedSolanaLutAttestation } from '../../src/bun/solana-certified-lut'
 import {
-  ARG_TOKEN_AMOUNT,
   CERTIFIED_SOLANA_CATALOG,
   signCertifiedSolanaSchema,
   solanaSchemaCoverage,
 } from '../../src/bun/solana-certified-schema'
+import { certifiedSolanaSchemaApplies, solanaInstructionMatchesSchema } from '../../src/bun/solana-certified-match'
 import { resolveCanonicalLutAccounts } from '../../src/bun/solana-lut-resolver'
 import { createResilientSolanaAltFetcher, solanaRpcHealth, SolanaRpcUnavailableError } from './solana-rpc'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
@@ -316,16 +316,9 @@ export default {
       // Every (entry, instruction) pair that matches. Firmware refuses a schema
       // that matches two instructions, so exactly one pair may certify.
       const matches = candidates.flatMap(([key, spec]) => message.instructions.filter((instruction) => {
-        const programBytes = Buffer.from(bs58.decode(spec.programId))
-        const expectedLength = solanaSchemaCoverage(spec)
-        const programKey = message.staticAccounts[instruction.programIdIndex]
-        if (!programKey || !Buffer.from(programKey).equals(programBytes)) return false
-        if ((spec.accounts || []).some((account) => account.index >= instruction.accountIndices.length)) return false
-        if ((spec.args || []).some((arg) => arg.type === ARG_TOKEN_AMOUNT && arg.mintAccount! >= instruction.accountIndices.length)) return false
-        const data = Buffer.from(instruction.data)
-        if (data.length !== expectedLength || !data.subarray(0, spec.discriminator.length).equals(spec.discriminator)) return false
+        if (!solanaInstructionMatchesSchema(message, instruction, spec)) return false
         if (key === 'pumpAmmBuy') {
-          if (instruction.accountIndices.length < 23 || data[24] > 1) return false
+          if (instruction.accountIndices.length < 23 || instruction.data[24] > 1) return false
           // Pin the official IDL's fixed program accounts and required user
           // signer; an arbitrary program label cannot certify another CPI.
           const fixedAccounts: Record<number, string> = {
@@ -346,6 +339,14 @@ export default {
         return json({ classification: 'OPAQUE', error: 'transaction does not uniquely match a reviewed Solana catalog entry' }, 422)
       }
       const [catalogKey, spec, instruction] = matches[0]
+      // Without a catalog key this is a dapp's own transaction. The device
+      // refuses a certified envelope its certified rule does not apply to,
+      // with no blind-sign fallback, while the caller's opaque path could
+      // still sign it. So certify it only when that rule holds.
+      if (requestedKey === undefined &&
+          certifiedSolanaSchemaApplies(message, spec) !== message.instructions.indexOf(instruction)) {
+        return json({ classification: 'OPAQUE', error: 'firmware would not apply the reviewed schema to this transaction (instruction count or companion instructions)' }, 422)
+      }
 
       const state = provisioning(env)
       if (!state.solanaReady || !env.CLEARSIGN_SOLANA_CERTIFICATE_HEX || !env.CLEARSIGN_DELEGATE_PRIVATE_KEY) {

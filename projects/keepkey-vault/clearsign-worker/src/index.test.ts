@@ -3,30 +3,14 @@ import bs58 from 'bs58'
 
 import worker from './index'
 import { syntheticPumpBuy } from '../../scripts/fixtures/solana-pump'
-import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
+import { editSolanaTx } from '../../scripts/fixtures/solana-message'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 
 type Ix = { programIdIndex: number; accountIndices: number[]; data: Buffer }
 
 /** Re-serialize the real legacy SoltoshiDICE join, optionally edited. */
-function soltoshidiceJoin(mutate?: (instructions: Ix[]) => void): string {
-  const full = Buffer.from(joinFixture.rawTxBase64, 'base64')
-  const m = parseSolanaMessage(solanaMessageSlice(full, parseSolanaTx(full)))
-  const instructions: Ix[] = m.instructions.map((ix) => ({
-    programIdIndex: ix.programIdIndex, accountIndices: [...ix.accountIndices], data: Buffer.from(ix.data),
-  }))
-  mutate?.(instructions)
-  const message = Buffer.concat([
-    Buffer.from([m.header.numRequiredSignatures, m.header.numReadonlySignedAccounts, m.header.numReadonlyUnsignedAccounts, m.staticAccounts.length]),
-    ...m.staticAccounts.map((account) => Buffer.from(account)),
-    Buffer.from(m.recentBlockhash),
-    Buffer.from([instructions.length]),
-    ...instructions.map((ix) => Buffer.concat([
-      Buffer.from([ix.programIdIndex, ix.accountIndices.length, ...ix.accountIndices, ix.data.length]), ix.data,
-    ])),
-  ])
-  return Buffer.concat([Buffer.from([1]), Buffer.alloc(64), message]).toString('base64')
-}
+const soltoshidiceJoin = (mutate?: (instructions: Ix[]) => void): string =>
+  editSolanaTx(joinFixture.rawTxBase64, (m) => mutate?.(m.instructions))
 
 const fetchWorker = (path: string, init?: RequestInit, env: Record<string, string> = {}) =>
   worker.fetch(new Request(`https://clearsign.example${path}`, init), env)
@@ -138,16 +122,24 @@ describe('ClearSign Worker public surface', () => {
     expect((await response.json() as any).classification).toBe('UNAVAILABLE')
   })
 
-  it('discovers Pump buy from raw transaction bytes without a client catalog key', async () => {
-    const response = await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx })
-    // Reached provisioning, rather than falsely classifying a reviewed buy as unknown.
+  it('without a catalog key, certifies a Pump buy only when firmware will apply the schema', async () => {
+    // 9 instructions, with ATA create, SyncNative and closeAccount beside the
+    // buy: the device would refuse a certified envelope, so it stays opaque.
+    const refused = await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx })
+    expect(refused.status).toBe(422)
+    expect((await refused.json() as any).classification).toBe('OPAQUE')
+    // The same buy beside ComputeBudget only is still discovered from its bytes.
+    const bare = editSolanaTx(syntheticPumpBuy().rawTx, (m) => { m.instructions = [m.instructions[0], m.instructions[7]] })
+    const response = await post('/v1/solana/certify', { rawTx: bare })
     expect(response.status).toBe(503)
     expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+    // An explicit catalog key keeps its existing behavior.
+    expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx, catalogKey: 'pumpAmmBuy' })).status).toBe(503)
   })
 
   it('rejects Pump layout, bool, fixed-program, and explicit catalog mismatches', async () => {
     for (const options of [{ invalidBoolean: true }, { wrongFeeProgram: true }, { extraData: true }]) {
-      expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy(undefined, options).rawTx })).status).toBe(422)
+      expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy(undefined, options).rawTx, catalogKey: 'pumpAmmBuy' })).status).toBe(422)
     }
     expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx, catalogKey: 'relayDepositNative' })).status).toBe(422)
   })
@@ -175,6 +167,18 @@ describe('ClearSign Worker public surface', () => {
       expect((await response.json() as any).classification).toBe('OPAQUE')
     }
     expect((await post('/v1/solana/certify', { rawTx: joinFixture.rawTxBase64, catalogKey: 'pumpAmmBuy' })).status).toBe(422)
+  })
+
+  it('without a catalog key, refuses a SoltoshiDICE join with an ATA-create companion', async () => {
+    const withAtaCreate = editSolanaTx(joinFixture.rawTxBase64, (m) => {
+      m.staticAccounts.push(Buffer.from(bs58.decode('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')))
+      m.header[2]++
+      m.instructions.splice(2, 0, { programIdIndex: m.staticAccounts.length - 1, accountIndices: [0, 6, 0, 8, 7, 12], data: Buffer.from([1]) })
+    })
+    const response = await post('/v1/solana/certify', { rawTx: withAtaCreate })
+    expect(response.status).toBe(422)
+    expect((await response.json() as any).classification).toBe('OPAQUE')
+    expect((await post('/v1/solana/certify', { rawTx: withAtaCreate, catalogKey: 'soltoshidiceBlackjackJoin' })).status).toBe(503)
   })
 
   it('refuses malformed, wrong-program, wrong-length, and unknown Solana requests', async () => {
