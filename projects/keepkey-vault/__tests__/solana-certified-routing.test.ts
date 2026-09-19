@@ -113,6 +113,36 @@ describe('routeExternalSolanaTransaction (REST pre-approval auto-lookup)', () =>
       const route = await routeExternalSolanaTransaction(await decoded(joinRawTx), { raw_tx: joinRawTx }, '7.16.0')
       expect(route).toEqual({ requiresBlindSigningConsent: true })
     }
+
+    // The join with one lookup-table index. The device needs exactly one
+    // proof key per serialized LUT index: no proof, or a surplus key, is a
+    // hard certified failure (solana_certifiedLutShapeMatches, and the
+    // trusted vs serialized LUT count check in solana_parseVersionedTx).
+    const joinWithLut = editSolanaTx(joinRawTx, (m) => {
+      m.version = 'v0'
+      m.altEntries = [{ accountKey: Buffer.alloc(32, 0x42), writableIndices: [3], readonlyIndices: [] }]
+    })
+    const lutProof = (keys: number) => ({
+      accounts: Array.from({ length: keys }, (_, i) => Buffer.alloc(32, 0x60 + i).toString('base64')),
+      signature: '44'.repeat(64),
+      signerKeyId: 0x80,
+    })
+    const lutCases: Array<[string, () => Promise<Response>]> = [
+      // A message with lookup tables but an envelope without a LUT proof.
+      ['missing lutProof', async () => certifiedJoinResponse()],
+      // One key more than the message's LUT indices.
+      ['2 keys for 1 index', async () => certifiedJoinResponse((body) => { body.lutProof = lutProof(2) })],
+    ]
+    for (const [, respond] of lutCases) {
+      globalThis.fetch = respond as unknown as typeof fetch
+      const route = await routeExternalSolanaTransaction(await decoded(joinWithLut), { raw_tx: joinWithLut }, '7.16.0')
+      expect(route).toEqual({ requiresBlindSigningConsent: true })
+    }
+    // Control: the exact proof routes certified.
+    globalThis.fetch = (async () => certifiedJoinResponse((body) => { body.lutProof = lutProof(1) })) as unknown as typeof fetch
+    const exact = await routeExternalSolanaTransaction(await decoded(joinWithLut), { raw_tx: joinWithLut }, '7.16.0')
+    expect(exact.requiresBlindSigningConsent).toBe(false)
+    expect(exact.certifiedProof?.lutProof?.accounts).toHaveLength(1)
   })
 
   test('never contacts the service for older firmware, caller metadata, or native clear-signs', async () => {

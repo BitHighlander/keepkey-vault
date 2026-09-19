@@ -88,10 +88,20 @@ function isCertifiedCompanion(message: ParsedSolanaMessage, instruction: SolanaI
   return false
 }
 
-/** The device indexes the static accounts, then one key per serialized LUT index. */
-function withinCertifiedAccountBounds(message: ParsedSolanaMessage): boolean {
-  const lutAccounts = message.altEntries.reduce(
+/** Writable plus readonly lookup-table indices the message serializes. */
+function serializedLutCount(message: ParsedSolanaMessage): number {
+  return message.altEntries.reduce(
     (count, entry) => count + entry.writableIndices.length + entry.readonlyIndices.length, 0)
+}
+
+/**
+ * The device indexes the static accounts, then the trusted LUT proof's keys,
+ * and refuses a certified request unless the proof has exactly one key per
+ * serialized LUT index (none without lookup tables).
+ */
+function withinCertifiedAccountBounds(message: ParsedSolanaMessage, trustedLutCount: number): boolean {
+  const lutAccounts = serializedLutCount(message)
+  if (trustedLutCount !== lutAccounts) return false
   const total = message.staticAccounts.length + lutAccounts
   if (total > SOL_MAX_ACCOUNTS || lutAccounts > SOL_MAX_LUT_ACCOUNTS) return false
   // Lookup tables require a nonempty certified LUT proof.
@@ -128,14 +138,19 @@ function priorityFeeValid(message: ParsedSolanaMessage): boolean {
  * instruction `spec` describes when the device will apply it to this message,
  * else undefined. At most 8 instructions, exactly one match, every other
  * instruction a certified companion, and a valid priority fee.
+ *
+ * `trustedLutCount` is the number of keys in the LUT proof sent with the
+ * schema. It defaults to the exact count the ClearSign service resolves (one
+ * per serialized LUT index); pass the real proof's count to check an envelope.
  */
 export function certifiedSolanaSchemaApplies(
   message: ParsedSolanaMessage,
   spec: SolanaSchemaSpec,
+  trustedLutCount = serializedLutCount(message),
 ): number | undefined {
   if (
     message.instructions.length > SOL_MAX_INSTRUCTIONS ||
-    !withinCertifiedAccountBounds(message) ||
+    !withinCertifiedAccountBounds(message, trustedLutCount) ||
     !priorityFeeValid(message)
   ) {
     return undefined

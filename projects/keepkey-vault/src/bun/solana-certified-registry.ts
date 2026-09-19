@@ -11,7 +11,7 @@
  */
 import bs58 from 'bs58'
 import { CERTIFIED_SOLANA_CATALOG, serializeSolanaSchema } from './solana-certified-schema'
-import { findLocalCertifiedSolanaMatch } from './solana-certified-match'
+import { certifiedSolanaSchemaApplies, findLocalCertifiedSolanaMatch } from './solana-certified-match'
 import { hasCompleteCertifiedSolanaEnvelope, supportsCertifiedClearSign } from './solana-certified-policy'
 import { requiresSolanaBlindSigningConsent } from './solana-consent'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice, type ParsedSolanaMessage } from './solana-tx'
@@ -205,8 +205,9 @@ export async function findCertifiedSolanaProof(
  * leaves this machine; one that does is sent with that entry's catalogKey.
  *
  * The envelope is accepted only when the device will apply it: its schema is
- * the reviewed payload the local rule was checked against, and it carries a
- * LUT proof exactly when the message has lookup tables. Otherwise the device
+ * the reviewed payload the local rule was checked against, and the rule still
+ * holds with its LUT proof, which needs exactly one key per serialized LUT
+ * index (no proof without lookup tables). Otherwise the device
  * would refuse it with no fallback, while the opaque path can still sign.
  *
  * Never throws: no local match, an unavailable service, a 422 no-match, or
@@ -243,7 +244,7 @@ export async function prepareExternalSolanaProof(
   if (
     !proof || !hasCompleteCertifiedSolanaEnvelope(proof) ||
     proof.schema.payload.toLowerCase() !== serializeSolanaSchema(match.spec).toString('hex') ||
-    (proof.lutProof !== undefined) !== (message.altEntries.length > 0)
+    certifiedSolanaSchemaApplies(message, match.spec, proof.lutProof?.accounts.length ?? 0) !== match.instructionIndex
   ) {
     return undefined
   }
