@@ -2920,6 +2920,34 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           })
         }
 
+        // ── SOLANA DECODE (no device, no signing) ──────────────────────
+        // The same decoder the /solana/sign-transaction gate runs, exposed on
+        // its own so a caller can show the user what a transaction DOES before
+        // asking them to approve it. The browser extension asks for approval
+        // first and signs second, so without this its approval card has nothing
+        // to render and shows "N/A" over a real transfer.
+        // Deliberately NOT a signing route: no wallet, no device, no overlay —
+        // a pure function of the bytes plus one ALT read for v0 messages.
+        if (path === '/solana/decode-transaction' && method === 'POST') {
+          auth.requireAuth(req)
+          const body = await parseRequest(req, S.SolanaDecodeRequest)
+          const endpoint = getSetting('solana_rpc_endpoint') || DEFAULT_SOLANA_RPC_ENDPOINT
+          try {
+            const solanaDecoded = await buildSolanaDecodedInfo(body.raw_tx, createRpcAltFetcher(endpoint))
+            return json({
+              solanaDecoded,
+              requiresBlindSigningConsent: requiresSolanaBlindSigningConsent(solanaDecoded, false),
+            })
+          } catch (e: any) {
+            // Mirrors the signing gate: an explicit error, never a partial
+            // decode dressed up as a summary. The caller must render this as a
+            // refusal to review, not as "nothing is being moved".
+            const solanaDecodeError = `${e?.name || 'Error'}: ${e?.message || String(e)}`
+            console.warn('[REST] Solana decode failed:', solanaDecodeError, '\n  raw_tx (base64):', body.raw_tx)
+            return json({ solanaDecodeError, requiresBlindSigningConsent: true })
+          }
+        }
+
         // ── SOLANA MESSAGE SIGNING (firmware type 754) ──────────────────
         if (path === '/solana/sign-message' && method === 'POST') {
           auth.requireAuth(req)
