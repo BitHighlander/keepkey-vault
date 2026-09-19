@@ -396,8 +396,11 @@ dmg: verify-arch
 clearsign-worker-test:
 	cd $(PROJECT_DIR) && bun test clearsign-worker/src
 
-# Production, outward-facing. Tests gate the deploy.
-clearsign-worker-deploy: clearsign-worker-test
+# Production, outward-facing. The unit suite (which includes the Worker's)
+# gates the deploy. /health reports HEAD as the deployed source revision, so
+# a tree with uncommitted changes is refused.
+clearsign-worker-deploy: test-unit
+	@git diff --quiet && git diff --cached --quiet || { echo "clearsign-worker-deploy: uncommitted changes; commit or stash them so CLEARSIGN_SOURCE_REVISION matches the deployed code" >&2; exit 1; }
 	cd $(PROJECT_DIR) && wrangler deploy --config clearsign-worker/wrangler.toml --var CLEARSIGN_SOURCE_REVISION:$$(git rev-parse --short=9 HEAD)
 
 # --- Testing ---
