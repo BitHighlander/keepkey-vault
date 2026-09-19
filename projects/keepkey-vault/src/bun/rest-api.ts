@@ -44,7 +44,7 @@ import { parseSolanaTx, SolanaTxParseError } from './solana-tx'
 import { signSolanaWireTransaction } from './solana-signing'
 import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
-import { buildRestSolanaSignRequest, routeExternalSolanaTransaction, type CertifiedSolanaProof } from './solana-certified-registry'
+import { applyRestSolanaSigningGates, buildRestSolanaSignRequest, type CertifiedSolanaProof } from './solana-certified-registry'
 import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
 import { utxoDiscoveryKey } from './btc-backend/types'
 import {
@@ -1848,28 +1848,22 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               // ClearSign service to recognize the exact bytes; a complete
               // certified envelope is decoded and verified by the device, so it
               // needs neither one-shot consent nor AdvancedMode. No match or an
-              // unavailable service keeps the opaque path below unchanged.
-              const route = await routeExternalSolanaTransaction(
-                signingInfo.solanaDecoded,
+              // unavailable service keeps the opaque path unchanged: the device
+              // refuses an opaque transaction unless the AdvancedMode policy is
+              // on (fsm_msgSolanaSignTx, "Enable AdvancedMode to blind-sign"),
+              // and hdwallet never forwards allowBlindSigning to it, so the
+              // policy is asked for up front exactly where the connected
+              // firmware requires it.
+              const certifiedProof = await applyRestSolanaSigningGates(
+                signingInfo,
                 preview,
                 engine.getDeviceState().firmwareVersion,
               )
-              signingInfo.requiresBlindSigningConsent = route.requiresBlindSigningConsent
-              if (route.certifiedProof && typeof preview.raw_tx === 'string') {
-                activeSolanaCertified = { rawTx: preview.raw_tx, proof: route.certifiedProof }
+              if (certifiedProof && typeof preview.raw_tx === 'string') {
+                activeSolanaCertified = { rawTx: preview.raw_tx, proof: certifiedProof }
                 // The device decodes this call from the certified schema. The
                 // sign handler refuses if that material is gone at sign time.
                 signingInfo.deviceClearSigns = true
-              }
-              if (signingInfo.requiresBlindSigningConsent) {
-                signingInfo.needsBlindSigning = true
-                // The device refuses every opaque Solana transaction unless the
-                // AdvancedMode policy is on (fsm_msgSolanaSignTx, "Enable
-                // AdvancedMode to blind-sign"), and hdwallet never forwards
-                // allowBlindSigning to it. The one-shot consent alone cannot
-                // make the device sign, so require the policy up front instead
-                // of letting the user approve twice and then fail on-device.
-                signingInfo.requiresAdvancedMode = true
               }
             } else if (
               path === '/tron/sign-message'

@@ -2,7 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import bs58 from 'bs58'
 
-import { certifiedSolanaProofApplies, routeExternalSolanaTransaction, type CertifiedSolanaProof } from '../src/bun/solana-certified-registry'
+import {
+  applyRestSolanaSigningGates,
+  certifiedSolanaProofApplies,
+  routeExternalSolanaTransaction,
+  type CertifiedSolanaProof,
+} from '../src/bun/solana-certified-registry'
+import { solanaFirmwareRequiresAdvancedMode } from '../src/bun/solana-consent'
 import { CERTIFIED_SOLANA_CATALOG, serializeSolanaSchema } from '../src/bun/solana-certified-schema'
 import { buildSolanaDecodedInfo } from '../src/bun/solana-clearsign'
 import { editSolanaTx } from '../scripts/fixtures/solana-message'
@@ -10,6 +16,7 @@ import { syntheticPumpBuy } from '../scripts/fixtures/solana-pump'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
 import relayAltFixture from './fixtures/solana/relay-deposit-native-alt.json'
 import relayFixture from './fixtures/solana/relay-deposit-native-no-alt.json'
+import type { SigningRequestInfo } from '../src/shared/types'
 
 const originalFetch = globalThis.fetch
 const originalServiceUrl = process.env.CLEARSIGN_SERVICE_URL
@@ -60,6 +67,31 @@ describe('routeExternalSolanaTransaction (REST pre-approval auto-lookup)', () =>
     expect(route.certifiedProof?.schema.payload).toBe(joinPayload)
     expect(route.certifiedProof?.certificate).toHaveLength(278)
     expect(route.certifiedProof?.tokenInfo?.[0].symbol).toBe('SDICE')
+  })
+
+  test('REST gates judge AdvancedMode on the certified envelope when one routes', async () => {
+    process.env.CLEARSIGN_SERVICE_URL = 'http://127.0.0.1:1647'
+    const gates = async (respond: () => Promise<Response>) => {
+      globalThis.fetch = respond as unknown as typeof fetch
+      const info = { id: 'x', method: '/solana/sign-transaction' } as SigningRequestInfo
+      info.solanaDecoded = await decoded(joinRawTx)
+      const proof = await applyRestSolanaSigningGates(info, { raw_tx: joinRawTx }, '7.16.0')
+      return {
+        certified: proof !== undefined,
+        consent: info.requiresBlindSigningConsent,
+        advancedMode: info.requiresAdvancedMode,
+        blind: info.needsBlindSigning === true,
+      }
+    }
+    // The device clear-signs the join from the certified envelope on 7.16.0.
+    expect(await gates(async () => certifiedJoinResponse()))
+      .toEqual({ certified: true, consent: false, advancedMode: false, blind: false })
+    // The same transaction without an envelope is opaque on the device.
+    expect(await gates(async () => new Response(JSON.stringify({ classification: 'OPAQUE', error: 'no match' }), { status: 422 })))
+      .toEqual({ certified: false, consent: true, advancedMode: true, blind: true })
+    // CONTROL: judged on the caller's (absent) material instead of the
+    // envelope, the certified join would still demand AdvancedMode.
+    expect(solanaFirmwareRequiresAdvancedMode(joinRawTx, '7.16.0', {})).toBe(true)
   })
 
   test('transactions the device would refuse on the certified path stay opaque and never leave the machine', async () => {

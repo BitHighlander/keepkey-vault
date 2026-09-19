@@ -13,9 +13,9 @@ import bs58 from 'bs58'
 import { CERTIFIED_SOLANA_CATALOG, serializeSolanaSchema } from './solana-certified-schema'
 import { certifiedSolanaSchemaApplies, findLocalCertifiedSolanaMatch } from './solana-certified-match'
 import { hasCompleteCertifiedSolanaEnvelope, supportsCertifiedClearSign } from './solana-certified-policy'
-import { requiresSolanaBlindSigningConsent } from './solana-consent'
+import { applySolanaSigningGates, requiresSolanaBlindSigningConsent } from './solana-consent'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice, type ParsedSolanaMessage } from './solana-tx'
-import type { SolanaTxDecodedInfo } from '../shared/types'
+import type { SigningRequestInfo, SolanaTxDecodedInfo } from '../shared/types'
 
 /**
  * Release builds use KeepKey's production ClearSign service by default. Local
@@ -287,6 +287,29 @@ export async function routeExternalSolanaTransaction(
   return certifiedProof
     ? { requiresBlindSigningConsent: false, certifiedProof }
     : { requiresBlindSigningConsent: true }
+}
+
+/**
+ * The approval gates for REST /solana/sign-transaction. Route first, then
+ * judge AdvancedMode on the material the device will receive: the certified
+ * envelope when one was found (the device verifies it and needs neither
+ * consent nor AdvancedMode), otherwise the caller's own. Judging the caller's
+ * material alone would demand AdvancedMode for a transaction the device
+ * clear-signs from the envelope. Returns the envelope to forward at sign time.
+ */
+export async function applyRestSolanaSigningGates(
+  info: SigningRequestInfo,
+  body: { raw_tx?: unknown; schema?: any; lutProof?: any; certificate?: any },
+  firmwareVersion: string | undefined,
+): Promise<CertifiedSolanaProof | undefined> {
+  const route = await routeExternalSolanaTransaction(info.solanaDecoded, body, firmwareVersion)
+  applySolanaSigningGates(
+    info,
+    typeof body.raw_tx === 'string' ? body.raw_tx : undefined,
+    firmwareVersion,
+    route.certifiedProof ?? { lutProof: body.lutProof, schema: body.schema, certificate: body.certificate },
+  )
+  return route.certifiedProof
 }
 
 /**
