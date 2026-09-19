@@ -44,6 +44,7 @@ import { parseSolanaTx, SolanaTxParseError } from './solana-tx'
 import { signSolanaWireTransaction } from './solana-signing'
 import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
+import { assessSigningRisk } from '../shared/clearsign-risk'
 import { applyRestSolanaSigningGates, buildRestSolanaSignRequest, type CertifiedSolanaProof } from './solana-certified-registry'
 import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
 import { utxoDiscoveryKey } from './btc-backend/types'
@@ -2934,17 +2935,31 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const endpoint = getSetting('solana_rpc_endpoint') || DEFAULT_SOLANA_RPC_ENDPOINT
           try {
             const solanaDecoded = await buildSolanaDecodedInfo(body.raw_tx, createRpcAltFetcher(endpoint))
-            return json({
-              solanaDecoded,
-              requiresBlindSigningConsent: requiresSolanaBlindSigningConsent(solanaDecoded, false),
-            })
+            const requiresBlindSigningConsent = requiresSolanaBlindSigningConsent(solanaDecoded, false)
+            // The same sentences the vault's own approval overlay shows. Without
+            // them a caller has to invent its own wording for the same bytes,
+            // and two vocabularies for one transaction is how a user ends up
+            // reading a softer warning than the one this vault decided on.
+            // Note what is NOT here: deviceClearSigns. Whether the DEVICE can
+            // clear-sign depends on the certified lookup in the signing gate
+            // (a network round-trip, firmware-version-dependent), so a decode
+            // must not promise it.
+            const risk = assessSigningRisk({
+              id: 'decode', method: 'solana_decodeTransaction', appName: 'decode', chain: 'solana',
+              solanaDecoded, requiresBlindSigningConsent,
+            } as any)
+            return json({ solanaDecoded, requiresBlindSigningConsent, risk })
           } catch (e: any) {
             // Mirrors the signing gate: an explicit error, never a partial
             // decode dressed up as a summary. The caller must render this as a
             // refusal to review, not as "nothing is being moved".
             const solanaDecodeError = `${e?.name || 'Error'}: ${e?.message || String(e)}`
             console.warn('[REST] Solana decode failed:', solanaDecodeError, '\n  raw_tx (base64):', body.raw_tx)
-            return json({ solanaDecodeError, requiresBlindSigningConsent: true })
+            const risk = assessSigningRisk({
+              id: 'decode', method: 'solana_decodeTransaction', appName: 'decode', chain: 'solana',
+              solanaDecodeError, requiresBlindSigningConsent: true,
+            } as any)
+            return json({ solanaDecodeError, requiresBlindSigningConsent: true, risk })
           }
         }
 
