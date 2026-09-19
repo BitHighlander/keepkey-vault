@@ -56,12 +56,15 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(5)
-    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana'])
+    expect(body.entries).toHaveLength(6)
+    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana', 'solana'])
     for (const entry of body.entries) {
-      expect(['Relay', 'Portals', 'Pump']).toContain(entry.protocol)
+      expect(['Relay', 'Portals', 'Pump', 'SoltoshiDICE']).toContain(entry.protocol)
       expect(entry.provenance.protocol).toMatch(/^https:\/\//)
     }
+    const join = body.entries.find((entry: any) => entry.id === 'solana:soltoshidiceBlackjackJoin')
+    expect(join.instructionLength).toBe(82)
+    expect(join.discriminator).toBe('51')
   })
 
   it('rejects unknown EVM shapes before checking signer readiness', async () => {
