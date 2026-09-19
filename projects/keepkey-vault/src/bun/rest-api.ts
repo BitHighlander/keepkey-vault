@@ -44,7 +44,7 @@ import { parseSolanaTx, SolanaTxParseError } from './solana-tx'
 import { signSolanaWireTransaction } from './solana-signing'
 import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
-import { requiresSolanaBlindSigningConsent } from './solana-consent'
+import { applySolanaSigningGates } from './solana-consent'
 import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
 import { utxoDiscoveryKey } from './btc-backend/types'
 import {
@@ -1842,20 +1842,18 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               } else {
                 signingInfo.solanaDecodeError = 'missing raw_tx payload'
               }
-              signingInfo.requiresBlindSigningConsent = requiresSolanaBlindSigningConsent(
-                signingInfo.solanaDecoded,
-                preview.lutProof !== undefined || preview.schema !== undefined,
+              // The device refuses an opaque Solana transaction unless the
+              // AdvancedMode policy is on (fsm_msgSolanaSignTx, "Enable
+              // AdvancedMode to blind-sign"), and hdwallet never forwards
+              // allowBlindSigning to it, so the one-shot consent alone cannot
+              // make it sign. Ask for the policy up front exactly where the
+              // connected firmware requires it.
+              applySolanaSigningGates(
+                signingInfo,
+                typeof preview.raw_tx === 'string' ? preview.raw_tx : undefined,
+                engine.getDeviceState().firmwareVersion,
+                { lutProof: preview.lutProof, schema: preview.schema, certificate: preview.certificate },
               )
-              if (signingInfo.requiresBlindSigningConsent) {
-                signingInfo.needsBlindSigning = true
-                // The device refuses every opaque Solana transaction unless the
-                // AdvancedMode policy is on (fsm_msgSolanaSignTx, "Enable
-                // AdvancedMode to blind-sign"), and hdwallet never forwards
-                // allowBlindSigning to it. The one-shot consent alone cannot
-                // make the device sign, so require the policy up front instead
-                // of letting the user approve twice and then fail on-device.
-                signingInfo.requiresAdvancedMode = true
-              }
             } else if (
               path === '/tron/sign-message'
               || path === '/ton/sign-message'

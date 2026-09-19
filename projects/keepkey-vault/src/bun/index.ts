@@ -1261,6 +1261,7 @@ function getOrCreateWcManager(): WalletConnectManager {
 			const pioneer = await getPioneer()
 			return await broadcastBtcTx(pioneer, networkId, serialized)
 		},
+		getFirmwareVersion: () => engine.getDeviceState().firmwareVersion,
 		solanaSignTransactionRaw: async ({ addressNList, signerAddress, transactionBase64 }) => {
 			if (isBitcoinOnlyVariant(engine.getDeviceState().firmwareVariant)) throw new Error('WalletConnect is not available on bitcoin-only firmware')
 			if (!engine.wallet) throw new Error('Device disconnected')
