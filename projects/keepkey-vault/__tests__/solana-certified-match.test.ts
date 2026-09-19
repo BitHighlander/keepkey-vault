@@ -5,6 +5,8 @@ import { certifiedSolanaSchemaApplies, findLocalCertifiedSolanaMatch, solanaInst
 import { CERTIFIED_SOLANA_CATALOG } from '../src/bun/solana-certified-schema'
 import { editSolanaTx, parseSolanaWireMessage, type EditableSolanaMessage } from '../scripts/fixtures/solana-message'
 import { syntheticPumpBuy } from '../scripts/fixtures/solana-pump'
+import { parseSolanaMessage } from '../src/bun/solana-tx'
+import firmwareCorpus from './fixtures/solana/certified-firmware-verdicts.json'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
 
 const JOIN = CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin
@@ -135,4 +137,18 @@ describe('findLocalCertifiedSolanaMatch (Vault pre-filter)', () => {
       .toMatchObject({ catalogKey: 'pumpAmmBuy', instructionIndex: 1 })
     expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(syntheticPumpBuy().rawTx))).toBeUndefined()
   })
+})
+
+// Expected results come from the FIRMWARE, not from Vault: each verdict is
+// the output of the firmware's own solana.c (scripts/solana-fw-oracle), at the
+// revision recorded in the fixture.
+describe(`certifiedSolanaSchemaApplies agrees with firmware ${firmwareCorpus.firmware.split(' ')[1].slice(0, 9)}`, () => {
+  for (const c of firmwareCorpus.cases) {
+    test(`${c.name}: ${c.firmwareVerdict}`, () => {
+      const accepted = /^ACCEPT (\d+)$/.exec(c.firmwareVerdict)
+      const spec = CERTIFIED_SOLANA_CATALOG[c.catalogKey as keyof typeof CERTIFIED_SOLANA_CATALOG]
+      expect(certifiedSolanaSchemaApplies(parseSolanaMessage(Buffer.from(c.messageHex, 'hex')), spec, c.lutKeys))
+        .toBe(accepted ? Number(accepted[1]) : undefined)
+    })
+  }
 })
