@@ -16,7 +16,7 @@ import { evmAddressPath } from './evm-addresses'
 import { verifyEvmSigner } from './evm-rpc'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
 import { buildSolanaDecodedInfo } from './solana-clearsign'
-import { requiresSolanaBlindSigningConsent } from './solana-consent'
+import { applySolanaSigningGates } from './solana-consent'
 
 function base64ToBase58(base64: string): string {
   return bs58.encode(Buffer.from(base64, 'base64'))
@@ -49,14 +49,15 @@ function assertChainIdMatches(txChainId: unknown, sessionChainId: number) {
   }
 }
 
-/** Attach the same clear-sign preview and conservative firmware-policy gate
- *  used by the REST route. x402's v0 transaction has no lookup tables, so its
- *  full preview is available without an RPC read. Transactions that do use an
- *  ALT remain explicitly opaque in WalletConnect until the accounts can be
- *  independently resolved. */
+/** Attach the same clear-sign preview and signing gates used by the REST
+ *  route. x402's v0 transaction has no lookup tables, so its full preview is
+ *  available without an RPC read. Transactions that do use an ALT remain
+ *  explicitly opaque in WalletConnect until the accounts can be independently
+ *  resolved. */
 async function attachSolanaTransactionPreview(
   signingInfo: SigningRequestInfo,
   transactionBase64: string,
+  firmwareVersion: string | undefined,
 ): Promise<void> {
   try {
     signingInfo.solanaDecoded = await buildSolanaDecodedInfo(
@@ -67,13 +68,7 @@ async function attachSolanaTransactionPreview(
     signingInfo.solanaDecodeError = `${e?.name || 'Error'}: ${e?.message || String(e)}`
   }
 
-  signingInfo.requiresBlindSigningConsent = requiresSolanaBlindSigningConsent(
-    signingInfo.solanaDecoded,
-    false,
-  )
-  if (signingInfo.requiresBlindSigningConsent) {
-    signingInfo.needsBlindSigning = true
-  }
+  applySolanaSigningGates(signingInfo, transactionBase64, firmwareVersion)
 }
 
 const WC_PROJECT_ID = process.env.WALLETCONNECT_PROJECT_ID || '14d36ca1bc76a70273d44d384e8475ae'
@@ -162,6 +157,8 @@ export interface WcCallbacks {
   getSolanaAccountInfo: (caipChain: string) => Promise<{ address: string; addressNList: number[] } | null>
   /** Sign a Solana message (raw bytes, base58 per WC spec). Returns 64-byte ed25519 signature. */
   solanaSignMessageRaw: (params: { addressNList: number[]; messageBase58: string }) => Promise<{ signatureBase64: string }>
+  /** Connected device's firmware version, e.g. "7.15.0". Undefined if unknown. */
+  getFirmwareVersion: () => string | undefined
   /** Sign a Solana transaction (full base64 tx including empty sig slots). Returns assembled signed tx + signature. */
   solanaSignTransactionRaw: (params: { addressNList: number[]; signerAddress: string; transactionBase64: string }) => Promise<{ transactionBase64: string; signatureBase64: string }>
   /** Broadcast a fully-signed serialized transaction via Pioneer. Returns the on-chain txid. */
@@ -705,7 +702,7 @@ export class WalletConnectManager {
           chainId: 0,
           data: transaction,
         }
-        await attachSolanaTransactionPreview(signingInfo, transaction)
+        await attachSolanaTransactionPreview(signingInfo, transaction, this.callbacks.getFirmwareVersion())
         const approved = await this.callbacks.requestSigningApproval(signingInfo)
         if (!approved) throw new Error('User rejected signing')
         try {
@@ -736,7 +733,7 @@ export class WalletConnectManager {
           chainId: 0,
           data: transaction,
         }
-        await attachSolanaTransactionPreview(signingInfo, transaction)
+        await attachSolanaTransactionPreview(signingInfo, transaction, this.callbacks.getFirmwareVersion())
         const approved = await this.callbacks.requestSigningApproval(signingInfo)
         if (!approved) throw new Error('User rejected signing')
         try {
