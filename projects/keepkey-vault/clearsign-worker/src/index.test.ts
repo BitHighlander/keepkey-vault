@@ -3,6 +3,30 @@ import bs58 from 'bs58'
 
 import worker from './index'
 import { syntheticPumpBuy } from '../../scripts/fixtures/solana-pump'
+import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
+import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
+
+type Ix = { programIdIndex: number; accountIndices: number[]; data: Buffer }
+
+/** Re-serialize the real legacy SoltoshiDICE join, optionally edited. */
+function soltoshidiceJoin(mutate?: (instructions: Ix[]) => void): string {
+  const full = Buffer.from(joinFixture.rawTxBase64, 'base64')
+  const m = parseSolanaMessage(solanaMessageSlice(full, parseSolanaTx(full)))
+  const instructions: Ix[] = m.instructions.map((ix) => ({
+    programIdIndex: ix.programIdIndex, accountIndices: [...ix.accountIndices], data: Buffer.from(ix.data),
+  }))
+  mutate?.(instructions)
+  const message = Buffer.concat([
+    Buffer.from([m.header.numRequiredSignatures, m.header.numReadonlySignedAccounts, m.header.numReadonlyUnsignedAccounts, m.staticAccounts.length]),
+    ...m.staticAccounts.map((account) => Buffer.from(account)),
+    Buffer.from(m.recentBlockhash),
+    Buffer.from([instructions.length]),
+    ...instructions.map((ix) => Buffer.concat([
+      Buffer.from([ix.programIdIndex, ix.accountIndices.length, ...ix.accountIndices, ix.data.length]), ix.data,
+    ])),
+  ])
+  return Buffer.concat([Buffer.from([1]), Buffer.alloc(64), message]).toString('base64')
+}
 
 const fetchWorker = (path: string, init?: RequestInit, env: Record<string, string> = {}) =>
   worker.fetch(new Request(`https://clearsign.example${path}`, init), env)
@@ -126,6 +150,31 @@ describe('ClearSign Worker public surface', () => {
       expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy(undefined, options).rawTx })).status).toBe(422)
     }
     expect((await post('/v1/solana/certify', { rawTx: syntheticPumpBuy().rawTx, catalogKey: 'relayDepositNative' })).status).toBe(422)
+  })
+
+  it('discovers the real SoltoshiDICE join from raw bytes without a client catalog key', async () => {
+    expect(soltoshidiceJoin()).toBe(joinFixture.rawTxBase64)
+    const response = await post('/v1/solana/certify', { rawTx: joinFixture.rawTxBase64 })
+    // Reached provisioning: the program, 0x51 tag, and exact 82-byte length matched.
+    expect(response.status).toBe(503)
+    expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+    expect((await post('/v1/solana/certify', { rawTx: joinFixture.rawTxBase64, catalogKey: 'soltoshidiceBlackjackJoin' })).status).toBe(503)
+  })
+
+  it('refuses SoltoshiDICE joins that the reviewed schema does not describe exactly', async () => {
+    const join = (ixs: Ix[]) => ixs[2]
+    for (const mutate of [
+      (ixs: Ix[]) => { join(ixs).data = Buffer.concat([join(ixs).data, Buffer.from([0])]) }, // uncovered byte
+      (ixs: Ix[]) => { join(ixs).data = join(ixs).data.subarray(0, 81) }, // short
+      (ixs: Ix[]) => { join(ixs).data[0] = 0x50 }, // another instruction tag
+      (ixs: Ix[]) => { join(ixs).accountIndices = join(ixs).accountIndices.slice(0, 3) }, // no mint account 3
+      (ixs: Ix[]) => { ixs.push({ ...join(ixs) }) }, // two joins: firmware would refuse the ambiguity
+    ]) {
+      const response = await post('/v1/solana/certify', { rawTx: soltoshidiceJoin(mutate) })
+      expect(response.status).toBe(422)
+      expect((await response.json() as any).classification).toBe('OPAQUE')
+    }
+    expect((await post('/v1/solana/certify', { rawTx: joinFixture.rawTxBase64, catalogKey: 'pumpAmmBuy' })).status).toBe(422)
   })
 
   it('refuses malformed, wrong-program, wrong-length, and unknown Solana requests', async () => {

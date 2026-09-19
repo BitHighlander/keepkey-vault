@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { utils } from 'ethers'
-import { certifyPumpToken, inspectPumpToken, pumpTokenPreimage, TOKEN_2022 } from './solana-token'
+import bs58 from 'bs58'
+import { certifyPumpToken, certifySchemaTokens, inspectPumpToken, pumpTokenPreimage, TOKEN_2022 } from './solana-token'
+import { CERTIFIED_SOLANA_CATALOG } from '../../src/bun/solana-certified-schema'
+import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
+import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 
 const mint = '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump'
 function account() {
@@ -55,4 +59,53 @@ test('reuses verified immutable identity during RPC outages without caching a si
   expect(reads).toBe(1)
   expect(second?.symbol).toBe(first?.symbol)
   expect(second?.signature).not.toBe(first?.signature)
+})
+
+function realJoin() {
+  const full = Buffer.from(joinFixture.rawTxBase64, 'base64')
+  const message = parseSolanaMessage(solanaMessageSlice(full, parseSolanaTx(full)))
+  return { message, instruction: message.instructions[joinFixture.expected.instructionIndex] }
+}
+
+test('attests the SDICE mint once for all three TOKEN_AMOUNT args of the real SoltoshiDICE join', async () => {
+  const { message, instruction } = realJoin()
+  const key = '11'.repeat(32) // public test key; never a production credential
+  const requested: string[][] = []
+  const fetcher = (async (_url: any, init: any) => {
+    requested.push(JSON.parse(init.body).params[0])
+    return Response.json({ result: { value: [account()] } })
+  }) as typeof fetch
+  const result = await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://join-test.example' }, 'soltoshidiceBlackjackJoin',
+    CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin, instruction, message.staticAccounts, key, fetcher)
+  expect(requested).toEqual([[joinFixture.expected.mint]])
+  expect(result.tokenMetadataStatus).toBe('certified-on-chain')
+  expect(result.tokenInfo).toHaveLength(1)
+  const token = result.tokenInfo![0]
+  expect(token).toMatchObject({ mint: joinFixture.expected.mint, tokenProgram: TOKEN_2022, symbol: 'SDICE', decimals: 6, signerKeyId: 0x80 })
+  // Preimage assembled independently: tag || mint || token program || le32 decimals || symbol.
+  const preimage = Buffer.concat([Buffer.from('KeepKeySolanaTokenDef/2'), Buffer.from(bs58.decode(joinFixture.expected.mint)),
+    Buffer.from(bs58.decode(TOKEN_2022)), Buffer.from([6, 0, 0, 0]), Buffer.from('SDICE')])
+  const digest = createHash('sha256').update(preimage).digest('hex')
+  const recovered = utils.recoverPublicKey(`0x${digest}`, { r: `0x${token.signature.slice(0, 64)}`, s: `0x${token.signature.slice(64)}`, v: 27 })
+  const recoveredAlt = utils.recoverPublicKey(`0x${digest}`, { r: `0x${token.signature.slice(0, 64)}`, s: `0x${token.signature.slice(64)}`, v: 28 })
+  expect([recovered, recoveredAlt]).toContain(new utils.SigningKey(`0x${key}`).publicKey)
+})
+
+test('an ineligible mint gets no token info, leaving the raw amount and mint on the device', async () => {
+  const { message, instruction } = realJoin()
+  const fetcher = (async () => {
+    const a = account(); a.data.parsed.info.extensions.push({ extension: 'transferHook' } as any)
+    return Response.json({ result: { value: [a] } })
+  }) as typeof fetch
+  const result = await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://join-hook.example' }, 'soltoshidiceBlackjackJoin',
+    CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin, instruction, message.staticAccounts, '11'.repeat(32), fetcher)
+  expect(result.tokenInfo).toBeUndefined()
+  expect(result.tokenMetadataStatus).toBe('detailed-review-required')
+})
+
+test('a schema with no token amounts makes no token RPC call', async () => {
+  const { message, instruction } = realJoin()
+  const fetcher = (async () => { throw new Error('must not be called') }) as typeof fetch
+  expect(await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://relay.example' }, 'relayDepositNative',
+    CERTIFIED_SOLANA_CATALOG.relayDepositNative, instruction, message.staticAccounts, '11'.repeat(32), fetcher)).toEqual({})
 })

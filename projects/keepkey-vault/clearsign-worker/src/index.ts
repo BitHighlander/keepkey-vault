@@ -18,6 +18,7 @@ import {
 } from '../../src/bun/evm-certified-schema'
 import { signCertifiedSolanaLutAttestation } from '../../src/bun/solana-certified-lut'
 import {
+  ARG_TOKEN_AMOUNT,
   CERTIFIED_SOLANA_CATALOG,
   signCertifiedSolanaSchema,
   solanaSchemaCoverage,
@@ -25,7 +26,7 @@ import {
 import { resolveCanonicalLutAccounts } from '../../src/bun/solana-lut-resolver'
 import { createResilientSolanaAltFetcher, solanaRpcHealth, SolanaRpcUnavailableError } from './solana-rpc'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
-import { certifyPumpToken } from './solana-token'
+import { certifySchemaTokens } from './solana-token'
 
 interface Env {
   CLEARSIGN_ENVIRONMENT?: string
@@ -191,7 +192,7 @@ async function publicStatus(env: Env, origin: string) {
     privacy: {
       applicationStorage: false,
       ethereumRequest: ['chainId', 'contract', 'selector', 'calldataLength'],
-      solanaRequest: ['unsigned transaction', 'reviewed catalog id'],
+      solanaRequest: ['unsigned transaction', 'reviewed catalog id (optional)'],
       note: 'Solana lookup-table certification sends the unsigned transaction to this service so it can resolve and bind the exact accounts. No seed, private key, PIN, passphrase, or device signature is sent.',
     },
     catalogEntries: reviewedCatalog().length,
@@ -214,7 +215,7 @@ async function home(env: Env, origin: string): Promise<Response> {
 <body><main><span class="pill">${escapeHtml(status.status)}</span><h1>KeepKey ClearSign</h1><p class="muted">Human-readable transaction details, authenticated by the KeepKey in your hand.</p>
 <section class="card"><h2>What happens</h2><p>${escapeHtml(status.message)}</p><p>The service recognizes a reviewed protocol action and signs a description. Your KeepKey independently checks the root certificate, signer fingerprint, program or contract, decoded fields, and the exact transaction binding. You still approve the final transaction on the device.</p></section>
 <section class="card"><h2>Trust status</h2><dl><dt>Device label</dt><dd>${escapeHtml(status.trust.label)}</dd><dt>Signer</dt><dd>${escapeHtml(status.trust.signerAlias)} · ${escapeHtml(status.trust.signerFingerprint)}</dd><dt>Ethereum</dt><dd>${escapeHtml(status.scopes.ethereum)}</dd><dt>Solana</dt><dd>${escapeHtml(status.scopes.solana)}</dd><dt>Earliest certificate expiry</dt><dd>${escapeHtml(status.trust.certificateExpiresAt || 'Pending')}</dd></dl></section>
-<section class="card"><h2>Reviewed protocols</h2><p><strong>Relay</strong> · Ethereum and Solana deposits for cross-chain swaps.</p><p><strong>Portals</strong> · Native ETH swaps through the verified Ethereum router. KeepKey reads the output token, minimum output, recipient, and input amount from the transaction itself.</p><p><strong>Pump AMM</strong> · Token buys with base output units, maximum quote input units, token mints, and receive/pay accounts decoded on your KeepKey.</p><p>Only exact catalog matches are certified. Unknown programs, contracts, selectors, instruction sizes, or lookup-table accounts are refused.</p><a href="/v1/catalog">View the machine-readable catalog</a></section>
+<section class="card"><h2>Reviewed protocols</h2><p><strong>Relay</strong> · Ethereum and Solana deposits for cross-chain swaps.</p><p><strong>Portals</strong> · Native ETH swaps through the verified Ethereum router. KeepKey reads the output token, minimum output, recipient, and input amount from the transaction itself.</p><p><strong>Pump AMM</strong> · Token buys with base output units, maximum quote input units, token mints, and receive/pay accounts decoded on your KeepKey.</p><p><strong>SoltoshiDICE</strong> · Blackjack table joins with the round, seat, token buy-in, session key, session length, allowance, and maximum wager decoded on your KeepKey.</p><p>Only exact catalog matches are certified. Unknown programs, contracts, selectors, instruction sizes, or lookup-table accounts are refused.</p><a href="/v1/catalog">View the machine-readable catalog</a></section>
 <section class="card"><h2>Privacy and provenance</h2><p>Ethereum requests contain only transaction shape. Solana lookup-table requests contain the unsigned transaction so this service can resolve and bind its accounts. Wallet seeds, private keys, PINs, passphrases, and device signatures never leave your KeepKey. This service writes no transaction database.</p><p><a href="${PROVENANCE.protocol}">How Relay works</a> · <a href="${PROVENANCE.protocolSecurity}">Relay security</a> · <a href="${PROVENANCE.portals}">Portals documentation</a> · <a href="${PROVENANCE.portalsRouter}">Verified Portals router</a> · <a href="${PROVENANCE.firmware}">KeepKey firmware</a> · <a href="${PROVENANCE.vault}">Vault source</a></p></section>
 </main></body></html>`
   return new Response(html, {
@@ -312,12 +313,15 @@ export default {
       }
 
       const candidates = Object.entries(CERTIFIED_SOLANA_CATALOG).filter(([key]) => requestedKey === undefined || key === requestedKey)
-      const matches = candidates.filter(([key, spec]) => message.instructions.some((instruction) => {
+      // Every (entry, instruction) pair that matches. Firmware refuses a schema
+      // that matches two instructions, so exactly one pair may certify.
+      const matches = candidates.flatMap(([key, spec]) => message.instructions.filter((instruction) => {
         const programBytes = Buffer.from(bs58.decode(spec.programId))
         const expectedLength = solanaSchemaCoverage(spec)
         const programKey = message.staticAccounts[instruction.programIdIndex]
         if (!programKey || !Buffer.from(programKey).equals(programBytes)) return false
         if ((spec.accounts || []).some((account) => account.index >= instruction.accountIndices.length)) return false
+        if ((spec.args || []).some((arg) => arg.type === ARG_TOKEN_AMOUNT && arg.mintAccount! >= instruction.accountIndices.length)) return false
         const data = Buffer.from(instruction.data)
         if (data.length !== expectedLength || !data.subarray(0, spec.discriminator.length).equals(spec.discriminator)) return false
         if (key === 'pumpAmmBuy') {
@@ -337,11 +341,11 @@ export default {
           }
         }
         return true
-      }))
+      }).map((instruction) => [key, spec, instruction] as const))
       if (matches.length !== 1) {
         return json({ classification: 'OPAQUE', error: 'transaction does not uniquely match a reviewed Solana catalog entry' }, 422)
       }
-      const [catalogKey, spec] = matches[0]
+      const [catalogKey, spec, instruction] = matches[0]
 
       const state = provisioning(env)
       if (!state.solanaReady || !env.CLEARSIGN_SOLANA_CERTIFICATE_HEX || !env.CLEARSIGN_DELEGATE_PRIVATE_KEY) {
@@ -363,35 +367,29 @@ export default {
           lookupTableCount: message.altEntries.length,
           provenance: spec.provenance || PROVENANCE,
         }
-        if (catalogKey === 'pumpAmmBuy') {
-          proofStage = 'token-identity'
-          const buy = message.instructions.find(ix =>
-            bs58.encode(message.staticAccounts[ix.programIdIndex] || []) === spec.programId
-            && Buffer.from(ix.data).subarray(0, 8).equals(spec.discriminator))!
-          const mint = message.staticAccounts[buy.accountIndices[3]]
-          if (mint) {
-            const token = await certifyPumpToken(env, bs58.encode(mint), env.CLEARSIGN_DELEGATE_PRIVATE_KEY)
-            if (token) response.tokenInfo = [token]
+        // Firmware indexes static accounts, then the resolved lookup accounts.
+        let accountKeys: Uint8Array[] = message.staticAccounts
+        if (message.altEntries.length > 0) {
+          proofStage = 'lookup-resolution'
+          const resolution = await resolveCanonicalLutAccounts(
+            message,
+            createResilientSolanaAltFetcher(env),
+          )
+          proofStage = 'lookup-signature'
+          const messageHash = createHash('sha256').update(messageBytes).digest()
+          const proof = signCertifiedSolanaLutAttestation(env.CLEARSIGN_SOLANA_CERTIFICATE_HEX, env.CLEARSIGN_DELEGATE_PRIVATE_KEY, messageHash, resolution.accounts)
+          response.lutProof = {
+            accounts: resolution.accounts.map((account) => account.toString('base64')),
+            signature: proof.lutSignature,
+            signerKeyId: proof.keyId,
           }
-          response.tokenMetadataStatus = response.tokenInfo ? 'certified-on-chain' : 'detailed-review-required'
+          response.writableCount = resolution.writableCount
+          response.readonlyCount = resolution.readonlyCount
+          accountKeys = [...message.staticAccounts, ...resolution.accounts]
         }
-        if (message.altEntries.length === 0) return json(response)
 
-        proofStage = 'lookup-resolution'
-        const resolution = await resolveCanonicalLutAccounts(
-          message,
-          createResilientSolanaAltFetcher(env),
-        )
-        proofStage = 'lookup-signature'
-        const messageHash = createHash('sha256').update(messageBytes).digest()
-        const proof = signCertifiedSolanaLutAttestation(env.CLEARSIGN_SOLANA_CERTIFICATE_HEX, env.CLEARSIGN_DELEGATE_PRIVATE_KEY, messageHash, resolution.accounts)
-        response.lutProof = {
-          accounts: resolution.accounts.map((account) => account.toString('base64')),
-          signature: proof.lutSignature,
-          signerKeyId: proof.keyId,
-        }
-        response.writableCount = resolution.writableCount
-        response.readonlyCount = resolution.readonlyCount
+        proofStage = 'token-identity'
+        Object.assign(response, await certifySchemaTokens(env, catalogKey, spec, instruction, accountKeys, env.CLEARSIGN_DELEGATE_PRIVATE_KEY))
         return json(response)
       } catch (error) {
         const code = error instanceof SolanaRpcUnavailableError ? error.code : 'SOLANA_PROOF_FAILED'

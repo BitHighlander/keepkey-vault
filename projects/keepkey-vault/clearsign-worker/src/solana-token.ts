@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { utils } from 'ethers'
 import bs58 from 'bs58'
 import { createResilientSolanaAccountFetcher, solanaRpcEndpoints, type SolanaRpcConfig } from './solana-rpc'
+import { ARG_TOKEN_AMOUNT, type SolanaSchemaSpec } from '../../src/bun/solana-certified-schema'
+import type { SolanaInstruction } from '../../src/bun/solana-tx'
 
 export const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
 const identityCache = new Map<string, { token: NonNullable<ReturnType<typeof inspectPumpToken>>; expires: number }>()
@@ -61,4 +63,41 @@ export async function certifyPumpToken(env: SolanaRpcConfig, mint: string, deleg
   const digest = createHash('sha256').update(pumpTokenPreimage(token)).digest('hex')
   const signed = new utils.SigningKey(`0x${delegateKey}`).signDigest(`0x${digest}`)
   return { ...token, signature: signed.r.slice(2) + signed.s.slice(2), signerKeyId: 0x80 }
+}
+
+/** SolanaSignTx.token_info max_count in firmware. */
+const MAX_TOKEN_INFO = 4
+
+/**
+ * Attest the token identity of every mint the matched schema displays an
+ * amount in: Pump buys (instruction account 3) and each v2 TOKEN_AMOUNT arg
+ * (instruction account `mintAccount`). `accountKeys` is the transaction's
+ * full account list (static, then resolved lookup accounts), which is what
+ * firmware indexes. A mint that is not eligible simply gets no token info;
+ * firmware then shows the raw amount and the full mint address.
+ */
+export async function certifySchemaTokens(
+  env: SolanaRpcConfig,
+  catalogKey: string,
+  spec: SolanaSchemaSpec,
+  instruction: SolanaInstruction,
+  accountKeys: Uint8Array[],
+  delegateKey: string,
+  fetcher: typeof fetch = fetch,
+) {
+  const mintAccounts = catalogKey === 'pumpAmmBuy'
+    ? [3]
+    : (spec.args || []).filter(arg => arg.type === ARG_TOKEN_AMOUNT).map(arg => arg.mintAccount!)
+  const mints = [...new Set(mintAccounts.map(index => accountKeys[instruction.accountIndices[index]])
+    .filter(Boolean).map(key => bs58.encode(key)))]
+  if (!mints.length) return {}
+  const tokenInfo = []
+  for (const mint of mints.slice(0, MAX_TOKEN_INFO)) {
+    const token = await certifyPumpToken(env, mint, delegateKey, fetcher)
+    if (token) tokenInfo.push(token)
+  }
+  return {
+    ...(tokenInfo.length ? { tokenInfo } : {}),
+    tokenMetadataStatus: tokenInfo.length === mints.length ? 'certified-on-chain' : 'detailed-review-required',
+  }
 }
