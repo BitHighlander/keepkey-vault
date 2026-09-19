@@ -63,7 +63,8 @@ describe('certifiedSolanaSchemaApplies (firmware schema_applies, certified)', ()
   })
 
   test('ComputeBudget companions only in their exact firmware encodings', () => {
-    const withCompanion = (hex: string) => applies(editJoin((m) => { m.instructions.push(computeBudget(hex)) }))
+    // Replaces the join's own SetComputeUnitLimit, so no field is duplicated.
+    const withCompanion = (hex: string) => applies(editJoin((m) => { m.instructions[0] = computeBudget(hex) }))
     expect(withCompanion('0100800000')).toBe(JOIN_INDEX) // RequestHeapFrame
     expect(withCompanion('0240420f00')).toBe(JOIN_INDEX) // SetComputeUnitLimit
     expect(withCompanion('036400000000000000')).toBe(JOIN_INDEX) // SetComputeUnitPrice
@@ -71,6 +72,27 @@ describe('certifiedSolanaSchemaApplies (firmware schema_applies, certified)', ()
     expect(withCompanion('0240420f0000')).toBeUndefined() // limit with a trailing byte
     expect(withCompanion('0364000000')).toBeUndefined() // price, too short
     expect(withCompanion('006400000000000000')).toBeUndefined() // deprecated RequestUnits
+  })
+
+  test('the priority fee must be unambiguous and fit a u64 (solana_validatePriorityFee)', () => {
+    const withCompanions = (...hex: string[]) => applies(editJoin((m) => { m.instructions.push(...hex.map(computeBudget)) }))
+    const price = (microLamports: bigint) => {
+      const data = Buffer.alloc(9)
+      data[0] = 3
+      data.writeBigUInt64LE(microLamports, 1)
+      return data.toString('hex')
+    }
+    expect(withCompanions(price(100n))).toBe(JOIN_INDEX)
+    expect(withCompanions(price(100n), price(100n))).toBeUndefined() // duplicate price
+    expect(withCompanions('0240420f00')).toBeUndefined() // duplicate limit: the join already sets one
+    // With the largest u32 limit, the largest price whose fee still fits a u64.
+    const withMaxLimit = (hex: string) => applies(editJoin((m) => {
+      m.instructions[0] = computeBudget('02ffffffff')
+      m.instructions.push(computeBudget(hex))
+    }))
+    const maxPrice = (0xffff_ffff_ffff_ffffn * 1_000_000n) / 0xffff_ffffn
+    expect(withMaxLimit(price(maxPrice))).toBe(JOIN_INDEX)
+    expect(withMaxLimit(price(maxPrice + 1n))).toBeUndefined()
   })
 
   test('a System companion must be an exact two-account transfer', () => {
