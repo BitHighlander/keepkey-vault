@@ -2,12 +2,16 @@ import { createHash } from 'node:crypto'
 import { utils } from 'ethers'
 import bs58 from 'bs58'
 import { createResilientSolanaAccountFetcher, solanaRpcEndpoints, type SolanaRpcConfig } from './solana-rpc'
-import { ARG_TOKEN_AMOUNT, type SolanaSchemaSpec } from '../../src/bun/solana-certified-schema'
+import { ARG_TOKEN_AMOUNT, CERTIFIED_SOLANA_CATALOG, type SolanaSchemaSpec } from '../../src/bun/solana-certified-schema'
 import type { SolanaInstruction } from '../../src/bun/solana-tx'
 
 export const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
 const identityCache = new Map<string, { token: NonNullable<ReturnType<typeof inspectPumpToken>>; expires: number }>()
 const pendingIdentity = new Map<string, Promise<ReturnType<typeof inspectPumpToken>>>()
+/** Token identities the reviewed catalog pins, by mint. A signed token
+ * definition is not bound to a schema, so a pinned mint is held to its pin
+ * whichever entry asks for it (a Pump buy of that mint included). */
+const PINNED_TOKENS = new Map(Object.values(CERTIFIED_SOLANA_CATALOG).flatMap(spec => spec.token ? [[spec.token.mint, spec.token] as const] : []))
 
 /** Version 2 is a compact-review eligibility attestation, not merely a label.
  * The certified delegate checks the actual mint owner, scale and immutable
@@ -45,6 +49,13 @@ async function resolvePumpToken(env: SolanaRpcConfig, mint: string, fetcher: typ
   if (pendingIdentity.has(key)) return pendingIdentity.get(key)!
   const pending = (async () => {
     const [token] = await createResilientSolanaAccountFetcher(env, 'jsonParsed', inspectPumpToken, fetcher)([mint])
+    // One provider answers (failover, not quorum). For a pinned mint, refuse
+    // and do not cache an answer that differs from the reviewed values.
+    const pin = PINNED_TOKENS.get(mint)
+    if (token && pin && (token.tokenProgram !== pin.tokenProgram || token.decimals !== pin.decimals || token.symbol !== pin.symbol)) {
+      console.warn('[clearsign] Solana token identity contradicts the reviewed catalog pin; not certified')
+      return undefined
+    }
     // Only immutable identities with no transfer-changing or close-account
     // extensions are eligible. Never cache errors or caller-provided labels.
     if (token) {
@@ -74,7 +85,8 @@ const MAX_TOKEN_INFO = 4
  * (instruction account `mintAccount`). `accountKeys` is the transaction's
  * full account list (static, then resolved lookup accounts), which is what
  * firmware indexes. A mint that is not eligible simply gets no token info;
- * firmware then shows the raw amount and the full mint address.
+ * firmware then shows the raw amount and the full mint address. An entry
+ * that pins its token (`spec.token`) certifies no other mint.
  */
 export async function certifySchemaTokens(
   env: SolanaRpcConfig,
@@ -93,6 +105,7 @@ export async function certifySchemaTokens(
   if (!mints.length) return {}
   const tokenInfo = []
   for (const mint of mints.slice(0, MAX_TOKEN_INFO)) {
+    if (spec.token && mint !== spec.token.mint) continue
     const token = await certifyPumpToken(env, mint, delegateKey, fetcher)
     if (token) tokenInfo.push(token)
   }

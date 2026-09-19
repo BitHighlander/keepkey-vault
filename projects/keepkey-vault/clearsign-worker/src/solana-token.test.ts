@@ -8,11 +8,11 @@ import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 
 const mint = '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump'
-function account() {
+function account(m = mint, decimals = 6, symbol = 'SDICE') {
   return { executable: false, owner: TOKEN_2022, data: { program: 'spl-token-2022', parsed: { type: 'mint', info: {
-    isInitialized: true, decimals: 6, extensions: [
-      { extension: 'metadataPointer', state: { authority: null, metadataAddress: mint } },
-      { extension: 'tokenMetadata', state: { mint, symbol: 'SDICE', updateAuthority: null } },
+    isInitialized: true, decimals, extensions: [
+      { extension: 'metadataPointer', state: { authority: null, metadataAddress: m } },
+      { extension: 'tokenMetadata', state: { mint: m, symbol, updateAuthority: null } },
     ],
   } } } }
 }
@@ -108,4 +108,56 @@ test('a schema with no token amounts makes no token RPC call', async () => {
   const fetcher = (async () => { throw new Error('must not be called') }) as typeof fetch
   expect(await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://relay.example' }, 'relayDepositNative',
     CERTIFIED_SOLANA_CATALOG.relayDepositNative, instruction, message.staticAccounts, '11'.repeat(32), fetcher)).toEqual({})
+})
+
+test('the SoltoshiDICE entry pins the SDICE identity the real join names at account 3', () => {
+  const { message, instruction } = realJoin()
+  expect(CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin.token).toEqual({ mint, tokenProgram: TOKEN_2022, decimals: 6, symbol: 'SDICE' })
+  expect(bs58.encode(message.staticAccounts[instruction.accountIndices[3]])).toBe(mint)
+})
+
+test('a failover provider that misreports SDICE gets nothing signed, and its answer is not cached', async () => {
+  const { message, instruction } = realJoin()
+  // Provider 1 is rate-limited, so provider 2 alone answers: the verified repro.
+  const env = { CLEARSIGN_SOLANA_RPC_ENDPOINTS: 'https://pin-a.example,https://pin-b.example' }
+  const join = (answer: () => unknown) => certifySchemaTokens(env, 'soltoshidiceBlackjackJoin',
+    CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin, instruction, message.staticAccounts, '11'.repeat(32),
+    (async (url: any) => url === 'https://pin-a.example'
+      ? new Response('', { status: 429 })
+      : Response.json({ result: { value: [answer()] } })) as typeof fetch)
+  for (const lie of [() => account(mint, 9), () => account(mint, 6, 'USDC')]) {
+    const result = await join(lie)
+    expect(result.tokenInfo).toBeUndefined()
+    expect(result.tokenMetadataStatus).toBe('detailed-review-required')
+  }
+  const honest = await join(() => account())
+  expect(honest.tokenMetadataStatus).toBe('certified-on-chain')
+  expect(honest.tokenInfo).toMatchObject([{ mint, symbol: 'SDICE', decimals: 6 }])
+})
+
+test('the SDICE pin holds whichever entry asks, as a token definition is not bound to a schema', async () => {
+  // certifyPumpToken is the Pump AMM buy path.
+  const fetcher = (async () => Response.json({ result: { value: [account(mint, 9)] } })) as typeof fetch
+  expect(await certifyPumpToken({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://pin-pump.example' }, mint, '11'.repeat(32), fetcher)).toBeUndefined()
+})
+
+test('the SoltoshiDICE entry certifies no mint but SDICE, eligible or not', async () => {
+  const { message, instruction } = realJoin()
+  const other = bs58.encode(Buffer.alloc(32, 7))
+  const accountKeys = [...message.staticAccounts]
+  accountKeys[instruction.accountIndices[3]] = bs58.decode(other)
+  let reads = 0
+  const fetcher = (async () => { reads++; return Response.json({ result: { value: [account(other)] } }) }) as typeof fetch
+  const result = await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://pin-other.example' }, 'soltoshidiceBlackjackJoin',
+    CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin, instruction, accountKeys, '11'.repeat(32), fetcher)
+  expect(reads).toBe(0)
+  expect(result.tokenInfo).toBeUndefined()
+  expect(result.tokenMetadataStatus).toBe('detailed-review-required')
+})
+
+test('an unpinned Pump mint is still certified from its on-chain identity', async () => {
+  const other = bs58.encode(Buffer.alloc(32, 9))
+  const fetcher = (async () => Response.json({ result: { value: [account(other, 9, 'PUMPY')] } })) as typeof fetch
+  const token = await certifyPumpToken({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://unpinned.example' }, other, '11'.repeat(32), fetcher)
+  expect(token).toMatchObject({ mint: other, tokenProgram: TOKEN_2022, decimals: 9, symbol: 'PUMPY' })
 })

@@ -86,6 +86,10 @@ export interface SolanaSchemaSpec {
   instructionName: string
   args?: SolanaSchemaArg[]
   accounts?: SolanaSchemaAccount[]
+  /** Not serialized. When the program fixes the token its TOKEN_AMOUNT args
+   * are in, the clearsign Worker certifies only this identity, and only when
+   * the chain reports exactly these values. */
+  token?: { mint: string; tokenProgram: string; decimals: number; symbol: string }
 }
 
 /** Display text must be printable ASCII, no '%' (device screen safety). */
@@ -274,6 +278,7 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     //   round 87 repeat one value, so no captured join has distinct amounts;
     //   the order and units above rest on the encoder.
     // Instruction account 3 is the SDICE mint (Token-2022, 6 decimals).
+    token: { mint: '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump', tokenProgram: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', decimals: 6, symbol: 'SDICE' },
     provenance: { protocol: 'https://explorer.solana.com/address/CuTLp7pDmNGkFgi4aoh8Ef1YSjc2BzECQRLzYqaoVWBR' },
     programId: 'CuTLp7pDmNGkFgi4aoh8Ef1YSjc2BzECQRLzYqaoVWBR',
     discriminator: Buffer.from([0x51]),
