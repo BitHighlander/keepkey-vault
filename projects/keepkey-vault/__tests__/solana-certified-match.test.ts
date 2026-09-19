@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import bs58 from 'bs58'
 
-import { certifiedSolanaSchemaApplies, solanaInstructionMatchesSchema } from '../src/bun/solana-certified-match'
+import { certifiedSolanaSchemaApplies, findLocalCertifiedSolanaMatch, solanaInstructionMatchesSchema } from '../src/bun/solana-certified-match'
 import { CERTIFIED_SOLANA_CATALOG } from '../src/bun/solana-certified-schema'
 import { editSolanaTx, parseSolanaWireMessage, type EditableSolanaMessage } from '../scripts/fixtures/solana-message'
 import { syntheticPumpBuy } from '../scripts/fixtures/solana-pump'
@@ -101,5 +101,16 @@ describe('certifiedSolanaSchemaApplies (firmware schema_applies, certified)', ()
       m.version = 'v0'
       m.altEntries = [{ accountKey: Buffer.alloc(32, 0x42), writableIndices: [], readonlyIndices: [] }]
     }))).toBeUndefined() // a lookup table needs a nonempty LUT proof
+  })
+})
+
+describe('findLocalCertifiedSolanaMatch (Vault pre-filter)', () => {
+  test('names the one catalog entry the device will apply, and nothing otherwise', () => {
+    expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(joinFixture.rawTxBase64)))
+      .toMatchObject({ catalogKey: 'soltoshidiceBlackjackJoin', instructionIndex: JOIN_INDEX })
+    const bareBuy = editSolanaTx(syntheticPumpBuy().rawTx, (m) => { m.instructions = [m.instructions[0], m.instructions[7]] })
+    expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(bareBuy)))
+      .toMatchObject({ catalogKey: 'pumpAmmBuy', instructionIndex: 1 })
+    expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(syntheticPumpBuy().rawTx))).toBeUndefined()
   })
 })

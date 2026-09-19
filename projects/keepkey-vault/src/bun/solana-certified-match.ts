@@ -20,6 +20,7 @@ import bs58 from 'bs58'
 
 import {
   ARG_TOKEN_AMOUNT,
+  CERTIFIED_SOLANA_CATALOG,
   solanaSchemaCoverage,
   type SolanaSchemaSpec,
 } from './solana-certified-schema'
@@ -119,4 +120,19 @@ export function certifiedSolanaSchemaApplies(
     index === match || isCertifiedCompanion(message, instruction))
     ? match
     : undefined
+}
+
+/**
+ * The one reviewed catalog entry this message certifies under, or undefined.
+ * Pure and local: Vault uses it to decide whether a transaction may be sent
+ * to the ClearSign service at all.
+ */
+export function findLocalCertifiedSolanaMatch(
+  message: ParsedSolanaMessage,
+): { catalogKey: string; spec: SolanaSchemaSpec; instructionIndex: number } | undefined {
+  const found = Object.entries(CERTIFIED_SOLANA_CATALOG).flatMap(([catalogKey, spec]) => {
+    const instructionIndex = certifiedSolanaSchemaApplies(message, spec)
+    return instructionIndex === undefined ? [] : [{ catalogKey, spec, instructionIndex }]
+  })
+  return found.length === 1 ? found[0] : undefined
 }
