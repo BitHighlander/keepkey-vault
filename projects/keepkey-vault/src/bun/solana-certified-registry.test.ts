@@ -2,15 +2,21 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import bs58 from 'bs58'
 
+import protobuf from 'protobufjs'
+
 import {
   buildRestSolanaSignRequest,
+  certifiedSolanaProofApplies,
   DEFAULT_CLEARSIGN_SERVICE_URL,
   findCertifiedSolanaProof,
+  routeExternalSolanaTransaction,
   type CertifiedSolanaProof,
 } from './solana-certified-registry'
+import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { signSolanaWireTransaction } from './solana-signing'
 import { solanaSignTx } from '@keepkey/hdwallet-keepkey/dist/solana'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
+import certifiedJoin from '../../__tests__/fixtures/solana/soltoshidice-join-certified-envelope.json'
 
 const originalFetch = globalThis.fetch
 const originalServiceUrl = process.env.CLEARSIGN_SERVICE_URL
@@ -270,5 +276,70 @@ describe('certified envelope reaches the device request', () => {
       + '1205' + Buffer.from('SDICE').toString('hex') + '1806' + '2240' + '55'.repeat(64) + '288001'
     expect(wire!.toString('hex')).toContain(tokenField)
     expect(wire!.toString('hex')).toContain('6a8b01' + '33'.repeat(139))
+  })
+})
+
+describe('the production Worker envelope for the real join, encoded to the wire', () => {
+  // The hex tags above are written the way hdwallet writes them. This decodes
+  // with the pinned device-protocol definition instead, which is what the
+  // firmware's nanopb structs are generated from.
+  test('routes certified and reaches SolanaSignTx byte-equal to the Worker response', async () => {
+    const recorded = certifiedJoin.response
+    const hex = (value: string) => value.replace(/^0x/, '')
+    const rawTx = joinFixture.rawTxBase64
+    process.env.CLEARSIGN_SERVICE_URL = 'http://127.0.0.1:1647'
+    const requests: any[] = []
+    globalThis.fetch = (async (_input: any, init: any) => {
+      requests.push(JSON.parse(init.body))
+      return new Response(JSON.stringify(recorded), { status: 200 })
+    }) as unknown as typeof fetch
+    const noAlts = async (): Promise<never> => { throw new Error('transaction has no lookup tables') }
+
+    const route = await routeExternalSolanaTransaction(await buildSolanaDecodedInfo(rawTx, noAlts), { raw_tx: rawTx }, '7.16.0')
+    expect(requests).toEqual([{ rawTx, catalogKey: 'soltoshidiceBlackjackJoin' }])
+    expect(route.requiresBlindSigningConsent).toBe(false)
+    const proof = route.certifiedProof!
+    expect(certifiedSolanaProofApplies(rawTx, 'soltoshidiceBlackjackJoin', proof)).toBe(true)
+
+    const addressNList = [0x8000002c, 0x800001f5, 0x80000000, 0x80000000]
+    const request = buildRestSolanaSignRequest({ raw_tx: rawTx }, addressNList, {
+      certified: { rawTx, proof }, routedCertified: true, allowBlindSigning: false,
+    })
+    let wire: Uint8Array | undefined
+    const transport: any = {
+      lockDuring: (fn: () => unknown) => fn(),
+      call: async (type: number, message: any) => {
+        expect(type).toBe(752)
+        wire = message.serializeBinary()
+        return { message_enum: 753, proto: { getSignature_asU8: () => new Uint8Array(64) } }
+      },
+    }
+    await signSolanaWireTransaction(request, (deviceRequest) => solanaSignTx(transport, deviceRequest),
+      async () => joinFixture.expected.instructionAccounts[0])
+
+    const proto = await Bun.file(new URL('../../../../modules/device-protocol/messages-solana.proto', import.meta.url)).text()
+    const SolanaSignTx = protobuf.parse(proto, { keepCase: true }).root.lookupType('SolanaSignTx')
+    const signTx: any = SolanaSignTx.decode(wire!)
+    const bytes = (value: Uint8Array) => Buffer.from(value).toString('hex')
+    expect(signTx.address_n).toEqual(addressNList)
+    expect(Buffer.from(signTx.raw_tx)).toEqual(Buffer.from(rawTx, 'base64').subarray(65))
+    expect(bytes(signTx.schema_payload)).toBe(hex(recorded.schema.payload))
+    expect(bytes(signTx.schema_signature)).toBe(hex(recorded.schema.signature))
+    expect(signTx.schema_signer_key_id).toBe(0x80)
+    expect(bytes(signTx.clearsign_certificate)).toBe(hex(recorded.certificate))
+    // A self-contained legacy message: no LUT binding (fields 5-7) at all.
+    expect(Object.keys(SolanaSignTx.toObject(signTx)).sort()).toEqual([
+      'address_n', 'clearsign_certificate', 'raw_tx', 'schema_payload', 'schema_signature', 'schema_signer_key_id', 'token_info',
+    ])
+    expect(signTx.token_info).toHaveLength(1)
+    const token = signTx.token_info[0]
+    const [recordedToken] = recorded.tokenInfo
+    expect(Buffer.from(token.mint)).toEqual(Buffer.from(bs58.decode(recordedToken.mint)))
+    expect(token.symbol).toBe(recordedToken.symbol)
+    expect(token.decimals).toBe(recordedToken.decimals)
+    expect(bytes(token.signature)).toBe(hex(recordedToken.signature))
+    expect(token.signer_key_id).toBe(0x80)
+    // Nothing on the wire that the pinned definition does not know.
+    expect(Buffer.from(SolanaSignTx.encode(signTx).finish()).length).toBe(wire!.length)
   })
 })
