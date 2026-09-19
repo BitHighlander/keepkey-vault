@@ -10,6 +10,7 @@ import { evmMaxFee, evmNativeValue } from "../../../shared/evmFeePreview"
 import { isRelayBridgeDeposit } from "../../../shared/relayBridgePreview"
 import { utxoPreview } from "../../../shared/utxoPreview"
 import { cosmosDepositPreview } from "../../../shared/cosmosDepositPreview"
+import { assessSigningRisk, type RiskLevel } from "../../../shared/clearsign-risk"
 
 interface SigningApprovalProps {
 	request: SigningRequestInfo
@@ -292,6 +293,45 @@ function SolanaBlindSigningConsent({
 					</Box>
 				)}
 			</Flex>
+		</Flex>
+	)
+}
+
+// ── Risk bar: level + the payload facts behind it ─────────────────────
+
+const RISK_STYLE: Record<RiskLevel, { color: string; filled: number }> = {
+	low: { color: "var(--teal)", filled: 1 },
+	medium: { color: "var(--gold)", filled: 2 },
+	high: { color: "var(--rose)", filled: 3 },
+	critical: { color: "var(--rose)", filled: 4 },
+}
+
+function RiskBar({ request, t }: { request: SigningRequestInfo; t: (k: string, f?: string) => string }) {
+	const risk = assessSigningRisk(request)
+	if (!risk) return null
+	const style = RISK_STYLE[risk.level]
+	return (
+		<Flex direction="column" gap="1.5" w="100%" bg="rgba(0,0,0,0.2)" borderRadius="lg" px="3" py="2" data-risk-level={risk.level}>
+			<Flex align="center" gap="2">
+				<Text fontSize="xs" fontWeight="700" color={style.color}>
+					{t(`signing.risk_${risk.level}`, risk.headline)}
+				</Text>
+				<Flex gap="1" flex="1" minW="60px">
+					{[1, 2, 3, 4].map((i) => (
+						<Box key={i} flex="1" h="6px" borderRadius="full" bg={i <= style.filled ? style.color : "rgba(255,255,255,0.1)"} />
+					))}
+				</Flex>
+			</Flex>
+			<Text fontSize="2xs" color="kk.textMuted" fontWeight="600">{t("signing.riskWhatItDoes", "What signing this does:")}</Text>
+			{/* ponytail: reason sentences are English-only; i18n when the rule set settles */}
+			{risk.reasons.map((r, i) => (
+				<Text key={i} fontSize="xs" color={r.level === "low" ? "kk.textSecondary" : RISK_STYLE[r.level].color}>
+					• {r.text}
+				</Text>
+			))}
+			<Text fontSize="2xs" color="kk.textMuted">
+				{t("signing.riskFootnote", "Checked on this computer. Your KeepKey screen is the final word.")}
+			</Text>
 		</Flex>
 	)
 }
@@ -811,12 +851,17 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 		// clear-signs. A contract our decoder recognizes (source 'local') but the
 		// firmware blind-signs (e.g. Uniswap) must still read 'unknown' — the badge
 		// can't claim "known" for a tx the device shows as raw hex.
-		if (hasSignedBlob) trustLevel = 'verified'
+		// A caller-supplied blob is unverified on this computer; only the device
+		// checks it, so it earns "known" at most, never a green "verified".
+		if (hasSignedBlob) trustLevel = 'known'
 		else if (request.needsBlindSigning) trustLevel = 'unknown'
 		else if (decoded?.source === 'pioneer' || decoded?.source === 'local') trustLevel = 'known'
 	}
 	if (request.typedDataDecoded) {
-		trustLevel = request.typedDataDecoded.isKnownType ? 'verified' : 'known'
+		// Only x402 is streamed for on-device review; every other typed-data
+		// request is signed as a bare hash (EthereumSignTypedHash) — blind.
+		trustLevel = request.typedDataDecoded.operationName !== 'x402 EIP-3009 Payment' ? 'unknown'
+			: request.typedDataDecoded.isKnownType ? 'verified' : 'known'
 	}
 
 	// Solana is never a "simple transfer". Transactions need a clear-sign
@@ -835,8 +880,9 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 	const isSimpleTransfer =
 		!hasCalldata && !request.typedDataDecoded && !request.ethMessageDecoded && !request.solanaMessageDecoded && !isSolanaRequest
 	const blindSigningConsentRequired = !!request.requiresBlindSigningConsent
+	const solanaPlainText = isSolanaSignMessage && request.solanaMessageDecoded?.plainText === true
 	const advancedModeRequired =
-		isSolanaSignMessage
+		(isSolanaSignMessage && !solanaPlainText)
 		|| !!request.requiresAdvancedMode
 		|| (fwSupportsBlindSignGate && !!request.needsBlindSigning && !blindSigningConsentRequired)
 	const advancedModeBlocked = advancedModeRequired && !advancedModeEnabled
@@ -1125,6 +1171,9 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 					</Box>
 				)}
 
+				{/* Risk first, so it is read before any blind-signing consent. */}
+				<RiskBar request={request} t={t} />
+
 				{/* ── AdvancedMode gate ── */}
 				{advancedModeRequired && (
 					<BlindSigningBanner
@@ -1142,7 +1191,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 					/>
 				)}
 
-				{isSolanaSignMessage && (
+				{isSolanaSignMessage && !solanaPlainText && (
 					<SolanaUnsafeMessageBanner classification={request.solanaMessageDecoded?.classification} t={t} />
 				)}
 

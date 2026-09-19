@@ -29,6 +29,14 @@ import { resolveAlts } from './solana-alt'
 import { buildExpandedAccounts, decodeInstruction } from './solana-instruction-decoder'
 import type { SolanaTxDecodedInfo, SolanaTxDecodedInstruction } from '../shared/types'
 
+// ponytail: Stake/Vote programs omitted — add if a dApp flow ever touches them.
+const SYSTEM_PROGRAM = '11111111111111111111111111111111'
+const ASSET_PROGRAMS: Record<string, string> = {
+  [SYSTEM_PROGRAM]: 'System Program',
+  TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA: 'SPL Token',
+  TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb: 'SPL Token 2022',
+}
+
 export async function buildSolanaDecodedInfo(
   rawTxBase64: string,
   altFetcher: AltAccountFetcher,
@@ -78,6 +86,16 @@ export async function buildSolanaDecodedInfo(
   })
 
   const hasUnknownProgram = instructions.some((i) => i.status === 'unknown-program')
+  const unknownData = parsedMsg.instructions
+    .filter((_, i) => instructions[i].status === 'unknown-program')
+    .map((ix) => Buffer.from(ix.data))
+  const fundedKeysGivenToUnknownProgram = instructions
+    .filter((i) => i.programId === SYSTEM_PROGRAM && i.instructionName === 'transfer')
+    .map((i) => i.accounts.find((a) => a.label === 'destination')?.pubkey)
+    .filter((k): k is string => !!k && unknownData.some((d) => d.includes(Buffer.from(bs58.decode(k)))))
+  const assetPrograms = Object.entries(ASSET_PROGRAMS)
+    .filter(([id]) => expanded.includes(id))
+    .map(([, name]) => name)
 
   return {
     version: parsedMsg.version,
@@ -86,5 +104,7 @@ export async function buildSolanaDecodedInfo(
     altPubkeys,
     altResolutionIncomplete: altResolutionIncomplete || undefined,
     hasUnknownProgram: hasUnknownProgram || undefined,
+    assetPrograms,
+    fundedKeysGivenToUnknownProgram,
   }
 }

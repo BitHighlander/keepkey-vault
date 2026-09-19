@@ -347,6 +347,24 @@ export interface TonMessageSignatureResult {
   signature: string
 }
 
+/** Raw Solana message signing (`/solana/sign-message`), the Wallet Standard
+ *  `solana:signMessage` path dApps use for logins. No domain separation: the
+ *  device requires AdvancedMode and shows every byte. Prefer
+ *  `solanaSignOffchainMessage` whenever the verifier can accept the envelope. */
+export interface SolanaSignMessageParams {
+  address_n?: number[]
+  addressNList?: number[]
+  /** Hex bytes are signed as hex; anything else is decoded as base64. */
+  message: string
+}
+
+export interface SolanaMessageSignatureResult {
+  /** Base64 Ed25519 signature over the raw message bytes. */
+  signature: string
+  /** Base64 32-byte public key. */
+  publicKey: string
+}
+
 export interface SolanaSignOffchainMessageParams {
   address_n?: number[]
   addressNList?: number[]

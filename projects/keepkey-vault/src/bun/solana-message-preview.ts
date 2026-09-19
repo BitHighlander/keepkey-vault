@@ -102,6 +102,19 @@ export function buildSolanaMessageDecodedInfo(
     messageText: text !== undefined && isMostlyReadableText(text) ? text : undefined,
     messageHex: decoded.bytes.toString('hex'),
     byteLength: decoded.bytes.length,
+    plainText: isPlainTextForSigner(decoded.bytes, options.signer),
     ...shape,
   }
+}
+
+/** Same predicate as firmware solana_rawMessageIsPlainText. A tx signature
+ *  only verifies when the signer's key is in the message, so printable text
+ *  without that key cannot authorize a transaction. */
+export function isPlainTextForSigner(bytes: Buffer, signer?: string): boolean {
+  if (!signer || bytes.length === 0) return false
+  let key: Uint8Array
+  try { key = bs58.decode(signer) } catch { return false }
+  if (key.length !== 32) return false
+  if (!bytes.every((b) => (b >= 0x20 && b <= 0x7e) || b === 0x0a)) return false
+  return !bytes.includes(Buffer.from(key))
 }

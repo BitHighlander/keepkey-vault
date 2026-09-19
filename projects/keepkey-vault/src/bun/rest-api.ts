@@ -1716,6 +1716,12 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               signingInfo.chainId = preview.typedData?.domain?.chainId ? Number(preview.typedData.domain.chainId) : undefined
               if (preview.typedData) {
                 signingInfo.typedDataDecoded = decodeEIP712(preview.typedData)
+                // hdwallet signs everything but x402 via EthereumSignTypedHash,
+                // which the device refuses unless AdvancedMode is on.
+                if (signingInfo.typedDataDecoded.operationName !== 'x402 EIP-3009 Payment') {
+                  signingInfo.needsBlindSigning = true
+                  signingInfo.requiresAdvancedMode = true
+                }
               }
             } else if (path === '/eth/sign') {
               // EIP-191 personal_sign: body is { address, addressNList, message }.
@@ -1792,14 +1798,18 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               signingInfo.chain = 'solana'
               signingInfo.from = actualSigner
               signingInfo.data = raw
-              signingInfo.needsBlindSigning = true
-              signingInfo.requiresAdvancedMode = true
               signingInfo.solanaMessageDecoded = buildSolanaMessageDecodedInfo(raw, {
                 // Match hdwallet's SolanaSignMessage string coercion exactly:
                 // hex strings sign hex bytes, everything else signs base64 bytes.
                 encoding: messageEncoding,
                 signer: actualSigner,
               })
+              // Plain text without the signer's key cannot be a transaction, and
+              // firmware with solana_rawMessageIsPlainText signs it without
+              // AdvancedMode. Older firmware refuses it with a clear policy error.
+              const plainText = signingInfo.solanaMessageDecoded.plainText === true
+              signingInfo.needsBlindSigning = !plainText
+              signingInfo.requiresAdvancedMode = !plainText
             } else if (path === '/solana/sign-transaction') {
               // Solana clear-signing: parse v0/legacy message, resolve ALTs,
               // decode each instruction via the pioneer-discovery program
@@ -1934,6 +1944,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                   signingInfo.calldataDecoded = await decodeCalldata(preview.to, preview.data, chainIdNum) ?? undefined
                   console.log(`[REST] Calldata decoded:`, JSON.stringify(signingInfo.calldataDecoded, null, 2))
                 } catch (e) { console.warn('[REST] Calldata decode failed:', e) }
+                signingInfo.deviceClearSigns = firmwareClearSigns(preview.to, preview.data, chainIdNum)
 
                 // Caller supplied a runtime-signer blob directly (LoadClearsignSigner
                 // flow — the /eth/sign-transaction handler below honors this at
