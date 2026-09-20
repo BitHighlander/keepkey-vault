@@ -295,6 +295,67 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
       { type: ARG_TOKEN_AMOUNT, label: 'Max wager', mintAccount: 3 },
     ],
   },
+  soltoshidiceCeeloBet: {
+    protocol: 'SoltoshiDICE',
+    action: 'Place a Cee-lo bet against the SoltoshiDICE bank: an SDICE wager plus a refundable SOL deposit',
+    // Native Rust program with no published IDL. Every byte of the 26-byte
+    // bet is covered, so nothing in the data goes unshown. Evidence, read
+    // from the dapp's own bundles on https://soltoshidice.wtf (fetched
+    // 2026-09-19; soltoshidice.fun serves a byte-identical app). Cite the
+    // sha256, never the filename: the site redeploys under new content
+    // hashes, which is why the Blackjack citation above no longer resolves.
+    // Minified local identifiers rot the same way; they are quoted only to
+    // locate the code inside a bundle of that exact hash.
+    // - Tag: Game--h6LNB56.js (sha256 e558a5b4...) `tournamentBetInstruction`
+    //   takes a funded bet and overwrites byte 0: `s.data[0]=54`, then only
+    //   appends keys.
+    // - Layout: funding-client-ClZqlif1.js (sha256 b8d2baf7...)
+    //   `fundedBetInstruction` builds
+    //     Buffer.concat([Buffer.from([p?51:41]), _.data.subarray(1), i(l)])
+    //   over shared-client-CR8_DChw.js (sha256 ea80a3f2...)
+    //   `sharedBetInstruction(e,t,n,a,o,s=!1,c,u=3)`, whose data is
+    //     Buffer.concat([Buffer.from([9]), l(n), l(a), ...u>=4?[Buffer.from([4])]:[]])
+    //   with `l` the u64 LE writer of client-CGozqpeV.js (sha256 e76fdfea...).
+    //   Composed: u8 tag 54 | u64 round | u64 wager | u8 4 | u64 deposit,
+    //   26 bytes, and the funded hop passes u = 4 so the offset-17 byte is
+    //   always emitted.
+    // - That offset-17 byte is a rules-version selector, not an amount and
+    //   not a count: the 8th parameter gating it is filled with
+    //   `y.bankVersion` on the non-tournament path, the quote request sends
+    //   `protocol: 4`, and the program's own state decoders read
+    //   `version: e[0]` against the accepted set [1,2,3,4]. The byte written
+    //   is the hard-coded literal 4, so a later bank version would render as
+    //   whatever the encoder then writes.
+    // - Units. Wager: raw SDICE base units, 6 dp. The call site refuses a
+    //   quote unless `y.wager === String(BigInt(t)*1000000n)` for the panel's
+    //   whole-SDICE input (aria-label "Wager in SDICE"), and the same bundle
+    //   renders `Number(wager)/1e6` + ' SDICE'. Deposit: lamports, the
+    //   constant SOL_DEPOSIT_LAMPORTS = 10000000n guarded by
+    //   `if(l!==10000000n)throw`, which the dapp's own approval line calls
+    //   "a refundable 0.01 SOL deposit (network and account fees extra)".
+    //   Account rent and the network fee are not in this instruction data,
+    //   so this schema does not show them: the SOL figure on the device is
+    //   the deposit, not the total SOL leaving the wallet.
+    // - First party: active-C4XJrnCn.js (sha256 e33b846b...), served from the
+    //   site's own origin, is the whole config — programId CuTLp7...VWBR,
+    //   mint 4nCmpw...pump, decimals 6, bankWallet 5SD2yU...oJ1Y — and its
+    //   bankPda and vault re-derive under that programId to the exact
+    //   accounts inside the captured bet.
+    // Instruction account 5 is the SDICE mint (Token-2022, 6 decimals):
+    // sharedBetInstruction puts `T(f.mint)` sixth and both later hops append.
+    token: { mint: '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump', tokenProgram: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', decimals: 6, symbol: 'SDICE' },
+    provenance: { protocol: 'https://explorer.solana.com/address/CuTLp7pDmNGkFgi4aoh8Ef1YSjc2BzECQRLzYqaoVWBR' },
+    programId: 'CuTLp7pDmNGkFgi4aoh8Ef1YSjc2BzECQRLzYqaoVWBR',
+    discriminator: Buffer.from([0x36]),
+    programName: 'SoltoshiDICE',
+    instructionName: 'Cee-lo place bet',
+    args: [
+      { type: ARG_U64, label: 'Round' },
+      { type: ARG_TOKEN_AMOUNT, label: 'Wager', mintAccount: 5 },
+      { type: ARG_U8, label: 'Rules version' },
+      { type: ARG_LAMPORTS, label: 'SOL deposit' },
+    ],
+  },
   relayDepositNative: {
     programId: '99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2',
     discriminator: Buffer.from('0d9e0ddf5fd51c06', 'hex'),

@@ -8,9 +8,11 @@ import { syntheticPumpBuy } from '../scripts/fixtures/solana-pump'
 import { parseSolanaMessage } from '../src/bun/solana-tx'
 import firmwareCorpus from './fixtures/solana/certified-firmware-verdicts.json'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
+import ceeloFixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
 
 const JOIN = CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin
 const PUMP = CERTIFIED_SOLANA_CATALOG.pumpAmmBuy
+const CEELO = CERTIFIED_SOLANA_CATALOG.soltoshidiceCeeloBet
 const JOIN_INDEX = joinFixture.expected.instructionIndex
 const applies = (rawTx: string, spec = JOIN) => certifiedSolanaSchemaApplies(parseSolanaWireMessage(rawTx), spec)
 const editJoin = (edit: (m: EditableSolanaMessage) => void) => editSolanaTx(joinFixture.rawTxBase64, edit)
@@ -136,6 +138,20 @@ describe('findLocalCertifiedSolanaMatch (Vault pre-filter)', () => {
     expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(bareBuy)))
       .toMatchObject({ catalogKey: 'pumpAmmBuy', instructionIndex: 1 })
     expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(syntheticPumpBuy().rawTx))).toBeUndefined()
+  })
+
+  test('the real Cee-lo bet matches only the Cee-lo entry, though it shares a program with the join', () => {
+    const message = parseSolanaWireMessage(ceeloFixture.rawTxBase64)
+    // 2 instructions: ComputeBudget SetComputeUnitLimit, then the 26-byte bet.
+    expect(message.instructions).toHaveLength(2)
+    expect(certifiedSolanaSchemaApplies(message, CEELO)).toBe(1)
+    expect(findLocalCertifiedSolanaMatch(message))
+      .toMatchObject({ catalogKey: 'soltoshidiceCeeloBet', instructionIndex: 1 })
+    // Same program, so only the discriminator and the exact data length keep
+    // the two SoltoshiDICE entries apart. Neither may claim the other's bytes.
+    expect(solanaInstructionMatchesSchema(message, message.instructions[1], JOIN)).toBe(false)
+    const join = parseSolanaWireMessage(joinFixture.rawTxBase64)
+    expect(solanaInstructionMatchesSchema(join, join.instructions[JOIN_INDEX], CEELO)).toBe(false)
   })
 })
 

@@ -5,12 +5,17 @@ import worker from './index'
 import { syntheticPumpBuy } from '../../scripts/fixtures/solana-pump'
 import { editSolanaTx } from '../../scripts/fixtures/solana-message'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
+import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
 
 type Ix = { programIdIndex: number; accountIndices: number[]; data: Buffer }
 
 /** Re-serialize the real legacy SoltoshiDICE join, optionally edited. */
 const soltoshidiceJoin = (mutate?: (instructions: Ix[]) => void): string =>
   editSolanaTx(joinFixture.rawTxBase64, (m) => mutate?.(m.instructions))
+
+/** Re-serialize the real legacy SoltoshiDICE Cee-lo bet, optionally edited. */
+const soltoshidiceCeeloBet = (mutate?: (instructions: Ix[]) => void): string =>
+  editSolanaTx(ceeloFixture.rawTxBase64, (m) => mutate?.(m.instructions))
 
 const fetchWorker = (path: string, init?: RequestInit, env: Record<string, string> = {}) =>
   worker.fetch(new Request(`https://clearsign.example${path}`, init), env)
@@ -64,8 +69,8 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(6)
-    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana', 'solana'])
+    expect(body.entries).toHaveLength(7)
+    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana', 'solana', 'solana'])
     for (const entry of body.entries) {
       expect(['Relay', 'Portals', 'Pump', 'SoltoshiDICE']).toContain(entry.protocol)
       expect(entry.provenance.protocol).toMatch(/^https:\/\//)
@@ -73,6 +78,13 @@ describe('ClearSign Worker public surface', () => {
     const join = body.entries.find((entry: any) => entry.id === 'solana:soltoshidiceBlackjackJoin')
     expect(join.instructionLength).toBe(82)
     expect(join.discriminator).toBe('51')
+    // The Cee-lo bet: what the device will put on screen, in plain words.
+    const ceelo = body.entries.find((entry: any) => entry.id === 'solana:soltoshidiceCeeloBet')
+    expect(ceelo.instructionLength).toBe(26)
+    expect(ceelo.discriminator).toBe('36')
+    expect(ceelo.method).toBe('Cee-lo place bet')
+    expect(ceelo.action).toContain('refundable SOL deposit')
+    expect(ceelo.fieldsShownByKeepKey).toEqual(['Round', 'Wager', 'Rules version', 'SOL deposit'])
   })
 
   it('rejects unknown EVM shapes before checking signer readiness', async () => {
@@ -179,6 +191,35 @@ describe('ClearSign Worker public surface', () => {
     expect(response.status).toBe(422)
     expect((await response.json() as any).classification).toBe('OPAQUE')
     expect((await post('/v1/solana/certify', { rawTx: withAtaCreate, catalogKey: 'soltoshidiceBlackjackJoin' })).status).toBe(503)
+  })
+
+  it('discovers the real SoltoshiDICE Cee-lo bet from raw bytes, and not as the join', async () => {
+    expect(soltoshidiceCeeloBet()).toBe(ceeloFixture.rawTxBase64)
+    // Reached provisioning: the program, 0x36 tag, and exact 26-byte length
+    // matched, beside a ComputeBudget SetComputeUnitLimit companion.
+    const response = await post('/v1/solana/certify', { rawTx: ceeloFixture.rawTxBase64 })
+    expect(response.status).toBe(503)
+    expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+    expect((await post('/v1/solana/certify', { rawTx: ceeloFixture.rawTxBase64, catalogKey: 'soltoshidiceCeeloBet' })).status).toBe(503)
+    // The two SoltoshiDICE entries share a program, so neither may claim the
+    // other's instruction.
+    expect((await post('/v1/solana/certify', { rawTx: ceeloFixture.rawTxBase64, catalogKey: 'soltoshidiceBlackjackJoin' })).status).toBe(422)
+    expect((await post('/v1/solana/certify', { rawTx: joinFixture.rawTxBase64, catalogKey: 'soltoshidiceCeeloBet' })).status).toBe(422)
+  })
+
+  it('refuses Cee-lo bets that the reviewed schema does not describe exactly', async () => {
+    const bet = (ixs: Ix[]) => ixs[1]
+    for (const mutate of [
+      (ixs: Ix[]) => { bet(ixs).data = Buffer.concat([bet(ixs).data, Buffer.from([0])]) }, // uncovered byte
+      (ixs: Ix[]) => { bet(ixs).data = bet(ixs).data.subarray(0, 25) }, // short
+      (ixs: Ix[]) => { bet(ixs).data[0] = 0x29 }, // tag 41, the non-tournament bet: no entry yet
+      (ixs: Ix[]) => { bet(ixs).accountIndices = bet(ixs).accountIndices.slice(0, 5) }, // no mint account 5
+      (ixs: Ix[]) => { ixs.push({ ...bet(ixs) }) }, // two bets: firmware would refuse the ambiguity
+    ]) {
+      const response = await post('/v1/solana/certify', { rawTx: soltoshidiceCeeloBet(mutate) })
+      expect(response.status).toBe(422)
+      expect((await response.json() as any).classification).toBe('OPAQUE')
+    }
   })
 
   it('refuses malformed, wrong-program, wrong-length, and unknown Solana requests', async () => {

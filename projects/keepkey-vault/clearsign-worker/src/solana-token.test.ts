@@ -6,6 +6,7 @@ import { certifyPumpToken, certifySchemaTokens, inspectPumpToken, pumpTokenPreim
 import { CERTIFIED_SOLANA_CATALOG } from '../../src/bun/solana-certified-schema'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
+import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
 
 const mint = '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump'
 function account(m = mint, decimals = 6, symbol = 'SDICE') {
@@ -160,4 +161,65 @@ test('an unpinned Pump mint is still certified from its on-chain identity', asyn
   const fetcher = (async () => Response.json({ result: { value: [account(other, 9, 'PUMPY')] } })) as typeof fetch
   const token = await certifyPumpToken({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://unpinned.example' }, other, '11'.repeat(32), fetcher)
   expect(token).toMatchObject({ mint: other, tokenProgram: TOKEN_2022, decimals: 9, symbol: 'PUMPY' })
+})
+
+function realCeeloBet() {
+  const full = Buffer.from(ceeloFixture.rawTxBase64, 'base64')
+  const message = parseSolanaMessage(solanaMessageSlice(full, parseSolanaTx(full)))
+  // Instruction 0 is the ComputeBudget companion; the bet is instruction 1.
+  return { message, instruction: message.instructions[1] }
+}
+const CEELO = CERTIFIED_SOLANA_CATALOG.soltoshidiceCeeloBet
+
+test('the Cee-lo entry pins the SDICE identity the real bet names at account 5', () => {
+  const { message, instruction } = realCeeloBet()
+  expect(CEELO.token).toEqual({ mint, tokenProgram: TOKEN_2022, decimals: 6, symbol: 'SDICE' })
+  expect(CEELO.args!.filter(arg => arg.type === 6).map(arg => arg.mintAccount)).toEqual([5])
+  expect(bs58.encode(message.staticAccounts[instruction.accountIndices[5]])).toBe(mint)
+})
+
+test('attests SDICE for the real Cee-lo wager, so the device shows an amount and a symbol', async () => {
+  const { message, instruction } = realCeeloBet()
+  const requested: string[][] = []
+  const fetcher = (async (_url: any, init: any) => {
+    requested.push(JSON.parse(init.body).params[0])
+    return Response.json({ result: { value: [account()] } })
+  }) as typeof fetch
+  const result = await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://ceelo-test.example' }, 'soltoshidiceCeeloBet',
+    CEELO, instruction, message.staticAccounts, '11'.repeat(32), fetcher)
+  expect(requested).toEqual([[mint]])
+  expect(result.tokenMetadataStatus).toBe('certified-on-chain')
+  expect(result.tokenInfo).toMatchObject([{ mint, tokenProgram: TOKEN_2022, symbol: 'SDICE', decimals: 6, signerKeyId: 0x80 }])
+})
+
+test('a provider that misreports SDICE gets nothing signed for the Cee-lo wager either', async () => {
+  const { message, instruction } = realCeeloBet()
+  // Provider 1 is rate-limited, so provider 2 alone answers: the verified repro.
+  const env = { CLEARSIGN_SOLANA_RPC_ENDPOINTS: 'https://ceelo-pin-a.example,https://ceelo-pin-b.example' }
+  const bet = (answer: () => unknown) => certifySchemaTokens(env, 'soltoshidiceCeeloBet',
+    CEELO, instruction, message.staticAccounts, '11'.repeat(32),
+    (async (url: any) => url === 'https://ceelo-pin-a.example'
+      ? new Response('', { status: 429 })
+      : Response.json({ result: { value: [answer()] } })) as typeof fetch)
+  for (const lie of [() => account(mint, 9), () => account(mint, 6, 'USDC')]) {
+    const result = await bet(lie)
+    expect(result.tokenInfo).toBeUndefined()
+    expect(result.tokenMetadataStatus).toBe('detailed-review-required')
+  }
+  const honest = await bet(() => account())
+  expect(honest.tokenMetadataStatus).toBe('certified-on-chain')
+})
+
+test('the Cee-lo entry certifies no mint but SDICE, so a swapped mint account is never labelled', async () => {
+  const { message, instruction } = realCeeloBet()
+  const other = bs58.encode(Buffer.alloc(32, 7))
+  const accountKeys = [...message.staticAccounts]
+  accountKeys[instruction.accountIndices[5]] = bs58.decode(other)
+  let reads = 0
+  const fetcher = (async () => { reads++; return Response.json({ result: { value: [account(other)] } }) }) as typeof fetch
+  const result = await certifySchemaTokens({ CLEARSIGN_SOLANA_RPC_ENDPOINT: 'https://ceelo-other.example' }, 'soltoshidiceCeeloBet',
+    CEELO, instruction, accountKeys, '11'.repeat(32), fetcher)
+  expect(reads).toBe(0)
+  expect(result.tokenInfo).toBeUndefined()
+  expect(result.tokenMetadataStatus).toBe('detailed-review-required')
 })

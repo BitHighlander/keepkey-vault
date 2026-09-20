@@ -14,6 +14,7 @@ import { buildSolanaDecodedInfo } from '../src/bun/solana-clearsign'
 import { editSolanaTx } from '../scripts/fixtures/solana-message'
 import { syntheticPumpBuy } from '../scripts/fixtures/solana-pump'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
+import ceeloFixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
 import relayAltFixture from './fixtures/solana/relay-deposit-native-alt.json'
 import relayFixture from './fixtures/solana/relay-deposit-native-no-alt.json'
 import type { SigningRequestInfo } from '../src/shared/types'
@@ -199,6 +200,64 @@ describe('routeExternalSolanaTransaction (REST pre-approval auto-lookup)', () =>
     expect(await routeExternalSolanaTransaction(nativeOnly, { raw_tx: joinRawTx }, '7.16.0'))
       .toEqual({ requiresBlindSigningConsent: false })
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('the live SoltoshiDICE Cee-lo bet routes certified', () => {
+  const ceeloRawTx = ceeloFixture.rawTxBase64
+  const ceeloPayload = serializeSolanaSchema(CERTIFIED_SOLANA_CATALOG.soltoshidiceCeeloBet).toString('hex')
+  const noAlts = async (): Promise<never> => { throw new Error('transaction has no lookup tables') }
+  const decoded = (rawTx: string) => buildSolanaDecodedInfo(rawTx, noAlts)
+
+  function certifiedBetResponse(edit: (body: any) => void = () => {}): Response {
+    const body = {
+      catalogKey: 'soltoshidiceCeeloBet',
+      classification: 'VERIFIED',
+      schema: { payload: `0x${ceeloPayload}`, signature: `0x${'22'.repeat(64)}`, signerKeyId: 0x80 },
+      certificate: `0x${'33'.repeat(139)}`,
+      tokenInfo: [{ mint: '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump', symbol: 'SDICE', decimals: 6, signature: '55'.repeat(64), signerKeyId: 0x80 }],
+    }
+    edit(body)
+    return new Response(JSON.stringify(body), { status: 200 })
+  }
+
+  test('the device clear-signs it: no one-shot consent, no AdvancedMode', async () => {
+    process.env.CLEARSIGN_SERVICE_URL = 'http://127.0.0.1:1647'
+    const calls: any[] = []
+    globalThis.fetch = (async (_input: any, init: any) => {
+      calls.push(JSON.parse(init.body))
+      return certifiedBetResponse()
+    }) as unknown as typeof fetch
+    const info = { id: 'ceelo', method: '/solana/sign-transaction' } as SigningRequestInfo
+    info.solanaDecoded = await decoded(ceeloRawTx)
+    // The bet's program is unknown to the host decoder, so without an
+    // envelope this is an opaque blind sign.
+    expect(info.solanaDecoded.hasUnknownProgram).toBe(true)
+    const proof = await applyRestSolanaSigningGates(info, { raw_tx: ceeloRawTx }, '7.16.0')
+    expect(calls).toEqual([{ rawTx: ceeloRawTx, catalogKey: 'soltoshidiceCeeloBet' }])
+    expect(proof?.schema.payload).toBe(ceeloPayload)
+    expect(proof?.tokenInfo?.[0]).toMatchObject({ symbol: 'SDICE', decimals: 6 })
+    expect(info.requiresBlindSigningConsent).toBe(false)
+    expect(info.requiresAdvancedMode).toBe(false)
+    expect(info.needsBlindSigning).not.toBe(true)
+    // CONTROL: the same bet without an envelope stays a blind sign.
+    globalThis.fetch = (async () => new Response(JSON.stringify({ classification: 'OPAQUE', error: 'no match' }), { status: 422 })) as unknown as typeof fetch
+    const opaque = { id: 'ceelo2', method: '/solana/sign-transaction' } as SigningRequestInfo
+    opaque.solanaDecoded = await decoded(ceeloRawTx)
+    expect(await applyRestSolanaSigningGates(opaque, { raw_tx: ceeloRawTx }, '7.16.0')).toBeUndefined()
+    expect(opaque.requiresAdvancedMode).toBe(true)
+    expect(opaque.needsBlindSigning).toBe(true)
+  })
+
+  test('the Blackjack schema cannot certify the bet, nor the Cee-lo schema the join', async () => {
+    process.env.CLEARSIGN_SERVICE_URL = 'http://127.0.0.1:1647'
+    const joinPayload = serializeSolanaSchema(CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin).toString('hex')
+    globalThis.fetch = (async () => certifiedBetResponse((body) => { body.schema.payload = joinPayload })) as unknown as typeof fetch
+    expect(await routeExternalSolanaTransaction(await decoded(ceeloRawTx), { raw_tx: ceeloRawTx }, '7.16.0'))
+      .toEqual({ requiresBlindSigningConsent: true })
+    globalThis.fetch = (async () => certifiedBetResponse()) as unknown as typeof fetch
+    expect(await routeExternalSolanaTransaction(await decoded(joinFixture.rawTxBase64), { raw_tx: joinFixture.rawTxBase64 }, '7.16.0'))
+      .toEqual({ requiresBlindSigningConsent: true })
   })
 })
 
