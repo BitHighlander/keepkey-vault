@@ -46,6 +46,8 @@ import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
 import { assessSigningRisk } from '../shared/clearsign-risk'
 import { applyRestSolanaSigningGates, buildRestSolanaSignRequest, type CertifiedSolanaProof } from './solana-certified-registry'
+import { describeCertifiedSolanaTransaction } from './solana-certified-describe'
+import { simulateSolanaHoldings } from './solana-outflow'
 import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
 import { utxoDiscoveryKey } from './btc-backend/types'
 import {
@@ -1865,6 +1867,26 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                 // The device decodes this call from the certified schema. The
                 // sign handler refuses if that material is gone at sign time.
                 signingInfo.deviceClearSigns = true
+                // What the delegate's signature actually covers — the program
+                // id, the instruction name and the argument layout — read back
+                // from the reviewed entry the envelope was checked against, so
+                // the overlay shows the same values the device will.
+                signingInfo.solanaCertified = describeCertifiedSolanaTransaction(preview.raw_tx, certifiedProof)
+              }
+              // Every gate above is now decided. The simulation runs last, on
+              // purpose: it is an estimate from an RPC this computer chose, so
+              // it may add an answer ("you would be left holding X") but must
+              // never relax needsBlindSigning, requiresAdvancedMode,
+              // requiresBlindSigningConsent or deviceClearSigns.
+              if (typeof preview.raw_tx === 'string') {
+                signingInfo.simulatedOutflow = await simulateSolanaHoldings(
+                  preview.raw_tx,
+                  signingInfo.solanaDecoded,
+                  {
+                    endpoint: getSetting('solana_rpc_endpoint') || DEFAULT_SOLANA_RPC_ENDPOINT,
+                    tokens: certifiedProof?.tokenInfo,
+                  },
+                )
               }
             } else if (
               path === '/tron/sign-message'
@@ -2936,6 +2958,13 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           try {
             const solanaDecoded = await buildSolanaDecodedInfo(body.raw_tx, createRpcAltFetcher(endpoint))
             const requiresBlindSigningConsent = requiresSolanaBlindSigningConsent(solanaDecoded, false)
+            // Only now, with the consent verdict already fixed above, ask an RPC
+            // what the fee payer would be left holding. It is an estimate made
+            // on this computer and it answers the one question a decode of an
+            // opaque program cannot — including a wager that moves by CPI, with
+            // no transfer instruction in the bytes to read. It is returned as
+            // its own field and feeds no gate.
+            const simulatedOutflow = await simulateSolanaHoldings(body.raw_tx, solanaDecoded, { endpoint })
             // The same sentences the vault's own approval overlay shows. Without
             // them a caller has to invent its own wording for the same bytes,
             // and two vocabularies for one transaction is how a user ends up
@@ -2946,20 +2975,24 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             // must not promise it.
             const risk = assessSigningRisk({
               id: 'decode', method: 'solana_decodeTransaction', appName: 'decode', chain: 'solana',
-              solanaDecoded, requiresBlindSigningConsent,
+              solanaDecoded, requiresBlindSigningConsent, simulatedOutflow,
             } as any)
-            return json({ solanaDecoded, requiresBlindSigningConsent, risk })
+            return json({ solanaDecoded, requiresBlindSigningConsent, risk, simulatedOutflow })
           } catch (e: any) {
             // Mirrors the signing gate: an explicit error, never a partial
             // decode dressed up as a summary. The caller must render this as a
             // refusal to review, not as "nothing is being moved".
             const solanaDecodeError = `${e?.name || 'Error'}: ${e?.message || String(e)}`
             console.warn('[REST] Solana decode failed:', solanaDecodeError, '\n  raw_tx (base64):', body.raw_tx)
+            // Bytes this vault cannot read are the case where "what would I be
+            // left holding" matters most, so still ask — with no decode, the
+            // answer covers native SOL and says the token side went unchecked.
+            const simulatedOutflow = await simulateSolanaHoldings(body.raw_tx, undefined, { endpoint })
             const risk = assessSigningRisk({
               id: 'decode', method: 'solana_decodeTransaction', appName: 'decode', chain: 'solana',
-              solanaDecodeError, requiresBlindSigningConsent: true,
+              solanaDecodeError, requiresBlindSigningConsent: true, simulatedOutflow,
             } as any)
-            return json({ solanaDecodeError, requiresBlindSigningConsent: true, risk })
+            return json({ solanaDecodeError, requiresBlindSigningConsent: true, risk, simulatedOutflow })
           }
         }
 

@@ -24,10 +24,18 @@
 
 import bs58 from 'bs58'
 import { DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
+import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from './solana-tx'
+import type { SimulatedHoldings, SolanaTxDecodedInfo } from '../shared/types'
 
 /** SPL token account layout: mint(32) | owner(32) | amount(u64 LE) | ... */
 const SPL_ACCOUNT_LEN = 165
 const SPL_AMOUNT_OFFSET = 64
+
+/** Programs whose accounts hold token balances for an owner. */
+const TOKEN_PROGRAMS = [
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // SPL Token
+  'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', // Token-2022
+]
 
 export interface SolanaOutflow {
   /** Lamports the fee-payer's native account holds AFTER this transaction. */
@@ -74,30 +82,69 @@ async function tokenAccountsFor(owner: string, mint: string, endpoint: string): 
 }
 
 /**
+ * The token accounts of `owner` that this transaction names.
+ *
+ * Solana requires every account a transaction touches — including through a
+ * CPI from inside an opaque program — to be listed in that transaction, so an
+ * account absent from `txAccounts` cannot change, and one present is exactly
+ * what needs watching. This is how a wager that moves by CPI, with no transfer
+ * instruction to read, still gets an answer.
+ *
+ * Throws when the lookup fails: a caller that cannot list the accounts must say
+ * so, not report SOL alone as if the tokens had been checked.
+ */
+export async function ownedTokenAccountsInTransaction(
+  owner: string,
+  txAccounts: Iterable<string>,
+  endpoint = DEFAULT_SOLANA_RPC_ENDPOINT,
+): Promise<string[]> {
+  const named = new Set(txAccounts)
+  const found: string[] = []
+  for (const programId of TOKEN_PROGRAMS) {
+    const res = await rpc(endpoint, 'getTokenAccountsByOwner', [owner, { programId }, { encoding: 'base64' }])
+    for (const account of res?.value ?? []) {
+      if (typeof account?.pubkey === 'string' && named.has(account.pubkey)) found.push(account.pubkey)
+    }
+  }
+  return found
+}
+
+/** Token accounts to report on beside native SOL. */
+export interface SolanaOutflowWatch {
+  /** Mints to resolve to `owner`'s token accounts (one RPC call each). */
+  mints?: string[]
+  /** Token accounts of `owner` that are already known — see
+   *  {@link ownedTokenAccountsInTransaction}. */
+  tokenAccounts?: string[]
+}
+
+/**
  * Simulate `rawTxBase64` and report what `owner` is left holding afterwards.
  *
- * Pass `sourceMint` whenever the asset being spent is an SPL token — without
- * it the report covers only native SOL, which for a token swap is the wrong
- * asset entirely: it would read "your wallet holds 0.0099 SOL" (reassuring)
- * while the tokens actually leaving go unmentioned.
+ * Pass the token side whenever one exists — without it the report covers only
+ * native SOL, which for a token swap or a token wager is the wrong asset
+ * entirely: it would read "your wallet holds 0.0099 SOL" (reassuring) while the
+ * tokens actually leaving go unmentioned. A bare mint string is the
+ * single-asset case; `SolanaOutflowWatch` carries several.
  */
 export async function checkSolanaOutflow(
   rawTxBase64: string,
   owner: string,
-  sourceMint?: string,
+  watch?: string | SolanaOutflowWatch,
   endpoint = DEFAULT_SOLANA_RPC_ENDPOINT,
 ): Promise<SolanaOutflow> {
-  let tokenAccounts: string[] = []
-  if (sourceMint) {
+  const mints = typeof watch === 'string' ? [watch] : watch?.mints ?? []
+  const tokenAccounts = new Set(typeof watch === 'string' ? [] : watch?.tokenAccounts ?? [])
+  for (const mint of mints) {
     try {
-      tokenAccounts = await tokenAccountsFor(owner, sourceMint, endpoint)
+      for (const account of await tokenAccountsFor(owner, mint, endpoint)) tokenAccounts.add(account)
     } catch {
-      // Fall through: report SOL and flag that the token side is unknown
-      // rather than silently implying the token isn't moving.
+      // Fail the whole check: reporting SOL while one watched mint silently
+      // dropped out would read as "that token is not moving".
       return {
         solLamportsAfter: 0n,
         tokensAfter: [],
-        unavailable: `could not locate your ${sourceMint.slice(0, 4)}…${sourceMint.slice(-4)} token account`,
+        unavailable: `could not locate your ${mint.slice(0, 4)}…${mint.slice(-4)} token account`,
       }
     }
   }
@@ -135,5 +182,99 @@ export async function checkSolanaOutflow(
     return { solLamportsAfter: BigInt(post[0]?.lamports ?? 0), tokensAfter }
   } catch (e: any) {
     return { ...empty, unavailable: e?.message || String(e) }
+  }
+}
+
+/**
+ * The "what will I be left holding" answer for a whole transaction, in the one
+ * shape the approval overlay and the REST callers both get.
+ *
+ * Watches native SOL plus every token account of the fee payer that this
+ * transaction names, so a program moving tokens by CPI — with no transfer
+ * instruction anywhere in the bytes — is covered like any other.
+ *
+ * Never throws and never reports a half-answer as a whole one: a failure sets
+ * `unavailable`, a token side that could not be established sets `note`. It
+ * returns facts only; it decides no signing gate.
+ */
+export async function simulateSolanaHoldings(
+  rawTxBase64: string,
+  decoded: SolanaTxDecodedInfo | undefined,
+  options: {
+    endpoint?: string
+    /** Mint identities the ClearSign delegate attested. Display only — an
+     *  unattested mint is shown in raw base units with its full address. */
+    tokens?: Array<{ mint: string; symbol: string; decimals: number }>
+    /** Whole-check budget. This runs while the user waits for the approval
+     *  window, and it takes up to three RPC round trips, so it answers late or
+     *  not at all rather than holding the window shut. */
+    timeoutMs?: number
+  } = {},
+): Promise<SimulatedHoldings> {
+  const label = 'checked on this computer' as const
+  const budget = options.timeoutMs ?? 10_000
+  let expire: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<SimulatedHoldings>((resolve) => {
+    expire = setTimeout(() => resolve({ label, unavailable: `no answer within ${Math.round(budget / 1000)}s` }), budget)
+  })
+  try {
+    return await Promise.race([holdingsAfter(rawTxBase64, decoded, options), deadline])
+  } finally {
+    clearTimeout(expire)
+  }
+}
+
+async function holdingsAfter(
+  rawTxBase64: string,
+  decoded: SolanaTxDecodedInfo | undefined,
+  options: { endpoint?: string; tokens?: Array<{ mint: string; symbol: string; decimals: number }> },
+): Promise<SimulatedHoldings> {
+  const endpoint = options.endpoint ?? DEFAULT_SOLANA_RPC_ENDPOINT
+  const label = 'checked on this computer' as const
+
+  let owner: string
+  try {
+    const fullTx = Uint8Array.from(Buffer.from(rawTxBase64, 'base64'))
+    const message = parseSolanaMessage(solanaMessageSlice(fullTx, parseSolanaTx(fullTx)))
+    owner = bs58.encode(message.staticAccounts[0])
+  } catch (e: any) {
+    return { label, unavailable: `could not read this transaction: ${e?.message || String(e)}` }
+  }
+
+  let tokenAccounts: string[] = []
+  let note: string | undefined
+  if (!decoded) {
+    note = 'Token balances were not checked: this computer could not read the transaction.'
+  } else {
+    try {
+      tokenAccounts = await ownedTokenAccountsInTransaction(
+        owner,
+        decoded.instructions.flatMap((ix) => ix.accounts.map((a) => a.pubkey)),
+        endpoint,
+      )
+      if (decoded.altResolutionIncomplete) {
+        note = 'Token balances may be incomplete: part of this transaction could not be looked up.'
+      }
+    } catch (e: any) {
+      note = `Token balances were not checked: ${e?.message || String(e)}.`
+    }
+  }
+
+  const outflow = await checkSolanaOutflow(rawTxBase64, owner, { tokenAccounts }, endpoint)
+  if (outflow.unavailable) return { label, owner, unavailable: outflow.unavailable }
+
+  return {
+    label,
+    owner,
+    solLamportsAfter: outflow.solLamportsAfter.toString(),
+    tokensAfter: outflow.tokensAfter.map((token) => {
+      const attested = options.tokens?.find((t) => t.mint === token.mint)
+      return {
+        mint: token.mint,
+        amountAfter: token.amountAfter.toString(),
+        ...(attested ? { symbol: attested.symbol, decimals: attested.decimals } : {}),
+      }
+    }),
+    ...(note ? { note } : {}),
   }
 }

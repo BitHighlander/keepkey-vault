@@ -650,6 +650,12 @@ export interface SigningRequestInfo {
   solanaMessageDecoded?: SolanaMessageDecodedInfo
   /** Clear-signing: decoded Solana tx — per-instruction rows + resolved ALT accounts */
   solanaDecoded?: SolanaTxDecodedInfo
+  /** The certified ClearSign description the device will decode this Solana
+   *  transaction from. Present only alongside deviceClearSigns. */
+  solanaCertified?: SolanaCertifiedDescription
+  /** Post-transaction holdings from a simulation on this computer. An
+   *  estimate: it never relaxes a gate below and never sets deviceClearSigns. */
+  simulatedOutflow?: SimulatedHoldings
   /** Parsed only from the exact TRON raw_data protobuf bytes being signed. */
   tronDecoded?: TronTxPreview
   /**
@@ -741,6 +747,75 @@ export interface SolanaTxDecodedInfo {
    *  also appears inside an unknown program's instruction data — the shape of
    *  "fund a session key and register it". */
   fundedKeysGivenToUnknownProgram?: string[]
+  /** Most the network can charge for this transaction, in lamports (decimal
+   *  string): the per-signature base fee plus the priority fee its own
+   *  ComputeBudget instructions ask for. Read from the signed bytes. */
+  maxNetworkFeeLamports?: string
+}
+
+// ── Certified Solana description ─────────────────────────────────────────
+
+/**
+ * One argument of the instruction a KeepKey-certified schema describes. The
+ * label and the position/type this value was read at are what the ClearSign
+ * delegate signed; the value itself comes from the transaction's own bytes.
+ */
+export interface SolanaCertifiedArg {
+  /** The label in the signed schema, e.g. "Wager". Never invented here. */
+  label: string
+  kind: 'number' | 'sol' | 'token' | 'pubkey' | 'opaque' | 'duration'
+  /** Decimal for numbers/amounts/seconds, base58 for a pubkey, hex for opaque. */
+  raw: string
+  /** token: the mint this amount is denominated in (base58). */
+  mint?: string
+  /** token: set ONLY when the delegate attested this mint's identity. Absent
+   *  means the amount must be shown in raw base units with the full mint. */
+  symbol?: string
+  decimals?: number
+}
+
+/**
+ * What a certified ClearSign envelope says about ONE instruction of a Solana
+ * transaction.
+ *
+ * The delegate's signature covers exactly this much: the program id, the
+ * program and instruction names, and the argument layout that fixes where each
+ * value below was read. It is NOT a statement about what the program does with
+ * those values, about the accounts the call names, or about the site that
+ * asked for it — presenting it as any of those would be a false guarantee.
+ */
+export interface SolanaCertifiedDescription {
+  programId: string
+  /** Signed display name of the program, e.g. "SoltoshiDICE". */
+  programName: string
+  /** Signed display name of this instruction, e.g. "Cee-lo place bet". */
+  instructionName: string
+  args: SolanaCertifiedArg[]
+}
+
+/**
+ * What the signer's accounts hold after this transaction, obtained by
+ * simulating it on this computer.
+ *
+ * An estimate from an RPC this computer chose, never a device guarantee and
+ * never a reason to relax a signing gate. `unavailable` means there is no
+ * answer at all — it must read as "could not check", never as "nothing moves".
+ */
+export interface SimulatedHoldings {
+  /** Fixed provenance label. The UI must show this wording, or its own
+   *  translation of it, next to every number below. */
+  label: 'checked on this computer'
+  /** The account these holdings belong to (base58) — the transaction's fee
+   *  payer. Absent when the transaction could not even be read. */
+  owner?: string
+  /** Lamports `owner` holds afterwards, decimal string. */
+  solLamportsAfter?: string
+  /** Token accounts of `owner` this transaction names, after it runs. */
+  tokensAfter?: Array<{ mint: string; amountAfter: string; symbol?: string; decimals?: number }>
+  /** Why there is no answer. Set ⇒ every field above is absent. */
+  unavailable?: string
+  /** An honest limit on what was watched, e.g. "tokens were not checked". */
+  note?: string
 }
 
 export interface ApiLogEntry {

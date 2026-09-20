@@ -54,7 +54,7 @@ export const ARG_TOKEN_AMOUNT = 6
 /** v2: u64 LE seconds, shown in exact d / h / min / s units. */
 export const ARG_DURATION = 7
 
-const ARG_WIDTH: Record<number, number> = {
+export const ARG_WIDTH: Record<number, number> = {
   [ARG_U64]: 8,
   [ARG_U8]: 1,
   [ARG_PUBKEY]: 32,
