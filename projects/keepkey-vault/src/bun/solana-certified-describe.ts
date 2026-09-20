@@ -28,6 +28,7 @@ import {
   ARG_WIDTH,
   serializeSolanaSchema,
   type SolanaSchemaArg,
+  type SolanaSchemaSpec,
 } from './solana-certified-schema'
 import type { CertifiedSolanaProof } from './solana-certified-registry'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice, type ParsedSolanaMessage } from './solana-tx'
@@ -48,6 +49,7 @@ function readArg(
   arg: SolanaSchemaArg,
   accounts: (position: number) => string | undefined,
   proof: CertifiedSolanaProof,
+  pin: SolanaSchemaSpec['token'],
 ): SolanaCertifiedArg {
   const base = { label: arg.label }
   switch (arg.type) {
@@ -63,16 +65,30 @@ function readArg(
       return { ...base, kind: 'pubkey', raw: bs58.encode(Uint8Array.from(data.subarray(offset, offset + 32))) }
     case ARG_TOKEN_AMOUNT: {
       const mint = accounts(arg.mintAccount!)
-      // Identity only from the delegate's own token attestation for this exact
-      // mint. A ticker from anywhere else is how a fake token gets a trusted
-      // name, so without one the amount stays in raw base units.
+      // WHAT THE HOST ENFORCES, exactly. The delegate's token attestation
+      // arrives with a signature, and nothing here verifies it — only the
+      // device does. So a ticker is rendered only when that attestation AGREES
+      // with the identity this catalog entry pins locally: the same mint in the
+      // instruction's own account slot, the same symbol, the same decimals.
+      // Either side alone would be a name the user cannot check — the
+      // attestation because its signature is unverified here, the pin because
+      // showing it when the delegate said something else would put a ticker on
+      // the screen that the device will not show. A disagreement on any field,
+      // an entry that pins no token, or no attestation at all leaves the amount
+      // in raw base units with the full mint. (The attestation carries mint,
+      // symbol and decimals only, so the pin's tokenProgram has no counterpart
+      // to compare against here; the device checks the mint account itself.)
       const attested = mint ? proof.tokenInfo?.find((t) => t.mint === mint) : undefined
+      const agrees = !!attested && !!pin
+        && mint === pin.mint
+        && attested.symbol === pin.symbol
+        && attested.decimals === pin.decimals
       return {
         ...base,
         kind: 'token',
         raw: data.readBigUInt64LE(offset).toString(),
         ...(mint ? { mint } : {}),
-        ...(attested ? { symbol: attested.symbol, decimals: attested.decimals } : {}),
+        ...(agrees ? { symbol: attested!.symbol, decimals: attested!.decimals } : {}),
       }
     }
     default:
@@ -115,7 +131,7 @@ export function describeCertifiedSolanaTransaction(
   let offset = spec.discriminator.length
   for (const arg of spec.args ?? []) {
     args.push(readArg(data, offset, arg,
-      (position) => accountAt(message, proof, instruction.accountIndices[position]), proof))
+      (position) => accountAt(message, proof, instruction.accountIndices[position]), proof, spec.token))
     offset += ARG_WIDTH[arg.type]
   }
 

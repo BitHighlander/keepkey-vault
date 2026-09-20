@@ -36,6 +36,9 @@ afterEach(() => {
 
 const noAlts = async (): Promise<never> => { throw new Error('legacy fixture must not fetch ALTs') }
 
+/** The mint the soltoshidiceBlackjackJoin catalog entry pins locally. */
+const SDICE_MINT = '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump'
+
 /** The envelope exactly as the production Worker returned it, through the same
  *  parser the signing gate uses — not a hand-built object. */
 async function workerProof(edit: (body: any) => void = () => {}): Promise<CertifiedSolanaProof> {
@@ -81,6 +84,52 @@ describe('describeCertifiedSolanaTransaction — read back what was signed', () 
     // fake token passes for a real one.
     expect(formatCertifiedArg(buyIn)).toBe('1,000,000,000 base units of token 4nCm…pump')
     expect(formatCertifiedArg(buyIn)).not.toContain('SDICE')
+  })
+
+  // Nothing in this process verifies the attestation's signature — only the
+  // device does. So the host renders a ticker only where the attestation and
+  // the catalog entry's locally pinned token agree; otherwise the ticker would
+  // be a name the user has no way to check, and one the device may not show.
+  describe('a ticker needs the attestation and the local pin to agree', () => {
+    test('they agree on the real envelope, so the ticker renders', async () => {
+      const d = describeCertifiedSolanaTransaction(joinFixture.rawTxBase64, await workerProof())!
+      const buyIn = d.args.find((a) => a.label === 'Buy-in')!
+      expect(buyIn.mint).toBe(SDICE_MINT)
+      expect(buyIn.symbol).toBe('SDICE')
+      expect(buyIn.decimals).toBe(6)
+      expect(formatCertifiedArg(buyIn)).toBe('1,000 SDICE')
+    })
+
+    test('a symbol the pin does not carry falls back to raw base units', async () => {
+      const wrongSymbol = await workerProof((body) => { body.tokenInfo[0].symbol = 'USDC' })
+      const buyIn = describeCertifiedSolanaTransaction(joinFixture.rawTxBase64, wrongSymbol)!
+        .args.find((a) => a.label === 'Buy-in')!
+      expect(buyIn.symbol).toBeUndefined()
+      expect(buyIn.decimals).toBeUndefined()
+      expect(formatCertifiedArg(buyIn)).toBe('1,000,000,000 base units of token 4nCm…pump')
+      expect(formatCertifiedArg(buyIn)).not.toContain('USDC')
+    })
+
+    test('decimals the pin does not carry fall back too — a shifted point is a 1000x lie', async () => {
+      const wrongDecimals = await workerProof((body) => { body.tokenInfo[0].decimals = 9 })
+      const buyIn = describeCertifiedSolanaTransaction(joinFixture.rawTxBase64, wrongDecimals)!
+        .args.find((a) => a.label === 'Buy-in')!
+      expect(buyIn.decimals).toBeUndefined()
+      expect(formatCertifiedArg(buyIn)).toBe('1,000,000,000 base units of token 4nCm…pump')
+      expect(formatCertifiedArg(buyIn)).not.toContain('1 SDICE')
+    })
+
+    test('an attestation for a different mint is not applied to this one', async () => {
+      const otherMint = await workerProof((body) => {
+        body.tokenInfo[0].mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // USDC
+        body.tokenInfo[0].symbol = 'USDC'
+      })
+      const buyIn = describeCertifiedSolanaTransaction(joinFixture.rawTxBase64, otherMint)!
+        .args.find((a) => a.label === 'Buy-in')!
+      expect(buyIn.mint).toBe(SDICE_MINT)
+      expect(buyIn.symbol).toBeUndefined()
+      expect(formatCertifiedArg(buyIn)).toBe('1,000,000,000 base units of token 4nCm…pump')
+    })
   })
 
   test('a schema payload that is not the reviewed entry describes nothing', async () => {
