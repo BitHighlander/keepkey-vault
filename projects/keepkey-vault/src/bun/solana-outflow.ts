@@ -209,9 +209,16 @@ export async function simulateSolanaHoldings(
      *  window, and it takes up to three RPC round trips, so it answers late or
      *  not at all rather than holding the window shut. */
     timeoutMs?: number
+    /** Airplane mode. This check is new outbound traffic, so it asks nothing
+     *  when the user has switched that off. (The decode and certified lookups
+     *  on the same route predate this and are not covered by it.) */
+    offline?: boolean
   } = {},
 ): Promise<SimulatedHoldings> {
   const label = 'checked on this computer' as const
+  if (options.offline) {
+    return { label, unavailable: 'offline mode is on, so this computer made no network call' }
+  }
   const budget = options.timeoutMs ?? 10_000
   let expire: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<SimulatedHoldings>((resolve) => {

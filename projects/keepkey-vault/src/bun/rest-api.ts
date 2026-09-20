@@ -1885,6 +1885,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                   {
                     endpoint: getSetting('solana_rpc_endpoint') || DEFAULT_SOLANA_RPC_ENDPOINT,
                     tokens: certifiedProof?.tokenInfo,
+                    offline: getSetting('offline_mode') === '1',
                   },
                 )
               }
@@ -2964,7 +2965,9 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             // opaque program cannot — including a wager that moves by CPI, with
             // no transfer instruction in the bytes to read. It is returned as
             // its own field and feeds no gate.
-            const simulatedOutflow = await simulateSolanaHoldings(body.raw_tx, solanaDecoded, { endpoint })
+            const simulatedOutflow = await simulateSolanaHoldings(body.raw_tx, solanaDecoded, {
+              endpoint, offline: getSetting('offline_mode') === '1',
+            })
             // The same sentences the vault's own approval overlay shows. Without
             // them a caller has to invent its own wording for the same bytes,
             // and two vocabularies for one transaction is how a user ends up
@@ -2987,7 +2990,9 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             // Bytes this vault cannot read are the case where "what would I be
             // left holding" matters most, so still ask — with no decode, the
             // answer covers native SOL and says the token side went unchecked.
-            const simulatedOutflow = await simulateSolanaHoldings(body.raw_tx, undefined, { endpoint })
+            const simulatedOutflow = await simulateSolanaHoldings(body.raw_tx, undefined, {
+              endpoint, offline: getSetting('offline_mode') === '1',
+            })
             const risk = assessSigningRisk({
               id: 'decode', method: 'solana_decodeTransaction', appName: 'decode', chain: 'solana',
               solanaDecodeError, requiresBlindSigningConsent: true, simulatedOutflow,

@@ -252,3 +252,12 @@ describe('the network fee is read from the signed bytes', () => {
     expect(text).toContain('Part of this transaction is hidden')
   })
 })
+
+describe('airplane mode', () => {
+  test('asks nothing of the network, and says that is why there is no answer', async () => {
+    globalThis.fetch = (async () => { throw new Error('a request was made in offline mode') }) as any
+    const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, undefined, { offline: true })
+    expect(holdings.unavailable).toBe('offline mode is on, so this computer made no network call')
+    expect(holdings.solLamportsAfter).toBeUndefined()
+  })
+})
