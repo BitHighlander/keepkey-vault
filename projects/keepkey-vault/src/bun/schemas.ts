@@ -421,6 +421,11 @@ export const TonFinalizeTransferRequest = z.object({
   broadcast: z.boolean().optional(),
 }).strip()
 
+/** POST /solana/decode-transaction — decode only, no device, no signing */
+export const SolanaDecodeRequest = z.object({
+  raw_tx: z.string().min(1, 'raw_tx (base64 serialized transaction) is required'),
+}).strip()
+
 /** POST /solana/sign-message — sign an arbitrary message (firmware type 754) */
 export const SolanaSignMessageRequest = z.object({
   address_n: z.array(z.number().int()).optional(),

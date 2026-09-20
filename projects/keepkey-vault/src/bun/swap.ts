@@ -1069,7 +1069,7 @@ export async function executeSwap(params: ExecuteSwapParams, ctx: SwapContext): 
       const srcMeta = (await getSwapAssets()).find(a => a.caip === params.fromCaip)
       const srcDecimals = srcMeta?.decimals ?? params.tokenDecimals
       outflow = JSON.stringify({
-        solAfter: r.solLamportsAfter.toString(),
+        solAfter: r.solLamportsAfter?.toString(),
         tokensAfter: r.tokensAfter.map(t => ({
           mint: t.mint,
           amount: t.amountAfter.toString(),
@@ -1078,7 +1078,11 @@ export async function executeSwap(params: ExecuteSwapParams, ctx: SwapContext): 
         })),
         spending: params.amount,
         spendingSymbol: srcMeta?.symbol,
-        unavailable: r.unavailable,
+        // This panel has one SOL figure and no room for a footnote, so a
+        // post-state the simulation did not establish is reported as no answer
+        // rather than rendered — the alternative is "NaN SOL" and a drain
+        // warning that cannot fire.
+        unavailable: r.unavailable ?? (r.solLamportsAfter === undefined ? r.note : undefined),
         reason,
         decoded,
       })
