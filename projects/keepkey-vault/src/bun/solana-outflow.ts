@@ -45,6 +45,11 @@ export interface SolanaOutflow {
   /** Set when the check could not be completed. Callers must treat this as
    *  "unknown" — never as "safe". */
   unavailable?: string
+  /** An honest limit on the numbers above: set when a watched token account
+   *  yielded no readable post-state, so `tokensAfter` is short of what was
+   *  watched. Callers MUST render it beside the figures — a token that dropped
+   *  out silently reads as "that token is not moving". */
+  note?: string
 }
 
 async function rpc(endpoint: string, method: string, params: unknown[]): Promise<any> {
@@ -59,6 +64,8 @@ async function rpc(endpoint: string, method: string, params: unknown[]): Promise
   if (json.error) throw new Error(`RPC ${method}: ${json.error.message || 'error'}`)
   return json.result
 }
+
+const short = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`
 
 function splAmount(dataB64: string | undefined): { mint: string; amount: bigint } | null {
   if (!dataB64) return null
@@ -144,7 +151,7 @@ export async function checkSolanaOutflow(
       return {
         solLamportsAfter: 0n,
         tokensAfter: [],
-        unavailable: `could not locate your ${mint.slice(0, 4)}…${mint.slice(-4)} token account`,
+        unavailable: `could not locate your ${short(mint)} token account`,
       }
     }
   }
@@ -170,16 +177,33 @@ export async function checkSolanaOutflow(
 
     const post: any[] = sim?.value?.accounts ?? []
     if (post.length !== watched.length) {
-      return { ...empty, unavailable: 'simulation returned no account states' }
+      return {
+        ...empty,
+        unavailable: `simulation returned ${post.length} account state(s) for ${watched.length} watched account(s)`,
+      }
     }
 
+    // A watched token account with no readable post-state is NOT "unchanged"
+    // and NOT "empty". simulateTransaction returns null for an address that
+    // does not exist at the post-state — exactly what a program that closes
+    // the player's token account produces — and for entries the RPC did not
+    // load. Either way the balance was not established, and saying nothing
+    // would render as SOL alone with the token silently gone.
     const tokensAfter: Array<{ mint: string; amountAfter: bigint }> = []
+    const unread: string[] = []
     for (let i = 1; i < watched.length; i++) {
       const tok = splAmount(post[i]?.data?.[0])
       if (tok) tokensAfter.push({ mint: tok.mint, amountAfter: tok.amount })
+      else unread.push(short(watched[i]))
     }
 
-    return { solLamportsAfter: BigInt(post[0]?.lamports ?? 0), tokensAfter }
+    return {
+      solLamportsAfter: BigInt(post[0]?.lamports ?? 0),
+      tokensAfter,
+      ...(unread.length ? {
+        note: `Token balances are incomplete: the simulation returned no readable state for ${unread.join(', ')}, so what ${unread.length > 1 ? 'those accounts hold' : 'that account holds'} afterwards was not established.`,
+      } : {}),
+    }
   } catch (e: any) {
     return { ...empty, unavailable: e?.message || String(e) }
   }
@@ -268,7 +292,13 @@ async function holdingsAfter(
   }
 
   const outflow = await checkSolanaOutflow(rawTxBase64, owner, { tokenAccounts }, endpoint)
-  if (outflow.unavailable) return { label, owner, unavailable: outflow.unavailable }
+  // Both, never one: `unavailable` says the simulation gave no answer, `note`
+  // says the token side was never attempted or came back short. Dropping the
+  // note when a simulation also failed loses the second fact entirely.
+  const notes = [note, outflow.note].filter(Boolean).join(' ')
+  if (outflow.unavailable) {
+    return { label, owner, unavailable: outflow.unavailable, ...(notes ? { note: notes } : {}) }
+  }
 
   return {
     label,
@@ -282,6 +312,6 @@ async function holdingsAfter(
         ...(attested ? { symbol: attested.symbol, decimals: attested.decimals } : {}),
       }
     }),
-    ...(note ? { note } : {}),
+    ...(notes ? { note: notes } : {}),
   }
 }

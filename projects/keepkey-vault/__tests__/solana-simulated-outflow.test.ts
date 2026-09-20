@@ -103,6 +103,59 @@ describe('simulateSolanaHoldings on the live Cee-lo bet', () => {
     expect(holdings.tokensAfter).toEqual([{ mint: SDICE, amountAfter: '5' }])
   })
 
+  // The exact reproduction from the adversarial review. simulateTransaction
+  // returns null for an address that does not exist at the post-state — which
+  // is precisely what happens when the program closes the player's token
+  // account. The wager must not simply vanish from the sentence.
+  test('a wager account the simulation cannot read is named, never dropped in silence', async () => {
+    const decoded = await buildSolanaDecodedInfo(fixture.rawTxBase64, noAlts)
+    const wagerAccount = decoded.instructions[1].accounts[1].pubkey
+    stubRpc({
+      getTokenAccountsByOwner: { value: [{ pubkey: wagerAccount }] },
+      simulateTransaction: { value: { err: null, accounts: [{ lamports: 12_345_678 }, null] } },
+    })
+
+    const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, decoded, {
+      endpoint: 'http://127.0.0.1:1', tokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
+    })
+
+    // SOL is still answered, but the token side is stated as not established.
+    expect(holdings.solLamportsAfter).toBe('12345678')
+    expect(holdings.tokensAfter).toEqual([])
+    expect(holdings.note).toContain('Token balances are incomplete')
+    expect(holdings.note).toContain(`${wagerAccount.slice(0, 4)}…${wagerAccount.slice(-4)}`)
+    expect(holdings.note).toContain('was not established')
+
+    // And the copy the user reads carries it — silence here was the bug.
+    const sentence = assessSigningRisk({
+      method: '/solana/sign-transaction', solanaDecoded: decoded, simulatedOutflow: holdings,
+    } as SigningRequestInfo)!.reasons.map((r) => r.text).join('\n')
+    expect(sentence).toContain('would hold 0.012345678 SOL')
+    expect(sentence).toContain('Token balances are incomplete')
+  })
+
+  // Two independent facts, and the second used to erase the first.
+  test('a token lookup failure survives a later simulation failure', async () => {
+    const decoded = await buildSolanaDecodedInfo(fixture.rawTxBase64, noAlts)
+    globalThis.fetch = (async (_url: any, init: any) => {
+      const body = JSON.parse(init.body)
+      if (body.method === 'getTokenAccountsByOwner') throw new Error('token account lookup is down')
+      return new Response(JSON.stringify({
+        jsonrpc: '2.0', id: 1, result: { value: { err: { InstructionError: [1, { Custom: 6001 }] } } },
+      }))
+    }) as any
+
+    const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, decoded, { endpoint: 'http://127.0.0.1:1' })
+    expect(holdings.unavailable).toContain('simulation failed')
+    expect(holdings.note).toContain('Token balances were not checked')
+
+    const sentence = assessSigningRisk({
+      method: '/solana/sign-transaction', solanaDecoded: decoded, simulatedOutflow: holdings,
+    } as SigningRequestInfo)!.reasons.map((r) => r.text).join('\n')
+    expect(sentence).toContain('could not simulate')
+    expect(sentence).toContain('Token balances were not checked')
+  })
+
   test('a failed simulation says so, and never says nothing moves', async () => {
     const decoded = await buildSolanaDecodedInfo(fixture.rawTxBase64, noAlts)
     stubRpc({

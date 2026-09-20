@@ -92,7 +92,9 @@ export function formatCertifiedArg(a: SolanaCertifiedArg, full = false): string 
  */
 export function formatSimulatedHoldings(s: SimulatedHoldings): string {
   if (s.unavailable || s.solLamportsAfter === undefined) {
-    return `This computer could not simulate this transaction (${s.unavailable ?? 'no result'}), so it cannot say what you would be left holding. That is not the same as "nothing moves".`
+    // The note survives an unavailable result: "the tokens were never looked
+    // up" and "the simulation then failed" are two separate facts.
+    return `This computer could not simulate this transaction (${s.unavailable ?? 'no result'}), so it cannot say what you would be left holding. That is not the same as "nothing moves".${s.note ? ` ${s.note}` : ''}`
   }
   const holdings = [
     `${units(s.solLamportsAfter, SOL_DECIMALS)} SOL`,

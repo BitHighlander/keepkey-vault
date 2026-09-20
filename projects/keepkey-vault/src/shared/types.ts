@@ -812,9 +812,11 @@ export interface SimulatedHoldings {
   solLamportsAfter?: string
   /** Token accounts of `owner` this transaction names, after it runs. */
   tokensAfter?: Array<{ mint: string; amountAfter: string; symbol?: string; decimals?: number }>
-  /** Why there is no answer. Set ⇒ every field above is absent. */
+  /** Why there is no answer. Set ⇒ every balance field above is absent. */
   unavailable?: string
-  /** An honest limit on what was watched, e.g. "tokens were not checked". */
+  /** An honest limit on what was watched, e.g. "tokens were not checked" or a
+   *  watched token account whose post-state came back unreadable. Independent
+   *  of `unavailable` — both can be set, and the copy must render both. */
   note?: string
 }
 

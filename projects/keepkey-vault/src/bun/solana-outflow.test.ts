@@ -73,10 +73,55 @@ describe('checkSolanaOutflow', () => {
     expect(r.unavailable).toContain('simulation failed')
   })
 
-  it('reports unknown when account states are missing', async () => {
+  // Says which counts did not match, not "no account states": the branch also
+  // fires when the simulation returned some states, just not one per watched
+  // account, and a message that named the wrong condition sent a reader
+  // looking for an outage that had not happened.
+  it('reports unknown when account states are missing, naming the counts', async () => {
     stubRpc({ value: { err: null, accounts: [] } })
     const r = await checkSolanaOutflow('dGVzdA==', 'owner')
-    expect(r.unavailable).toBe('simulation returned no account states')
+    expect(r.unavailable).toBe('simulation returned 0 account state(s) for 1 watched account(s)')
+  })
+
+  it('names the counts when the simulation answered for only some watched accounts', async () => {
+    stubRpc(null, {
+      getTokenAccountsByOwner: { value: [{ pubkey: 'TokAcct111' }] },
+      simulateTransaction: { value: { err: null, accounts: [{ lamports: 1_000_000, data: [''] }] } },
+    })
+    const r = await checkSolanaOutflow('dGVzdA==', 'owner', 'MintAddr111')
+    expect(r.unavailable).toBe('simulation returned 1 account state(s) for 2 watched account(s)')
+  })
+
+  // The honesty rule at its sharpest: a watched token account whose post-state
+  // comes back null (the program closed it, or the RPC did not load it) used to
+  // be dropped from tokensAfter with nothing said, leaving SOL alone on screen
+  // — which reads as "that token is not moving".
+  it('says so when a watched token account has no readable post-state', async () => {
+    stubRpc(null, {
+      getTokenAccountsByOwner: { value: [{ pubkey: 'TokAcct111' }] },
+      simulateTransaction: {
+        value: { err: null, accounts: [{ lamports: 1_000_000, data: [''] }, null] },
+      },
+    })
+    const r = await checkSolanaOutflow('dGVzdA==', 'owner', 'MintAddr111')
+    expect(r.unavailable).toBeUndefined()
+    expect(r.tokensAfter).toEqual([])
+    expect(r.note).toBe(
+      'Token balances are incomplete: the simulation returned no readable state for TokA…t111, so what that account holds afterwards was not established.')
+  })
+
+  it('sets no note when every watched token account was read', async () => {
+    stubRpc(null, {
+      getTokenAccountsByOwner: { value: [{ pubkey: 'TokAcct111' }] },
+      simulateTransaction: {
+        value: {
+          err: null,
+          accounts: [{ lamports: 1, data: [''] }, { lamports: 2, data: [tokenAccount(7, 5n)] }],
+        },
+      },
+    })
+    const r = await checkSolanaOutflow('dGVzdA==', 'owner', 'MintAddr111')
+    expect(r.note).toBeUndefined()
   })
 
   it('reports unknown when the RPC is unreachable', async () => {
