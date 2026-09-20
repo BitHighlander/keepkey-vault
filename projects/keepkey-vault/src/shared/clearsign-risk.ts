@@ -298,13 +298,19 @@ export function assessSigningRisk(req: SigningRequestInfo): RiskAssessment | nul
     if (req.solanaCertified && req.solanaCertified.args.length > 0) {
       add('low', `The signed description says: ${req.solanaCertified.args.map((a) => `${a.label} ${formatCertifiedArg(a)}`).join(' · ')}.`)
     }
-    const namedSol = (req.solanaCertified?.args ?? [])
-      .filter((a) => a.kind === 'sol')
-      .reduce((total, a) => total + BigInt(a.raw), 0n)
+    // NOT A TOTAL, and it must not read as one. Two figures with two different
+    // provenances: the lamports the signed description names, read out of the
+    // instruction's own bytes, and the fee ceiling read from this
+    // transaction's ComputeBudget instructions. Account rent — which a program
+    // that opens an account charges, and which the SoltoshiDICE dapp's own
+    // warning puts alongside its 0.01 SOL deposit — is in neither, so a sum
+    // presented as "what this call puts up" understated the real ask by ~2x.
+    const solArgs = (req.solanaCertified?.args ?? []).filter((a) => a.kind === 'sol')
+    const namedSol = solArgs.reduce((total, a) => total + BigInt(a.raw), 0n)
     if (d.maxNetworkFeeLamports) {
       const fee = BigInt(d.maxNetworkFeeLamports)
       add('low', namedSol > 0n
-        ? `SOL this call puts up, network fee included: ${units((namedSol + fee).toString(), SOL_DECIMALS)} SOL (${units(namedSol.toString(), SOL_DECIMALS)} plus up to ${units(fee.toString(), SOL_DECIMALS)} of fee). That is what it asks for, not a limit on what the program can move.`
+        ? `SOL named in this call: ${units(namedSol.toString(), SOL_DECIMALS)} SOL (${solArgs.map((a) => a.label).join(' + ')}), plus up to ${units(fee.toString(), SOL_DECIMALS)} SOL of network fee. Account rent is extra and is not in these bytes, so this is not the total SOL leaving your wallet, and it is not a limit on what the program can move.`
         : `Network fee: up to ${units(d.maxNetworkFeeLamports, SOL_DECIMALS)} SOL.`)
     }
   } else if (req.method === '/eth/sign-transaction') {

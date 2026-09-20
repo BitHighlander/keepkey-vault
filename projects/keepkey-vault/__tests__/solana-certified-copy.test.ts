@@ -133,7 +133,14 @@ describe('risk copy for a certified call', () => {
     expect(text).toContain('able to move your sol or tokens')
   })
 
-  test('a SOL amount the schema names is totalled with the fee, as an ask not a cap', () => {
+  // This sentence must NOT read as a total. The Cee-lo dapp's own code asks for
+  // deposit + account rent + fee, and warns "a refundable 0.01 SOL deposit plus
+  // network and account fees" — so a line that added only the deposit and the
+  // fee and called it "SOL this call puts up" understated the real ask by ~2x.
+  // Account rent is not in the instruction's bytes, so the copy names what it
+  // has and says the rent is extra. The exact strings are pinned: this is the
+  // number a user decides on.
+  test('a SOL amount the schema names is given as the deposit and the fee, never as a total', () => {
     // The Cee-lo shape: a lamports deposit inside the certified instruction.
     // (The catalog entry for it lands separately; the copy is checked here.)
     const risk = assessSigningRisk({
@@ -159,8 +166,13 @@ describe('risk copy for a certified call', () => {
     } as SigningRequestInfo)!
     const text = risk.reasons.map((r) => r.text).join('\n')
     expect(text).toContain('Wager 1,000 SDICE')
-    expect(text).toContain('SOL this call puts up, network fee included: 0.010005 SOL')
-    expect(text).toContain('not a limit on what the program can move')
+    expect(text).toContain(
+      'SOL named in this call: 0.01 SOL (Deposit), plus up to 0.000005 SOL of network fee. '
+      + 'Account rent is extra and is not in these bytes, so this is not the total SOL leaving '
+      + 'your wallet, and it is not a limit on what the program can move.')
+    // The old wording added deposit + fee and presented the sum as the ask.
+    expect(text).not.toContain('0.010005')
+    expect(text).not.toContain('puts up')
   })
 })
 
