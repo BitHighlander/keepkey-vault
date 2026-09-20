@@ -24,6 +24,7 @@ import { simulateSolanaHoldings } from '../src/bun/solana-outflow'
 import { assessSigningRisk } from '../src/shared/clearsign-risk'
 import type { SigningRequestInfo } from '../src/shared/types'
 import fixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
+import altFixture from './fixtures/solana/relay-deposit-native-alt.json'
 
 const SDICE = '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump'
 const realFetch = globalThis.fetch
@@ -220,5 +221,34 @@ describe('the check has a budget', () => {
     expect(Date.now() - started).toBeLessThan(2_000)
     expect(holdings.unavailable).toContain('no answer within')
     expect(holdings.solLamportsAfter).toBeUndefined()
+  })
+})
+
+describe('the network fee is read from the signed bytes', () => {
+  test('base fee per signature, plus the priority fee the tx asks for', async () => {
+    // This bet sets a compute-unit LIMIT but no price, so there is no priority
+    // fee: one signature at 5,000 lamports is the whole of it.
+    const decoded = await buildSolanaDecodedInfo(fixture.rawTxBase64, noAlts)
+    expect(decoded.maxNetworkFeeLamports).toBe('5000')
+    const text = assessSigningRisk({
+      method: '/solana/sign-transaction', solanaDecoded: decoded,
+    } as SigningRequestInfo)!.reasons.map((r) => r.text).join('\n')
+    expect(text).toContain('Network fee: up to 0.000005 SOL')
+  })
+
+  test('an unresolved lookup table withholds the figure instead of understating it', async () => {
+    // A real v0 transaction whose lookup table cannot be read: an instruction
+    // in it may set a priority fee this computer cannot see.
+    const unresolved = await buildSolanaDecodedInfo(
+      altFixture.rawTxBase64,
+      async () => { throw new Error('lookup table unavailable') },
+    )
+    expect(unresolved.altResolutionIncomplete).toBe(true)
+    expect(unresolved.maxNetworkFeeLamports).toBeUndefined()
+    const text = assessSigningRisk({
+      method: '/solana/sign-transaction', solanaDecoded: unresolved,
+    } as SigningRequestInfo)!.reasons.map((r) => r.text).join('\n')
+    expect(text).not.toContain('Network fee')
+    expect(text).toContain('Part of this transaction is hidden')
   })
 })

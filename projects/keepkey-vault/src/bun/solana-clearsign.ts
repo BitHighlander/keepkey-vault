@@ -132,6 +132,11 @@ export async function buildSolanaDecodedInfo(
     hasUnknownProgram: hasUnknownProgram || undefined,
     assetPrograms,
     fundedKeysGivenToUnknownProgram,
-    maxNetworkFeeLamports: maxNetworkFeeLamports(parsedMsg, expanded).toString(),
+    // Withheld when a lookup table did not resolve: an instruction whose
+    // program id came from that table is unreadable here, so a priority fee
+    // could be missed and "up to X" would be an understatement.
+    maxNetworkFeeLamports: altResolutionIncomplete
+      ? undefined
+      : maxNetworkFeeLamports(parsedMsg, expanded).toString(),
   }
 }
