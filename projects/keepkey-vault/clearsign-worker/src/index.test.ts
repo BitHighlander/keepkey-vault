@@ -84,7 +84,7 @@ describe('ClearSign Worker public surface', () => {
     expect(ceelo.discriminator).toBe('36')
     expect(ceelo.method).toBe('Cee-lo place bet')
     expect(ceelo.action).toContain('refundable SOL deposit')
-    expect(ceelo.fieldsShownByKeepKey).toEqual(['Round', 'Wager', 'Rules version', 'SOL deposit'])
+    expect(ceelo.fieldsShownByKeepKey).toEqual(['Round', 'Wager', 'Protocol', 'SOL deposit'])
   })
 
   it('rejects unknown EVM shapes before checking signer readiness', async () => {

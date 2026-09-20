@@ -319,13 +319,27 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     //   Composed: u8 tag 54 | u64 round | u64 wager | u8 4 | u64 deposit,
     //   26 bytes, and the funded hop passes u = 4 so the offset-17 byte is
     //   always emitted.
-    // - That offset-17 byte is a rules-version selector, not an amount and
-    //   not a count: the 8th parameter gating it is filled with
-    //   `y.bankVersion` on the non-tournament path, the quote request sends
-    //   `protocol: 4`, and the program's own state decoders read
-    //   `version: e[0]` against the accepted set [1,2,3,4]. The byte written
-    //   is the hard-coded literal 4, so a later bank version would render as
-    //   whatever the encoder then writes.
+    // - The offset-17 byte is labelled `Protocol`, which is the site's own
+    //   word for it, not an interpretation of the value. State exactly what
+    //   the encoder proves and no more:
+    //   * VALUE: a hard-coded literal. sharedBetInstruction appends
+    //     `Buffer.from([4])` — the 4 is in the source, not computed from
+    //     anything — so on every tag this entry covers the byte is 4. If the
+    //     bank moves to v5 the shipped encoder still writes 4 here; the value
+    //     does not track a version, and a schema cannot be relabelled without
+    //     a new signature.
+    //   * PRESENCE: gated by `u >= 4`, where `u` is sharedBetInstruction's
+    //     8th parameter. `u` carries `y.bankVersion` only on the bare shared
+    //     path (tag 9, not in this catalog); `fundedBetInstruction` passes the
+    //     literal 4, so for tags 41/51/54 the byte is emitted unconditionally.
+    //     `y.bankVersion` is the bank account's own leading version byte,
+    //     which client-CGozqpeV.js validates against the set [1,2,3,4].
+    //   * The name: the quote request for this exact bet sends
+    //     `protocol: 4` (Game--h6LNB56.js `dm('game-quote', {... protocol:4
+    //     ...})`) — the dapp's own field name for the 4 it negotiates. That
+    //     is the whole basis for the label. Nothing here shows the program
+    //     reading this byte as a version, a count or an amount, so the label
+    //     claims only what the site calls the field.
     // - Units. Wager: raw SDICE base units, 6 dp. The call site refuses a
     //   quote unless `y.wager === String(BigInt(t)*1000000n)` for the panel's
     //   whole-SDICE input (aria-label "Wager in SDICE"), and the same bundle
@@ -352,7 +366,7 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     args: [
       { type: ARG_U64, label: 'Round' },
       { type: ARG_TOKEN_AMOUNT, label: 'Wager', mintAccount: 5 },
-      { type: ARG_U8, label: 'Rules version' },
+      { type: ARG_U8, label: 'Protocol' },
       { type: ARG_LAMPORTS, label: 'SOL deposit' },
     ],
   },

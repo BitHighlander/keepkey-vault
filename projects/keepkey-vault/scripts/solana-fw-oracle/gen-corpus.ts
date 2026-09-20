@@ -14,6 +14,7 @@ import { CERTIFIED_SOLANA_CATALOG, serializeSolanaSchema } from '../../src/bun/s
 import { parseSolanaTx, solanaMessageSlice } from '../../src/bun/solana-tx'
 import { editSolanaTx, parseSolanaWireMessage, type EditableSolanaMessage } from '../fixtures/solana-message'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
+import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
 import relayFixture from '../../__tests__/fixtures/solana/relay-deposit-native-no-alt.json'
 import relayAltFixture from '../../__tests__/fixtures/solana/relay-deposit-native-alt.json'
 
@@ -22,6 +23,8 @@ if (!harness || !firmware || !command) throw new Error('usage: gen-corpus.ts <ha
 
 const JOIN = joinFixture.rawTxBase64
 const JOIN_IX = joinFixture.expected.instructionIndex // 2
+const CEELO = ceeloFixture.rawTxBase64
+const CEELO_IX = 1 // the bet, beside its own SetComputeUnitLimit
 const RELAY = relayFixture.rawTxBase64
 const U64_MAX = 0xffff_ffff_ffff_ffffn
 const SYSTEM_INDEX = 7 // static accounts of the real join
@@ -63,6 +66,7 @@ type Case = { name: string; catalogKey: keyof typeof CERTIFIED_SOLANA_CATALOG; r
 const cases: Case[] = [
   { name: 'join: real fixture', catalogKey: 'soltoshidiceBlackjackJoin', rawTx: JOIN },
   { name: 'relay depositNative: real fixture', catalogKey: 'relayDepositNative', rawTx: RELAY },
+  { name: 'ceelo: real fixture', catalogKey: 'soltoshidiceCeeloBet', rawTx: CEELO },
 
   // LUT proof must have exactly one key per serialized LUT index.
   ...[1, 0, 2].map((lutKeys) => ({
@@ -93,6 +97,9 @@ const cases: Case[] = [
   { name: 'relay: displayed account #3 with 3 instruction accounts', catalogKey: 'relayDepositNative', rawTx: editSolanaTx(RELAY, (m) => { const ix = m.instructions.find((i) => i.data.length === 48)!; ix.accountIndices = ix.accountIndices.slice(0, 3) }) },
   { name: 'join: mint account #3 with 4 instruction accounts', catalogKey: 'soltoshidiceBlackjackJoin', rawTx: editSolanaTx(JOIN, (m) => { m.instructions[JOIN_IX].accountIndices = m.instructions[JOIN_IX].accountIndices.slice(0, 4) }) },
   { name: 'join: mint account #3 with 3 instruction accounts', catalogKey: 'soltoshidiceBlackjackJoin', rawTx: editSolanaTx(JOIN, (m) => { m.instructions[JOIN_IX].accountIndices = m.instructions[JOIN_IX].accountIndices.slice(0, 3) }) },
+  // Cee-lo's mint is further along the list than any other entry's: account 5.
+  { name: 'ceelo: mint account #5 with 6 instruction accounts', catalogKey: 'soltoshidiceCeeloBet', rawTx: editSolanaTx(CEELO, (m) => { m.instructions[CEELO_IX].accountIndices = m.instructions[CEELO_IX].accountIndices.slice(0, 6) }) },
+  { name: 'ceelo: mint account #5 with 5 instruction accounts', catalogKey: 'soltoshidiceCeeloBet', rawTx: editSolanaTx(CEELO, (m) => { m.instructions[CEELO_IX].accountIndices = m.instructions[CEELO_IX].accountIndices.slice(0, 5) }) },
 
   // Memo companions: only the SPL Memo program the firmware knows (MemoSq4...).
   { name: 'companion: Memo (MemoSq4)', catalogKey: 'soltoshidiceBlackjackJoin', rawTx: editSolanaTx(JOIN, (m) => { m.instructions.push({ programIdIndex: addStatic(m, bs58.decode('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr')), accountIndices: [], data: Buffer.from('hi') }) }) },

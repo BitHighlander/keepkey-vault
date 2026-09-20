@@ -173,7 +173,7 @@ describe('SoltoshiDICE Cee-lo bet catalog entry', () => {
   test('is a v2 payload within the 256-byte proto cap', () => {
     const payload = serializeSolanaSchema(spec)
     expect(payload[8]).toBe(2)
-    expect(payload.length).toBe(118)
+    expect(payload.length).toBe(113)
     expect(payload.length).toBeLessThanOrEqual(256)
   })
 
@@ -204,11 +204,12 @@ describe('SoltoshiDICE Cee-lo bet catalog entry', () => {
     // Independently established: round 1564 is the shared-round PDA seed of
     // this message, the wager matches the signer's SDICE debit to the unit
     // across on-chain bets 1558-1564, and the SOL leg is the encoder's
-    // SOL_DEPOSIT_LAMPORTS constant. The rules-version byte is the literal 4.
+    // SOL_DEPOSIT_LAMPORTS constant. The offset-17 byte is the literal 4 the
+    // encoder writes, labelled with the dapp's own word for it (`protocol`).
     expect(values).toEqual({
       Round: '1564',
       Wager: '1000000000', // 1,000 SDICE at 6 decimals
-      'Rules version': 4,
+      Protocol: 4,
       'SOL deposit': '10000000', // 0.01 SOL, the refundable deposit only
     })
   })
