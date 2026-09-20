@@ -110,6 +110,39 @@ describe('checkSolanaOutflow', () => {
       'Token balances are incomplete: the simulation returned no readable state for TokA…t111, so what that account holds afterwards was not established.')
   })
 
+  // The same rule on the fee payer's own entry, which the first pass missed:
+  // `BigInt(post[0]?.lamports ?? 0)` turned a null or unloaded state into "you
+  // would hold 0 SOL" — a figure this check never established. The token
+  // balance that WAS read stays; only the SOL figure goes.
+  it('says so when the fee payer has no readable post-state, instead of reporting 0', async () => {
+    stubRpc(null, {
+      getTokenAccountsByOwner: { value: [{ pubkey: 'TokAcct111' }] },
+      simulateTransaction: {
+        value: { err: null, accounts: [null, { lamports: 2039280, data: [tokenAccount(7, 12345n)] }] },
+      },
+    })
+    const r = await checkSolanaOutflow('dGVzdA==', 'owner', 'MintAddr111')
+    expect(r.unavailable).toBeUndefined()
+    expect(r.solLamportsAfter).toBeUndefined()
+    expect(r.tokensAfter).toHaveLength(1)
+    expect(r.tokensAfter[0].amountAfter).toBe(12345n)
+    expect(r.note).toBe(
+      'SOL is missing from this answer: the simulation returned no readable state for your own account owne…wner, '
+      + 'so what it holds afterwards was not established.')
+  })
+
+  it('names both sides when neither the fee payer nor the token account could be read', async () => {
+    stubRpc(null, {
+      getTokenAccountsByOwner: { value: [{ pubkey: 'TokAcct111' }] },
+      simulateTransaction: { value: { err: null, accounts: [null, null] } },
+    })
+    const r = await checkSolanaOutflow('dGVzdA==', 'owner', 'MintAddr111')
+    expect(r.solLamportsAfter).toBeUndefined()
+    expect(r.tokensAfter).toEqual([])
+    expect(r.note).toContain('SOL is missing from this answer')
+    expect(r.note).toContain('Token balances are incomplete')
+  })
+
   it('sets no note when every watched token account was read', async () => {
     stubRpc(null, {
       getTokenAccountsByOwner: { value: [{ pubkey: 'TokAcct111' }] },
@@ -128,6 +161,8 @@ describe('checkSolanaOutflow', () => {
     globalThis.fetch = (async () => { throw new Error('fetch failed') }) as any
     const r = await checkSolanaOutflow('dGVzdA==', 'owner')
     expect(r.unavailable).toBe('fetch failed')
-    expect(r.solLamportsAfter).toBe(0n)
+    // No answer means no figure: a 0 beside `unavailable` is a number a caller
+    // can render as "your wallet would be empty".
+    expect(r.solLamportsAfter).toBeUndefined()
   })
 })

@@ -21,12 +21,14 @@ import { readFileSync } from 'node:fs'
 
 import { buildSolanaDecodedInfo } from '../src/bun/solana-clearsign'
 import { simulateSolanaHoldings } from '../src/bun/solana-outflow'
-import { assessSigningRisk } from '../src/shared/clearsign-risk'
+import { assessSigningRisk, formatSimulatedHoldings } from '../src/shared/clearsign-risk'
 import type { SigningRequestInfo } from '../src/shared/types'
 import fixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
 import altFixture from './fixtures/solana/relay-deposit-native-alt.json'
 
 const SDICE = '4nCmpwne7hCoWTSpAd54uENmCgHJrHTyn4DMPCEMpump'
+/** The short form the copy uses for an address. */
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 const realFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = realFetch })
 
@@ -74,7 +76,7 @@ describe('simulateSolanaHoldings on the live Cee-lo bet', () => {
     })
 
     const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, decoded, {
-      endpoint: 'http://127.0.0.1:1', tokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
+      endpoint: 'http://127.0.0.1:1', verifiedTokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
     })
 
     // The fee payer is read from the transaction, not supplied by a caller.
@@ -116,7 +118,7 @@ describe('simulateSolanaHoldings on the live Cee-lo bet', () => {
     })
 
     const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, decoded, {
-      endpoint: 'http://127.0.0.1:1', tokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
+      endpoint: 'http://127.0.0.1:1', verifiedTokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
     })
 
     // SOL is still answered, but the token side is stated as not established.
@@ -132,6 +134,56 @@ describe('simulateSolanaHoldings on the live Cee-lo bet', () => {
     } as SigningRequestInfo)!.reasons.map((r) => r.text).join('\n')
     expect(sentence).toContain('would hold 0.012345678 SOL')
     expect(sentence).toContain('Token balances are incomplete')
+  })
+
+  // The same silent substitution, one account earlier. `post[0]?.lamports ?? 0`
+  // read a null fee-payer state as "you would hold 0 SOL" — the most alarming
+  // number on the screen, stated by a check that established nothing.
+  test('a fee payer the simulation cannot read is named, never reported as 0 SOL', async () => {
+    const decoded = await buildSolanaDecodedInfo(fixture.rawTxBase64, noAlts)
+    stubRpc({
+      getTokenAccountsByOwner: { value: [{ pubkey: decoded.instructions[1].accounts[1].pubkey }] },
+      simulateTransaction: {
+        value: {
+          err: null,
+          accounts: [null, { lamports: 2_039_280, data: [tokenAccountData(SDICE, 11_000_000_000n)] }],
+        },
+      },
+    })
+
+    const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, decoded, {
+      endpoint: 'http://127.0.0.1:1', verifiedTokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
+    })
+
+    // The token balance was established, so it is still answered.
+    expect(holdings.solLamportsAfter).toBeUndefined()
+    expect(holdings.tokensAfter).toEqual([{ mint: SDICE, amountAfter: '11000000000', symbol: 'SDICE', decimals: 6 }])
+
+    const sentence = assessSigningRisk({
+      method: '/solana/sign-transaction', solanaDecoded: decoded, simulatedOutflow: holdings,
+    } as SigningRequestInfo)!.reasons.map((r) => r.text).join('\n')
+    expect(sentence).toContain(
+      `Checked on this computer: if this goes through, your account ${short(fixture.feePayer)} would hold 11,000 SDICE. `
+      + `SOL is missing from this answer: the simulation returned no readable state for your own account ${short(fixture.feePayer)}, `
+      + 'so what it holds afterwards was not established.')
+    expect(sentence).not.toContain('would hold 0 SOL')
+  })
+
+  test('with neither side readable it says there is no answer, and keeps both notes', async () => {
+    const decoded = await buildSolanaDecodedInfo(fixture.rawTxBase64, noAlts)
+    stubRpc({
+      getTokenAccountsByOwner: { value: [{ pubkey: decoded.instructions[1].accounts[1].pubkey }] },
+      simulateTransaction: { value: { err: null, accounts: [null, null] } },
+    })
+    const holdings = await simulateSolanaHoldings(fixture.rawTxBase64, decoded, {
+      endpoint: 'http://127.0.0.1:1', verifiedTokens: [{ mint: SDICE, symbol: 'SDICE', decimals: 6 }],
+    })
+    const sentence = formatSimulatedHoldings(holdings)
+    expect(sentence).toStartWith('This computer could not simulate this transaction')
+    expect(sentence).toContain('That is not the same as "nothing moves".')
+    expect(sentence).toContain('SOL is missing from this answer')
+    expect(sentence).toContain('Token balances are incomplete')
+    expect(sentence).not.toContain('would hold')
   })
 
   // Two independent facts, and the second used to erase the first.
@@ -250,6 +302,16 @@ describe('a simulation cannot change a signing gate', () => {
     for (const [, gate, tail] of assignments) {
       expect(`${gate} = ${valueOf(tail)}`).not.toMatch(/simulat|outflow/i)
     }
+  })
+
+  // The identity seam. A ticker on the holdings line may only come from the
+  // certified description's own args, because that is where the delegate's
+  // attestation is compared with the reviewed catalog entry's pin. Handing the
+  // raw attestation to the simulation instead put an unchecked symbol — and an
+  // unchecked decimal point — in the sentence about what the user is left with.
+  test('the simulation is never handed the delegate raw attestation', () => {
+    expect(rest).toContain('verifiedTokens: certifiedTokenIdentities(')
+    expect(rest).not.toMatch(/(verifiedTokens|tokens)\s*:\s*[^\n]*tokenInfo/)
   })
 
   test('the decode endpoint decides consent before it simulates', () => {

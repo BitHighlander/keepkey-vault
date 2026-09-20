@@ -46,7 +46,7 @@ import { buildSolanaDecodedInfo } from './solana-clearsign'
 import { buildSolanaMessageDecodedInfo } from './solana-message-preview'
 import { assessSigningRisk } from '../shared/clearsign-risk'
 import { applyRestSolanaSigningGates, buildRestSolanaSignRequest, type CertifiedSolanaProof } from './solana-certified-registry'
-import { describeCertifiedSolanaTransaction } from './solana-certified-describe'
+import { certifiedTokenIdentities, describeCertifiedSolanaTransaction } from './solana-certified-describe'
 import { simulateSolanaHoldings } from './solana-outflow'
 import { createRpcAltFetcher, DEFAULT_SOLANA_RPC_ENDPOINT } from './solana-alt'
 import { utxoDiscoveryKey } from './btc-backend/types'
@@ -1884,7 +1884,15 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                   signingInfo.solanaDecoded,
                   {
                     endpoint: getSetting('solana_rpc_endpoint') || DEFAULT_SOLANA_RPC_ENDPOINT,
-                    tokens: certifiedProof?.tokenInfo,
+                    // The identities the certified description established —
+                    // NOT certifiedProof.tokenInfo. Nothing on this computer
+                    // verifies the delegate's attestation, so a ticker is only
+                    // rendered where that attestation and the reviewed catalog
+                    // entry's own pin agree, and the description above is where
+                    // that comparison happens. Passing the attestation straight
+                    // through put an unchecked symbol and an unchecked decimal
+                    // point on the holdings line.
+                    verifiedTokens: certifiedTokenIdentities(signingInfo.solanaCertified),
                     offline: getSetting('offline_mode') === '1',
                   },
                 )

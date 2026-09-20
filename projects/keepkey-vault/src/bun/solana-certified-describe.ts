@@ -97,6 +97,27 @@ function readArg(
 }
 
 /**
+ * The token identities a certified description ESTABLISHED, for anything else
+ * that puts a ticker on the screen for these same bytes.
+ *
+ * THE ONLY PLACE A TICKER MAY COME FROM. `readArg` above carries `symbol` and
+ * `decimals` on an argument solely when the delegate's attestation and this
+ * catalog entry's local pin agree, so every identity that comes out of here has
+ * been through that one comparison. The alternative — handing the raw
+ * `proof.tokenInfo` to a second renderer — is what put an unchecked ticker on
+ * the simulated-holdings line while the certified line correctly refused it:
+ * the same attestation, one comparison, two answers.
+ */
+export function certifiedTokenIdentities(
+  description: SolanaCertifiedDescription | undefined,
+): Array<{ mint: string; symbol: string; decimals: number }> {
+  return (description?.args ?? []).flatMap((a) =>
+    a.kind === 'token' && a.mint && a.symbol !== undefined && a.decimals !== undefined
+      ? [{ mint: a.mint, symbol: a.symbol, decimals: a.decimals }]
+      : [])
+}
+
+/**
  * The certified description of `rawTxBase64` under `proof`, or undefined when
  * this vault cannot show that the two belong together.
  *

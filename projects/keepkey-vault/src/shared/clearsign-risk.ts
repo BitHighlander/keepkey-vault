@@ -91,15 +91,18 @@ export function formatCertifiedArg(a: SolanaCertifiedArg, full = false): string 
  * simulate", never "no funds move".
  */
 export function formatSimulatedHoldings(s: SimulatedHoldings): string {
-  if (s.unavailable || s.solLamportsAfter === undefined) {
+  // Each figure the simulation established, and only those: an absent SOL
+  // balance is one the simulation did not answer for, so it is left out of the
+  // sentence and `note` says why — printing 0 would state the opposite.
+  const holdings = [
+    ...(s.solLamportsAfter !== undefined ? [`${units(s.solLamportsAfter, SOL_DECIMALS)} SOL`] : []),
+    ...(s.tokensAfter ?? []).map((t) => tokenAmount(t.amountAfter, t.mint, t.symbol, t.decimals)),
+  ]
+  if (s.unavailable || holdings.length === 0) {
     // The note survives an unavailable result: "the tokens were never looked
     // up" and "the simulation then failed" are two separate facts.
     return `This computer could not simulate this transaction (${s.unavailable ?? 'no result'}), so it cannot say what you would be left holding. That is not the same as "nothing moves".${s.note ? ` ${s.note}` : ''}`
   }
-  const holdings = [
-    `${units(s.solLamportsAfter, SOL_DECIMALS)} SOL`,
-    ...(s.tokensAfter ?? []).map((t) => tokenAmount(t.amountAfter, t.mint, t.symbol, t.decimals)),
-  ]
   const whose = s.owner ? `your account ${shortAddr(s.owner)} would hold` : 'you would hold'
   return `Checked on this computer: if this goes through, ${whose} ${holdings.join(' and ')}.${s.note ? ` ${s.note}` : ''}`
 }
@@ -307,13 +310,20 @@ export function assessSigningRisk(req: SigningRequestInfo): RiskAssessment | nul
     // that opens an account charges, and which the SoltoshiDICE dapp's own
     // warning puts alongside its 0.01 SOL deposit — is in neither, so a sum
     // presented as "what this call puts up" understated the real ask by ~2x.
+    //
+    // The caveat belongs to the NAMED figure, not to the fee: an unresolved
+    // lookup table withholds the fee by design, and hanging the caveat off it
+    // left "SOL deposit 0.01 SOL" standing alone in exactly the case where the
+    // bytes are least complete.
     const solArgs = (req.solanaCertified?.args ?? []).filter((a) => a.kind === 'sol')
     const namedSol = solArgs.reduce((total, a) => total + BigInt(a.raw), 0n)
-    if (d.maxNetworkFeeLamports) {
-      const fee = BigInt(d.maxNetworkFeeLamports)
-      add('low', namedSol > 0n
-        ? `SOL named in this call: ${units(namedSol.toString(), SOL_DECIMALS)} SOL (${solArgs.map((a) => a.label).join(' + ')}), plus up to ${units(fee.toString(), SOL_DECIMALS)} SOL of network fee. Account rent is extra and is not in these bytes, so this is not the total SOL leaving your wallet, and it is not a limit on what the program can move.`
-        : `Network fee: up to ${units(d.maxNetworkFeeLamports, SOL_DECIMALS)} SOL.`)
+    const fee = d.maxNetworkFeeLamports
+    if (namedSol > 0n) {
+      add('low', `SOL named in this call: ${units(namedSol.toString(), SOL_DECIMALS)} SOL (${solArgs.map((a) => a.label).join(' + ')}), ${fee
+        ? `plus up to ${units(fee, SOL_DECIMALS)} SOL of network fee`
+        : 'and the network fee could not be read from these bytes'}. Account rent is extra and is not in these bytes, so this is not the total SOL leaving your wallet, and it is not a limit on what the program can move.`)
+    } else if (fee) {
+      add('low', `Network fee: up to ${units(fee, SOL_DECIMALS)} SOL.`)
     }
   } else if (req.method === '/eth/sign-transaction') {
     evmTx(req, add)

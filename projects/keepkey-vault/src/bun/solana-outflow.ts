@@ -38,17 +38,19 @@ const TOKEN_PROGRAMS = [
 ]
 
 export interface SolanaOutflow {
-  /** Lamports the fee-payer's native account holds AFTER this transaction. */
-  solLamportsAfter: bigint
+  /** Lamports the fee-payer's native account holds AFTER this transaction.
+   *  Absent when the simulation returned no readable state for that account:
+   *  "not established" is not 0, and `note` then says so. */
+  solLamportsAfter?: bigint
   /** Post-transaction balances of the watched token accounts. */
   tokensAfter: Array<{ mint: string; amountAfter: bigint }>
   /** Set when the check could not be completed. Callers must treat this as
    *  "unknown" — never as "safe". */
   unavailable?: string
-  /** An honest limit on the numbers above: set when a watched token account
-   *  yielded no readable post-state, so `tokensAfter` is short of what was
-   *  watched. Callers MUST render it beside the figures — a token that dropped
-   *  out silently reads as "that token is not moving". */
+  /** An honest limit on the numbers above: set when a watched account yielded
+   *  no readable post-state, so `solLamportsAfter` is absent or `tokensAfter`
+   *  is short of what was watched. Callers MUST render it beside the figures —
+   *  a balance that dropped out silently reads as "that asset is not moving". */
   note?: string
 }
 
@@ -149,14 +151,15 @@ export async function checkSolanaOutflow(
       // Fail the whole check: reporting SOL while one watched mint silently
       // dropped out would read as "that token is not moving".
       return {
-        solLamportsAfter: 0n,
         tokensAfter: [],
         unavailable: `could not locate your ${short(mint)} token account`,
       }
     }
   }
   const watched = [owner, ...tokenAccounts]
-  const empty = { solLamportsAfter: 0n, tokensAfter: [] }
+  // No figure at all: `unavailable` means every balance field is absent, and a
+  // 0 sitting beside it is a number waiting to be read as an answer.
+  const empty = { tokensAfter: [] }
   try {
     const sim = await rpc(endpoint, 'simulateTransaction', [
       rawTxBase64,
@@ -183,12 +186,16 @@ export async function checkSolanaOutflow(
       }
     }
 
-    // A watched token account with no readable post-state is NOT "unchanged"
-    // and NOT "empty". simulateTransaction returns null for an address that
-    // does not exist at the post-state — exactly what a program that closes
-    // the player's token account produces — and for entries the RPC did not
-    // load. Either way the balance was not established, and saying nothing
-    // would render as SOL alone with the token silently gone.
+    // A watched account with no readable post-state is NOT "unchanged" and NOT
+    // "empty". simulateTransaction returns null for an address that does not
+    // exist at the post-state — exactly what a program that closes the player's
+    // token account produces — and for entries the RPC did not load. Either way
+    // the balance was not established, and saying nothing would render as a
+    // figure of 0 or as SOL alone with the token silently gone.
+    //
+    // The fee payer's own entry gets the same treatment as the token accounts:
+    // `BigInt(post[0]?.lamports ?? 0)` turned an unreadable answer into "you
+    // would hold 0 SOL", which is a statement this check never made.
     const tokensAfter: Array<{ mint: string; amountAfter: bigint }> = []
     const unread: string[] = []
     for (let i = 1; i < watched.length; i++) {
@@ -196,13 +203,20 @@ export async function checkSolanaOutflow(
       if (tok) tokensAfter.push({ mint: tok.mint, amountAfter: tok.amount })
       else unread.push(short(watched[i]))
     }
+    const solLamportsAfter = typeof post[0]?.lamports === 'number' ? BigInt(post[0].lamports) : undefined
+    const notes = [
+      solLamportsAfter === undefined
+        ? `SOL is missing from this answer: the simulation returned no readable state for your own account ${short(owner)}, so what it holds afterwards was not established.`
+        : undefined,
+      unread.length
+        ? `Token balances are incomplete: the simulation returned no readable state for ${unread.join(', ')}, so what ${unread.length > 1 ? 'those accounts hold' : 'that account holds'} afterwards was not established.`
+        : undefined,
+    ].filter(Boolean)
 
     return {
-      solLamportsAfter: BigInt(post[0]?.lamports ?? 0),
+      ...(solLamportsAfter !== undefined ? { solLamportsAfter } : {}),
       tokensAfter,
-      ...(unread.length ? {
-        note: `Token balances are incomplete: the simulation returned no readable state for ${unread.join(', ')}, so what ${unread.length > 1 ? 'those accounts hold' : 'that account holds'} afterwards was not established.`,
-      } : {}),
+      ...(notes.length ? { note: notes.join(' ') } : {}),
     }
   } catch (e: any) {
     return { ...empty, unavailable: e?.message || String(e) }
@@ -226,9 +240,14 @@ export async function simulateSolanaHoldings(
   decoded: SolanaTxDecodedInfo | undefined,
   options: {
     endpoint?: string
-    /** Mint identities the ClearSign delegate attested. Display only — an
-     *  unattested mint is shown in raw base units with its full address. */
-    tokens?: Array<{ mint: string; symbol: string; decimals: number }>
+    /** Token identities that have ALREADY been checked against the reviewed
+     *  catalog entry's own pin — see `certifiedTokenIdentities`. Never the
+     *  delegate's raw attestation: nothing on this computer verifies its
+     *  signature, so an unchecked symbol or decimal point here would put a
+     *  ticker on the holdings line that the device itself will not show.
+     *  Display only — a mint with no identity is rendered in raw base units
+     *  with its full address. */
+    verifiedTokens?: Array<{ mint: string; symbol: string; decimals: number }>
     /** Whole-check budget. This runs while the user waits for the approval
      *  window, and it takes up to three RPC round trips, so it answers late or
      *  not at all rather than holding the window shut. */
@@ -258,7 +277,7 @@ export async function simulateSolanaHoldings(
 async function holdingsAfter(
   rawTxBase64: string,
   decoded: SolanaTxDecodedInfo | undefined,
-  options: { endpoint?: string; tokens?: Array<{ mint: string; symbol: string; decimals: number }> },
+  options: { endpoint?: string; verifiedTokens?: Array<{ mint: string; symbol: string; decimals: number }> },
 ): Promise<SimulatedHoldings> {
   const endpoint = options.endpoint ?? DEFAULT_SOLANA_RPC_ENDPOINT
   const label = 'checked on this computer' as const
@@ -303,13 +322,13 @@ async function holdingsAfter(
   return {
     label,
     owner,
-    solLamportsAfter: outflow.solLamportsAfter.toString(),
+    ...(outflow.solLamportsAfter !== undefined ? { solLamportsAfter: outflow.solLamportsAfter.toString() } : {}),
     tokensAfter: outflow.tokensAfter.map((token) => {
-      const attested = options.tokens?.find((t) => t.mint === token.mint)
+      const identity = options.verifiedTokens?.find((t) => t.mint === token.mint)
       return {
         mint: token.mint,
         amountAfter: token.amountAfter.toString(),
-        ...(attested ? { symbol: attested.symbol, decimals: attested.decimals } : {}),
+        ...(identity ? { symbol: identity.symbol, decimals: identity.decimals } : {}),
       }
     }),
     ...(notes ? { note: notes } : {}),
