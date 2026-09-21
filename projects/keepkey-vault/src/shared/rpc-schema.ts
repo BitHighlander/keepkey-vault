@@ -244,6 +244,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       setEmulatorEnabled: { params: { enabled: boolean }; response: AppSettings }
       setPreReleaseUpdates: { params: { enabled: boolean }; response: AppSettings }
       setAlphaFirmware: { params: { enabled: boolean }; response: AppSettings }
+      setAddressBookClearsignEnabled: { params: { enabled: boolean }; response: AppSettings }
       setPrivateModeEnabled: { params: { enabled: boolean }; response: AppSettings }
       addPioneerServer: { params: { url: string; label: string }; response: AppSettings }
       removePioneerServer: { params: { url: string }; response: AppSettings }
@@ -332,6 +333,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       updateAddressBook: { params: { id: string; label?: string; note?: string }; response: boolean }
       deleteAddressBook: { params: { id: string }; response: void }
       getAddressBookHistory: { params: { entryId: string }; response: AddressBookTx[] }
+      certifyAddressBook: { params: void; response: { revision: number; count: number; root: string; fingerprint: string } }
 
       // ── Recent Activity ──────────────────────────────────────────────────
       // limit omitted = every row for the wallet (the activity list shows full history)

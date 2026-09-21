@@ -249,6 +249,7 @@ import { deviceErrorMessage } from "../shared/device-error"
 import type { ChainBalance, TokenBalance, CustomToken, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, EvmAddressSet, Bip85SeedMeta, StakingPosition, SwapAsset, AuditToken, DefiPosition, RecentActivity, ClearSignEvent, ClearSignSolanaSchemaArtifact } from "../shared/types"
 import type { VaultRPCSchema } from "../shared/rpc-schema"
 import { collectAndAnalyzeWithGate, MAX_CHUNK_BYTES } from "./rng-audit"
+import { buildCertificationRequest, buildContactProof, contactsFromEntries, evmRecipient, type AddressBookCertification } from "./addressbook-clearsign"
 
 // L3 fix: withTimeout imported from engine-controller (was duplicated here)
 const PIONEER_TIMEOUT_MS = 60_000
@@ -987,7 +988,18 @@ let zcashPurgeInFlight: Promise<void> | null = null
 let emulatorEnabled = false
 let preReleaseUpdates = false
 let alphaFirmware = false
+let addressBookClearsignEnabled = false
 let privateModeEnabled = false
+
+function storedAddressBookCertification(): AddressBookCertification | undefined {
+	const raw = getSetting('addressbook_clearsign_certification')
+	if (!raw) return undefined
+	try { return JSON.parse(raw) as AddressBookCertification } catch { return undefined }
+}
+
+function invalidateAddressBookCertification(): void {
+	setSetting('addressbook_clearsign_certification', '')
+}
 
 function requireOnline(operation: string): void {
 	assertOnline(offlineMode, operation)
@@ -1008,6 +1020,7 @@ function loadSettings() {
 	emulatorEnabled = getSetting('emulator_enabled') === '1'
 	preReleaseUpdates = getSetting('pre_release_updates') === '1'
 	alphaFirmware = getSetting('alpha_firmware') === '1'
+	addressBookClearsignEnabled = getSetting('addressbook_clearsign_enabled') === '1'
 	privateModeEnabled = getSetting('private_mode_enabled') === '1'
 	offlineMode = getSetting('offline_mode') === '1'
 	setBtcBackendOffline(offlineMode)
@@ -1344,6 +1357,7 @@ function getAppSettings() {
 		btcOnboardingShown: getSetting('btc_onboarding_shown') === '1',
 		preReleaseUpdates,
 		alphaFirmware,
+		addressBookClearsignEnabled,
 		privateModeEnabled,
 		passphraseIntroShown: getSetting('passphrase_intro_shown') === '1',
 	}
@@ -3213,6 +3227,17 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 			ethSignTx: async (params) => {
 				if (!engine.wallet) throw new Error('No device connected')
+				if (addressBookClearsignEnabled && !engine.isPassphraseWallet && !(params as any)?.txMetadata) {
+					const certification = storedAddressBookCertification()
+					const recipient = evmRecipient(params)
+					if (certification && recipient) {
+						const proof = buildContactProof(certification, recipient.chainId, recipient.address)
+						if (proof) {
+							;(params as any).txMetadata = { signedPayload: proof }
+							console.log(`[addressbook-clearsign] attached revision ${certification.revision} proof for ${recipient.address}`)
+						}
+					}
+				}
 				const signedPayload = (params as any)?.txMetadata?.signedPayload
 				const payload = signedPayload instanceof Uint8Array
 					? Buffer.from(signedPayload).toString('hex')
@@ -6781,6 +6806,12 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				engine.syncState().catch(e => console.warn('[settings] syncState after alpha toggle failed:', e))
 				return getAppSettings()
 			},
+			setAddressBookClearsignEnabled: async (params) => {
+				addressBookClearsignEnabled = params.enabled
+				setSetting('addressbook_clearsign_enabled', params.enabled ? '1' : '0')
+				console.log('[settings] Address Book ClearSign:', params.enabled)
+				return getAppSettings()
+			},
 			setPrivateModeEnabled: async (params) => {
 				privateModeEnabled = params.enabled
 				setSetting('private_mode_enabled', params.enabled ? '1' : '0')
@@ -6930,17 +6961,24 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					networkId: chain.networkId, chainId: chain.id, chainFamily: chain.chainFamily,
 					address: params.address, label: params.label ?? null,
 				})
-				if (entry) { try { rpc.send['addressbook-changed']({}) } catch { /* webview not ready */ } }
+				if (entry) {
+					invalidateAddressBookCertification()
+					try { rpc.send['addressbook-changed']({}) } catch { /* webview not ready */ }
+				}
 				return entry
 			},
 			updateAddressBook: async (params) => {
 				// Global (wallet-agnostic) — edit any contact from any session.
 				const ok = updateAddressBookEntry(params.id, null, { label: params.label, note: params.note })
-				if (ok) { try { rpc.send['addressbook-changed']({}) } catch { /* webview not ready */ } }
+				if (ok) {
+					invalidateAddressBookCertification()
+					try { rpc.send['addressbook-changed']({}) } catch { /* webview not ready */ }
+				}
 				return ok
 			},
 			deleteAddressBook: async (params) => {
 				deleteAddressBookEntry(params.id, null)
+				invalidateAddressBookCertification()
 				try { rpc.send['addressbook-changed']({}) } catch { /* webview not ready */ }
 			},
 			getAddressBookHistory: async (params) => {
@@ -6948,6 +6986,35 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					getAddressBookHistory(params.entryId, null),
 					isBitcoinOnlyVariant(engine.getDeviceState().firmwareVariant),
 				)
+			},
+			certifyAddressBook: async () => {
+				if (!addressBookClearsignEnabled) throw new Error('Address Book ClearSign is not enabled')
+				if (!engine.wallet) throw new Error('No device connected')
+				if (engine.isPassphraseWallet) throw new Error('Address Book certification is unavailable in a passphrase session')
+				requireClearsignAdvancedMode()
+				const chainIds = new Map<string, number>()
+				for (const chain of getAllChains()) {
+					const match = /^eip155:(\d+)$/.exec(chain.networkId)
+					if (match) chainIds.set(chain.networkId, Number(match[1]))
+				}
+				const contacts = contactsFromEntries(getAddressBookList({ kind: 'external', savedOnly: true }), chainIds)
+				if (!contacts.length) throw new Error('Add at least one labeled EVM contact before certifying')
+				const revision = Math.max(0, Number(getSetting('addressbook_clearsign_revision') || '0')) + 1
+				const built = buildCertificationRequest(contacts, revision)
+				const attest = () => (engine.wallet as any).clearsignAttestorSign(new Uint8Array(built.payload))
+				const result = engine.isEmulator
+					? await emuSigningOp(attest, { operation: 'clearsignAttestorSign', opLabel: 'Certify address book', chain: 'EVM' })
+					: await attest()
+				const publicKey = Buffer.from(result.publicKey as Uint8Array).toString('hex')
+				const signature = Buffer.from(result.signature as Uint8Array).toString('hex')
+				if (publicKey.length !== 66 || signature.length !== 128) throw new Error('Device returned an invalid address-book attestation')
+				const certification: AddressBookCertification = {
+					version: 1, revision, contacts, root: built.root.toString('hex'),
+					publicKey, signature, certifiedAt: Date.now(),
+				}
+				setSetting('addressbook_clearsign_certification', JSON.stringify(certification))
+				setSetting('addressbook_clearsign_revision', String(revision))
+				return { revision, count: contacts.length, root: certification.root, fingerprint: clearsignFingerprint(new Uint8Array(Buffer.from(publicKey, 'hex'))) }
 			},
 
 			// ── Accounting ledger ────────────────────────────────────
