@@ -1,5 +1,7 @@
 import type { ElectrobunRPCSchema } from 'electrobun/bun'
-import type { DeviceStateInfo, FirmwareProgress, FirmwareAnalysis, FatalEvent, PinRequest, CharacterRequest, ChainBalance, BuildTxParams, BuildTxResult, BroadcastResult, BtcAccountSet, BtcScriptType, EvmAddressSet, CustomToken, CustomChain, AppSettings, PioneerServer, BtcGetAddressParams, EthGetAddressParams, EthSignTxParams, BtcSignTxParams, GetPublicKeysParams, UpdateInfo, UpdateStatus, TokenVisibilityStatus, PairingRequestInfo, PairedAppInfo, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, ReportMeta, ReportData, AuditReport, AuditPortfolioSnapshot, AuditMode, AuditDerivedAddress, AuditInspectResult, SwapAsset, SwapQuote, SwapQuoteParams, ExecuteSwapParams, SwapResult, SwapHealth, PendingSwap, SwapStatusUpdate, SwapHistoryRecord, SwapHistoryFilter, SwapHistoryStats, SwapUiState, SwapUiCommand, RecentActivity, BuildStakingTxParams, StakingPosition, DefiPosition, NameInfo, NameQuote, BuildNameRegTxParams, ZcashTransaction, EmulatorStatus, EmulatorWalletInfo, RegisteredDevice, WcSessionInfo, AddressBookEntry, AddressBookFilter, AddressBookTx, UsbDiagnosticReport, ClearSignEvent, ClearSignSolanaSchemaArtifact, ClearSignSolanaSchemaDraft, RngAuditReport } from './types'
+import type { ClearSignReport } from './clearsign-report'
+import type { ClearSignCentralAssetAuditHistory, ClearSignCentralAssetReview, ClearSignCentralAssetReviewResult, ClearSignCentralContractAudit, ClearSignCentralContractReview, ClearSignCentralStatus, ClearSignProtectionCaseStudy } from './types'
+import type { DeviceStateInfo, FirmwareProgress, FirmwareAnalysis, FatalEvent, PinRequest, CharacterRequest, ChainBalance, BuildTxParams, BuildTxResult, BroadcastResult, BtcAccountSet, BtcScriptType, EvmAddressSet, CustomToken, CustomChain, AppSettings, PioneerServer, BtcGetAddressParams, EthGetAddressParams, EthSignTxParams, BtcSignTxParams, GetPublicKeysParams, UpdateInfo, UpdateStatus, TokenVisibilityStatus, PairingRequestInfo, PairedAppInfo, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, ReportMeta, ReportData, AuditReport, AuditPortfolioSnapshot, AuditMode, AuditDerivedAddress, AuditInspectResult, SwapAsset, SwapQuote, SwapQuoteParams, ExecuteSwapParams, SwapResult, SwapHealth, PendingSwap, SwapStatusUpdate, SwapHistoryRecord, SwapHistoryFilter, SwapHistoryStats, SwapUiState, SwapUiCommand, RecentActivity, BuildStakingTxParams, StakingPosition, DefiPosition, NameInfo, NameQuote, BuildNameRegTxParams, ZcashTransaction, EmulatorStatus, EmulatorWalletInfo, RegisteredDevice, WcSessionInfo, AddressBookEntry, AddressBookFilter, AddressBookTx, UsbDiagnosticReport, ClearSignEvent, ClearSignCoverageSummary, ClearSignAuditJob, ClearSignSolanaSchemaArtifact, ClearSignSolanaSchemaDraft, RngAuditReport } from './types'
 
 /**
  * RPC Schema for Bun ↔ WebView communication.
@@ -52,6 +54,18 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       clearsignAttestorSign: { params: { payload: string }; response: { payload: string; signature: string; publicKey: string; fingerprint: string; eventId: string } }
       clearsignLoadSessionSigner: { params: { keyId: number; publicKey: string; alias: string }; response: { ok: true; keyId: number; alias: string; fingerprint: string; eventId: string } }
       clearsignListEvents: { params: { limit?: number; outcome?: ClearSignEvent['outcome']; scope?: 'current-device' | 'all' } | void; response: ClearSignEvent[] }
+      clearsignGetCoverage: { params: void; response: ClearSignCoverageSummary }
+      clearsignListAuditJobs: { params: { limit?: number } | void; response: ClearSignAuditJob[] }
+      clearsignGetCentralStatus: { params: void; response: ClearSignCentralStatus }
+      clearsignGetCentralAssetHistory: { params: { caip: string }; response: ClearSignCentralAssetAuditHistory[] }
+      clearsignBuildCentralAssetReview: { params: { caip: string; evidenceHash: string; reviewerPublicKey: string; role: 'semantics-review' | 'security-review'; decision: 'approve' | 'reject' }; response: { statement: Omit<ClearSignCentralAssetReview, 'signature'>; digest: string; canonical: string } }
+      clearsignSignCentralReview: { params: Omit<ClearSignCentralAssetReview, 'signature'> | Omit<ClearSignCentralContractReview, 'signature'>; response: ClearSignCentralAssetReview | ClearSignCentralContractReview }
+      clearsignGetConfiguredReviewerIdentity: { params: { role: 'semantics-review' | 'security-review' }; response: { role: 'semantics-review' | 'security-review'; publicKey: string; fingerprint: string } }
+      clearsignSubmitCentralAssetReview: { params: ClearSignCentralAssetReview; response: ClearSignCentralAssetReviewResult }
+      clearsignGetCentralContractAudit: { params: { auditId: string }; response: ClearSignCentralContractAudit }
+      clearsignBuildCentralContractReview: { params: { auditId: string; evidenceHash: string; reviewerPublicKey: string; role: 'semantics-review' | 'security-review'; decision: 'approve' | 'reject' }; response: { statement: Omit<ClearSignCentralContractReview, 'signature'>; digest: string; canonical: string } }
+      clearsignSubmitCentralContractReview: { params: ClearSignCentralContractReview; response: Record<string, unknown> }
+      clearsignGetProtectionCaseStudies: { params: void; response: ClearSignProtectionCaseStudy[] }
       // Provider-key ceremony. The mnemonic is read off the device screen and
       // typed back in; the derived PRIVATE key is written to a file and never
       // returned to the renderer.
@@ -245,6 +259,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       setPreReleaseUpdates: { params: { enabled: boolean }; response: AppSettings }
       setAlphaFirmware: { params: { enabled: boolean }; response: AppSettings }
       setPrivateModeEnabled: { params: { enabled: boolean }; response: AppSettings }
+      setEvmSimulationRpc: { params: { chainId: number; url: string }; response: AppSettings }
       addPioneerServer: { params: { url: string; label: string }; response: AppSettings }
       removePioneerServer: { params: { url: string }; response: AppSettings }
       setActivePioneerServer: { params: { url: string }; response: AppSettings }
@@ -288,6 +303,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
         unsignedTx: any
         allowance?: { current: string; required: string; sufficient: boolean; spender: string; tokenContract: string }
         balance?: { current: string; required: string; sufficient: boolean; tokenContract?: string }
+        clearSignReports?: { approval?: ClearSignReport; transaction?: ClearSignReport }
       } }
       getPendingSwaps: { params: void; response: PendingSwap[] }
       dismissSwap: { params: { txid: string }; response: void }

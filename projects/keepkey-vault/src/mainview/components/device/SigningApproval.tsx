@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Z } from "../../lib/z-index"
 import { rpcRequest } from "../../lib/rpc"
 import type { SigningRequestInfo, EIP712DecodedInfo, CalldataDecodedInfo, SolanaTxDecodedInfo, EthMessageDecodedInfo, SolanaMessageDecodedInfo } from "../../../shared/types"
+import { evmContractIdentity } from "../../../shared/evm-contract-identity"
 import { versionCompare } from "../../../shared/firmware-versions"
 import { erc20Preview } from "../../../shared/erc20Preview"
 import { evmMaxFee, evmNativeValue } from "../../../shared/evmFeePreview"
@@ -11,6 +12,7 @@ import { isRelayBridgeDeposit } from "../../../shared/relayBridgePreview"
 import { utxoPreview } from "../../../shared/utxoPreview"
 import { cosmosDepositPreview } from "../../../shared/cosmosDepositPreview"
 import { assessSigningRisk, type RiskLevel } from "../../../shared/clearsign-risk"
+import { ClearSignReportCard } from "../ClearSignReportCard"
 
 interface SigningApprovalProps {
 	request: SigningRequestInfo
@@ -411,6 +413,12 @@ function CalldataSection({ decoded, request, t }: { decoded: CalldataDecodedInfo
 				</Text>
 			</Flex>
 			{erc20 && <Text fontSize="sm" fontWeight="700" color="kk.textPrimary" alignSelf="flex-start" wordBreak="break-word">{erc20.summary}</Text>}
+			{erc20 && <>
+				<Row label="Token" value={erc20.tokenIdentity || 'Unidentified token'} mono={false} />
+				<Row label="Token contract" value={erc20.tokenAddress} />
+				<Row label={erc20.counterpartyLabel} value={erc20.counterpartyIdentity || 'Unidentified address'} mono={false} />
+				<Row label={`${erc20.counterpartyLabel} address`} value={erc20.counterpartyAddress} />
+			</>}
 			{decoded.fields.map((field, i) => (
 				<Row key={i} label={field.name} value={field.name === 'Amount' && erc20 ? `${erc20.amount} (raw: ${erc20.rawAmount})` : field.value} />
 			))}
@@ -795,16 +803,21 @@ function EthMessageSection({ decoded, t }: {
 // ── Typed data section ────────────────────────────────────────────────
 
 function TypedDataSection({ decoded, t }: { decoded: EIP712DecodedInfo; t: (k: string, f?: string) => string }) {
+	const chainId = Number(decoded.domain.chainId || 0)
+	const identified = (value: string) => {
+		const identity = /^0x[0-9a-fA-F]{40}$/.test(value) ? evmContractIdentity(chainId, value) : undefined
+		return identity ? `${identity} · ${value}` : value
+	}
 	return (
 		<VStack gap="1.5" w="100%" bg="rgba(0,0,0,0.25)" borderRadius="xl" p="3">
 			<Text fontSize="2xs" fontWeight="600" color={decoded.isKnownType ? "kk.gold" : "kk.textSecondary"}>
 				{decoded.operationName}
 			</Text>
 			{decoded.domain.name && <Row label="Domain" value={decoded.domain.name} />}
-			{decoded.domain.verifyingContract && <Row label="Contract" value={decoded.domain.verifyingContract} />}
+			{decoded.domain.verifyingContract && <Row label="Contract" value={identified(decoded.domain.verifyingContract)} />}
 			{decoded.domain.chainId !== undefined && <Row label="Chain ID" value={String(decoded.domain.chainId)} />}
 			{decoded.fields.map((field, i) => (
-				<Row key={i} label={field.label} value={field.value} />
+				<Row key={i} label={field.label} value={identified(field.raw || field.value)} />
 			))}
 		</VStack>
 	)
@@ -858,10 +871,11 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 		else if (decoded?.source === 'pioneer' || decoded?.source === 'local') trustLevel = 'known'
 	}
 	if (request.typedDataDecoded) {
-		// Only x402 is streamed for on-device review; every other typed-data
-		// request is signed as a bare hash (EthereumSignTypedHash) — blind.
-		trustLevel = request.typedDataDecoded.operationName !== 'x402 EIP-3009 Payment' ? 'unknown'
-			: request.typedDataDecoded.isKnownType ? 'verified' : 'known'
+		// Firmware 7.15+ drives the EIP-712 traversal and hashes the same leaf
+		// bytes it displays. Older firmware has no structured typed-data path.
+		const structuredEip712 = !!request.firmwareVersion && versionCompare(request.firmwareVersion, '7.15.0') >= 0
+		trustLevel = !structuredEip712 ? 'unknown'
+			: request.typedDataDecoded.isKnownType && request.typedDataDecoded.protocolIdentityVerified !== false ? 'verified' : 'known'
 	}
 
 	// Solana is never a "simple transfer". Transactions need a clear-sign
@@ -943,6 +957,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 	const labelKey = METHOD_LABEL_KEYS[request.method]
 	const evmChainName = request.method === '/eth/sign-transaction'
 		? request.chainId === 43114 ? 'Avalanche C-Chain'
+			: request.chainId === 42161 ? 'Arbitrum One'
 			: request.chainId === 8453 ? 'Base'
 				: request.chainId === 1 ? 'Ethereum' : undefined
 		: undefined
@@ -1171,7 +1186,8 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 					</Box>
 				)}
 
-				{/* Risk first, so it is read before any blind-signing consent. */}
+				{/* Report and risk first, so they are read before blind-sign consent. */}
+				<ClearSignReportCard report={request.clearSignReport} />
 				<RiskBar request={request} t={t} />
 
 				{/* ── AdvancedMode gate ── */}

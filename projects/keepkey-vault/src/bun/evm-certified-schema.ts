@@ -16,6 +16,7 @@ export const EVM_ARG_AMOUNT = 2
 export const EVM_ARG_BYTES = 3
 export const EVM_ARG_TOKEN_AMOUNT = 5
 export const EVM_DECODER_PORTALS_NATIVE_ORDER_V1 = 1
+export const EVM_DECODER_ACROSS_ARBITRUM_WETH_TO_ETHEREUM_V1 = 2
 
 export interface EvmSchemaArg {
   name: string
@@ -44,6 +45,25 @@ export interface EvmSchemaSpec {
 }
 
 export const CERTIFIED_EVM_CATALOG: Record<string, EvmSchemaSpec> = {
+  '42161:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9:0x095ea7b3': {
+    chainId: 42161,
+    contract: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+    selector: '0x095ea7b3',
+    method: 'Arbitrum USDT approval',
+    args: [
+      { name: 'Spender', format: EVM_ARG_ADDRESS },
+      { name: 'Allowance', format: EVM_ARG_TOKEN_AMOUNT, decimals: 6, symbol: 'USDT' },
+    ],
+    expectedCalldataLength: 68,
+    displayFields: ['Spender', 'Allowance'],
+    protocol: 'Uniswap Permit2',
+    maintainedBy: 'KeepKey',
+    action: 'Approve Arbitrum USDT for a token spender',
+    provenance: {
+      protocol: 'https://developers.uniswap.org/docs/liquidity/uniswapx/deployments',
+      token: 'https://arbiscan.io/token/0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+    },
+  },
   '1:0x4cd00e387622c35bddb9b4c962c136462338bc31:0x49290c1c': {
     chainId: 1,
     contract: '0x4cd00e387622c35bddb9b4c962c136462338bc31',
@@ -71,6 +91,25 @@ export const CERTIFIED_EVM_CATALOG: Record<string, EvmSchemaSpec> = {
     provenance: {
       protocol: 'https://docs.portals.fi/',
       verifiedContract: 'https://eth.blockscout.com/address/0xbf5A7F3629fB325E2a8453D595AB103465F75E62?tab=contract',
+    },
+  },
+  '42161:0xe35e9842fceaca96570b734083f4a58e8f7c5f2a:0x7b939232': {
+    chainId: 42161,
+    contract: '0xe35e9842fceaCA96570B734083f4a58e8F7C5f2A',
+    selector: '0x7b939232',
+    method: 'Across bridge',
+    args: [],
+    decoder: EVM_DECODER_ACROSS_ARBITRUM_WETH_TO_ETHEREUM_V1,
+    minimumCalldataLength: 420,
+    maximumCalldataLength: 1024,
+    displayFields: ['Recipient', 'Input', 'Output token', 'Minimum output', 'Destination chain', 'Exclusive relayer'],
+    protocol: 'Across',
+    maintainedBy: 'Across Protocol',
+    action: 'Bridge native Arbitrum WETH to Ethereum WETH',
+    provenance: {
+      protocol: 'https://docs.across.to/reference/selected-contract-functions',
+      deployment: 'https://github.com/across-protocol/contracts/blob/master/deployments/legacy-addresses.json',
+      implementation: 'https://repo.sourcify.dev/contracts/full_match/42161/0xCfcDa84333431BCC9155F2368B8362f0D1dff8C9/',
     },
   },
 }
@@ -145,7 +184,7 @@ export function findCertifiedEvmSchemaByShape(
   } else {
     if (!spec.decoder || spec.minimumCalldataLength === undefined || spec.maximumCalldataLength === undefined) return undefined
     if (calldataLength < spec.minimumCalldataLength || calldataLength > spec.maximumCalldataLength) return undefined
-    if ((calldataLength - 4) % 32 !== 0) return undefined
+    if (spec.decoder === EVM_DECODER_PORTALS_NATIVE_ORDER_V1 && (calldataLength - 4) % 32 !== 0) return undefined
   }
   return spec
 }
@@ -157,7 +196,8 @@ export function buildEvmSchemaBody(spec: EvmSchemaSpec): Buffer {
   }
   const method = ascii(spec.method, 64, 'method')
   if (spec.decoder !== undefined) {
-    if (spec.decoder !== EVM_DECODER_PORTALS_NATIVE_ORDER_V1 || spec.args.length !== 0) {
+    if (![EVM_DECODER_PORTALS_NATIVE_ORDER_V1,
+      EVM_DECODER_ACROSS_ARBITRUM_WETH_TO_ETHEREUM_V1].includes(spec.decoder) || spec.args.length !== 0) {
       throw new Error('unsupported EVM dynamic decoder')
     }
     if (spec.minimumCalldataLength === undefined || spec.maximumCalldataLength === undefined) {
@@ -214,8 +254,8 @@ export function buildCertifiedEvmEnvelope(
 ): { signedPayload: string; keyId: number; fingerprint: string; alias: string } {
   const certificate = hexBytes(certificateHex, 139, 'alpha certificate')
   const certificateInfo = inspectAlphaCertificate(certificate.toString('hex'))
-  if (certificateInfo.chainId !== CLEARSIGN_SCOPE_ETHEREUM) {
-    throw new Error(`certificate is scoped to ${certificateInfo.chainId}, not Ethereum (${CLEARSIGN_SCOPE_ETHEREUM})`)
+  if (certificateInfo.chainId !== spec.chainId) {
+    throw new Error(`certificate is scoped to chain ${certificateInfo.chainId}, not transaction chain ${spec.chainId}`)
   }
   const privateKey = hexBytes(delegatePrivateKeyHex, 32, 'delegate private key')
   const signingKey = new ethersUtils.SigningKey(`0x${privateKey.toString('hex')}`)

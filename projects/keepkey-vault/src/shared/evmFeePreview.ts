@@ -4,7 +4,7 @@ const parse = (value: unknown): bigint | null => {
   if (!/^(?:0x[0-9a-fA-F]+|\d+)$/.test(raw)) return null
   try { return BigInt(raw) } catch { return null }
 }
-const unit = (chainId?: number): string => chainId === 1 || chainId === 8453
+const unit = (chainId?: number): string => [1, 10, 42161, 8453].includes(chainId ?? -1)
   ? 'ETH' : chainId === 43114 ? 'AVAX' : 'native coin'
 const formatWei = (wei: bigint, chainId?: number): string => {
   const whole = wei / 10n ** 18n

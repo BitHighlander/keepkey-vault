@@ -173,7 +173,18 @@ describe('assessSigningRisk — EVM', () => {
   test('finite approve is still CRITICAL with the amount', () => {
     const r = tx('0x095ea7b3' + SPENDER + word(1_000_000_000n))
     expect(r.level).toBe('critical')
-    expect(r.reasons[0].text).toContain('up to 1,000 USDC of your USDC')
+    expect(r.reasons[0].text).toContain('up to 1,000 USDC')
+  })
+
+  test('real Arbitrum Uniswap setup approval says USDT, Permit2, and not all wallet tokens', () => {
+    const permit2 = '000000000000000000000000' + '000000000022d473030f116ddee9f6b43ac78ba3'
+    const r = tx('0x095ea7b3' + permit2 + word((1n << 256n) - 1n), {
+      chainId: 42161,
+      to: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+    })
+    expect(r.level).toBe('medium')
+    expect(r.reasons[0].text).toBe('Standard Uniswap setup: gives canonical Permit2 persistent access to your Arbitrum USDT. You can revoke this allowance later.')
+    expect(r.reasons[0].text).not.toContain('ALL of your tokens')
   })
 
   test('revoke on a known token is LOW', () => {
@@ -201,7 +212,7 @@ describe('assessSigningRisk — EVM', () => {
     expect(r.reasons[0].text).toContain('0.5 ETH')
   })
 
-  test('Permit2 signature is CRITICAL plus blind-hash HIGH', () => {
+  test('Permit2 signature remains CRITICAL while 7.15+ reports structured device review', () => {
     const r = assessSigningRisk({
       method: '/eth/sign-typed-data',
       typedDataDecoded: {
@@ -212,10 +223,29 @@ describe('assessSigningRisk — EVM', () => {
           { label: 'Spender', value: '0xabc', format: 'address', raw: '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad' },
         ],
       },
+      firmwareVersion: '7.16.0',
     } as SigningRequestInfo)!
     expect(r.level).toBe('critical')
     expect(r.reasons[0].text).toContain('spend ALL of your tokens')
-    expect(r.reasons.some((x) => x.level === 'high' && x.text.includes('hash'))).toBe(true)
+    expect(r.reasons.some((x) => x.level === 'high' && x.text.includes('hash'))).toBe(false)
+    expect(r.reasons.some((x) => x.text.includes('structured fields'))).toBe(true)
+  })
+
+  test('official Arbitrum Uniswap Permit2 names USDT, router, and expiration without generic wallet-wide alarm', () => {
+    const r = assessSigningRisk({ method: '/eth/sign-typed-data', firmwareVersion: '7.16.0', typedDataDecoded: {
+      operationName: 'Permit2 (Single)', primaryType: 'PermitSingle', isKnownType: true, protocolIdentityVerified: true,
+      domain: { chainId: 42161, verifyingContract: '0x000000000022d473030f116ddee9f6b43ac78ba3' },
+      fields: [
+        { label: 'Token', value: '0xfd08…fbb9', raw: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', format: 'address' },
+        { label: 'Amount', value: 'max', raw: ((1n << 160n) - 1n).toString(), format: 'amount' },
+        { label: 'Expiration', value: '2026-10-21 16:33:16 UTC', raw: '1792600396', format: 'datetime' },
+        { label: 'Spender', value: '0x2d01…fe65', raw: '0x2d01411773c8c24805306e89a41f7855c3c4fe65', format: 'address' },
+      ],
+    } } as SigningRequestInfo)!
+    expect(r.level).toBe('medium')
+    expect(r.reasons[0].text).toContain('official Uniswap Universal Router')
+    expect(r.reasons[0].text).toContain('Arbitrum USDT')
+    expect(r.reasons[0].text).not.toContain('ALL of your tokens')
   })
 
   test('32-byte hash via personal_sign is HIGH', () => {
