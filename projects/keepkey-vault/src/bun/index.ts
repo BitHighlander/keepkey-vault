@@ -231,7 +231,7 @@ import type { OwnAddressSeed } from "./db"
 import { rectifyWallet, getLedgerSummary, getLedgerJournals } from "./ledger"
 import { generateReport, reportToPdfBuffer, reportToCsv } from "./reports"
 import { startAudit, startBtcScan, getAudit, getAuditBtcRaw, getAuditEntry, dismissAudit, markAuditsStale, type AuditDeps } from "./audit-engine"
-import { chainSupportsDeepScan, chainSupportsLevelScan, chainLevelPath, deriveAddressParams, extractAddress, parseNativeScanResult, parseEvmScanResult, utxoAccountScriptPaths, explorerAddressUrl, pathToBip32, parseBip32Path } from "./chain-scan"
+import { chainSupportsDeepScan, chainSupportsLevelScan, chainLevelPath, deriveAddressParams, extractAddress, parseNativeScanResult, parseEvmScanResult, supportsDgbTaproot, utxoAccountScriptPaths, explorerAddressUrl, pathToBip32, parseBip32Path } from "./chain-scan"
 import { btcPairingEntries, utxoPairingEntries, evmPairingEntries, type UtxoXpub } from "./pairing-pubkeys"
 import { extractTransactionsFromReport, toCoinTrackerCsv, toZenLedgerCsv } from "./tax-export"
 import { assetData as discoveryAssetData } from "@pioneer-platform/pioneer-discovery"
@@ -3708,6 +3708,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				// Filter chains by firmware version — don't derive addresses for unsupported chains
 				// Zcash (transparent + shielded) gated behind feature flag
 				const fwVersion = engine.getDeviceState().firmwareVersion
+				const dgbTaprootEnabled = supportsDgbTaproot(process.env.FEATURE_TAPROOT_DGB === 'true', fwVersion)
 				const bitcoinOnly = isBitcoinOnlyVariant(engine.getDeviceState().firmwareVariant)
 				if (bitcoinOnly) swapDestCaips = []
 				const allChains = bitcoinOnlyChainList(getAllChains(), bitcoinOnly).filter(c => {
@@ -3724,7 +3725,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				// all so Pioneer reports balances from every address type.
 				const utxoPubKeyPaths: Array<{ chain: typeof utxoChains[0]; scriptType: string; path: number[] }> = []
 				for (const c of utxoChains) {
-					for (const sp of utxoAccountScriptPaths(c, 0)) {
+					for (const sp of utxoAccountScriptPaths(c, 0, false, dgbTaprootEnabled)) {
 						utxoPubKeyPaths.push({ chain: c, scriptType: sp.scriptType, path: sp.path })
 					}
 				}
@@ -3748,7 +3749,15 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				for (let i = 0; i < utxoPubKeyPaths.length; i++) {
 					const xpub = xpubResults?.[i]?.xpub
 					const c = utxoPubKeyPaths[i].chain
-					if (xpub) pubkeys.push({ caip: c.caip, pubkey: xpub, chainId: c.id, symbol: c.symbol, networkId: c.networkId })
+					if (xpub) pubkeys.push({
+						caip: c.caip,
+						pubkey: utxoDiscoveryKey(xpub, utxoPubKeyPaths[i].scriptType),
+						sourcePubkey: xpub,
+						scriptType: utxoPubKeyPaths[i].scriptType,
+						chainId: c.id,
+						symbol: c.symbol,
+						networkId: c.networkId,
+					})
 				}
 
 				// Merge device-cached UTXO-altcoin xpubs beyond account 0 — persisted
@@ -4825,7 +4834,9 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					// Non-BTC UTXO: derive account-0 xpubs via the shared helper (standard
 					// script-type set + the chain's own receive convention — see
 					// utxoAccountScriptPaths for why the latter is load-bearing on LTC).
-					const sps = utxoAccountScriptPaths(chain, 0)
+					const includeDgbTaproot = chain.id === 'digibyte'
+						&& supportsDgbTaproot(process.env.FEATURE_TAPROOT_DGB === 'true', fwVersion)
+					const sps = utxoAccountScriptPaths(chain, 0, false, includeDgbTaproot)
 					const paths = sps.map(sp => ({
 						addressNList: sp.path,
 						coin: chain.coin, scriptType: sp.scriptType, curve: 'secp256k1',
@@ -4834,7 +4845,15 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					let anyXpub = false
 					for (let i = 0; i < sps.length; i++) {
 						const xpub = results?.[i]?.xpub
-						if (xpub) { pubkeys.push({ caip: chain.caip, pubkey: xpub }); anyXpub = true }
+						if (xpub) {
+							pubkeys.push({
+								caip: chain.caip,
+								pubkey: utxoDiscoveryKey(xpub, sps[i].scriptType),
+								sourcePubkey: xpub,
+								scriptType: sps[i].scriptType,
+							})
+							anyXpub = true
+						}
 					}
 					// Merge device-cached account-1+ xpubs (audit "track") so funds beyond
 					// account 0 are spendable. Device-scoped, never written for passphrase
