@@ -41,3 +41,17 @@ normal Blockbook balance model.
    UTXO selector.
 5. The API refuses or withholds DigiDollar signing flows for firmware below
    7.17.0.
+
+## Emulator evidence (2026-09-21)
+
+Vault loaded the full-firmware dylib from firmware PR #846 at commit
+`f3d6883c5`, reported firmware `7.17.0`, and passed its live key-derivation
+smoke test. With `FEATURE_TAPROOT_DGB=true`, a portfolio scan sent two DGB
+accounts to Pioneer: the legacy account as a plain xpub and the BIP-86 account
+as `tr(xpub...)`. Pioneer returned a native DGB balance entry for each; both
+were zero for the test wallet.
+
+This proves firmware gating, DGB account derivation, descriptor transport, and
+ordinary DGB balance lookup. It does not prove a DigiDollar balance: Pioneer
+still has no DD indexer endpoint, and a DD receive address uses the protocol's
+`DD...` encoding rather than the ordinary `dgb1p` display address.
