@@ -8,10 +8,12 @@ const LEAF_MAGIC = Buffer.from('KKABLEAF', 'ascii')
 export const ADDRESS_BOOK_CLEARSIGN_VERSION = 1
 export const ADDRESS_BOOK_CLEARSIGN_MAX_ENTRIES = 16
 export const ADDRESS_BOOK_CLEARSIGN_LABEL_MAX = 24
+export const CONTACT_DESTINATION = { EVM_ADDRESS: 1, UTXO_SCRIPT: 2, ACCOUNT_BYTES: 3 } as const
 
 export interface CertifiedContact {
-  chainId: number
-  address: string
+  network: string
+  destinationType: number
+  destination: string
   label: string
 }
 
@@ -32,24 +34,27 @@ const u32 = (value: number) => {
 }
 
 function normalizeContact(contact: CertifiedContact): CertifiedContact {
-  if (!Number.isSafeInteger(contact.chainId) || contact.chainId <= 0 || contact.chainId > 0xffffffff) {
-    throw new Error(`Invalid EVM chain id: ${contact.chainId}`)
-  }
-  const address = contact.address.toLowerCase()
-  if (!/^0x[0-9a-f]{40}$/.test(address)) throw new Error(`Invalid EVM contact address: ${contact.address}`)
+  const network = contact.network.trim()
+  if (!/^[A-Za-z0-9-]+:[A-Za-z0-9-]+$/.test(network) || Buffer.byteLength(network) > 63) throw new Error(`Invalid CAIP-2 network: ${contact.network}`)
+  if (!Number.isInteger(contact.destinationType) || contact.destinationType <= 0 || contact.destinationType > 255) throw new Error('Invalid destination type')
+  const destination = contact.destination.toLowerCase().replace(/^0x/, '')
+  if (!/^[0-9a-f]+$/.test(destination) || destination.length % 2 || destination.length > 128) throw new Error('Invalid canonical destination bytes')
+  if (contact.destinationType === CONTACT_DESTINATION.EVM_ADDRESS && (!network.startsWith('eip155:') || destination.length !== 40)) throw new Error('Invalid EVM destination')
   const label = contact.label.trim()
   const encoded = Buffer.from(label, 'ascii')
   if (!label || encoded.length > ADDRESS_BOOK_CLEARSIGN_LABEL_MAX || encoded.toString('ascii') !== label ||
       /[%\x00-\x1f\x7f-\xff]/.test(label)) {
     throw new Error(`Contact label must be 1-${ADDRESS_BOOK_CLEARSIGN_LABEL_MAX} printable ASCII characters without %`)
   }
-  return { chainId: contact.chainId, address, label }
+  return { network, destinationType: contact.destinationType, destination, label }
 }
 
 function entryBytes(contact: CertifiedContact): Buffer {
   const c = normalizeContact(contact)
+  const network = Buffer.from(c.network, 'ascii')
+  const destination = Buffer.from(c.destination, 'hex')
   const label = Buffer.from(c.label, 'ascii')
-  return Buffer.concat([u32(c.chainId), Buffer.from(c.address.slice(2), 'hex'), Buffer.from([label.length]), label])
+  return Buffer.concat([Buffer.from([network.length]), network, Buffer.from([c.destinationType, destination.length]), destination, Buffer.from([label.length]), label])
 }
 
 function hash(data: Uint8Array): Buffer {
@@ -78,11 +83,11 @@ function tree(contacts: CertifiedContact[]): Buffer[][] {
   return levels
 }
 
-export function contactsFromEntries(entries: AddressBookEntry[], evmChainIds: Map<string, number>): CertifiedContact[] {
+export function contactsFromEntries(entries: AddressBookEntry[]): CertifiedContact[] {
   const contacts = entries
-    .filter(entry => entry.kind === 'external' && !!entry.label && evmChainIds.has(entry.networkId))
-    .map(entry => normalizeContact({ chainId: evmChainIds.get(entry.networkId)!, address: entry.address, label: entry.label! }))
-    .sort((a, b) => a.chainId - b.chainId || a.address.localeCompare(b.address) || a.label.localeCompare(b.label))
+    .filter(entry => entry.kind === 'external' && !!entry.label && entry.networkId.startsWith('eip155:'))
+    .map(entry => normalizeContact({ network: entry.networkId, destinationType: CONTACT_DESTINATION.EVM_ADDRESS, destination: entry.address, label: entry.label! }))
+    .sort((a, b) => a.network.localeCompare(b.network) || a.destinationType - b.destinationType || a.destination.localeCompare(b.destination) || a.label.localeCompare(b.label))
   if (contacts.length > ADDRESS_BOOK_CLEARSIGN_MAX_ENTRIES) {
     throw new Error(`Alpha firmware supports at most ${ADDRESS_BOOK_CLEARSIGN_MAX_ENTRIES} certified contacts`)
   }
@@ -106,9 +111,9 @@ export function manifestBytes(cert: Pick<AddressBookCertification, 'version' | '
   return Buffer.concat([ROOT_MAGIC, Buffer.from([cert.version]), u32(cert.revision), Buffer.from([cert.contacts.length]), root])
 }
 
-export function buildContactProof(cert: AddressBookCertification, chainId: number, address: string): string | undefined {
-  const normalizedAddress = address.toLowerCase()
-  const index = cert.contacts.findIndex(c => c.chainId === chainId && c.address.toLowerCase() === normalizedAddress)
+export function buildContactProof(cert: AddressBookCertification, network: string, destinationType: number, destination: string): string | undefined {
+  const normalizedDestination = destination.toLowerCase().replace(/^0x/, '')
+  const index = cert.contacts.findIndex(c => c.network === network && c.destinationType === destinationType && c.destination === normalizedDestination)
   if (index < 0) return undefined
   const levels = tree(cert.contacts)
   if (levels[levels.length - 1][0].toString('hex') !== cert.root.toLowerCase()) throw new Error('Stored address-book root does not match contacts')

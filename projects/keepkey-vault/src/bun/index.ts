@@ -249,7 +249,7 @@ import { deviceErrorMessage } from "../shared/device-error"
 import type { ChainBalance, TokenBalance, CustomToken, SigningRequestInfo, ApiLogEntry, PioneerChainInfo, EvmAddressSet, Bip85SeedMeta, StakingPosition, SwapAsset, AuditToken, DefiPosition, RecentActivity, ClearSignEvent, ClearSignSolanaSchemaArtifact } from "../shared/types"
 import type { VaultRPCSchema } from "../shared/rpc-schema"
 import { collectAndAnalyzeWithGate, MAX_CHUNK_BYTES } from "./rng-audit"
-import { buildCertificationRequest, buildContactProof, contactsFromEntries, evmRecipient, type AddressBookCertification } from "./addressbook-clearsign"
+import { buildCertificationRequest, buildContactProof, contactsFromEntries, CONTACT_DESTINATION, evmRecipient, type AddressBookCertification } from "./addressbook-clearsign"
 
 // L3 fix: withTimeout imported from engine-controller (was duplicated here)
 const PIONEER_TIMEOUT_MS = 60_000
@@ -3231,7 +3231,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					const certification = storedAddressBookCertification()
 					const recipient = evmRecipient(params)
 					if (certification && recipient) {
-						const proof = buildContactProof(certification, recipient.chainId, recipient.address)
+						const proof = buildContactProof(certification, `eip155:${recipient.chainId}`, CONTACT_DESTINATION.EVM_ADDRESS, recipient.address)
 						if (proof) {
 							;(params as any).txMetadata = { signedPayload: proof }
 							console.log(`[addressbook-clearsign] attached revision ${certification.revision} proof for ${recipient.address}`)
@@ -6992,12 +6992,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				if (!engine.wallet) throw new Error('No device connected')
 				if (engine.isPassphraseWallet) throw new Error('Address Book certification is unavailable in a passphrase session')
 				requireClearsignAdvancedMode()
-				const chainIds = new Map<string, number>()
-				for (const chain of getAllChains()) {
-					const match = /^eip155:(\d+)$/.exec(chain.networkId)
-					if (match) chainIds.set(chain.networkId, Number(match[1]))
-				}
-				const contacts = contactsFromEntries(getAddressBookList({ kind: 'external', savedOnly: true }), chainIds)
+				const contacts = contactsFromEntries(getAddressBookList({ kind: 'external', savedOnly: true }))
 				if (!contacts.length) throw new Error('Add at least one labeled EVM contact before certifying')
 				const revision = Math.max(0, Number(getSetting('addressbook_clearsign_revision') || '0')) + 1
 				const built = buildCertificationRequest(contacts, revision)
