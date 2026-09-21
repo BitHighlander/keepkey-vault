@@ -50,6 +50,17 @@ function requireClearsignAdvancedMode(): void {
 	}
 }
 
+function supportsAddressBookClearsignFirmware(): boolean {
+	const version = engine.getDeviceState().firmwareVersion
+	return Boolean(version && versionCompare(version, '7.16.0') >= 0)
+}
+
+function requireAddressBookClearsignFirmware(): void {
+	if (!supportsAddressBookClearsignFirmware()) {
+		throw new Error('Address Book ClearSign requires firmware 7.16.0 or newer')
+	}
+}
+
 const AUTHENTICATOR_SLOT_COUNT = 10
 
 function normalizeAuthenticatorLabel(value: unknown, field: string): string {
@@ -3227,7 +3238,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			},
 			ethSignTx: async (params) => {
 				if (!engine.wallet) throw new Error('No device connected')
-				if (addressBookClearsignEnabled && !engine.isPassphraseWallet && !(params as any)?.txMetadata) {
+				if (addressBookClearsignEnabled && supportsAddressBookClearsignFirmware() && !engine.isPassphraseWallet && !(params as any)?.txMetadata) {
 					const certification = storedAddressBookCertification()
 					const recipient = evmRecipient(params)
 					if (certification && recipient) {
@@ -6990,6 +7001,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 			certifyAddressBook: async () => {
 				if (!addressBookClearsignEnabled) throw new Error('Address Book ClearSign is not enabled')
 				if (!engine.wallet) throw new Error('No device connected')
+				requireAddressBookClearsignFirmware()
 				if (engine.isPassphraseWallet) throw new Error('Address Book certification is unavailable in a passphrase session')
 				requireClearsignAdvancedMode()
 				const contacts = contactsFromEntries(getAddressBookList({ kind: 'external', savedOnly: true }))
