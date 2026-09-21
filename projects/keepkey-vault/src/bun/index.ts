@@ -7003,7 +7003,6 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 				if (!engine.wallet) throw new Error('No device connected')
 				requireAddressBookClearsignFirmware()
 				if (engine.isPassphraseWallet) throw new Error('Address Book certification is unavailable in a passphrase session')
-				requireClearsignAdvancedMode()
 				const contacts = contactsFromEntries(getAddressBookList({ kind: 'external', savedOnly: true }))
 				if (!contacts.length) throw new Error('Add at least one labeled EVM contact before certifying')
 				const revision = Math.max(0, Number(getSetting('addressbook_clearsign_revision') || '0')) + 1

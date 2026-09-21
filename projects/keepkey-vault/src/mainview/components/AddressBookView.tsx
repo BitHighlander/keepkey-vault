@@ -54,8 +54,6 @@ export function AddressBookView() {
   const [addOpen, setAddOpen] = useState(false)
   const [clearSignEnabled, setClearSignEnabled] = useState(false)
   const [certifying, setCertifying] = useState(false)
-  const [advancedMode, setAdvancedMode] = useState<boolean | undefined>(undefined)
-  const [enablingAdvancedMode, setEnablingAdvancedMode] = useState(false)
   const [certificationNotice, setCertificationNotice] = useState("")
 
   const clearSignSupported = !!deviceState.firmwareVersion && versionCompare(deviceState.firmwareVersion, "7.16.0") >= 0
@@ -65,16 +63,6 @@ export function AddressBookView() {
       .then(settings => setClearSignEnabled(settings.addressBookClearsignEnabled))
       .catch(() => {})
   }, [])
-
-  useEffect(() => {
-    if (!clearSignSupported || !connectedDeviceId) {
-      setAdvancedMode(undefined)
-      return
-    }
-    rpcRequest<{ advancedMode: boolean }>("clearsignGetStudioStatus", undefined, 5000)
-      .then(status => setAdvancedMode(status.advancedMode))
-      .catch(() => setAdvancedMode(undefined))
-  }, [clearSignSupported, connectedDeviceId])
 
   const toggleClearSign = useCallback(async () => {
     const enabled = !clearSignEnabled
@@ -91,24 +79,9 @@ export function AddressBookView() {
       setCertificationNotice(`Certified ${result.count} contacts · revision ${result.revision} · ${result.fingerprint}`)
     } catch (error: any) {
       const message = error?.message || "Address Book certification failed"
-      if (/AdvancedMode/i.test(message)) setAdvancedMode(false)
       setCertificationNotice(message)
     } finally {
       setCertifying(false)
-    }
-  }, [])
-
-  const enableAdvancedMode = useCallback(async () => {
-    setEnablingAdvancedMode(true)
-    setCertificationNotice("")
-    try {
-      await rpcRequest("applyPolicy", { policyName: "AdvancedMode", enabled: true }, 0)
-      setAdvancedMode(true)
-      setCertificationNotice("Advanced Mode enabled for this device session. You can certify contacts now.")
-    } catch (error: any) {
-      setCertificationNotice(error?.message || "Failed to enable Advanced Mode")
-    } finally {
-      setEnablingAdvancedMode(false)
     }
   }, [])
 
@@ -202,10 +175,8 @@ export function AddressBookView() {
                 title={clearSignSupported ? undefined : "Address Book ClearSign requires connected firmware 7.16.0 or newer"}>
           {clearSignEnabled ? "ClearSign on" : "Enable ClearSign"}
         </Button>
-        {clearSignEnabled && clearSignSupported && advancedMode === false && <Button size="sm" variant="outline" borderColor="var(--gold)" color="var(--gold)" borderRadius="10px" px="3" h="34px"
-                onClick={enableAdvancedMode} disabled={enablingAdvancedMode}>{enablingAdvancedMode ? "Review on device…" : "Enable Advanced Mode"}</Button>}
         {clearSignEnabled && <Button size="sm" variant="outline" borderColor="var(--teal)" color="var(--teal)" borderRadius="10px" px="3" h="34px"
-                onClick={certify} disabled={certifying || !clearSignSupported || advancedMode === false}>{certifying ? "Review on device…" : "Certify contacts"}</Button>}
+                onClick={certify} disabled={certifying || !clearSignSupported}>{certifying ? "Review on device…" : "Certify contacts"}</Button>}
         <Button size="sm" variant="outline" borderColor="var(--gold)" color="var(--gold)" borderRadius="10px" px="3" h="34px"
                 _hover={{ bg: "rgba(233,196,106,0.10)" }} onClick={() => setAddOpen(true)} flexShrink={0} title={t("addAddressHint", { defaultValue: "Add an address to your Address Book" })}>
           <Flex align="center" gap="1.5">
