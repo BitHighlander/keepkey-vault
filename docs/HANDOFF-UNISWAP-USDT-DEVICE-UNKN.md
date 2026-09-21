@@ -2,6 +2,30 @@
 
 Date: 2026-09-20
 
+## Completed live flow — 2026-09-21
+
+The live Uniswap flow now advances through the certified Arbitrum USDT approval,
+the structured Permit2 signature, and the final Universal Router transaction
+without requesting blind signing or Advanced Mode. Vault identifies the official
+Uniswap Universal Router, Permit2, Arbitrum USDT, and their full addresses.
+
+Two observed router shapes are supported with transaction-bound descriptions:
+
+- Permit2 permit -> Uniswap v4 exact-input -> settle/take/sweep.
+- Permit2 permit -> Uniswap v3 exact-input over USDT/USDC/WETH -> unwrap WETH.
+
+Both matchers fail closed on the chain, router, command program, token path,
+fees, payer, recipient, allowance, minimum output, deadline, and calldata framing.
+The description signature commits to the complete EVM signing hash, including
+nonce, fees, value, calldata, and attribution footer. The second live capture
+was accepted by production worker version
+`f67c8930-183e-4fd8-a237-60773d3a6518` and returned `VERIFIED` with transaction
+hash `0xe357a726ada980384c6e5ea16acb67bd485e7aeb90698e21fd72b4576ec75b63`.
+
+The operator confirmed the rebuilt emulator flow is working. The original
+`UNKN` defect and the later blind-sign gates are resolved for these reviewed
+routes.
+
 ## Emulator device proof completed — 2026-09-21
 
 The rebuilt Vault now completes the exact Arbitrum USDT Permit2 approval through
@@ -365,10 +389,8 @@ The response is `classification: VERIFIED`, method `Arbitrum USDT approval`,
 key ID `128`, delegate fingerprint `a9531b9d`, and a 292-byte certified payload.
 This proves the live service recognizes and certifies the captured approval shape.
 
-## Immediate blocker
+## Current state
 
-Vault still reports the physical root-signing KeepKey as its connected wallet.
-Disconnect it before starting the emulator so the live replay cannot bind to the
-wrong wallet. Then select the emulator and capture every device review screen. The
-service response alone does not prove that the device renders USDT and both full
-addresses correctly.
+There is no remaining blocker for the reviewed Arbitrum USDT-to-native Uniswap
+flow. New router programs, paths, commands, hooks, or contract deployments remain
+unsupported until their semantics and invariants are reviewed and promoted.
