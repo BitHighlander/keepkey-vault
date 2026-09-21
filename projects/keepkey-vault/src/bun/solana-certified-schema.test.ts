@@ -17,6 +17,7 @@ import {
 } from './solana-certified-schema'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from './solana-tx'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
+import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
 
 // Real Solana scope-501 certificate issued 2026-08-24 by the master root
 // signer (docs/certs/solana-scope-501-certificate.json). Public data only.
@@ -158,6 +159,58 @@ describe('SoltoshiDICE Blackjack join catalog entry', () => {
     expect(values).toEqual({
       Round: v.round, Revision: v.revision, Seat: v.seat, 'Buy-in': v.buyIn,
       'Session key': v.sessionKey, 'Expires in': v.seconds, Allowance: v.allowance, 'Max wager': v.maxWager,
+    })
+  })
+})
+
+describe('SoltoshiDICE Cee-lo bet catalog entry', () => {
+  const spec = CERTIFIED_SOLANA_CATALOG.soltoshidiceCeeloBet
+  const fullTx = Uint8Array.from(Buffer.from(ceeloFixture.rawTxBase64, 'base64'))
+  const message = parseSolanaMessage(solanaMessageSlice(fullTx, parseSolanaTx(fullTx)))
+  // The single non-ComputeBudget instruction of the captured bet.
+  const bet = message.instructions[1]
+
+  test('is a v2 payload within the 256-byte proto cap', () => {
+    const payload = serializeSolanaSchema(spec)
+    expect(payload[8]).toBe(2)
+    expect(payload.length).toBe(113)
+    expect(payload.length).toBeLessThanOrEqual(256)
+  })
+
+  test('covers the real 26-byte instruction exactly, leaving no unshown byte', () => {
+    expect(solanaSchemaCoverage(spec)).toBe(26)
+    expect(bet.data.length).toBe(26)
+    expect(bs58.encode(message.staticAccounts[bet.programIdIndex])).toBe(ceeloFixture.program)
+    expect(Buffer.from(bet.data).toString('hex', 0, spec.discriminator.length)).toBe('36')
+  })
+
+  test('the Wager TOKEN_AMOUNT names the SDICE mint account of the real bet', () => {
+    const tokenArgs = (spec.args || []).filter((arg) => arg.type === ARG_TOKEN_AMOUNT)
+    expect(tokenArgs.map((arg) => arg.label)).toEqual(['Wager'])
+    expect(tokenArgs[0].mintAccount!).toBeLessThan(bet.accountIndices.length)
+    expect(bs58.encode(message.staticAccounts[bet.accountIndices[tokenArgs[0].mintAccount!]]))
+      .toBe(spec.token!.mint)
+  })
+
+  test('decodes the real values in schema order', () => {
+    const data = Buffer.from(bet.data)
+    let offset = spec.discriminator.length
+    const values: Record<string, string | number> = {}
+    for (const arg of spec.args || []) {
+      if (arg.type === ARG_U8) values[arg.label] = data[offset++]
+      else { values[arg.label] = data.readBigUInt64LE(offset).toString(); offset += 8 }
+    }
+    expect(offset).toBe(26)
+    // Independently established: round 1564 is the shared-round PDA seed of
+    // this message, the wager matches the signer's SDICE debit to the unit
+    // across on-chain bets 1558-1564, and the SOL leg is the encoder's
+    // SOL_DEPOSIT_LAMPORTS constant. The offset-17 byte is the literal 4 the
+    // encoder writes, labelled with the dapp's own word for it (`protocol`).
+    expect(values).toEqual({
+      Round: '1564',
+      Wager: '1000000000', // 1,000 SDICE at 6 decimals
+      Protocol: 4,
+      'SOL deposit': '10000000', // 0.01 SOL, the refundable deposit only
     })
   })
 })
