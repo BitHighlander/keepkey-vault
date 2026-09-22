@@ -316,6 +316,64 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
       { index: 2, label: 'Tournament' },
     ],
   },
+  soltoshidiceEnterPokerTournament: {
+    protocol: 'SoltoshiDICE',
+    action: 'Enter a SoltoshiDICE poker tournament at the selected seat',
+    // First-party Anchor IDL embedded in soltoshidice.fun on 2026-09-22:
+    // ProductionHoldem-D1TQWx5W.js (sha256 ebfba07e...). Exact 9-byte
+    // instruction: the discriminator followed by one u8 seat_index. The IDL
+    // fixes the remaining accounts, including the SDICE Token-2022 program.
+    provenance: { protocol: 'https://soltoshidice.fun/' },
+    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
+    discriminator: Buffer.from('b24ebae40f2d0404', 'hex'),
+    programName: 'SoltoshiDICE Poker',
+    instructionName: 'Enter tournament',
+    args: [{ type: ARG_U8, label: 'Seat' }],
+    accounts: [
+      { index: 2, label: 'Tournament' },
+      { index: 4, label: 'Table state' },
+      { index: 6, label: 'Vault' },
+      { index: 8, label: 'Token mint' },
+    ],
+  },
+  soltoshidiceAuthorizePokerSession: {
+    protocol: 'SoltoshiDICE',
+    action: 'Authorize an ephemeral session key to act for this wallet at one poker table until the shown Unix time',
+    // Same first-party IDL and captured live flow. The schema covers the
+    // complete session_key pubkey and i64 expiry. Positive Unix timestamps
+    // have the same LE bytes as ARG_U64; the label deliberately says Unix so
+    // the device does not misrepresent this absolute value as a duration.
+    provenance: { protocol: 'https://soltoshidice.fun/' },
+    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
+    discriminator: Buffer.from('bbdafba163282222', 'hex'),
+    programName: 'SoltoshiDICE Poker',
+    instructionName: 'Authorize session',
+    args: [
+      { type: ARG_PUBKEY, label: 'Session key' },
+      { type: ARG_U64, label: 'Expires Unix' },
+    ],
+    accounts: [
+      { index: 0, label: 'Wallet' },
+      { index: 1, label: 'Table config' },
+      { index: 2, label: 'Session account' },
+    ],
+  },
+  soltoshidiceSetPokerReady: {
+    protocol: 'SoltoshiDICE',
+    action: 'Opt into or out of the next SoltoshiDICE poker hand',
+    // Same first-party IDL: discriminator plus one Anchor bool byte.
+    provenance: { protocol: 'https://soltoshidice.fun/' },
+    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
+    discriminator: Buffer.from('694e07a2b5a7ba2b', 'hex'),
+    programName: 'SoltoshiDICE Poker',
+    instructionName: 'Set ready',
+    args: [{ type: ARG_U8, label: 'Ready' }],
+    accounts: [
+      { index: 1, label: 'Table config' },
+      { index: 2, label: 'Table state' },
+      { index: 3, label: 'Hand state' },
+    ],
+  },
   soltoshidiceCeeloBet: {
     protocol: 'SoltoshiDICE',
     action: 'Place a Cee-lo bet against the SoltoshiDICE bank: an SDICE wager plus a refundable SOL deposit',
