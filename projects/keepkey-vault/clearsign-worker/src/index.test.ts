@@ -6,6 +6,7 @@ import { syntheticPumpBuy } from '../../scripts/fixtures/solana-pump'
 import { editSolanaTx } from '../../scripts/fixtures/solana-message'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
+import pokerRegistrationFixture from '../../__tests__/fixtures/solana/soltoshidice-register-poker-tournament.json'
 
 type Ix = { programIdIndex: number; accountIndices: number[]; data: Buffer }
 
@@ -69,8 +70,8 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(7)
-    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana', 'solana', 'solana'])
+    expect(body.entries).toHaveLength(8)
+    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana', 'solana', 'solana', 'solana'])
     for (const entry of body.entries) {
       expect(['Relay', 'Portals', 'Pump', 'SoltoshiDICE']).toContain(entry.protocol)
       expect(entry.provenance.protocol).toMatch(/^https:\/\//)
@@ -85,6 +86,10 @@ describe('ClearSign Worker public surface', () => {
     expect(ceelo.method).toBe('Cee-lo place bet')
     expect(ceelo.action).toContain('refundable SOL deposit')
     expect(ceelo.fieldsShownByKeepKey).toEqual(['Round', 'Wager', 'Protocol', 'SOL deposit'])
+    const registration = body.entries.find((entry: any) => entry.id === 'solana:soltoshidiceRegisterPokerTournament')
+    expect(registration.instructionLength).toBe(8)
+    expect(registration.method).toBe('Register tournament')
+    expect(registration.fieldsShownByKeepKey).toEqual(['Player', 'Arena', 'Tournament'])
   })
 
   it('rejects unknown EVM shapes before checking signer readiness', async () => {
@@ -205,6 +210,16 @@ describe('ClearSign Worker public surface', () => {
     // other's instruction.
     expect((await post('/v1/solana/certify', { rawTx: ceeloFixture.rawTxBase64, catalogKey: 'soltoshidiceBlackjackJoin' })).status).toBe(422)
     expect((await post('/v1/solana/certify', { rawTx: joinFixture.rawTxBase64, catalogKey: 'soltoshidiceCeeloBet' })).status).toBe(422)
+  })
+
+  it('discovers the captured poker registration from raw bytes', async () => {
+    const response = await post('/v1/solana/certify', { rawTx: pokerRegistrationFixture.rawTxBase64 })
+    expect(response.status).toBe(503)
+    expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+    expect((await post('/v1/solana/certify', {
+      rawTx: pokerRegistrationFixture.rawTxBase64,
+      catalogKey: 'soltoshidiceRegisterPokerTournament',
+    })).status).toBe(503)
   })
 
   it('refuses Cee-lo bets that the reviewed schema does not describe exactly', async () => {

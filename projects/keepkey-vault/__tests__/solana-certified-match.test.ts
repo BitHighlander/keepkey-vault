@@ -9,6 +9,7 @@ import { parseSolanaMessage } from '../src/bun/solana-tx'
 import firmwareCorpus from './fixtures/solana/certified-firmware-verdicts.json'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
 import ceeloFixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
+import pokerRegistrationFixture from './fixtures/solana/soltoshidice-register-poker-tournament.json'
 
 const JOIN = CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin
 const PUMP = CERTIFIED_SOLANA_CATALOG.pumpAmmBuy
@@ -152,6 +153,15 @@ describe('findLocalCertifiedSolanaMatch (Vault pre-filter)', () => {
     expect(solanaInstructionMatchesSchema(message, message.instructions[1], JOIN)).toBe(false)
     const join = parseSolanaWireMessage(joinFixture.rawTxBase64)
     expect(solanaInstructionMatchesSchema(join, join.instructions[JOIN_INDEX], CEELO)).toBe(false)
+  })
+
+  test('the captured poker registration selects its one exact catalog entry', () => {
+    const message = parseSolanaWireMessage(pokerRegistrationFixture.rawTxBase64)
+    expect(message.instructions).toHaveLength(2)
+    expect(findLocalCertifiedSolanaMatch(message)).toMatchObject({
+      catalogKey: 'soltoshidiceRegisterPokerTournament',
+      instructionIndex: pokerRegistrationFixture.expected.instructionIndex,
+    })
   })
 })
 
