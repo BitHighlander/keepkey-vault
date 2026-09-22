@@ -18,6 +18,7 @@ import {
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from './solana-tx'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
+import pokerRegistrationFixture from '../../__tests__/fixtures/solana/soltoshidice-register-poker-tournament.json'
 
 // Real Solana scope-501 certificate issued 2026-08-24 by the master root
 // signer (docs/certs/solana-scope-501-certificate.json). Public data only.
@@ -160,6 +161,35 @@ describe('SoltoshiDICE Blackjack join catalog entry', () => {
       Round: v.round, Revision: v.revision, Seat: v.seat, 'Buy-in': v.buyIn,
       'Session key': v.sessionKey, 'Expires in': v.seconds, Allowance: v.allowance, 'Max wager': v.maxWager,
     })
+  })
+})
+
+describe('SoltoshiDICE poker tournament registration catalog entry', () => {
+  const spec = CERTIFIED_SOLANA_CATALOG.soltoshidiceRegisterPokerTournament
+  const fullTx = Uint8Array.from(Buffer.from(pokerRegistrationFixture.rawTxBase64, 'base64'))
+  const message = parseSolanaMessage(solanaMessageSlice(fullTx, parseSolanaTx(fullTx)))
+  const registration = message.instructions[pokerRegistrationFixture.expected.instructionIndex]
+
+  test('covers the captured instruction exactly', () => {
+    expect(solanaSchemaCoverage(spec)).toBe(8)
+    expect(registration.data.length).toBe(8)
+    expect(bs58.encode(message.staticAccounts[registration.programIdIndex]))
+      .toBe(pokerRegistrationFixture.expected.program)
+    expect(Buffer.from(registration.data).toString('hex'))
+      .toBe(pokerRegistrationFixture.expected.discriminatorHex)
+  })
+
+  test('labels every instruction account in first-party IDL order', () => {
+    expect(spec.accounts?.map((account) => account.label))
+      .toEqual(['Player', 'Arena', 'Tournament'])
+    expect(registration.accountIndices.map((index) => bs58.encode(message.staticAccounts[index])))
+      .toEqual(pokerRegistrationFixture.expected.accounts)
+  })
+
+  test('serializes as a v1 schema within the firmware payload cap', () => {
+    const payload = serializeSolanaSchema(spec)
+    expect(payload[8]).toBe(1)
+    expect(payload.length).toBeLessThanOrEqual(256)
   })
 })
 

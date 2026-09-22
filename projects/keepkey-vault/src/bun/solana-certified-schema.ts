@@ -295,6 +295,27 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
       { type: ARG_TOKEN_AMOUNT, label: 'Max wager', mintAccount: 3 },
     ],
   },
+  soltoshidiceRegisterPokerTournament: {
+    protocol: 'SoltoshiDICE',
+    action: 'Register the connected wallet for a SoltoshiDICE poker tournament',
+    // First-party Anchor IDL embedded in soltoshidice.fun on 2026-09-21:
+    // ProductionHoldem-DgvrRIFc.js (sha256 2b7e7377...). The IDL identifies
+    // program CBuVrP...Ypkt as riverproof and defines this exact instruction
+    // as discriminator [145,92,208,142,70,30,161,38], no args, and accounts
+    // player (signer), arena, tournament (writable), in that order. The
+    // captured transaction below has precisely that shape; the schema covers
+    // every data byte and does not certify any other riverproof instruction.
+    provenance: { protocol: 'https://soltoshidice.fun/' },
+    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
+    discriminator: Buffer.from('915cd08e461ea126', 'hex'),
+    programName: 'SoltoshiDICE Poker',
+    instructionName: 'Register tournament',
+    accounts: [
+      { index: 0, label: 'Player' },
+      { index: 1, label: 'Arena' },
+      { index: 2, label: 'Tournament' },
+    ],
+  },
   soltoshidiceCeeloBet: {
     protocol: 'SoltoshiDICE',
     action: 'Place a Cee-lo bet against the SoltoshiDICE bank: an SDICE wager plus a refundable SOL deposit',
