@@ -19,6 +19,7 @@ import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from './solana-
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
 import pokerRegistrationFixture from '../../__tests__/fixtures/solana/soltoshidice-register-poker-tournament.json'
+import livePokerFixture from '../../__tests__/fixtures/solana/soltoshidice-live-poker-session.json'
 
 // Real Solana scope-501 certificate issued 2026-08-24 by the master root
 // signer (docs/certs/solana-scope-501-certificate.json). Public data only.
@@ -190,6 +191,32 @@ describe('SoltoshiDICE poker tournament registration catalog entry', () => {
     const payload = serializeSolanaSchema(spec)
     expect(payload[8]).toBe(1)
     expect(payload.length).toBeLessThanOrEqual(256)
+  })
+})
+
+describe('SoltoshiDICE live poker session catalog entries', () => {
+  for (const [name, fixture] of Object.entries(livePokerFixture)) {
+    test(`${name} covers every captured instruction byte`, () => {
+      const spec = CERTIFIED_SOLANA_CATALOG[fixture.catalogKey]
+      const fullTx = Uint8Array.from(Buffer.from(fixture.rawTxBase64, 'base64'))
+      const message = parseSolanaMessage(solanaMessageSlice(fullTx, parseSolanaTx(fullTx)))
+      const instruction = message.instructions[fixture.instructionIndex]
+      expect(spec).toBeDefined()
+      expect(Buffer.from(instruction.data).toString('hex')).toBe(fixture.dataHex)
+      expect(solanaSchemaCoverage(spec)).toBe(instruction.data.length)
+      expect(serializeSolanaSchema(spec).length).toBeLessThanOrEqual(256)
+    })
+  }
+
+  test('session authorization shows the complete key and absolute expiry', () => {
+    const fixture = livePokerFixture.authorizeSession
+    const fullTx = Uint8Array.from(Buffer.from(fixture.rawTxBase64, 'base64'))
+    const message = parseSolanaMessage(solanaMessageSlice(fullTx, parseSolanaTx(fullTx)))
+    const data = Buffer.from(message.instructions[fixture.instructionIndex].data)
+    expect(bs58.encode(data.subarray(8, 40))).toBe(fixture.sessionKey)
+    expect(data.readBigUInt64LE(40).toString()).toBe(fixture.expiryUnix)
+    expect(CERTIFIED_SOLANA_CATALOG[fixture.catalogKey].args?.map((arg) => arg.label))
+      .toEqual(['Session key', 'Expires Unix'])
   })
 })
 

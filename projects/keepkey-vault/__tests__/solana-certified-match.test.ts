@@ -10,6 +10,7 @@ import firmwareCorpus from './fixtures/solana/certified-firmware-verdicts.json'
 import joinFixture from './fixtures/solana/soltoshidice-blackjack-join.json'
 import ceeloFixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
 import pokerRegistrationFixture from './fixtures/solana/soltoshidice-register-poker-tournament.json'
+import livePokerFixture from './fixtures/solana/soltoshidice-live-poker-session.json'
 
 const JOIN = CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin
 const PUMP = CERTIFIED_SOLANA_CATALOG.pumpAmmBuy
@@ -163,6 +164,15 @@ describe('findLocalCertifiedSolanaMatch (Vault pre-filter)', () => {
       instructionIndex: pokerRegistrationFixture.expected.instructionIndex,
     })
   })
+
+  for (const [name, fixture] of Object.entries(livePokerFixture)) {
+    test(`the captured ${name} transaction selects only ${fixture.catalogKey}`, () => {
+      expect(findLocalCertifiedSolanaMatch(parseSolanaWireMessage(fixture.rawTxBase64))).toMatchObject({
+        catalogKey: fixture.catalogKey,
+        instructionIndex: fixture.instructionIndex,
+      })
+    })
+  }
 })
 
 // Expected results come from the FIRMWARE, not from Vault: each verdict is

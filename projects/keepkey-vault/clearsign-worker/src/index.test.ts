@@ -7,6 +7,7 @@ import { editSolanaTx } from '../../scripts/fixtures/solana-message'
 import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-join.json'
 import ceeloFixture from '../../__tests__/fixtures/solana/soltoshidice-ceelo-bet.json'
 import pokerRegistrationFixture from '../../__tests__/fixtures/solana/soltoshidice-register-poker-tournament.json'
+import livePokerFixture from '../../__tests__/fixtures/solana/soltoshidice-live-poker-session.json'
 
 type Ix = { programIdIndex: number; accountIndices: number[]; data: Buffer }
 
@@ -70,8 +71,9 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(8)
-    expect(body.entries.map((entry: any) => entry.family)).toEqual(['evm', 'evm', 'solana', 'solana', 'solana', 'solana', 'solana', 'solana'])
+    expect(body.entries).toHaveLength(11)
+    expect(body.entries.filter((entry: any) => entry.family === 'evm')).toHaveLength(2)
+    expect(body.entries.filter((entry: any) => entry.family === 'solana')).toHaveLength(9)
     for (const entry of body.entries) {
       expect(['Relay', 'Portals', 'Pump', 'SoltoshiDICE']).toContain(entry.protocol)
       expect(entry.provenance.protocol).toMatch(/^https:\/\//)
@@ -221,6 +223,18 @@ describe('ClearSign Worker public surface', () => {
       catalogKey: 'soltoshidiceRegisterPokerTournament',
     })).status).toBe(503)
   })
+
+  for (const [name, fixture] of Object.entries(livePokerFixture)) {
+    it(`discovers the captured live poker ${name} operation`, async () => {
+      const response = await post('/v1/solana/certify', { rawTx: fixture.rawTxBase64 })
+      expect(response.status).toBe(503)
+      expect((await response.json() as any).classification).toBe('UNAVAILABLE')
+      expect((await post('/v1/solana/certify', {
+        rawTx: fixture.rawTxBase64,
+        catalogKey: fixture.catalogKey,
+      })).status).toBe(503)
+    })
+  }
 
   it('refuses Cee-lo bets that the reviewed schema does not describe exactly', async () => {
     const bet = (ixs: Ix[]) => ixs[1]
