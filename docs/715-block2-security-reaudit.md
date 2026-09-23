@@ -25,7 +25,7 @@ inspected at this exact tag. It is not a physical OLED observation.
 | EIP-712 display not bound to canonical values | `lib/firmware/ethereum.c:1275-1369` confirms the primary type before hashing; `lib/firmware/eip712.c:403-421,530-875` confirms each field name and value and validates the value's JSON type before encoding. Source inspection shows fail-closed handling of address, bytes, integer width, boolean spelling, fixed-array cardinality, and missing-value boundaries. | `unittests/firmware/eip712.cpp:9-107` tests address and bytes encoding, integer width, fixed-array cardinality, and missing values. It has no boolean-spelling test. The full OLED rendering of nested fields still needs final reviewer scrutiny. |
 | EOS unknown-action AdvancedMode bypass | `lib/firmware/eos.c:389-435` includes `EOS_NewAccount` in the structured-action allowlist, rejects an attempt to send it as unknown data, and aborts an unknown action when `AdvancedMode` is off. | `unittests/firmware/eos.cpp:10-24` tests only `eos_unknownActionPolicyAllows` and `eos_isSupportedAction`. It does not exercise `eos_compileActionUnknown` or the FSM policy-off path; a handler-level rejection test was not found. |
 | Cosmos IBC receiver omitted from review | `lib/firmware/fsm_msg_cosmos.h:380-468` requires sender, receiver, channel, port, timeout fields, amount, and literal `uatom`; it pages sender and receiver, displays the remaining IBC routing fields, then hashes those same message fields. Any refused screen aborts. | No targeted handler-level IBC display/cancel test was found. |
-| Tendermint ACK asset/protocol substitution | `lib/firmware/fsm_msg_tendermint.h:110-126` compares ACK chain name, denomination, and message prefix with the active signing session; `lib/firmware/signtx_tendermint.c:581-593` enforces the initialized generic protocol and exact string matches. The handler pages chain ID, chain name, denomination, and prefix before final signature (`fsm_msg_tendermint.h:198-218`). | `unittests/firmware/cosmos.cpp:81-118` rejects substituted denomination, chain name, prefix, and protocol. |
+| Tendermint ACK asset/protocol substitution | `lib/firmware/fsm_msg_tendermint.h:110-126` compares ACK chain name, denomination, and message prefix with the active signing session; `lib/firmware/signtx_tendermint.c:581-593` enforces the initialized generic protocol and exact string matches. The handler pages chain ID, chain name, denomination, and prefix before final signature (`fsm_msg_tendermint.h:198-218`). | `unittests/firmware/cosmos.cpp:81-118` tests the generic session helper: it rejects substituted denomination, chain name, prefix, and protocol when called directly. It does not exercise `fsm_msgTendermintMsgAck`; a handler-level substituted-ACK rejection test was not found. |
 | Binance, Tendermint, Cosmos, Osmosis memo suffixes hidden | Each completion path calls the same full-length `confirm_bytes` pager: `fsm_msg_binance.h:168-177`, `fsm_msg_tendermint.h:190-198`, `fsm_msg_cosmos.h:478-487`, and `fsm_msg_osmosis.h:734-744`. Source inspection shows cancellation aborts before finalization. | `unittests/firmware/app_confirm.cpp:23-42` tests only byte classification, not page rendering or cancellation. No per-chain maximum-length memo display/cancel regression was found. |
 
 ## Verification and review limits
@@ -63,3 +63,19 @@ git -C modules/keepkey-firmware show --no-patch v7.15.0-rc29^{}
 git -C modules/keepkey-firmware show v7.15.0-rc29:docs/security/7.15.0-rc17-hardening.md
 gh api repos/BitHighlander/keepkey-firmware/commits/dd38324e3ffa1178d632e4da58f27cab7c0494a4/check-runs
 ```
+
+From a clean checkout of `v7.15.0-rc29` with its submodules initialized,
+run the SOP Docker suites in this order (see `docs/RELEASE-CONTROL-7.15.md:149-152`):
+
+```sh
+cd scripts/emulator
+docker compose up --build --exit-code-from firmware-unit firmware-unit
+docker compose up --build --exit-code-from python-keepkey python-keepkey
+```
+
+The `python-keepkey` container runs the report-selected screenshot phase,
+full Python suite, JUnit merge, `generate-test-report.py --validate-junit`,
+and PDF generation in `scripts/emulator/python-keepkey-tests.sh:45-148`.
+Its shared volume output is `test-reports/test-report.pdf`; the copy attached
+to this packet is `docs/security/715-block2-test-report.pdf` (SHA-256
+`e4aec604632eecf3d83a0f91b10ac6b04b644dcdc286ef85b30f389b4150dae5`).
