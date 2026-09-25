@@ -245,7 +245,8 @@ import { assetData as discoveryAssetData } from "@pioneer-platform/pioneer-disco
 import { prioritizeExtraContracts, type PortfolioExtraContract } from "./portfolio-extra-contracts"
 import { buildSolanaSchema, inspectSolanaSchema } from "./clearsign-studio"
 import { resolvePromotedEvmArtifact, resolvePromotedSolanaArtifact } from "./clearsign-artifact-resolver"
-import { resolveEvmSchema } from "./evm-schema-registry"
+import { measureLiveDeployment, resolveEvmSchema } from "./evm-schema-registry"
+import { findContractRating } from "./clearsign-review"
 import { requestClearSignReview } from "./clearsign-review"
 import { resolveRuntimeEvmMetadata, supportsRuntimeEvmMetadata, type RuntimeEvmSigner } from "./evm-runtime-metadata"
 import { supportsCertifiedClearSign } from "./solana-certified-policy"
@@ -7650,6 +7651,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 									codeIdentityBound: Boolean(promoted), expiresAt: promoted?.expiresAt,
 									resolution: artifactResolution.status,
 								}, simulation,
+								rating: await findContractRating(chainId, String(tx.to || ''), measureLiveDeployment),
 							})
 							if (!promoted) {
 								const draft = observeEvmCall({

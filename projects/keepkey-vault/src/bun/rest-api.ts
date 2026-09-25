@@ -2733,6 +2733,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               simulation,
               hostFindings: universalRouterFindings.findings,
               hostLimitations: universalRouterFindings.limitations,
+              rating: await findContractRating(body.chainId, body.to, measureLiveDeployment),
             })
             if (!promoted) {
               const draft = observeEvmCall({
