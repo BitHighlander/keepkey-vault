@@ -16,7 +16,9 @@
  */
 import registry from './evm-schemas-local.json'
 import { DEFAULT_CLEARSIGN_SERVICE_URL } from './solana-certified-registry'
-import { verifyPublishedReview } from './clearsign-review'
+import { deploymentMismatch, verifyPublishedReview } from './clearsign-review'
+import { snapshotEvmIdentities } from './clearsign-live-auditor'
+import { getEvmSimulationEndpoint } from './evm-simulation-config'
 import type { ClearSignReview } from '../shared/clearsign-report'
 import {
   CERTIFIED_METADATA_KEY_ID,
@@ -69,13 +71,19 @@ export function findEvmSchema(
 }
 
 /** Fetch a KeepKey-certified v3 envelope from the isolated signer service. */
+/** Measures the live deployment for a reviewed contract (injectable for tests). */
+export type MeasureDeployment = (chainId: number, contract: string) => Promise<unknown>
+const measureLiveDeployment: MeasureDeployment = async (chainId, contract) =>
+  (await snapshotEvmIdentities(contract.toLowerCase(), getEvmSimulationEndpoint(chainId))).identities
+
 export async function findCertifiedEvmSchema(
   chainId: number | undefined,
   to: string | undefined,
   data: string | undefined,
+  measure: MeasureDeployment = measureLiveDeployment,
 ): Promise<SignedEvmSchema | undefined> {
   try {
-    return await fetchCertifiedEvmSchema(chainId, to, data)
+    return await fetchCertifiedEvmSchema(chainId, to, data, measure)
   } catch (error: any) {
     if (!(error instanceof ReviewLookupError)) throw error
     // A published review that fails verification is never shown or used; the
@@ -91,6 +99,7 @@ async function fetchCertifiedEvmSchema(
   chainId: number | undefined,
   to: string | undefined,
   data: string | undefined,
+  measure: MeasureDeployment,
 ): Promise<SignedEvmSchema | undefined> {
   let spec = findCertifiedEvmSchemaSpec(chainId, to, data)
   const calldata = String(data || '').replace(/^0x/i, '')
@@ -155,6 +164,11 @@ async function fetchCertifiedEvmSchema(
       if (!envelope.subarray(140, -65).equals(buildEvmSchemaBody(spec) as Uint8Array)) {
         throw new Error('ClearSign review schema differs from the signed envelope')
       }
+      // The audit covers one deployment. An upgrade (new implementation) or a
+      // redeploy changes the measured code, and the call goes back to blind
+      // signing until it is re-audited. Unmeasurable counts as changed.
+      const changed = deploymentMismatch(review.auditedIdentities, await measure(Number(chainId), String(to)))
+      if (changed) throw new Error(`review no longer applies: ${changed}; re-audit required`)
     } catch (error: any) {
       throw new ReviewLookupError(error?.message || 'invalid published review')
     }

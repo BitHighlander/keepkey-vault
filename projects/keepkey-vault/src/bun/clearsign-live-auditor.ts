@@ -206,9 +206,10 @@ async function discoverErc7730TypedDataCandidates(
   } catch { return { candidates: [], available: false } }
 }
 
-export async function auditEvmIdentity(draft: ClearSignObservationDraft, endpoint: string): Promise<ClearSignAuditEvidence> {
-  const contract = String(draft.shape.contract || '').toLowerCase()
-  if (!/^0x[0-9a-f]{40}$/.test(contract)) throw new Error('NO_CONTRACT_IDENTITY')
+/** Code identity of a contract as deployed right now: its code hash plus any
+ * EIP-1967 implementation/beacon (or implementation()) target. The audit
+ * records this, and signing re-measures it — an upgrade or redeploy changes it. */
+export async function snapshotEvmIdentities(contract: string, endpoint: string) {
   const [block, code, implementationWord, beaconWord] = await Promise.all([
     jsonRpc(endpoint, 'eth_blockNumber', []),
     jsonRpc(endpoint, 'eth_getCode', [contract, 'latest']),
@@ -237,6 +238,13 @@ export async function auditEvmIdentity(draft: ClearSignObservationDraft, endpoin
       codeHash: typeof targetCode === 'string' && targetCode !== '0x' ? ethersUtils.keccak256(targetCode) : undefined,
     })
   }
+  return { block, code, identities }
+}
+
+export async function auditEvmIdentity(draft: ClearSignObservationDraft, endpoint: string): Promise<ClearSignAuditEvidence> {
+  const contract = String(draft.shape.contract || '').toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(contract)) throw new Error('NO_CONTRACT_IDENTITY')
+  const { block, code, identities } = await snapshotEvmIdentities(contract, endpoint)
   const limitations = [
     'Code identity does not prove a human-readable definition is correct.',
     'Non-EIP-1967 proxies and runtime-created targets may require execution tracing.',

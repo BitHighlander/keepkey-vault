@@ -26,6 +26,9 @@ export interface ClearSignReview {
   riskReasons: string[]
   findings: Array<{ severity: string; title: string; detail: string; reference?: string }>
   auditedCodeHash?: string
+  /** Contract + EIP-1967 targets as audited. Signing re-measures these; any
+   * upgrade or redeploy means no clearsign until re-audited. */
+  auditedIdentities: Array<{ role: string; address: string; codeHash: string }>
   stateReference: string
   /** False until this Vault pins reviewer keys; the signatures still verify. */
   reviewersPinned: boolean
