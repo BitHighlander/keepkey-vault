@@ -48,7 +48,7 @@ Audit clients must use the new author field instead of a signature.
 ## Validation
 
 - Worker suite: 120 passed, zero failed.
-- Vault audit lookup, risk, and rendered UI tests: 48 passed, zero failed.
+- Vault audit lookup, risk, and rendered UI tests: 49 passed, zero failed.
 - Actual Worker-to-Vault roundtrip: passed publication, public lookup, wrong
   network suppression, and changed-deployment suppression.
 - Wrangler deployment dry run: passed; no deployment performed.
@@ -69,4 +69,6 @@ supply its evidence, deployment identities, findings, and submitter.
 The original Vault review reached three Copilot rounds. Work is now split into
 A: server publication and hosted report (`BitHighlander/keepkey-clearsign-server#1`),
 B: Vault response parsing and deployment matching, and C: Vault display and risk.
-The phase branches are stacked in that order. No production deployment occurred.
+The phase branches are stacked in that order. Phase C reached its three-round
+Copilot cap; the third-round timeout findings were fixed locally and need a
+final human review. No production deployment occurred.
