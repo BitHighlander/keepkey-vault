@@ -2080,6 +2080,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                   simulation,
                   hostFindings: universalRouterFindings.findings,
                   hostLimitations: universalRouterFindings.limitations,
+                  review: certified?.review,
                 })
               }
             }

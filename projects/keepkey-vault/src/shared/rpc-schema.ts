@@ -30,6 +30,7 @@ export type VaultRPCSchema = ElectrobunRPCSchema & {
       verifySeedSubmit: { params: { answers: { position: number; word: string }[] }; response: { success: boolean; message: string } }
       applySettings: { params: { label?: string; usePassphrase?: boolean; autoLockDelayMs?: number }; response: void }
       applyPolicy: { params: { policyName: string; enabled: boolean }; response: void }
+      requestClearSignReview: { params: { chainId: number; to: string; data: string }; response: { queued: boolean; requestId?: string } }
       changePin: { params: void; response: void }
       removePin: { params: void; response: void }
       sendPin: { params: { pin: string }; response: void }

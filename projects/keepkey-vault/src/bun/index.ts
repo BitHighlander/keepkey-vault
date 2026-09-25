@@ -246,6 +246,7 @@ import { prioritizeExtraContracts, type PortfolioExtraContract } from "./portfol
 import { buildSolanaSchema, inspectSolanaSchema } from "./clearsign-studio"
 import { resolvePromotedEvmArtifact, resolvePromotedSolanaArtifact } from "./clearsign-artifact-resolver"
 import { resolveEvmSchema } from "./evm-schema-registry"
+import { requestClearSignReview } from "./clearsign-review"
 import { resolveRuntimeEvmMetadata, supportsRuntimeEvmMetadata, type RuntimeEvmSigner } from "./evm-runtime-metadata"
 import { supportsCertifiedClearSign } from "./solana-certified-policy"
 import { createRpcAltFetcher } from "./solana-alt"
@@ -3069,6 +3070,7 @@ const rpc = BrowserView.defineRPC<VaultRPCSchema>({
 					solanaEndpoint: getSetting('solana_rpc_endpoint') || 'https://api.mainnet-beta.solana.com',
 				})
 			},
+			requestClearSignReview: async (params) => requestClearSignReview(Number(params.chainId), params.to, params.data),
 			applyPolicy: async (params) => {
 				if (!engine.wallet) throw new Error('No device connected')
 				// applyPolicy raises an "ENABLE/DISABLE POLICY" confirm on the device

@@ -299,6 +299,44 @@ function SolanaBlindSigningConsent({
 	)
 }
 
+// ── Request a human clearsign review for an unknown contract call ─────
+
+function RequestClearSignReview({ request }: { request: SigningRequestInfo }) {
+	const { t } = useTranslation("device")
+	const [state, setState] = useState<"idle" | "sending" | "queued" | "failed">("idle")
+	const [error, setError] = useState<string>()
+	const data = String(request.data || "")
+	const chainId = Number(request.chainId)
+	if (request.method !== "/eth/sign-transaction" || !request.needsBlindSigning || request.clearSignReport?.review
+		|| !Number.isSafeInteger(chainId) || chainId < 1
+		|| !/^0x[0-9a-fA-F]{40}$/.test(String(request.to || "")) || !/^0x[0-9a-fA-F]{8}/.test(data)) return null
+	const submit = async () => {
+		setState("sending")
+		try {
+			await rpcRequest("requestClearSignReview", { chainId, to: String(request.to), data }, 15000)
+			setState("queued")
+		} catch (e: any) {
+			setError(e?.message || String(e))
+			setState("failed")
+		}
+	}
+	return (
+		<Flex direction="column" gap="1" w="100%" bg="rgba(0,0,0,0.2)" borderRadius="lg" px="3" py="2" data-clearsign-review-request={state}>
+			<Text fontSize="2xs" color="kk.textSecondary">
+				{state === "queued"
+					? t("signing.reviewQueued", "Requested. KeepKey reviewers will audit this contract; once published, future signings show a reviewed description and risk rating.")
+					: t("signing.reviewOffer", "KeepKey has not reviewed this contract. You can ask for a review. Only the contract address, function selector and call length are sent — not your address or amounts.")}
+			</Text>
+			{state === "failed" && <Text fontSize="2xs" color="var(--rose)">{error}</Text>}
+			{state !== "queued" && (
+				<Button size="xs" variant="outline" alignSelf="flex-start" onClick={submit} loading={state === "sending"}>
+					{t("signing.requestReview", "Request clearsign review")}
+				</Button>
+			)}
+		</Flex>
+	)
+}
+
 // ── Risk bar: level + the payload facts behind it ─────────────────────
 
 const RISK_STYLE: Record<RiskLevel, { color: string; filled: number }> = {
@@ -1189,6 +1227,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 				{/* Report and risk first, so they are read before blind-sign consent. */}
 				<ClearSignReportCard report={request.clearSignReport} />
 				<RiskBar request={request} t={t} />
+				<RequestClearSignReview request={request} />
 
 				{/* ── AdvancedMode gate ── */}
 				{advancedModeRequired && (

@@ -13,6 +13,25 @@ export interface ClearSignDescriptorEvidence {
     | 'identity-unavailable' | 'identity-stale' | 'identity-changed' | 'identity-mismatch' | 'unsupported-alt'
 }
 
+/** A human contract review published by the ClearSign service and verified
+ * by Vault (evidence hash, two distinct signed approvals, call shape). The
+ * device never sees it; it informs the approval UI and can only raise risk. */
+export interface ClearSignReview {
+  requestId: string
+  auditId: string
+  evidenceHash: string
+  publishedAt: number
+  rubric: string
+  riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  riskReasons: string[]
+  findings: Array<{ severity: string; title: string; detail: string; reference?: string }>
+  auditedCodeHash?: string
+  stateReference: string
+  /** False until this Vault pins reviewer keys; the signatures still verify. */
+  reviewersPinned: boolean
+  approvals: Array<{ role: string; reviewerPublicKey: string }>
+}
+
 /** The single object consumed by Vault approval UI, evidence storage, and API. */
 export interface ClearSignReport {
   version: 1
@@ -29,6 +48,7 @@ export interface ClearSignReport {
     source: 'transaction-bytes' | 'authenticated-definition' | 'simulation'
     statement: string
   }>
+  review?: ClearSignReview
 }
 
 const LEVEL_ORDER: ClearSignProtectionLevel[] = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5']
@@ -43,6 +63,7 @@ export function buildClearSignReport(input: {
   simulation: EffectReport
   hostFindings?: EffectFinding[]
   hostLimitations?: EffectFinding[]
+  review?: ClearSignReview
   now?: number
 }): ClearSignReport {
   const { descriptor, simulation } = input
@@ -117,6 +138,7 @@ export function buildClearSignReport(input: {
     findings,
     limitations,
     claims,
+    ...(input.review ? { review: input.review } : {}),
   }
 }
 

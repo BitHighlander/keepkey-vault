@@ -1030,6 +1030,7 @@ export interface SigningRequestInfo {
     keyId: number
     signedPayload: string
     source?: 'local-test' | 'certified-service' | 'promoted-local'
+    review?: import('./clearsign-report').ClearSignReview
   }
   /** true when the UI must enable AdvancedMode before allowing approval */
   requiresAdvancedMode?: boolean

@@ -16,6 +16,8 @@
  */
 import registry from './evm-schemas-local.json'
 import { DEFAULT_CLEARSIGN_SERVICE_URL } from './solana-certified-registry'
+import { verifyPublishedReview } from './clearsign-review'
+import type { ClearSignReview } from '../shared/clearsign-report'
 import {
   CERTIFIED_METADATA_KEY_ID,
   findCertifiedEvmSchemaSpec,
@@ -38,6 +40,8 @@ export interface SignedEvmSchema {
   source?: 'local-test' | 'certified-service' | 'promoted-local'
   /** Present only for a locally reviewed, identity-bound promotion. */
   bundleHash?: string
+  /** Verified human review, when the service published this definition. */
+  review?: ClearSignReview
 }
 
 const SCHEMAS: Record<string, SignedEvmSchema> = (registry as any).schemas ?? {}
@@ -70,12 +74,35 @@ export async function findCertifiedEvmSchema(
   to: string | undefined,
   data: string | undefined,
 ): Promise<SignedEvmSchema | undefined> {
+  try {
+    return await fetchCertifiedEvmSchema(chainId, to, data)
+  } catch (error: any) {
+    if (!(error instanceof ReviewLookupError)) throw error
+    // A published review that fails verification is never shown or used; the
+    // call keeps the blind path it had before review lookups existed.
+    console.warn(`[clearsign] published review rejected: ${error.message}`)
+    return undefined
+  }
+}
+
+class ReviewLookupError extends Error {}
+
+async function fetchCertifiedEvmSchema(
+  chainId: number | undefined,
+  to: string | undefined,
+  data: string | undefined,
+): Promise<SignedEvmSchema | undefined> {
   let spec = findCertifiedEvmSchemaSpec(chainId, to, data)
   const calldata = String(data || '').replace(/^0x/i, '')
   const selector = `0x${calldata.slice(0, 8).toLowerCase()}`
   const length = calldata.length / 2
   const tokenCandidate = /^[0-9a-f]+$/i.test(calldata) && tokenCallShape(Number(chainId), String(to || ''), selector, length)
-  if (!spec && !tokenCandidate) return undefined
+  // Anything else is a lookup for a published, human-reviewed definition. It
+  // is best-effort: a slow or unavailable service must leave the call on its
+  // existing blind path, never block signing.
+  const reviewLookup = !spec && !tokenCandidate
+  const fail = (message: string): never => { throw reviewLookup ? new ReviewLookupError(message) : new Error(message) }
+  if (reviewLookup && (!/^[0-9a-f]+$/i.test(calldata) || length < 4 || !/^0x[0-9a-f]{40}$/i.test(String(to || '')))) return undefined
   const base = String(process.env.CLEARSIGN_SERVICE_URL || DEFAULT_CLEARSIGN_SERVICE_URL)
     .trim()
     .replace(/\/+$/, '')
@@ -93,17 +120,20 @@ export async function findCertifiedEvmSchema(
         selector,
         calldataLength: length,
       }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(reviewLookup ? 3_000 : 10_000),
     })
   } catch (error: any) {
+    if (reviewLookup) return undefined
     throw new Error(`ClearSign verification service is unavailable: ${error?.message || 'connection failed'}`)
   }
   let result: any
   try {
     result = await response.json()
   } catch {
+    if (reviewLookup) return undefined
     throw new Error(`ClearSign verification service returned HTTP ${response.status} without valid JSON`)
   }
+  if (!response.ok && reviewLookup) return undefined
   if (!response.ok) {
     if (response.status === 422) {
       if (!spec && result?.code !== 'TOKEN_IDENTITY_UNVERIFIED') return undefined
@@ -112,7 +142,23 @@ export async function findCertifiedEvmSchema(
     throw new Error(`ClearSign verification service returned HTTP ${response.status}: ${result?.error || 'request failed'}`)
   }
 
-  if (!spec) {
+  let review: ClearSignReview | undefined
+  if (reviewLookup) {
+    try {
+      const verified = verifyPublishedReview(result?.review,
+        { chainId: Number(chainId), contract: String(to), selector, calldataLength: length })
+      spec = verified.spec
+      review = verified.review
+      // The device renders the envelope, not this JSON: the reviewed schema must
+      // be byte-identical to the signed body or nothing from the review is shown.
+      const envelope = Buffer.from(String(result.signedPayload || '').replace(/^0x/i, ''), 'hex')
+      if (!envelope.subarray(140, -65).equals(buildEvmSchemaBody(spec) as Uint8Array)) {
+        throw new Error('ClearSign review schema differs from the signed envelope')
+      }
+    } catch (error: any) {
+      throw new ReviewLookupError(error?.message || 'invalid published review')
+    }
+  } else if (!spec) {
     const token = result?.tokenIdentity
     if (!token || token.chainId !== chainId || String(token.contract).toLowerCase() !== String(to).toLowerCase()
       || token.source !== 'pioneer-discovery' || !/^[0-9a-f]{64}$/.test(token.sourceSha256)) {
@@ -131,11 +177,11 @@ export async function findCertifiedEvmSchema(
     keyId: result?.keyId,
   }
   if (!isCertifiedEvmMetadata(candidate)) {
-    throw new Error('ClearSign verification service returned a non-certified payload')
+    fail('ClearSign verification service returned a non-certified payload')
   }
   const certificateEnvelope = Buffer.from(String(result.signedPayload).replace(/^0x/i, ''), 'hex')
   if (certificateEnvelope.readUInt32BE(3) !== chainId) {
-    throw new Error(`ClearSign certificate is not authorized for chain ${chainId}; a chain-scoped root certificate is required`)
+    fail(`ClearSign certificate is not authorized for chain ${chainId}; a chain-scoped root certificate is required`)
   }
   if (
     result?.classification !== 'VERIFIED' ||
@@ -146,7 +192,7 @@ export async function findCertifiedEvmSchema(
     result?.expectedCalldataLength !== spec.expectedCalldataLength ||
     result?.keyId !== CERTIFIED_METADATA_KEY_ID
   ) {
-    throw new Error('ClearSign verification service response does not match the requested schema')
+    fail('ClearSign verification service response does not match the requested schema')
   }
   return {
     method: spec.method,
@@ -154,6 +200,7 @@ export async function findCertifiedEvmSchema(
     signedPayload: result.signedPayload,
     expectedCalldataLength: spec.expectedCalldataLength,
     source: 'certified-service',
+    ...(review ? { review } : {}),
   }
 }
 
