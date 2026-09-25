@@ -248,9 +248,11 @@ export function assessSigningRisk(req: SigningRequestInfo): RiskAssessment | nul
   } else if (req.method === '/eth/sign-transaction') {
     evmTx(req, add)
     if (reasons.length === 0) add('low', 'Your KeepKey decodes this call on its screen. Check the recipient and amount there.')
-    // A verified human rating can only add a reason, so it can only raise the level.
+    // An assessment can only add a reason, so it can only raise the level.
     const rating = req.clearSignReport?.rating
-    if (rating) {
+    if (rating?.source === 'hosted-assessment') {
+      add(rating.riskLevel, `Publisher-hosted assessment rates this contract ${rating.riskLevel} risk: ${rating.riskReasons[0] || 'see findings'}. Submitter attribution is supplied by the publisher.`)
+    } else if (rating) {
       add(rating.riskLevel, `An auditor rates this contract ${rating.riskLevel} risk: ${rating.riskReasons[0] || 'see findings'}.`
         + (rating.raterPinned ? '' : ' The rater is not yet pinned in this Vault.'))
     }
