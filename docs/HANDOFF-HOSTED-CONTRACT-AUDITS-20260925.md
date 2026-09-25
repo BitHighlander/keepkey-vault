@@ -48,7 +48,7 @@ Audit clients must use the new author field instead of a signature.
 ## Validation
 
 - Worker suite: 120 passed, zero failed.
-- Vault audit lookup, risk, and rendered UI tests: 46 passed, zero failed.
+- Vault audit lookup, risk, and rendered UI tests: 48 passed, zero failed.
 - Actual Worker-to-Vault roundtrip: passed publication, public lookup, wrong
   network suppression, and changed-deployment suppression.
 - Wrangler deployment dry run: passed; no deployment performed.
