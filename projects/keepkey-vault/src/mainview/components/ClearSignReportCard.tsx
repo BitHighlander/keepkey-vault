@@ -1,4 +1,5 @@
-import { Flex, Link, Text } from '@chakra-ui/react'
+import { Flex, Text } from '@chakra-ui/react'
+import { DocsLink } from './DocsLink'
 import type { ClearSignReport, ContractRating } from '../../shared/clearsign-report'
 
 export function ClearSignReportCard({ report, title = 'ClearSign Report' }: { report?: ClearSignReport; title?: string }) {
@@ -42,6 +43,6 @@ function ContractRatingView({ rating }: { rating: ContractRating }) {
       Submitted by {rating.rater} · {new Date(rating.ratedAt).toISOString().slice(0, 10)}. Author attribution is supplied by the publisher.
       This assessment is an opinion; clear-signing verification is shown separately.
     </Text>
-    <Link href={rating.reportUrl} target="_blank" rel="noopener noreferrer" fontSize="xs" color="var(--teal)">More info</Link>
+    <DocsLink href={rating.reportUrl} label="More info" color="var(--teal)" />
   </Flex>
 }

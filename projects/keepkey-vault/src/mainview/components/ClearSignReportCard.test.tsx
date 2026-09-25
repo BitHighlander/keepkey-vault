@@ -1,10 +1,11 @@
-import { expect, test } from 'bun:test'
+import { expect, mock, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react'
-import { ClearSignReportCard } from './ClearSignReportCard'
 import type { ClearSignReport } from '../../shared/clearsign-report'
 
-test('shows attributed assessment separately from the clear-signing result', () => {
+test('shows attributed assessment separately from the clear-signing result', async () => {
+  mock.module('../lib/rpc', () => ({ rpcRequest: async () => undefined }))
+  const { ClearSignReportCard } = await import('./ClearSignReportCard')
   const report = {
     protectionLevel: 'P1', headline: 'Opaque transaction', transactionFingerprint: 'a'.repeat(64),
     simulation: { status: 'unavailable', stateReference: {}, assetChanges: [], authorityChanges: [] },
