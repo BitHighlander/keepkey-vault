@@ -74,7 +74,8 @@ import { importPromotedClearSignArtifact } from './clearsign-artifact-import'
 import { findPromotedEvmArtifact, findPromotedSolanaArtifact, resolvePromotedEvmArtifact, resolvePromotedSolanaArtifact } from './clearsign-artifact-resolver'
 import { resolveRuntimeEvmMetadata, supportsRuntimeEvmMetadata, type RuntimeEvmSigner } from './evm-runtime-metadata'
 import { supportsCertifiedClearSign } from './solana-certified-policy'
-import { resolveCertifiedEvmTransaction, resolveEvmSchema } from './evm-schema-registry'
+import { measureLiveDeployment, resolveCertifiedEvmTransaction, resolveEvmSchema } from './evm-schema-registry'
+import { findContractRating } from './clearsign-review'
 
 export interface EmuSigningDetails {
   operation: string
@@ -2080,7 +2081,9 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                   simulation,
                   hostFindings: universalRouterFindings.findings,
                   hostLimitations: universalRouterFindings.limitations,
-                  review: certified?.review,
+                  definitionReview: certified?.definitionReview,
+                  // Separate from clearsign: a human rating of the contract, app-only.
+                  rating: await findContractRating(chainIdNum, String(preview.to || ''), measureLiveDeployment),
                 })
               }
             }

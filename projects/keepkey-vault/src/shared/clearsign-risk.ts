@@ -248,11 +248,11 @@ export function assessSigningRisk(req: SigningRequestInfo): RiskAssessment | nul
   } else if (req.method === '/eth/sign-transaction') {
     evmTx(req, add)
     if (reasons.length === 0) add('low', 'Your KeepKey decodes this call on its screen. Check the recipient and amount there.')
-    // A verified human review can only add a reason, so it can only raise the level.
-    const review = req.clearSignReport?.review
-    if (review) {
-      add(review.riskLevel, `A reviewed audit rates this contract ${review.riskLevel} risk: ${review.riskReasons[0] || 'see findings'}.`
-        + (review.reviewersPinned ? '' : ' The reviewers are not yet pinned in this Vault.'))
+    // A verified human rating can only add a reason, so it can only raise the level.
+    const rating = req.clearSignReport?.rating
+    if (rating) {
+      add(rating.riskLevel, `An auditor rates this contract ${rating.riskLevel} risk: ${rating.riskReasons[0] || 'see findings'}.`
+        + (rating.raterPinned ? '' : ' The rater is not yet pinned in this Vault.'))
     }
   } else if (req.method === '/eth/sign-typed-data') {
     evmTypedData(req, add)

@@ -307,7 +307,7 @@ function RequestClearSignReview({ request }: { request: SigningRequestInfo }) {
 	const [error, setError] = useState<string>()
 	const data = String(request.data || "")
 	const chainId = Number(request.chainId)
-	if (request.method !== "/eth/sign-transaction" || !request.needsBlindSigning || request.clearSignReport?.review
+	if (request.method !== "/eth/sign-transaction" || !request.needsBlindSigning || request.clearSignReport?.definitionReview
 		|| !Number.isSafeInteger(chainId) || chainId < 1
 		|| !/^0x[0-9a-fA-F]{40}$/.test(String(request.to || "")) || !/^0x[0-9a-fA-F]{8}/.test(data)) return null
 	const submit = async () => {

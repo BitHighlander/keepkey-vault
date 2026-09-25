@@ -19,7 +19,7 @@ import { DEFAULT_CLEARSIGN_SERVICE_URL } from './solana-certified-registry'
 import { deploymentMismatch, verifyPublishedReview } from './clearsign-review'
 import { snapshotEvmIdentities } from './clearsign-live-auditor'
 import { getEvmSimulationEndpoint } from './evm-simulation-config'
-import type { ClearSignReview } from '../shared/clearsign-report'
+import type { ClearSignDefinitionReview } from '../shared/clearsign-report'
 import {
   CERTIFIED_METADATA_KEY_ID,
   findCertifiedEvmSchemaSpec,
@@ -42,8 +42,8 @@ export interface SignedEvmSchema {
   source?: 'local-test' | 'certified-service' | 'promoted-local'
   /** Present only for a locally reviewed, identity-bound promotion. */
   bundleHash?: string
-  /** Verified human review, when the service published this definition. */
-  review?: ClearSignReview
+  /** Verified definition approvals, when the service published this definition. */
+  definitionReview?: ClearSignDefinitionReview
 }
 
 const SCHEMAS: Record<string, SignedEvmSchema> = (registry as any).schemas ?? {}
@@ -73,7 +73,7 @@ export function findEvmSchema(
 /** Fetch a KeepKey-certified v3 envelope from the isolated signer service. */
 /** Measures the live deployment for a reviewed contract (injectable for tests). */
 export type MeasureDeployment = (chainId: number, contract: string) => Promise<unknown>
-const measureLiveDeployment: MeasureDeployment = async (chainId, contract) =>
+export const measureLiveDeployment: MeasureDeployment = async (chainId, contract) =>
   (await snapshotEvmIdentities(contract.toLowerCase(), getEvmSimulationEndpoint(chainId))).identities
 
 export async function findCertifiedEvmSchema(
@@ -151,7 +151,7 @@ async function fetchCertifiedEvmSchema(
     throw new Error(`ClearSign verification service returned HTTP ${response.status}: ${result?.error || 'request failed'}`)
   }
 
-  let review: ClearSignReview | undefined
+  let review: ClearSignDefinitionReview | undefined
   if (reviewLookup) {
     try {
       const verified = verifyPublishedReview(result?.review,
@@ -214,7 +214,7 @@ async function fetchCertifiedEvmSchema(
     signedPayload: result.signedPayload,
     expectedCalldataLength: spec.expectedCalldataLength,
     source: 'certified-service',
-    ...(review ? { review } : {}),
+    ...(review ? { definitionReview: review } : {}),
   }
 }
 

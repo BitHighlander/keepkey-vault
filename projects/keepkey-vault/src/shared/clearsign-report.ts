@@ -13,26 +13,32 @@ export interface ClearSignDescriptorEvidence {
     | 'identity-unavailable' | 'identity-stale' | 'identity-changed' | 'identity-mismatch' | 'unsupported-alt'
 }
 
-/** A human contract review published by the ClearSign service and verified
- * by Vault (evidence hash, two distinct signed approvals, call shape). The
- * device never sees it; it informs the approval UI and can only raise risk. */
-export interface ClearSignReview {
+/** Two EIP-712 approvals of the clearsign definition (device schema) for
+ * one audited deployment, verified by Vault. Decides clearsign; no opinion. */
+export interface ClearSignDefinitionReview {
   requestId: string
   auditId: string
   evidenceHash: string
   publishedAt: number
-  rubric: string
+  /** Contract + EIP-1967 targets as audited; signing re-measures these. */
+  auditedIdentities: Array<{ role: string; address: string; codeHash: string }>
+  stateReference: string
+  /** False until this Vault pins approver addresses; signatures still verify. */
+  approversPinned: boolean
+  approvals: Array<{ role: string; reviewer: string }>
+}
+
+/** A human auditor's EIP-712-signed opinion of the contract, checked by this
+ * app only. Never shown to or checked by the device; never gates clearsign. */
+export interface ContractRating {
+  network: string
+  contract: string
   riskLevel: 'low' | 'medium' | 'high' | 'critical'
   riskReasons: string[]
   findings: Array<{ severity: string; title: string; detail: string; reference?: string }>
-  auditedCodeHash?: string
-  /** Contract + EIP-1967 targets as audited. Signing re-measures these; any
-   * upgrade or redeploy means no clearsign until re-audited. */
-  auditedIdentities: Array<{ role: string; address: string; codeHash: string }>
-  stateReference: string
-  /** False until this Vault pins reviewer keys; the signatures still verify. */
-  reviewersPinned: boolean
-  approvals: Array<{ role: string; reviewerPublicKey: string }>
+  ratedAt: number
+  rater: string
+  raterPinned: boolean
 }
 
 /** The single object consumed by Vault approval UI, evidence storage, and API. */
@@ -51,7 +57,8 @@ export interface ClearSignReport {
     source: 'transaction-bytes' | 'authenticated-definition' | 'simulation'
     statement: string
   }>
-  review?: ClearSignReview
+  definitionReview?: ClearSignDefinitionReview
+  rating?: ContractRating
 }
 
 const LEVEL_ORDER: ClearSignProtectionLevel[] = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5']
@@ -66,7 +73,8 @@ export function buildClearSignReport(input: {
   simulation: EffectReport
   hostFindings?: EffectFinding[]
   hostLimitations?: EffectFinding[]
-  review?: ClearSignReview
+  definitionReview?: ClearSignDefinitionReview
+  rating?: ContractRating
   now?: number
 }): ClearSignReport {
   const { descriptor, simulation } = input
@@ -141,7 +149,8 @@ export function buildClearSignReport(input: {
     findings,
     limitations,
     claims,
-    ...(input.review ? { review: input.review } : {}),
+    ...(input.definitionReview ? { definitionReview: input.definitionReview } : {}),
+    ...(input.rating ? { rating: input.rating } : {}),
   }
 }
 
