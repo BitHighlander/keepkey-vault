@@ -251,8 +251,8 @@ export function assessSigningRisk(req: SigningRequestInfo): RiskAssessment | nul
     // A hosted audit assessment can only add a reason, so it can only raise the level.
     const rating = req.clearSignReport?.rating
     if (rating) {
-      add(rating.riskLevel, `An auditor rates this contract ${rating.riskLevel} risk: ${rating.riskReasons[0] || 'see findings'}.`
-        + ' This is the published auditor’s assessment.')
+      add(rating.riskLevel, `Publisher-hosted assessment rates this contract ${rating.riskLevel} risk: ${rating.riskReasons[0] || 'see findings'}.`
+        + ' Submitter attribution is supplied by the publisher.')
     }
   } else if (req.method === '/eth/sign-typed-data') {
     evmTypedData(req, add)

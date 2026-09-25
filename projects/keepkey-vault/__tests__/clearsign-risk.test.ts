@@ -261,7 +261,7 @@ describe('assessSigningRisk — EVM', () => {
     const deposit = '0x47e7ef24' + word(0n) + word(100n)
     const r = tx(deposit, { to: '0x6b6c05ee7f49d00e63e74a9426d74ef9614f6a0f', chainId: 8453, deviceClearSigns: true, ...reviewed('high') })
     expect(r.level).toBe('high')
-    expect(r.reasons[0].text).toBe('An auditor rates this contract high risk: a single key controls upgrades, deposits, minting (delay 10d). This is the published auditor’s assessment.')
+    expect(r.reasons[0].text).toBe('Publisher-hosted assessment rates this contract high risk: a single key controls upgrades, deposits, minting (delay 10d). Submitter attribution is supplied by the publisher.')
   })
 
   test('a low-risk rating never lowers a critical payload', () => {
