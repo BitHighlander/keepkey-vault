@@ -223,7 +223,7 @@ import { cachedHistoryQueries, watchOnlyWalletScope, watchOnlyBitcoinScope } fro
 import { createTxWatch, MAX_WATCH_MS, UNSEEN_GIVE_UP_MS } from "./tx-watch"
 import { getRequiredConfs } from "../shared/confirmations"
 import { addSessionActivity, getSessionActivity, clearSessionActivity } from "./session-activity"
-import { buildTx, broadcastTx } from "./txbuilder"
+import { buildTx, broadcastTx, canonicalizeTronTokenCaip } from "./txbuilder"
 import { buildCosmosStakingTx, buildCosmosNameRegTx } from "./txbuilder/cosmos"
 import { initializeOrchardFromDevice, scanOrchardNotes, getShieldedBalance, sendShielded, ensureFvkLoaded, displayOrchardAddressOnDevice } from "./txbuilder/zcash-shielded"
 import { findZcashCliBinary, isSidecarReady, startSidecar, stopSidecar, wipeSidecarWalletDb, hasFvkLoaded, getCachedFvk, onScanProgress, getScanState, updateSyncedTo, beginZcashSend, endZcashSend, isZcashSendInFlight } from "./zcash-sidecar"
@@ -495,9 +495,9 @@ function canonicalizeCaipNetwork(caip: string): string {
 
 function parseTokenEntry(tok: any): TokenBalance {
 	const tokNetworkId = (tok.networkId || '').toLowerCase()
-	const caip = canonicalizeCaipNetwork(tok.caip || '')
+	const caip = canonicalizeTronTokenCaip(canonicalizeCaipNetwork(tok.caip || ''), tok.contract)
 	const caipPrefix = ((tok.caip || '').split('/')[0]).toLowerCase()
-	const contractMatch = (tok.caip || '').match(CONTRACT_CAIP_RE)
+	const contractMatch = caip.match(CONTRACT_CAIP_RE)
 	return {
 		symbol: tok.symbol || '???',
 		name: tok.name || tok.symbol || 'Unknown Token',
