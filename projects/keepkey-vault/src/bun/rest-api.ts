@@ -1,6 +1,7 @@
 import type { EngineController } from './engine-controller'
 import type { AuthStore } from './auth'
 import { HttpError } from './auth'
+import { WalletCacheSession, WalletSessionChangedError, WalletSessionMap } from './wallet-session-cache'
 import type { SigningRequestInfo, ApiLogEntry, EIP712DecodedInfo } from '../shared/types'
 import { tronPreview } from './tron-preview'
 import type { ClearSignEvent } from '../shared/types'
@@ -273,11 +274,13 @@ let featuresCache: { timestamp: number; data: any } | null = null
 const FEATURES_TTL_MS = 10_000
 
 async function getCachedFeatures(wallet: any): Promise<any> {
+  const sessionKey = walletCacheSession.key('features', null)
   const now = Date.now()
   if (featuresCache && (now - featuresCache.timestamp) < FEATURES_TTL_MS) {
     return featuresCache.data
   }
   const features = await wallet.getFeatures()
+  walletCacheSession.assertCurrent(sessionKey)
   featuresCache = { timestamp: now, data: features }
   return features
 }
@@ -334,38 +337,26 @@ function formatFeatures(f: any): any {
 }
 
 // ── Public key cache (capped) ─────────────────────────────────────────
-const MAX_CACHE_SIZE = 500
-const pubkeyCache = new Map<string, any>()
+const walletCacheSession = new WalletCacheSession()
+const pubkeyCache = new WalletSessionMap<any>(walletCacheSession)
 
 // ── Address cache (capped) ────────────────────────────────────────────
-const addressCache = new Map<string, string>()
+const addressCache = new WalletSessionMap<string>(walletCacheSession)
 
-/** Evict oldest entries from a Map (uses insertion-order iteration). */
-function evictOldest<K, V>(cache: Map<K, V>, count: number) {
-  let removed = 0
-  for (const key of cache.keys()) {
-    if (removed >= count) break
-    cache.delete(key)
-    removed++
-  }
+/** Derivations are scoped to the active wallet session, including seed changes. */
+function scopedKey(engine: EngineController, prefix: string, body: unknown, wallet: unknown): string {
+  // Request parsing can yield while the engine replaces the wallet handle.
+  if (wallet !== engine.wallet) throw new WalletSessionChangedError()
+  return walletCacheSession.key(prefix, body)
 }
 
-/** Cache key scoped by device_id — prevents cross-device pubkey leakage.
- *  deviceId is read at call time from engine; if no device is connected,
- *  we still prefix with `none:` so orphan entries can be flushed together. */
-function scopedKey(engine: EngineController, prefix: string, body: unknown): string {
-  const deviceId = engine.getDeviceState().deviceId || 'none'
-  return `${deviceId}:${prefix}:${JSON.stringify(body)}`
-}
-
-/** Clear every pubkey cache entry. Call on device disconnect / device swap. */
+/** Invalidate both related caches and reject their in-flight derivations. */
 export function clearPubkeyCache() {
-  pubkeyCache.clear()
+  walletCacheSession.invalidate()
 }
 
-/** Clear every address cache entry. Call on device disconnect / device swap. */
 export function clearAddressCache() {
-  addressCache.clear()
+  walletCacheSession.invalidate()
 }
 
 // ── UI lifecycle signal ────────────────────────────────────────────────
@@ -1153,27 +1144,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
     insertClearSignEvent({ ...event, deviceId: device.deviceId, firmwareVersion: device.firmwareVersion })
   }
 
-  // Device-swap detection: if deviceId changes between two `ready` states,
-  // pubkey/address caches must be flushed or the old device's xpubs will
-  // leak. (lastDeviceId is also flushed on disconnect so a re-connect of the
-  // SAME device will repopulate from scratch.)
-  let lastDeviceId: string | null = null
-  engine.on('state-change', (state) => {
-    const nextId = state.deviceId ?? null
-    if (state.state === 'disconnected') {
-      clearFeaturesCache()
-      clearPubkeyCache()
-      clearAddressCache()
-      lastDeviceId = null
-      return
-    }
-    if (nextId && lastDeviceId && nextId !== lastDeviceId) {
-      clearFeaturesCache()
-      clearPubkeyCache()
-      clearAddressCache()
-    }
-    if (nextId) lastDeviceId = nextId
-  })
+  walletCacheSession.bind(engine, clearFeaturesCache)
 
   /**
    * Wrap a device operation for emulator safety.
@@ -2078,7 +2049,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
           const sd = showDisplay(body.show_display)
-          const cacheKey = scopedKey(engine, 'utxo', body)
+          const cacheKey = scopedKey(engine, 'utxo', body, wallet)
           const cached = addressCache.get(cacheKey)
           // A trusted-display request must always reach the device. Returning
           // a cached value would silently skip the confirmation it requested.
@@ -2090,7 +2061,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'btcGetAddress', chain: 'Bitcoin' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2100,7 +2070,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'cosmos', body)
+          const cacheKey = scopedKey(engine, 'cosmos', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2109,7 +2079,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'cosmosGetAddress', chain: 'Cosmos' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2119,7 +2088,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'osmo', body)
+          const cacheKey = scopedKey(engine, 'osmo', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2128,7 +2097,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'osmosisGetAddress', chain: 'Osmosis' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2138,7 +2106,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'eth', body)
+          const cacheKey = scopedKey(engine, 'eth', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2147,7 +2115,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'ethGetAddress', chain: 'Ethereum' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2157,7 +2124,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'tendermint', body)
+          const cacheKey = scopedKey(engine, 'tendermint', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2166,7 +2133,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'cosmosGetAddress', chain: 'Cosmos' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2176,7 +2142,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'thor', body)
+          const cacheKey = scopedKey(engine, 'thor', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2185,7 +2151,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'thorchainGetAddress', chain: 'THORChain' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2195,7 +2160,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'maya', body)
+          const cacheKey = scopedKey(engine, 'maya', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2204,7 +2169,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'mayachainGetAddress', chain: 'Maya' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2214,7 +2178,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'xrp', body)
+          const cacheKey = scopedKey(engine, 'xrp', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2223,7 +2187,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'xrpGetAddress', chain: 'XRP' }, sd)
           const address = typeof result === 'string' ? result : result?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2235,7 +2198,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           if (fwBlock) return fwBlock
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'sol', body)
+          const cacheKey = scopedKey(engine, 'sol', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2244,7 +2207,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'solanaGetAddress', chain: 'Solana' }, sd)
           const address = typeof result === 'string' ? result : (result as any)?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2256,7 +2218,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           if (fwBlock) return fwBlock
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'trx', body)
+          const cacheKey = scopedKey(engine, 'trx', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2265,7 +2227,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             showDisplay: sd,
           }), { operation: 'tronGetAddress', chain: 'Tron' }, sd)
           const address = typeof result === 'string' ? result : (result as any)?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2277,7 +2238,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           if (fwBlock) return fwBlock
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'ton', body)
+          const cacheKey = scopedKey(engine, 'ton', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2287,7 +2248,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             bounceable: false, // UQ prefix — safe for uninitialized wallets
           }), { operation: 'tonGetAddress', chain: 'TON' }, sd)
           const address = typeof result === 'string' ? result : (result as any)?.address || result
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -2301,7 +2261,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           if (fwBlock) return fwBlock
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.AddressRequest)
-          const cacheKey = scopedKey(engine, 'hive', body)
+          const cacheKey = scopedKey(engine, 'hive', body, wallet)
           const cached = addressCache.get(cacheKey)
           if (cached) return json({ address: cached })
           const sd = showDisplay(body.show_display)
@@ -2311,7 +2271,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             coin: 'Hive',
           }), { operation: 'hiveGetPublicKey', chain: 'HIVE' }, sd)
           const address = result?.publicKey || ''
-          if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           addressCache.set(cacheKey, address)
           auth.saveAccount(String(address), body.address_n)
           return json({ address })
@@ -3366,7 +3325,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.GetPublicKeyRequest)
-          const cacheKey = scopedKey(engine, 'pubkey', body)
+          const cacheKey = scopedKey(engine, 'pubkey', body, wallet)
           const cached = pubkeyCache.get(cacheKey)
           if (cached) return json(cached)
           const sd = showDisplay(body.show_display)
@@ -3379,7 +3338,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           }]), { operation: 'getPublicKeys', chain: 'Bitcoin' }, sd)
           const xpub = result?.[0]?.xpub
           const out = { xpub }
-          if (pubkeyCache.size >= MAX_CACHE_SIZE) evictOldest(pubkeyCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
           pubkeyCache.set(cacheKey, out)
           return json(validateResponse(out, S.GetPublicKeyResponse, path))
         }
@@ -3796,6 +3754,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
           auth.requireAuth(req)
           const wallet = requireWallet(engine)
           const body = await parseRequest(req, S.BatchPubkeysRequest)
+          const batchSessionKey = scopedKey(engine, 'batch-request', null, wallet)
           const paths = body.paths || []
           const results: any[] = []
 
@@ -3809,7 +3768,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               // branch. Skip quietly (the device would reject with "Unknown message").
               if (deviceIsBitcoinOnly()) continue
               const primaryNetwork = (p.networks || [])[0] || ''
-              const addrCacheKey = scopedKey(engine, 'batch-addr', { n: p.address_n, net: primaryNetwork })
+              const addrCacheKey = scopedKey(engine, 'batch-addr', { n: p.address_n, net: primaryNetwork }, wallet)
               const cachedAddr = addressCache.get(addrCacheKey)
               if (cachedAddr) {
                 results.push({
@@ -3870,7 +3829,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
                 }
 
                 if (address) {
-                  if (addressCache.size >= MAX_CACHE_SIZE) evictOldest(addressCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
                   addressCache.set(addrCacheKey, address)
                   auth.saveAccount(address, addrNList)
                 }
@@ -3900,7 +3858,7 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             // have cached altcoin xpubs before being flashed BTC-only.
             if (deviceIsBitcoinOnly() && !bitcoinOnlyPublicKeyPathAllowed({ ...p, coin })) continue
 
-            const cacheKey = scopedKey(engine, 'batch-pubkey', { address_n: p.address_n, script_type: p.script_type })
+            const cacheKey = scopedKey(engine, 'batch-pubkey', { address_n: p.address_n, script_type: p.script_type }, wallet)
             const cached = pubkeyCache.get(cacheKey)
             if (cached) {
               results.push({
@@ -3926,7 +3884,6 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
               }])
               const xpub = result?.[0]?.xpub || ''
               const out = { xpub }
-              if (pubkeyCache.size >= MAX_CACHE_SIZE) evictOldest(pubkeyCache, Math.ceil(MAX_CACHE_SIZE * 0.2))
               pubkeyCache.set(cacheKey, out)
               results.push({
                 pubkey: xpub,
@@ -3944,6 +3901,9 @@ export function startRestApi(engine: EngineController, auth: AuthStore, port = 1
             }
           }
 
+          // Reject a batch that spans two wallets, even if later items derive
+          // successfully after the old cache was invalidated.
+          walletCacheSession.assertCurrent(batchSessionKey)
           return json({
             pubkeys: results,
             cached_count: results.length,
