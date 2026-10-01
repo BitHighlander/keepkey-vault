@@ -14,6 +14,7 @@ import { buildHiveTransfer, broadcastHiveTx } from './hive'
 import { SOLANA_LAMPORTS_PER_SIGNATURE, solanaTransferLamportsForAmount } from './solana'
 import { signSolanaWireTransaction } from '../solana-signing'
 import { getBtcBackend } from '../btc-backend'
+import { ARBITRUM_ONE_RPC } from '../evm-rpc'
 
 /** BTC mainnet — the only UTXO chain that broadcasts via a self-host node. */
 const BTC_NETWORK_ID = 'bip122:000000000019d6689c085ae165831e93'
@@ -839,7 +840,7 @@ export async function broadcastTx(
   // locally calculated hash even when the sequencer rejected the transaction.
   // Submit to the sequencer RPC and require its accepted hash instead.
   if (chain.chainFamily === 'evm' && chain.chainId === '42161') {
-    const rpcUrl = 'https://arb1.arbitrum.io/rpc'
+    const rpcUrl = ARBITRUM_ONE_RPC
     const resp = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
