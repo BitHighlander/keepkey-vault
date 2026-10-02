@@ -20,7 +20,7 @@ import joinFixture from '../../__tests__/fixtures/solana/soltoshidice-blackjack-
 import certifiedJoin from '../../__tests__/fixtures/solana/soltoshidice-join-certified-envelope.json'
 // Signed by the live delegate; cannot be re-made here. While its schema
 // predates the catalog, refresh it from the deployed Worker.
-const STALE_ENVELOPE = (certifiedJoin as any).response.schema.payload.toLowerCase()
+const STALE_ENVELOPE = (certifiedJoin as any).response.schema.payload.toLowerCase().replace(/^0x/, '')
   !== serializeSolanaSchema(CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin).toString('hex')
 
 const originalFetch = globalThis.fetch

@@ -28,7 +28,7 @@ import envelopeFixture from './fixtures/solana/soltoshidice-join-certified-envel
 // The recorded production envelope is signed by the live delegate and cannot
 // be re-made here. While its schema predates the catalog these tests cannot
 // mean anything; refresh the fixture from the deployed Worker and they run.
-const STALE_ENVELOPE = (envelopeFixture as any).response.schema.payload.toLowerCase()
+const STALE_ENVELOPE = (envelopeFixture as any).response.schema.payload.toLowerCase().replace(/^0x/, '')
   !== serializeSolanaSchema(CERTIFIED_SOLANA_CATALOG.soltoshidiceBlackjackJoin).toString('hex')
 import ceeloFixture from './fixtures/solana/soltoshidice-ceelo-bet.json'
 
