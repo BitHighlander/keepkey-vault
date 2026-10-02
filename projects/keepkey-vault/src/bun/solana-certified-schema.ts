@@ -207,6 +207,8 @@ function validateIntent(intent: string, args: SolanaSchemaArg[], accountCount: n
     return ''
   })
   if (/[{}]/.test(stripped)) throw new Error('intent has a malformed placeholder or stray brace')
+  // Firmware refuses digits outside placeholders: numbers come only from signed bytes.
+  if (/[0-9]/.test(stripped)) throw new Error('intent states a number of its own; values must come from placeholders')
   width += stripped.length
   if (width > SOL_INTENT_TEXT_MAX) throw new Error(`intent can expand to ${width} chars; firmware limit is ${SOL_INTENT_TEXT_MAX}`)
   for (const [i, arg] of args.entries()) {

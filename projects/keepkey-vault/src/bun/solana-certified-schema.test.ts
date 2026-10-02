@@ -109,6 +109,8 @@ describe('KKSOLSC schema version selection', () => {
       args: [{ type: ARG_LAMPORTS, label: 'Amt', role: ROLE_SPEND_EXACT }, { type: ARG_U8, label: 'n' }] }
     expect(() => serializeSolanaSchema({ ...base, intent: 'Pay {0}' })).not.toThrow()
     expect(() => serializeSolanaSchema({ ...base, intent: 'Pay' })).toThrow(/omits amount/)
+    expect(() => serializeSolanaSchema({ ...base, intent: 'Pay {0}, about 100 SOL' })).toThrow(/number of its own/)
+    expect(() => serializeSolanaSchema({ ...base, intent: '{0}'.repeat(9) })).toThrow(/firmware limit/)
     expect(() => serializeSolanaSchema({ ...base, intent: 'Pay {0} {2}' })).toThrow(/out of range/)
     expect(() => serializeSolanaSchema({ ...base, intent: 'Pay {0} }' })).toThrow(/stray brace/)
     expect(() => serializeSolanaSchema({ ...base, intent: 'Pay {0} {a0}' })).toThrow(/out of range/)

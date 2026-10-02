@@ -266,6 +266,8 @@ export function validateEvmIntent(spec: EvmSchemaSpec, intent: EvmIntent): void 
     return ''
   })
   if (/[{}]/.test(literal)) throw new Error('template has a stray brace')
+  // Firmware refuses digits outside placeholders: numbers come only from signed bytes.
+  if (/[0-9]/.test(literal)) throw new Error('template states a number of its own; values must come from placeholders')
   width += literal.length
   if (width > 280) throw new Error(`template can expand to ${width} chars; firmware limit is 280`)
   spec.args.forEach((arg, i) => {

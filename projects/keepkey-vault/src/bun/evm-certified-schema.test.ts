@@ -44,6 +44,7 @@ describe('7.16 certified EVM schemas', () => {
     expect(bad({ template: 'Bridge {v} for {2}' })).toThrow(/out of range/)
     expect(bad({ template: '{v}{v}{v}{v}' })).toThrow(/firmware limit/)
     expect(bad({ valueRole: 2 })).toThrow(/value role/)
+    expect(bad({ template: 'Bridge {v} for {0}, about 1 ETH' })).toThrow(/number of its own/)
   })
 
   it('matches only the complete reviewed Relay calldata shape', () => {
