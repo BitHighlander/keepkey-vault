@@ -54,6 +54,16 @@ export const ARG_TOKEN_AMOUNT = 6
 /** v2: u64 LE seconds, shown in exact d / h / min / s units. */
 export const ARG_DURATION = 7
 
+/** v3 roles: the device words its Limits screen from these (SRS-7.16 R-7.3). */
+export const ROLE_SPEND_MAX = 1
+export const ROLE_RECEIVE_MIN = 2
+export const ROLE_SPEND_EXACT = 3
+export const ROLE_RECEIVE_EXACT = 4
+/** A per-use maximum (each bet), not an outflow. */
+export const ROLE_CAP = 5
+const TEMPLATE_MAX = 96
+const isAmount = (type: number) => type === ARG_LAMPORTS || type === ARG_TOKEN_AMOUNT
+
 export const ARG_WIDTH: Record<number, number> = {
   [ARG_U64]: 8,
   [ARG_U8]: 1,
@@ -69,6 +79,8 @@ export interface SolanaSchemaArg {
   label: string
   /** TOKEN_AMOUNT only: index into the instruction's account list. */
   mintAccount?: number
+  /** v3: required on amount args (ROLE_*), absent elsewhere. */
+  role?: number
 }
 
 export interface SolanaSchemaAccount {
@@ -86,6 +98,10 @@ export interface SolanaSchemaSpec {
   instructionName: string
   args?: SolanaSchemaArg[]
   accounts?: SolanaSchemaAccount[]
+  /** v3: the delegate-authored sentence; "{n}" is arg n, "{aN}" account N.
+   * Every amount arg must appear (SRS-7.16 R-7.1/R-7.2). Its presence makes
+   * the payload version 3. */
+  intent?: string
   /** Not serialized. When the program fixes the token its TOKEN_AMOUNT args
    * are in, the clearsign Worker certifies only this identity, and only when
    * the chain reports exactly these values. */
@@ -114,10 +130,14 @@ export function serializeSolanaSchema(spec: SolanaSchemaSpec): Buffer {
   const accounts = spec.accounts || []
   if (args.length > MAX_ARGS_V2) throw new Error(`at most ${MAX_ARGS_V2} args`)
   if (accounts.length > MAX_ACCOUNTS) throw new Error(`at most ${MAX_ACCOUNTS} accounts`)
-  const version = args.length > MAX_ARGS_V1
-    || args.some((arg) => arg.type === ARG_TOKEN_AMOUNT || arg.type === ARG_DURATION)
-    ? SCHEMA_VERSION_V2
-    : SCHEMA_VERSION_V1
+  const version = spec.intent !== undefined
+    ? 3
+    : args.length > MAX_ARGS_V1
+      || args.some((arg) => arg.type === ARG_TOKEN_AMOUNT || arg.type === ARG_DURATION)
+      ? SCHEMA_VERSION_V2
+      : SCHEMA_VERSION_V1
+  if (version === 3) validateIntent(spec.intent!, args, accounts.length)
+  else if (args.some((arg) => arg.role !== undefined)) throw new Error('roles require an intent (v3)')
 
   const parts: Buffer[] = [
     MAGIC,
@@ -141,6 +161,7 @@ export function serializeSolanaSchema(spec: SolanaSchemaSpec): Buffer {
     } else if (arg.mintAccount !== undefined) {
       throw new Error('mintAccount applies only to TOKEN_AMOUNT args')
     }
+    if (version === 3) parts.push(Buffer.from([arg.role ?? 0]))
   }
   parts.push(Buffer.from([accounts.length]))
   for (const acct of accounts) {
@@ -149,9 +170,37 @@ export function serializeSolanaSchema(spec: SolanaSchemaSpec): Buffer {
     }
     parts.push(Buffer.from([acct.index]), lenPrefixedText(acct.label, LABEL_MAX, 'account label'))
   }
+  if (version === 3) parts.push(lenPrefixedText(spec.intent!, TEMPLATE_MAX, 'intent'))
   const payload = Buffer.concat(parts)
   if (payload.length > MAX_PAYLOAD_BYTES) throw new Error(`payload ${payload.length}B exceeds the ${MAX_PAYLOAD_BYTES}B proto cap`)
   return payload
+}
+
+/** Firmware solana_intentTemplateValid + the v3 role rules, so the service
+ * never signs a schema the device refuses. */
+function validateIntent(intent: string, args: SolanaSchemaArg[], accountCount: number): void {
+  for (const [i, arg] of args.entries()) {
+    const ok = isAmount(arg.type)
+      ? arg.role !== undefined && arg.role >= ROLE_SPEND_MAX && arg.role <= ROLE_CAP
+      : arg.role === undefined || arg.role === 0
+    if (!ok) throw new Error(`arg ${i} (${arg.label}): ${isAmount(arg.type) ? 'amount needs a role' : 'only amounts carry a role'}`)
+  }
+  const used = new Set<number>()
+  const stripped = intent.replace(/\{(a?)([0-9])\}/g, (_, account: string, digit: string) => {
+    const index = Number(digit)
+    if (account) {
+      if (index >= accountCount) throw new Error(`intent {a${index}} is out of range`)
+    } else {
+      if (index >= args.length) throw new Error(`intent {${index}} is out of range`)
+      if (args[index].type === ARG_OPAQUE32) throw new Error('OPAQUE32 cannot appear in the intent')
+      used.add(index)
+    }
+    return ''
+  })
+  if (/[{}]/.test(stripped)) throw new Error('intent has a malformed placeholder or stray brace')
+  for (const [i, arg] of args.entries()) {
+    if (isAmount(arg.type) && !used.has(i)) throw new Error(`intent omits amount arg ${i} (${arg.label})`)
+  }
 }
 
 /** Bytes the schema claims to account for: discriminator + every arg width. */
@@ -251,6 +300,7 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     discriminator: Buffer.from('915cd08e461ea126', 'hex'),
     instructionName: 'Register tournament',
     accounts: [{ index: 0, label: 'Player' }, { index: 1, label: 'Arena' }, { index: 2, label: 'Tournament' }],
+    intent: 'Register for SoltoshiDICE poker tournament {a2}',
   },
   // enter_poker_tournament(seat_index: u8).
   EnterPokerTournament: {
@@ -260,6 +310,7 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     instructionName: 'Enter tournament',
     args: [{ type: ARG_U8, label: 'Seat' }],
     accounts: [{ index: 2, label: 'Tournament' }, { index: 4, label: 'Table state' }, { index: 6, label: 'Vault' }, { index: 8, label: 'Token mint' }],
+    intent: 'Enter tournament {a0} at seat {0}; the entry is set by the tournament',
   },
   // exit_poker_tournament(seat_index: u8); actor, arena, tournament, config,
   // table_state, hand_state, settlement, vault, owner, owner_tokens, mint, ...
@@ -270,6 +321,7 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     instructionName: 'Exit tournament',
     args: [{ type: ARG_U8, label: 'Seat' }],
     accounts: [{ index: 2, label: 'Tournament' }, { index: 7, label: 'Vault' }, { index: 8, label: 'Payout owner' }, { index: 10, label: 'Token mint' }],
+    intent: 'Leave tournament {a0} seat {0}; the seat balance is paid to {a2}',
   },
   // authorize_session(session_key: pubkey, expiry: i64): positive Unix time
   // has the u64 LE bytes; the label says Unix, never a duration.
@@ -280,6 +332,7 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     instructionName: 'Authorize session',
     args: [{ type: ARG_PUBKEY, label: 'Session key' }, { type: ARG_U64, label: 'Expires Unix' }],
     accounts: [{ index: 0, label: 'Wallet' }, { index: 1, label: 'Table config' }, { index: 2, label: 'Session account' }],
+    intent: 'Let session key {0} act for you at table {a1} until Unix time {1}',
   },
   // set_ready(ready: bool).
   SetPokerReady: {
@@ -289,6 +342,7 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     instructionName: 'Set ready',
     args: [{ type: ARG_U8, label: 'Ready' }],
     accounts: [{ index: 1, label: 'Table config' }, { index: 2, label: 'Table state' }, { index: 3, label: 'Hand state' }],
+    intent: 'Set ready to {0} for the next hand at table {a0}',
   },
   // join_table(seat_index: u8); wallet, config, table_state, hand_state,
   // vault, player_tokens, mint, gate, token/ATA/system programs.
@@ -299,6 +353,7 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     instructionName: 'Join table',
     args: [{ type: ARG_U8, label: 'Seat' }],
     accounts: [{ index: 1, label: 'Table config' }, { index: 2, label: 'Table state' }, { index: 4, label: 'Vault' }, { index: 6, label: 'Token mint' }],
+    intent: 'Sit at poker table {a0} seat {0}; the buy-in is set by the table',
   },
   // leave_table(); same eleven accounts as join_table.
   LeavePokerTable: {
@@ -307,12 +362,12 @@ const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'
     discriminator: Buffer.from('a3995ec2136a7120', 'hex'),
     instructionName: 'Leave table',
     accounts: [{ index: 1, label: 'Table config' }, { index: 2, label: 'Table state' }, { index: 4, label: 'Vault' }, { index: 6, label: 'Token mint' }],
+    intent: 'Leave poker table {a0}; your seat balance comes back from vault {a2}',
   },
 }
 /** CBuVrP keeps its original keys (above) for the instructions they cover. */
 const RIVERPROOF_DEPLOYMENTS: Array<[suffix: string, programId: string, skip: string[]]> = [
-  ['', 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
-    ['RegisterPokerTournament', 'EnterPokerTournament', 'AuthorizePokerSession', 'SetPokerReady']],
+  ['', 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt', []],
   ['V2', 'psDvYRCi8C1JuinSmVjNicZmqzE5XAi41x6U8CnBB6a', []],
   ['V3', '3EB6JJ2k1yPdg9qokViBdSWq4jaEVG4wiKbS8Pw3FmWQ', []],
 ]
@@ -329,22 +384,18 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     provenance: { protocol: 'https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json' },
     programId: 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',
     discriminator: Buffer.from('66063d1201daebea', 'hex'),
-    programName: 'Pump AMM',
-    instructionName: 'Buy',
+    programName: 'Pump.fun',
+    instructionName: 'Buy tokens',
     // Exact official IDL: u64 base_amount_out, u64 max_quote_amount_in,
     // OptionBool (a one-byte bool). Amounts are raw token units; the two
     // signed mint accounts identify their units without trusting a ticker.
     args: [
-      { type: ARG_U64, label: 'Base units out' },
-      { type: ARG_U64, label: 'Max quote units' },
+      { type: ARG_TOKEN_AMOUNT, label: 'You get', mintAccount: 3, role: ROLE_RECEIVE_EXACT },
+      { type: ARG_TOKEN_AMOUNT, label: 'Pay at most', mintAccount: 4, role: ROLE_SPEND_MAX },
       { type: ARG_U8, label: 'Track volume' },
     ],
-    accounts: [
-      { index: 3, label: 'Buy token mint' },
-      { index: 4, label: 'Pay token mint' },
-      { index: 5, label: 'Receive account' },
-      { index: 6, label: 'Pay account' },
-    ],
+    // base_amount_out is exact; max_quote_amount_in caps the spend. Mints: accounts 3 and 4 (a native quote mint shows as SOL by firmware rule).
+    intent: 'Buy {0} for at most {1}',
   },
   pumpAmmSell: {
     protocol: 'Pump',
@@ -359,18 +410,14 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     provenance: { protocol: 'https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json' },
     programId: 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',
     discriminator: Buffer.from('33e685a4017f83ad', 'hex'),
-    programName: 'Pump AMM',
-    instructionName: 'Sell',
+    programName: 'Pump.fun',
+    instructionName: 'Sell tokens',
     args: [
-      { type: ARG_U64, label: 'Base units in' },
-      { type: ARG_U64, label: 'Min quote units' },
+      { type: ARG_TOKEN_AMOUNT, label: 'You sell', mintAccount: 3, role: ROLE_SPEND_EXACT },
+      { type: ARG_TOKEN_AMOUNT, label: 'Receive at least', mintAccount: 4, role: ROLE_RECEIVE_MIN },
     ],
-    accounts: [
-      { index: 3, label: 'Sell token mint' },
-      { index: 4, label: 'Get token mint' },
-      { index: 5, label: 'Sell account' },
-      { index: 6, label: 'Receive account' },
-    ],
+    // base_amount_in is exact; min_quote_amount_out bounds what you receive.
+    intent: 'Sell {0} for at least {1}',
   },
   soltoshidiceBlackjackJoin: {
     protocol: 'SoltoshiDICE',
@@ -418,91 +465,14 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
       { type: ARG_U64, label: 'Round' },
       { type: ARG_U64, label: 'Revision' },
       { type: ARG_U8, label: 'Seat' },
-      { type: ARG_TOKEN_AMOUNT, label: 'Buy-in', mintAccount: 3 },
+      { type: ARG_TOKEN_AMOUNT, label: 'Buy-in', mintAccount: 3, role: ROLE_SPEND_EXACT },
       { type: ARG_PUBKEY, label: 'Session key' },
       { type: ARG_DURATION, label: 'Expires in' },
-      { type: ARG_TOKEN_AMOUNT, label: 'Allowance', mintAccount: 3 },
-      { type: ARG_TOKEN_AMOUNT, label: 'Max wager', mintAccount: 3 },
+      { type: ARG_TOKEN_AMOUNT, label: 'Allowance', mintAccount: 3, role: ROLE_SPEND_MAX },
+      { type: ARG_TOKEN_AMOUNT, label: 'Max wager', mintAccount: 3, role: ROLE_CAP },
     ],
-  },
-  soltoshidiceRegisterPokerTournament: {
-    protocol: 'SoltoshiDICE',
-    action: 'Register the connected wallet for a SoltoshiDICE poker tournament',
-    // First-party Anchor IDL embedded in soltoshidice.fun on 2026-09-21:
-    // ProductionHoldem-DgvrRIFc.js (sha256 2b7e7377...). The IDL identifies
-    // program CBuVrP...Ypkt as riverproof and defines this exact instruction
-    // as discriminator [145,92,208,142,70,30,161,38], no args, and accounts
-    // player (signer), arena, tournament (writable), in that order. The
-    // captured transaction below has precisely that shape; the schema covers
-    // every data byte and does not certify any other riverproof instruction.
-    provenance: { protocol: 'https://soltoshidice.fun/' },
-    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
-    discriminator: Buffer.from('915cd08e461ea126', 'hex'),
-    programName: 'SoltoshiDICE Poker',
-    instructionName: 'Register tournament',
-    accounts: [
-      { index: 0, label: 'Player' },
-      { index: 1, label: 'Arena' },
-      { index: 2, label: 'Tournament' },
-    ],
-  },
-  soltoshidiceEnterPokerTournament: {
-    protocol: 'SoltoshiDICE',
-    action: 'Enter a SoltoshiDICE poker tournament at the selected seat',
-    // First-party Anchor IDL embedded in soltoshidice.fun on 2026-09-22:
-    // ProductionHoldem-D1TQWx5W.js (sha256 ebfba07e...). Exact 9-byte
-    // instruction: the discriminator followed by one u8 seat_index. The IDL
-    // fixes the remaining accounts, including the SDICE Token-2022 program.
-    provenance: { protocol: 'https://soltoshidice.fun/' },
-    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
-    discriminator: Buffer.from('b24ebae40f2d0404', 'hex'),
-    programName: 'SoltoshiDICE Poker',
-    instructionName: 'Enter tournament',
-    args: [{ type: ARG_U8, label: 'Seat' }],
-    accounts: [
-      { index: 2, label: 'Tournament' },
-      { index: 4, label: 'Table state' },
-      { index: 6, label: 'Vault' },
-      { index: 8, label: 'Token mint' },
-    ],
-  },
-  soltoshidiceAuthorizePokerSession: {
-    protocol: 'SoltoshiDICE',
-    action: 'Authorize an ephemeral session key to act for this wallet at one poker table until the shown Unix time',
-    // Same first-party IDL and captured live flow. The schema covers the
-    // complete session_key pubkey and i64 expiry. Positive Unix timestamps
-    // have the same LE bytes as ARG_U64; the label deliberately says Unix so
-    // the device does not misrepresent this absolute value as a duration.
-    provenance: { protocol: 'https://soltoshidice.fun/' },
-    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
-    discriminator: Buffer.from('bbdafba163282222', 'hex'),
-    programName: 'SoltoshiDICE Poker',
-    instructionName: 'Authorize session',
-    args: [
-      { type: ARG_PUBKEY, label: 'Session key' },
-      { type: ARG_U64, label: 'Expires Unix' },
-    ],
-    accounts: [
-      { index: 0, label: 'Wallet' },
-      { index: 1, label: 'Table config' },
-      { index: 2, label: 'Session account' },
-    ],
-  },
-  soltoshidiceSetPokerReady: {
-    protocol: 'SoltoshiDICE',
-    action: 'Opt into or out of the next SoltoshiDICE poker hand',
-    // Same first-party IDL: discriminator plus one Anchor bool byte.
-    provenance: { protocol: 'https://soltoshidice.fun/' },
-    programId: 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
-    discriminator: Buffer.from('694e07a2b5a7ba2b', 'hex'),
-    programName: 'SoltoshiDICE Poker',
-    instructionName: 'Set ready',
-    args: [{ type: ARG_U8, label: 'Ready' }],
-    accounts: [
-      { index: 1, label: 'Table config' },
-      { index: 2, label: 'Table state' },
-      { index: 3, label: 'Hand state' },
-    ],
+    // The session key bets for you: allowance is its total budget, max wager each bet's cap (encoder evidence above).
+    intent: 'Join blackjack seat {2} for {3}; key {4} may bet {7} each, {6} total, for {5}',
   },
   soltoshidiceCeeloBet: {
     protocol: 'SoltoshiDICE',
@@ -574,21 +544,25 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     instructionName: 'Cee-lo place bet',
     args: [
       { type: ARG_U64, label: 'Round' },
-      { type: ARG_TOKEN_AMOUNT, label: 'Wager', mintAccount: 5 },
+      { type: ARG_TOKEN_AMOUNT, label: 'Wager', mintAccount: 5, role: ROLE_SPEND_EXACT },
       { type: ARG_U8, label: 'Protocol' },
-      { type: ARG_LAMPORTS, label: 'SOL deposit' },
+      { type: ARG_LAMPORTS, label: 'SOL deposit', role: ROLE_SPEND_EXACT },
     ],
+    // 'refundable' is the dapp's own word for the deposit (evidence above).
+    intent: 'Bet {1} on Cee-lo round {0}, plus a refundable {3} deposit',
   },
   relayDepositNative: {
     programId: '99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2',
     discriminator: Buffer.from('0d9e0ddf5fd51c06', 'hex'),
-    programName: 'Relay Bridge',
-    instructionName: 'depositNative',
+    programName: 'Relay',
+    instructionName: 'Bridge deposit',
     args: [
-      { type: ARG_LAMPORTS, label: 'Amount' },
+      { type: ARG_LAMPORTS, label: 'Amount', role: ROLE_SPEND_EXACT },
       { type: ARG_OPAQUE32, label: 'Order' },
     ],
     accounts: [{ index: 3, label: 'Vault' }],
+    // What arrives on the other chain is Relay's obligation, not in these bytes.
+    intent: 'Deposit {0} into Relay vault {a0} to bridge; delivery is by Relay',
   },
   relayDepositToken: {
     programId: '99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2',
