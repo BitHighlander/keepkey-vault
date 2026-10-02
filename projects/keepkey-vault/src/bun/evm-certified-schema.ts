@@ -22,6 +22,24 @@ export interface EvmSchemaArg {
   format: number
   decimals?: number
   symbol?: string
+  /** v0x05: ROLE_* (1-5) on amounts, 0 otherwise. */
+  role?: number
+}
+
+/** v0x05 roles, numbered as Solana KKSOLSC1 v3. */
+export const ROLE_SPEND_MAX = 1
+export const ROLE_RECEIVE_MIN = 2
+export const ROLE_SPEND_EXACT = 3
+export const ROLE_RECEIVE_EXACT = 4
+export const ROLE_CAP = 5
+
+/** Human-readable review (SRS-7.16 §3.7): firmware fills every value. */
+export interface EvmIntent {
+  title: string
+  /** `{n}` = arg n, `{v}` = msg.value; <=96 chars. */
+  template: string
+  /** ROLE_SPEND_EXACT / ROLE_SPEND_MAX when msg.value moves; else 0. */
+  valueRole: number
 }
 
 export interface EvmSchemaSpec {
@@ -41,6 +59,7 @@ export interface EvmSchemaSpec {
   maintainedBy?: string
   action?: string
   provenance?: Record<string, string>
+  intent?: EvmIntent
 }
 
 export const CERTIFIED_EVM_CATALOG: Record<string, EvmSchemaSpec> = {
@@ -54,6 +73,11 @@ export const CERTIFIED_EVM_CATALOG: Record<string, EvmSchemaSpec> = {
       { name: 'orderId', format: EVM_ARG_BYTES },
     ],
     expectedCalldataLength: 68,
+    intent: {
+      title: 'Relay',
+      template: 'Bridge {v} through Relay for {0}; delivery is by Relay',
+      valueRole: ROLE_SPEND_EXACT,
+    },
   },
   '1:0xbf5a7f3629fb325e2a8453d595ab103465f75e62:0xa2e42c65': {
     chainId: 1,
@@ -174,11 +198,13 @@ export function buildEvmSchemaBody(spec: EvmSchemaSpec): Buffer {
       u8(1), be32(0), u8(CERTIFIED_METADATA_KEY_ID),
     ])
   }
+  const intent = spec.intent
+  if (intent) validateEvmIntent(spec, intent)
   if (spec.expectedCalldataLength !== 4 + 32 * spec.args.length) {
     throw new Error('schema argument widths do not account for the complete calldata')
   }
   const parts: Buffer[] = [
-    u8(0x02),
+    u8(intent ? 0x05 : 0x02),
     be32(spec.chainId),
     hexBytes(spec.contract, 20, 'contract'),
     hexBytes(spec.selector, 4, 'selector'),
@@ -199,9 +225,53 @@ export function buildEvmSchemaBody(spec: EvmSchemaSpec): Buffer {
       }
       parts.push(u8(arg.decimals!), u8(symbol.length), symbol)
     }
+    if (intent) parts.push(u8(arg.role ?? 0))
+  }
+  if (intent) {
+    const title = ascii(intent.title, 20, 'intent title')
+    const template = ascii(intent.template, 96, 'intent template')
+    parts.push(u8(intent.valueRole), u8(title.length), title, u8(template.length), template)
   }
   parts.push(u8(1), be32(0), u8(CERTIFIED_METADATA_KEY_ID))
   return Buffer.concat(parts)
+}
+
+const isAmount = (format: number) => format === EVM_ARG_AMOUNT || format === EVM_ARG_TOKEN_AMOUNT
+
+/** Mirrors firmware signed_metadata_intent_valid(): certify only what it accepts. */
+export function validateEvmIntent(spec: EvmSchemaSpec, intent: EvmIntent): void {
+  if (![0, ROLE_SPEND_MAX, ROLE_SPEND_EXACT].includes(intent.valueRole)) throw new Error('value role must be 0, spend-max or spend-exact')
+  spec.args.forEach((arg, i) => {
+    const role = arg.role ?? 0
+    if (isAmount(arg.format) ? role < ROLE_SPEND_MAX || role > ROLE_CAP : role !== 0) {
+      throw new Error(`argument ${i} (${arg.name}) has an invalid role ${role}`)
+    }
+  })
+  const used = new Set<number>()
+  let value = false
+  let width = 0
+  const literal = intent.template.replace(/\{(v|\d)\}/g, (_, p) => {
+    if (p === 'v') {
+      value = true
+      width += 90
+      return ''
+    }
+    const i = Number(p)
+    const arg = spec.args[i]
+    if (!arg || ![EVM_ARG_ADDRESS, EVM_ARG_AMOUNT, EVM_ARG_TOKEN_AMOUNT].includes(arg.format)) {
+      throw new Error(`template placeholder {${p}} is out of range or not displayable in a sentence`)
+    }
+    used.add(i)
+    width += arg.format === EVM_ARG_ADDRESS ? 13 : 90
+    return ''
+  })
+  if (/[{}]/.test(literal)) throw new Error('template has a stray brace')
+  width += literal.length
+  if (width > 280) throw new Error(`template can expand to ${width} chars; firmware limit is 280`)
+  spec.args.forEach((arg, i) => {
+    if (isAmount(arg.format) && !used.has(i)) throw new Error(`template must state amount ${arg.name}`)
+  })
+  if (value !== (intent.valueRole !== 0)) throw new Error('{v} must appear exactly when the value has a role')
 }
 
 /** Backwards-compatible name retained for existing v2 callers/tests. */

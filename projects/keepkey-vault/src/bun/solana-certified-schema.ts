@@ -176,6 +176,12 @@ export function serializeSolanaSchema(spec: SolanaSchemaSpec): Buffer {
   return payload
 }
 
+/** Firmware intent_width(): widest text per placeholder (SOL_INTENT_TEXT_MAX). */
+const SOL_INTENT_TEXT_MAX = 280
+const INTENT_WIDTH: Record<number, number> = {
+  [ARG_LAMPORTS]: 34, [ARG_TOKEN_AMOUNT]: 34, [ARG_U64]: 20, [ARG_DURATION]: 24, [ARG_U8]: 3, [ARG_PUBKEY]: 11,
+}
+
 /** Firmware solana_intentTemplateValid + the v3 role rules, so the service
  * never signs a schema the device refuses. */
 function validateIntent(intent: string, args: SolanaSchemaArg[], accountCount: number): void {
@@ -186,11 +192,14 @@ function validateIntent(intent: string, args: SolanaSchemaArg[], accountCount: n
     if (!ok) throw new Error(`arg ${i} (${arg.label}): ${isAmount(arg.type) ? 'amount needs a role' : 'only amounts carry a role'}`)
   }
   const used = new Set<number>()
+  let width = 0
   const stripped = intent.replace(/\{(a?)([0-9])\}/g, (_, account: string, digit: string) => {
     const index = Number(digit)
     if (account) {
       if (index >= accountCount) throw new Error(`intent {a${index}} is out of range`)
+      width += 11
     } else {
+      width += INTENT_WIDTH[args[index]?.type] ?? 11
       if (index >= args.length) throw new Error(`intent {${index}} is out of range`)
       if (args[index].type === ARG_OPAQUE32) throw new Error('OPAQUE32 cannot appear in the intent')
       used.add(index)
@@ -198,6 +207,8 @@ function validateIntent(intent: string, args: SolanaSchemaArg[], accountCount: n
     return ''
   })
   if (/[{}]/.test(stripped)) throw new Error('intent has a malformed placeholder or stray brace')
+  width += stripped.length
+  if (width > SOL_INTENT_TEXT_MAX) throw new Error(`intent can expand to ${width} chars; firmware limit is ${SOL_INTENT_TEXT_MAX}`)
   for (const [i, arg] of args.entries()) {
     if (isAmount(arg.type) && !used.has(i)) throw new Error(`intent omits amount arg ${i} (${arg.label})`)
   }
