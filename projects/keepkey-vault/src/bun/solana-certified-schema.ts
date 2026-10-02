@@ -218,6 +218,110 @@ export function signCertifiedSolanaSchema(
  * (2026-07-27) — both 48 bytes: 8-byte discriminator + u64 amount (LE) +
  * 32-byte order id. Mirrors keepkey-sdk/tests/fixtures/solana-schema.js.
  */
+/*
+ * SoltoshiDICE poker ("riverproof"): one first-party Anchor IDL, three
+ * deployments. Evidence, fetched from https://soltoshidice.fun on 2026-10-01
+ * (cite the sha256, never the filename):
+ * - ProductionHoldem-FtKDBnVq.js (sha256 e0a2951e007d69df5b2e9aacd7f8fbfb
+ *   f347a5291115139e97e6318cabb3ef73) embeds the IDL riverproof 0.1.0 (41
+ *   instructions) whose own address is 3EB6JJ2k...3FmWQ, and defaults its PDA
+ *   helper and table/session readers to psDvYR...BB6a. Game-DhxUG0cz.js
+ *   (sha256 ccb5e0112c850bb13a04334911f1c097dd02244e0ccb98bddebe7e516a70b944)
+ *   configures holdem on 3EB6JJ2k...3FmWQ. CBuVrP...Ypkt is the earlier
+ *   deployment cited by the entries above (bundles 2b7e7377.../ebfba07e...).
+ * - Every discriminator equals the IDL entry and sha256("global:<name>")[:8];
+ *   args and account order are the IDL's. Captured CBuVrP and psDvYR
+ *   transactions carry exactly these discriminators and lengths; 3EB6JJ2k has
+ *   no captured transaction yet, so its entries rest on the IDL address and
+ *   the Game bundle config.
+ * - Joining moves a buy-in fixed by the table (no amount in the data), as
+ *   enter_poker_tournament does; vault and mint are shown so the destination
+ *   and token are on screen.
+ */
+const RIVERPROOF_POKER = {
+  protocol: 'SoltoshiDICE',
+  provenance: { protocol: 'https://soltoshidice.fun/' },
+  programName: 'SoltoshiDICE Poker',
+}
+const RIVERPROOF_INSTRUCTIONS: Record<string, Omit<SolanaSchemaSpec, 'programId'>> = {
+  // register_poker_tournament(); player(s), arena, tournament(w).
+  RegisterPokerTournament: {
+    ...RIVERPROOF_POKER,
+    action: 'Register the connected wallet for a SoltoshiDICE poker tournament',
+    discriminator: Buffer.from('915cd08e461ea126', 'hex'),
+    instructionName: 'Register tournament',
+    accounts: [{ index: 0, label: 'Player' }, { index: 1, label: 'Arena' }, { index: 2, label: 'Tournament' }],
+  },
+  // enter_poker_tournament(seat_index: u8).
+  EnterPokerTournament: {
+    ...RIVERPROOF_POKER,
+    action: 'Enter a SoltoshiDICE poker tournament at the selected seat',
+    discriminator: Buffer.from('b24ebae40f2d0404', 'hex'),
+    instructionName: 'Enter tournament',
+    args: [{ type: ARG_U8, label: 'Seat' }],
+    accounts: [{ index: 2, label: 'Tournament' }, { index: 4, label: 'Table state' }, { index: 6, label: 'Vault' }, { index: 8, label: 'Token mint' }],
+  },
+  // exit_poker_tournament(seat_index: u8); actor, arena, tournament, config,
+  // table_state, hand_state, settlement, vault, owner, owner_tokens, mint, ...
+  ExitPokerTournament: {
+    ...RIVERPROOF_POKER,
+    action: 'Leave a SoltoshiDICE poker tournament seat, settling to the seat owner',
+    discriminator: Buffer.from('f66a6b93a639f6c1', 'hex'),
+    instructionName: 'Exit tournament',
+    args: [{ type: ARG_U8, label: 'Seat' }],
+    accounts: [{ index: 2, label: 'Tournament' }, { index: 7, label: 'Vault' }, { index: 8, label: 'Payout owner' }, { index: 10, label: 'Token mint' }],
+  },
+  // authorize_session(session_key: pubkey, expiry: i64): positive Unix time
+  // has the u64 LE bytes; the label says Unix, never a duration.
+  AuthorizePokerSession: {
+    ...RIVERPROOF_POKER,
+    action: 'Authorize an ephemeral session key to act for this wallet at one poker table until the shown Unix time',
+    discriminator: Buffer.from('bbdafba163282222', 'hex'),
+    instructionName: 'Authorize session',
+    args: [{ type: ARG_PUBKEY, label: 'Session key' }, { type: ARG_U64, label: 'Expires Unix' }],
+    accounts: [{ index: 0, label: 'Wallet' }, { index: 1, label: 'Table config' }, { index: 2, label: 'Session account' }],
+  },
+  // set_ready(ready: bool).
+  SetPokerReady: {
+    ...RIVERPROOF_POKER,
+    action: 'Opt into or out of the next SoltoshiDICE poker hand',
+    discriminator: Buffer.from('694e07a2b5a7ba2b', 'hex'),
+    instructionName: 'Set ready',
+    args: [{ type: ARG_U8, label: 'Ready' }],
+    accounts: [{ index: 1, label: 'Table config' }, { index: 2, label: 'Table state' }, { index: 3, label: 'Hand state' }],
+  },
+  // join_table(seat_index: u8); wallet, config, table_state, hand_state,
+  // vault, player_tokens, mint, gate, token/ATA/system programs.
+  JoinPokerTable: {
+    ...RIVERPROOF_POKER,
+    action: 'Sit at a SoltoshiDICE poker table, paying the table buy-in into its vault',
+    discriminator: Buffer.from('0e7554335f92ab46', 'hex'),
+    instructionName: 'Join table',
+    args: [{ type: ARG_U8, label: 'Seat' }],
+    accounts: [{ index: 1, label: 'Table config' }, { index: 2, label: 'Table state' }, { index: 4, label: 'Vault' }, { index: 6, label: 'Token mint' }],
+  },
+  // leave_table(); same eleven accounts as join_table.
+  LeavePokerTable: {
+    ...RIVERPROOF_POKER,
+    action: 'Leave a SoltoshiDICE poker table, cashing out the seat from its vault',
+    discriminator: Buffer.from('a3995ec2136a7120', 'hex'),
+    instructionName: 'Leave table',
+    accounts: [{ index: 1, label: 'Table config' }, { index: 2, label: 'Table state' }, { index: 4, label: 'Vault' }, { index: 6, label: 'Token mint' }],
+  },
+}
+/** CBuVrP keeps its original keys (above) for the instructions they cover. */
+const RIVERPROOF_DEPLOYMENTS: Array<[suffix: string, programId: string, skip: string[]]> = [
+  ['', 'CBuVrPT34qFWJ7vdTNK2cKzpnKkmnc9ZQwuS2oiFYpkt',
+    ['RegisterPokerTournament', 'EnterPokerTournament', 'AuthorizePokerSession', 'SetPokerReady']],
+  ['V2', 'psDvYRCi8C1JuinSmVjNicZmqzE5XAi41x6U8CnBB6a', []],
+  ['V3', '3EB6JJ2k1yPdg9qokViBdSWq4jaEVG4wiKbS8Pw3FmWQ', []],
+]
+const RIVERPROOF_CATALOG: Record<string, SolanaSchemaSpec> = Object.fromEntries(
+  RIVERPROOF_DEPLOYMENTS.flatMap(([suffix, programId, skip]) =>
+    Object.entries(RIVERPROOF_INSTRUCTIONS)
+      .filter(([name]) => !skip.includes(name))
+      .map(([name, spec]) => [`soltoshidice${name}${suffix}`, { ...spec, programId }])))
+
 export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
   pumpAmmBuy: {
     protocol: 'Pump',
@@ -240,6 +344,32 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
       { index: 4, label: 'Pay token mint' },
       { index: 5, label: 'Receive account' },
       { index: 6, label: 'Pay account' },
+    ],
+  },
+  pumpAmmSell: {
+    protocol: 'Pump',
+    action: 'Sell tokens through Pump AMM with a minimum quote-token output',
+    // Same official IDL as pumpAmmBuy: `sell` is sha256("global:sell")[:8]
+    // with u64 base_amount_in then u64 min_quote_amount_out, 24 bytes and no
+    // trailing option byte. Accounts as for buy minus the two volume
+    // accumulators, so the fee program sits at 20. Verified against a real
+    // PumpSwap sell signed through Vault on 2026-10-01 (6 instructions:
+    // compute x2, transfer, WSOL create, sell, WSOL close). Amounts are raw
+    // units; the signed mint accounts identify them.
+    provenance: { protocol: 'https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json' },
+    programId: 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',
+    discriminator: Buffer.from('33e685a4017f83ad', 'hex'),
+    programName: 'Pump AMM',
+    instructionName: 'Sell',
+    args: [
+      { type: ARG_U64, label: 'Base units in' },
+      { type: ARG_U64, label: 'Min quote units' },
+    ],
+    accounts: [
+      { index: 3, label: 'Sell token mint' },
+      { index: 4, label: 'Get token mint' },
+      { index: 5, label: 'Sell account' },
+      { index: 6, label: 'Receive account' },
     ],
   },
   soltoshidiceBlackjackJoin: {
@@ -471,4 +601,5 @@ export const CERTIFIED_SOLANA_CATALOG: Record<string, SolanaSchemaSpec> = {
     ],
     accounts: [{ index: 3, label: 'Vault' }],
   },
+  ...RIVERPROOF_CATALOG,
 }

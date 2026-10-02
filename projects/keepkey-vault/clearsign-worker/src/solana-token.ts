@@ -97,7 +97,7 @@ export async function certifySchemaTokens(
   delegateKey: string,
   fetcher: typeof fetch = fetch,
 ) {
-  const mintAccounts = catalogKey === 'pumpAmmBuy'
+  const mintAccounts = catalogKey === 'pumpAmmBuy' || catalogKey === 'pumpAmmSell'
     ? [3]
     : (spec.args || []).filter(arg => arg.type === ARG_TOKEN_AMOUNT).map(arg => arg.mintAccount!)
   const mints = [...new Set(mintAccounts.map(index => accountKeys[instruction.accountIndices[index]])

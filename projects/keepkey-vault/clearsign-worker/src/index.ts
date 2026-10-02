@@ -250,6 +250,13 @@ function decodeCanonicalBase64(value: unknown): Buffer {
   return decoded
 }
 
+/** PumpSwap AMM (official IDL): buy carries two volume accumulators before
+ * the fee config, so its fee program is at 22; sell's is at 20. */
+const PUMP_AMM_PINS: Record<string, { minAccounts: number, feeProgramIndex: number }> = {
+  pumpAmmBuy: { minAccounts: 23, feeProgramIndex: 22 },
+  pumpAmmSell: { minAccounts: 21, feeProgramIndex: 20 },
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
@@ -317,15 +324,17 @@ export default {
       // that matches two instructions, so exactly one pair may certify.
       const matches = candidates.flatMap(([key, spec]) => message.instructions.filter((instruction) => {
         if (!solanaInstructionMatchesSchema(message, instruction, spec)) return false
-        if (key === 'pumpAmmBuy') {
-          if (instruction.accountIndices.length < 23 || instruction.data[24] > 1) return false
+        const pump = PUMP_AMM_PINS[key]
+        if (pump) {
+          if (instruction.accountIndices.length < pump.minAccounts) return false
+          if (key === 'pumpAmmBuy' && instruction.data[24] > 1) return false
           // Pin the official IDL's fixed program accounts and required user
           // signer; an arbitrary program label cannot certify another CPI.
           const fixedAccounts: Record<number, string> = {
             13: '11111111111111111111111111111111',
             14: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
             16: spec.programId,
-            22: 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ',
+            [pump.feeProgramIndex]: 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ',
           }
           if (instruction.accountIndices[1] >= message.header.numRequiredSignatures) return false
           for (const [index, expected] of Object.entries(fixedAccounts)) {
