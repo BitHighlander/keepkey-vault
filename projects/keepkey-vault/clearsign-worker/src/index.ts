@@ -12,6 +12,9 @@ import {
 } from '../../src/bun/clearsign-alpha-ceremony'
 import {
   buildCertifiedEvmEnvelope,
+  buildCertifiedEvmNameEnvelope,
+  findEvmNameRecord,
+  UNIVERSAL_ROUTER_PROVENANCE,
   CERTIFIED_EVM_CATALOG,
   CERTIFIED_METADATA_KEY_ID,
   findCertifiedEvmSchemaByShape,
@@ -294,6 +297,26 @@ export default {
         return json({ success: true, classification: 'VERIFIED', version: 3, ...signed, method: spec.method, chainId: spec.chainId, contract: spec.contract, selector: spec.selector, expectedCalldataLength: spec.expectedCalldataLength, decoder: spec.decoder, provenance: spec.provenance || PROVENANCE })
       } catch {
         return json({ error: 'certified Ethereum schema could not be produced' }, 500)
+      }
+    }
+
+    if (request.method === 'POST' && url.pathname === '/v1/evm/name') {
+      let body: any
+      try { body = await readJson(request) } catch (error: any) {
+        return json({ error: error.message }, error.message === 'request too large' ? 413 : 400)
+      }
+      const record = findEvmNameRecord(Number(body?.chainId), String(body?.address || ''))
+      if (!record) return json({ classification: 'OPAQUE', error: 'address is not in the reviewed name catalog' }, 422)
+      const state = provisioning(env)
+      if (!state.evmReady || !env.CLEARSIGN_CERTIFICATE_HEX || !env.CLEARSIGN_DELEGATE_PRIVATE_KEY) {
+        return json({ classification: 'UNAVAILABLE', error: 'Ethereum certified signing is not provisioned' }, 503)
+      }
+      try {
+        const signed = buildCertifiedEvmNameEnvelope(record, env.CLEARSIGN_CERTIFICATE_HEX, env.CLEARSIGN_DELEGATE_PRIVATE_KEY)
+        return json({ success: true, classification: 'VERIFIED', version: 6, ...signed, chainId: record.chainId, address: record.address, name: record.name, provenance: { source: UNIVERSAL_ROUTER_PROVENANCE, entry: record.source } })
+      } catch (error: any) {
+        // The only certificate held is scoped to one chain; other chains need their own.
+        return json({ classification: 'UNAVAILABLE', error: String(error?.message || 'name could not be certified') }, 422)
       }
     }
 

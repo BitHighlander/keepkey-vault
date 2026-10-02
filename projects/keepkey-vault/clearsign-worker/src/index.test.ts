@@ -115,6 +115,16 @@ describe('ClearSign Worker public surface', () => {
     expect((await response.json() as any).classification).toBe('UNAVAILABLE')
   })
 
+  it('names only reviewed Universal Router deployments, and signs nothing unprovisioned', async () => {
+    const unknown = await post('/v1/evm/name', { chainId: 1, address: '0x0000000000000000000000000000000000000001' })
+    expect(unknown.status).toBe(422)
+    const router = await post('/v1/evm/name', { chainId: 1, address: '0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af' })
+    expect(router.status).toBe(503)
+    // A deployment on one chain is not a name on another.
+    const wrongChain = await post('/v1/evm/name', { chainId: 8453, address: '0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af' })
+    expect(wrongChain.status).toBe(422)
+  })
+
   it('recognizes the dynamic Portals shape but rejects non-word-aligned calldata', async () => {
     const exact = await post('/v1/evm/schema', {
       chainId: 1,
