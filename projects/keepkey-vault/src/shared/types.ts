@@ -201,6 +201,10 @@ export interface FirmwareAnalysis {
   isSameVersion: boolean
   willWipeDevice: boolean  // true when crossing signed/unsigned boundary in either direction (not in BL mode)
   isBitcoinOnly: boolean   // btc-only firmware variant, detected from the embedded KeepKeyBTC/EmulatorBTC string
+  /** firmware | bootloader-updater (rewrites the bootloader) | raw-bootloader / unknown (never flashable here) */
+  imageKind: 'firmware' | 'bootloader-updater' | 'raw-bootloader' | 'unknown'
+  /** The bootloader a bootloader-updater installs, or a raw bootloader image. */
+  embeddedBootloader?: { hash: string; version: string | null; official: boolean }
 }
 
 // Pioneer integration types
@@ -772,6 +776,9 @@ export interface SolanaCertifiedArg {
    *  means the amount must be shown in raw base units with the full mint. */
   symbol?: string
   decimals?: number
+  /** v3 role (1 spend-max, 2 receive-min, 3 spend-exact, 4 receive-exact,
+   *  5 per-use cap): what the device's Limits screen says about it. */
+  role?: number
 }
 
 /**
@@ -791,6 +798,9 @@ export interface SolanaCertifiedDescription {
   /** Signed display name of this instruction, e.g. "Cee-lo place bet". */
   instructionName: string
   args: SolanaCertifiedArg[]
+  /** v3: the delegate's sentence filled with these values, as the device's
+   *  first screen shows it (amounts in the units the host can confirm). */
+  summary?: string
 }
 
 /**
