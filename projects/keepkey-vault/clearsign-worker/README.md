@@ -39,25 +39,47 @@ Root key (offline, on a marked KeepKey)
 | Chain | Certificate | Certified transactions |
 |---|---|---|
 | Ethereum (1) | yes | Relay `bridgeDeposit`; Portals swap |
+| Base (8453) | yes (root ceremony 2026-10-03) | ERC-20 approve/transfer for USDC, USDbC, WETH, DAI, cbBTC, cbETH; Uniswap Universal Router swaps |
+| Arbitrum (42161) | yes (root ceremony 2026-10-03) | ERC-20 approve/transfer for USDC, USDT0, WETH, DAI, WBTC; Uniswap Universal Router swaps |
 | Solana | yes | Pump AMM buy/sell; Relay deposits; SoltoshiDICE (session, tables, tournaments, Cee-lo) |
-| Base, Arbitrum, others | **no** | nothing |
 
-Name records (`/v1/evm/name`) cover Uniswap Universal Router addresses on Ethereum and Arbitrum.
+An approve to Uniswap Permit2 reads "Let the Uniswap approval contract spend up
+to {amount} for trades you sign": the schema pins the Permit2 address, so the
+words are true by construction. Any other spender gets the generic "Token
+approval" entry. Name records (`/v1/evm/name`) cover Universal Router addresses.
 `GET /v1/catalog` is the authoritative list.
 
-### Being added (2026-10)
+### Not covered yet
 
-- Certificates for Base (8453) and other EVM chains (root ceremony on the root KeepKey).
-- ERC-20 `approve` / `transfer` / `transferFrom` for listed tokens on every certified chain, with
-  plain-language summaries such as "Allow Permit2 to spend up to UNLIMITED USDC".
-- Uniswap Universal Router swaps (a description bound to the exact transaction).
-- KeepKey Desktop asking this service for dapp transactions, not only its own swap screen.
+- Uniswap V4-routed swaps (not decoded by firmware).
+- Token -> ETH swaps whose calldata is over 1024 bytes (the device decodes the
+  first chunk only).
+- Tokens outside the reviewed list, and chains without a certificate.
+
 
 ## What leaves your computer
 
 - **Ethereum:** chain id, contract address, function selector, calldata length. Never the arguments.
 - **Solana:** the unsigned transaction (needed to resolve lookup tables and match the one reviewed
   instruction). Never keys, seeds, PINs, passphrases or signatures.
+- One exception: for an ERC-20 `approve` of a reviewed token, the request may
+  include `spender`, the address in the calldata's first word. It is used to
+  pick the description:
+  - If `spender` is Uniswap Permit2 (`0x000000000022d473030f116ddee9f6b43ac78ba3`),
+    the service returns the Uniswap entry. That schema pins Permit2 by
+    address (argument format 6).
+  - If `spender` is any other address, or is absent, the service returns the
+    generic "Token approval" entry.
+
+  The spender address therefore leaves the host for approvals only. No
+  amount or other argument does. The value must be the real calldata
+  spender. A pinned schema whose address differs from the calldata does not
+  match on the device, and a failed certified claim is refused, not
+  downgraded.
+- Uniswap swaps (`POST /v1/evm/swap`) send `chainId`, the router, the
+  selector, and the token addresses the device review will name. They send
+  no amounts, recipients, or calldata. Token addresses do reveal which pair
+  is being swapped; that is the price of a certified token identity.
 - The service stores no transaction database.
 
 ## API
@@ -73,6 +95,7 @@ All responses are JSON. CORS is open. Requests over the size limit get `413`.
 | GET | `/v1/catalog` | Every reviewed entry (cached 5 min) |
 | GET | `/signer` | Delegate key, fingerprint, key id, scopes, certificate expiry |
 | POST | `/v1/evm/schema` | Signed description for an EVM transaction shape (`/sign` is an alias) |
+| POST | `/v1/evm/swap` | Signed Uniswap Universal Router decoder entry with token identities |
 | POST | `/v1/evm/name` | Signed name for a reviewed EVM address |
 | POST | `/v1/solana/certify` | Signed description (+ lookup-table proof, token identities) for a Solana transaction |
 
@@ -127,6 +150,65 @@ plain System transfer). Response: `schema` (payload, signature, signer key id), 
 `alias`, `fingerprint`, and when the transaction uses lookup tables, `lutProof` with the resolved
 accounts.
 
+### Uniswap swap entries: `POST /v1/evm/swap`
+
+A separate route, not an extension of `/v1/evm/schema`: the entry is keyed by
+a token set rather than a calldata length, and its inner version (0x07) is a
+firmware decoder, not an argument schema.
+
+Request:
+
+```json
+{ "chainId": 8453, "contract": "<router>", "selector": "0x3593564c", "tokens": ["<token>", "..."] }
+```
+
+- `contract`: a reviewed Universal Router on that chain
+  (`REVIEWED_UNIVERSAL_ROUTERS`: UR 1.2 and UR 2.0 on Base, Ethereum and
+  Arbitrum, from Uniswap's `deploy-addresses`).
+- `selector`: `0x3593564c` (`execute(bytes,bytes[],uint256)`) or `0x24856bc3`
+  (`execute(bytes,bytes[])`). It is signed into the entry.
+- `tokens`: 1 to 4 distinct addresses, every one in `REVIEWED_EVM_TOKENS` for
+  that exact chain. They are matched by address only, never by symbol. Send
+  every token the device names: the input token (unless ETH is wrapped from
+  msg.value), the output token (unless unwrapped to ETH), and the Permit2
+  token. The device refuses an entry that lacks one, with no blind fallback.
+
+Responses:
+
+- `400`: `tokens` is not an array of 0x addresses, or the JSON is invalid.
+- `422 {classification: "OPAQUE"}`: the router or selector is not reviewed,
+  or a token is not reviewed, is repeated, or there are 0 or more than 4.
+- `503 {classification: "UNAVAILABLE", entry}`: the chain has no valid
+  certificate, or the delegate key is not provisioned.
+- `200`:
+  ```json
+  { "success": true, "classification": "VERIFIED", "version": 7,
+    "entry": "eip155:<chain>:<router>:uniswap-ur",
+    "signedPayload": "0x03…", "keyId": 128, "fingerprint": "a9531b9d", "alias": "…",
+    "chainId": 8453, "contract": "<router>", "selector": "0x3593564c",
+    "method": "execute", "decoder": 1, "title": "Uniswap",
+    "tokens": [{ "address": "…", "symbol": "USDC", "decimals": 6 }],
+    "provenance": { "source": "<Uniswap deploy-addresses URL>", "entry": "base.json UniversalRouterV1_2_V2Support" } }
+  ```
+
+`signedPayload` is `0x03 | certificate (139) | body | r s v (65)`. The body is
+`0x07 | chain_id u32 | router 20 | selector 4 | u16 len "execute" | 0x01
+(UNISWAP_UR) | u8 len "Uniswap" | u8 n | n × (address 20, decimals u8, u8 len
+symbol) | 0x01 VERIFIED | u32 0 | 0x80`. Desktop rebuilds the body from its
+own reviewed table and refuses a response whose body differs.
+
+Desktop asks only after its own pre-check, a port of the firmware decoder
+(`src/bun/uniswap-ur.ts`): the call is to a reviewed router, the calldata is
+at most 1024 bytes, and it decodes to `[PERMIT2_PERMIT | WRAP_ETH] -> one V2
+or V3 swap -> [PAY_PORTION] -> [SWEEP | UNWRAP_WETH]`. Otherwise the call
+stays on the AdvancedMode path.
+
+`GET /v1/catalog` lists, for every EVM entry, its `title`, `template`, and
+the `screens` KeepKey shows, in device order. Uniswap swap entries (one per
+router) give the screens with `{in}`/`{out}` placeholders, an `exactOut`
+variant, and a `when` on the conditional Recipient, Allowance and Fee
+screens. `EXPECTED-SCREENS.md` has the same screens for owner review.
+
 ## Operating it
 
 ```sh
@@ -135,8 +217,9 @@ npx wrangler deploy --config clearsign-worker/wrangler.toml
 ```
 
 Secrets (set through stdin, never in this repo or `wrangler.toml`): `CLEARSIGN_DELEGATE_PRIVATE_KEY`,
-`CLEARSIGN_CERTIFICATE_HEX` (Ethereum mainnet) and `CLEARSIGN_SOLANA_CERTIFICATE_HEX`. This worker
-reads one EVM certificate; certificates for other EVM chains are part of the 2026-10 expansion.
+`CLEARSIGN_CERTIFICATE_HEX` (Ethereum mainnet), `CLEARSIGN_SOLANA_CERTIFICATE_HEX`, and
+`CLEARSIGN_EVM_CERTIFICATES_JSON` (`{"<chainId>": "<certificate hex>"}` for Base, Arbitrum and any
+other EVM chain).
 
 `/ready` is `200` only when the delegate key matches `a9531b9d` and at least one root-signed,
 scope-correct certificate is active. Before pointing KeepKey Desktop at a new deployment, test the

@@ -7,6 +7,7 @@ import type { SigningRequestInfo, EIP712DecodedInfo, CalldataDecodedInfo, Solana
 import { versionCompare } from "../../../shared/firmware-versions"
 import { erc20Preview } from "../../../shared/erc20Preview"
 import { evmMaxFee, evmNativeValue } from "../../../shared/evmFeePreview"
+import { evmChainLabel } from "../../../shared/chains"
 import { isRelayBridgeDeposit } from "../../../shared/relayBridgePreview"
 import { utxoPreview } from "../../../shared/utxoPreview"
 import { cosmosDepositPreview } from "../../../shared/cosmosDepositPreview"
@@ -935,9 +936,10 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 		else if (decoded?.source === 'pioneer' || decoded?.source === 'local') trustLevel = 'known'
 	}
 	if (request.typedDataDecoded) {
-		// Only x402 is streamed for on-device review; every other typed-data
-		// request is signed as a bare hash (EthereumSignTypedHash) — blind.
-		trustLevel = request.typedDataDecoded.operationName !== 'x402 EIP-3009 Payment' ? 'unknown'
+		// needsBlindSigning is the backend's prediction of what the device
+		// reviews natively (x402; canonical Permit2 PermitSingle on 7.16+).
+		// Everything else is signed as a bare hash under AdvancedMode — blind.
+		trustLevel = request.needsBlindSigning ? 'unknown'
 			: request.typedDataDecoded.isKnownType ? 'verified' : 'known'
 	}
 
@@ -1019,9 +1021,7 @@ export function SigningApproval({ request, phase, onApprove, onReject, onCancel 
 	const safeAppName = (request.appName || 'Unknown').replace(/[^\w\s\-.:()]/g, '').slice(0, 50)
 	const labelKey = METHOD_LABEL_KEYS[request.method]
 	const evmChainName = request.method === '/eth/sign-transaction'
-		? request.chainId === 43114 ? 'Avalanche C-Chain'
-			: request.chainId === 8453 ? 'Base'
-				: request.chainId === 1 ? 'Ethereum' : undefined
+		? evmChainLabel(request.chainId)?.name
 		: undefined
 	const methodLabel = request.method === '/utxo/sign-transaction' && utxo
 		? `${utxo.coin} Sign Transaction`
