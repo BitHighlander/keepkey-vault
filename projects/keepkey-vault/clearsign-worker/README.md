@@ -93,9 +93,28 @@ own reviewed table and refuses a response whose body differs.
 
 Desktop asks only after its own pre-check, a port of the firmware decoder
 (`src/bun/uniswap-ur.ts`): the call is to a reviewed router, the calldata is
-at most 1024 bytes, and it decodes to `[PERMIT2_PERMIT | WRAP_ETH] -> one V2
-or V3 swap -> [PAY_PORTION] -> [SWEEP | UNWRAP_WETH]`. Otherwise the call
-stays on the AdvancedMode path.
+at most 1472 bytes (a longer call than the first signing chunk is held and
+decoded after its last byte), and it decodes to at most 4 commands shaped
+`[PERMIT2_PERMIT | WRAP_ETH] -> one V2 or V3 swap -> [PAY_PORTION] -> [SWEEP |
+UNWRAP_WETH] -> [clean-up]`. Otherwise the call stays on the AdvancedMode path.
+
+- Split route: the swap may be two exact-in swaps of the same pair (same
+  input and output token, recipient and payer). The device shows the totals:
+  the summed input and the summed minimums. A second swap of a different pair
+  (a multi-hop through two pool versions) is refused.
+- Clean-up: one trailing `UNWRAP_WETH`, or `SWEEP` of ETH (token address 0),
+  that returns leftovers. It is allowed only to the recipient the review
+  names. When the swap delivers to the router, the first trailing step
+  delivers the output and the next is the clean-up; when the swap delivers
+  directly, a single trailing step is the clean-up.
+- Floor: for exact input with no fee, the minimum shown is the larger of the
+  swap minimum and the delivering step's minimum.
+
+The entries are static: each names only a router, the selector, and the
+identities (symbol, decimals) of reviewed tokens. Nothing in an entry depends
+on a particular transaction. Per owner decision D-018 (2026-10-04, no live
+signing), they are planned to be signed offline and shipped as a fixed set.
+Today the Worker still signs an entry with the delegate key on request.
 
 `GET /v1/catalog` lists, for every EVM entry, its `title`, `template`, and
 the `screens` KeepKey shows, in device order. Uniswap swap entries (one per

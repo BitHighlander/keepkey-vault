@@ -14,9 +14,11 @@
 export const UR_EXECUTE = '0x3593564c'
 export const UR_EXECUTE_NO_DEADLINE = '0x24856bc3'
 /** Firmware SIGNED_METADATA_UR_MAX_CALLDATA: a longer call is held and
- * reviewed after its last byte (token -> ETH is 1,028-1,178 B on Base). */
-export const UR_MAX_CALLDATA = 1280
-export const UR_MAX_STEPS = 6
+ * reviewed after its last byte (token -> ETH is 1,028-1,294 B on Base; split
+ * routes up to 1,402 B). */
+export const UR_MAX_CALLDATA = 1472
+/** Firmware UR_MAX_STEPS: ur_decode refuses more commands than this. */
+export const UR_MAX_STEPS = 4
 
 export type UrKind =
   | 'V3_SWAP_EXACT_IN' | 'V3_SWAP_EXACT_OUT' | 'V2_SWAP_EXACT_IN' | 'V2_SWAP_EXACT_OUT'
@@ -176,15 +178,19 @@ export function urDecode(calldata: Uint8Array): UrStep[] | null {
   }
 }
 
-const isConstant = (recipient: string | undefined, which: 1 | 2) =>
+const isConstant = (recipient: string | undefined, which: 0 | 1 | 2) =>
   recipient === '0x' + which.toString(16).padStart(40, '0')
 const MSG_SENDER = 1
 const ADDRESS_THIS = 2
 const isSwap = (k: UrKind) => k.includes('_SWAP_')
+const isExactIn = (k: UrKind) => k === 'V3_SWAP_EXACT_IN' || k === 'V2_SWAP_EXACT_IN'
+const U256 = 1n << 256n
 
 /**
- * ur_summarize: only [PERMIT2_PERMIT | WRAP_ETH] -> one swap -> [PAY_PORTION]
- * -> [SWEEP | UNWRAP_WETH]. `router` is the called contract; `value` msg.value.
+ * ur_summarize: only [PERMIT2_PERMIT | WRAP_ETH] -> one swap (or a split of
+ * two exact-in swaps of the same pair) -> [PAY_PORTION] -> [SWEEP |
+ * UNWRAP_WETH] -> [clean-up: ETH back to the same recipient].
+ * `router` is the called contract; `value` msg.value.
  */
 export function urSummarize(steps: UrStep[], router: string, value: bigint): UrSummary | null {
   const r = router.toLowerCase()
@@ -196,15 +202,31 @@ export function urSummarize(steps: UrStep[], router: string, value: bigint): UrS
   let wrap: UrStep | undefined
   if (steps[i]?.kind === 'PERMIT2_PERMIT') permit = steps[i++]
   else if (steps[i]?.kind === 'WRAP_ETH') wrap = steps[i++]
-  const swap = steps[i++]
+  let swap = steps[i++]
   if (!swap || !isSwap(swap.kind)) return null
+  // A split route: a second exact-in swap of the same pair, paid and delivered
+  // the same way. Its totals are what the user spends and is guaranteed (each
+  // swap enforces its own minimum).
+  if (steps[i] && isSwap(steps[i].kind)) {
+    const b = steps[i++]
+    const amount = swap.amount + b.amount
+    const limit = swap.limit! + b.limit!
+    if (!isExactIn(swap.kind) || !isExactIn(b.kind) || b.tokenIn !== swap.tokenIn ||
+        b.tokenOut !== swap.tokenOut || b.recipient !== swap.recipient ||
+        b.payerIsUser !== swap.payerIsUser ||
+        swap.amount === CONTRACT_BALANCE || b.amount === CONTRACT_BALANCE ||
+        amount >= U256 || limit >= U256) return null
+    swap = { ...swap, amount, limit }
+  }
   let fee: UrStep | undefined
-  let final: UrStep | undefined
+  const tail: UrStep[] = [] // final, then clean-up
   if (steps[i]?.kind === 'PAY_PORTION') fee = steps[i++]
-  if (steps[i]?.kind === 'SWEEP' || steps[i]?.kind === 'UNWRAP_WETH') final = steps[i++]
+  while (tail.length < 2 && (steps[i]?.kind === 'SWEEP' || steps[i]?.kind === 'UNWRAP_WETH')) tail.push(steps[i++])
   if (i !== steps.length) return null
+  const final: UrStep | undefined = tail[0]
+  let cleanup: UrStep | undefined = tail[1]
 
-  const exactIn = swap.kind.endsWith('EXACT_IN')
+  const exactIn = isExactIn(swap.kind)
   const out: UrSummary = {
     exactIn, inIsEth: false, outIsEth: false, tokenIn: swap.tokenIn!, tokenOut: swap.tokenOut!,
     amountIn: 0n, amountOut: exactIn ? swap.limit! : swap.amount, recipientIsSender: false, recipient: '',
@@ -227,32 +249,35 @@ export function urSummarize(steps: UrStep[], router: string, value: bigint): UrS
     out.permit = { token: permit.tokenIn!, amount: permit.amount, expiration: permit.expiration! }
   }
 
+  let deliver: UrStep = swap
   if (!isRouter(swap.recipient)) {
-    // Delivered by the swap itself. Only an exact-out ETH swap may follow it,
-    // unwrapping the unspent ETH back to the same recipient.
-    if (fee) return null
-    if (final && !(out.inIsEth && !exactIn && final.kind === 'UNWRAP_WETH' &&
-                   final.recipient === swap.recipient)) return null
-    out.recipientIsSender = isConstant(swap.recipient, MSG_SENDER)
-    out.recipient = swap.recipient!
-    return out
+    // Delivered by the swap itself: what follows is clean-up.
+    if (fee || cleanup) return null
+    cleanup = final
+  } else {
+    // Held by the router: a final step must deliver it, after any fee.
+    if (!final || final.amount === CONTRACT_BALANCE) return null
+    if (final.kind === 'SWEEP' && final.tokenIn !== swap.tokenOut) return null
+    if (fee) {
+      if (fee.amount === 0n || fee.amount > 10_000n || fee.tokenIn !== swap.tokenOut ||
+          isRouter(fee.recipient)) return null
+      out.fee = { bips: Number(fee.amount), recipient: fee.recipient! }
+      // The user's floor is what the final step guarantees after the fee.
+      if (exactIn) out.amountOut = final.amount
+    }
+    if (isRouter(final.recipient)) return null
+    // Apps put the floor on the final step and leave the swap's limit at 0:
+    // the user is guaranteed the larger of the two.
+    if (exactIn && !fee && final.amount > out.amountOut) out.amountOut = final.amount
+    out.outIsEth = final.kind === 'UNWRAP_WETH'
+    deliver = final
   }
-  // Held by the router: a final step must deliver it, after any fee.
-  if (!final || final.amount === CONTRACT_BALANCE) return null
-  if (final.kind === 'SWEEP' && final.tokenIn !== swap.tokenOut) return null
-  if (fee) {
-    if (fee.amount === 0n || fee.amount > 10_000n || fee.tokenIn !== swap.tokenOut ||
-        isRouter(fee.recipient)) return null
-    out.fee = { bips: Number(fee.amount), recipient: fee.recipient! }
-    // The user's floor is what the final step guarantees after the fee.
-    if (exactIn) out.amountOut = final.amount
-  }
-  if (isRouter(final.recipient)) return null
-  // Apps put the floor on the final step and leave the swap's limit at 0.
-  if (exactIn && !fee && final.amount > out.amountOut) out.amountOut = final.amount
-  out.outIsEth = final.kind === 'UNWRAP_WETH'
-  out.recipientIsSender = isConstant(final.recipient, MSG_SENDER)
-  out.recipient = final.recipient!
+  // Apps add one clean-up step returning leftover ETH (unwrapped, or swept as
+  // address 0). Allowed only to the recipient the review names.
+  if (cleanup && (cleanup.recipient !== deliver.recipient ||
+                  (cleanup.kind === 'SWEEP' && !isConstant(cleanup.tokenIn, 0)))) return null
+  out.recipientIsSender = isConstant(deliver.recipient, MSG_SENDER)
+  out.recipient = deliver.recipient!
   return out
 }
 
