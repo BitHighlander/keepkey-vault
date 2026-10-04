@@ -189,7 +189,8 @@ describe('v0x07 decoder entry body', () => {
   })
 
   it('refuses unreviewed routers, other selectors, and 0 or >4 tokens', () => {
-    expect(() => buildEvmDecoderBody(8453, '0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40', '0x3593564c', tokens)).toThrow(/reviewed Universal Router/)
+    expect(() => buildEvmDecoderBody(8453, '0xfdf682f51fe81aa4898f0ae2163d8a55c127fbc7', '0x3593564c', tokens)).toThrow(/reviewed Universal Router/) // UR 2.1.1: no vectors
+    expect(() => buildEvmDecoderBody(8453, '0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40', '0x3593564c', tokens)).not.toThrow() // UR 2.1.2, the app's router
     expect(() => buildEvmDecoderBody(42161, BASE_UR12, '0x3593564c', tokens)).toThrow(/reviewed Universal Router/)
     expect(() => buildEvmDecoderBody(8453, BASE_UR12, '0x12345678', tokens)).toThrow(/execute/)
     expect(() => buildEvmDecoderBody(8453, BASE_UR12, '0x24856bc3', [])).toThrow(/1-4 tokens/)
@@ -207,17 +208,20 @@ describe('v0x07 decoder entry body', () => {
       .toThrow(/does not match reviewed signer/)
   })
 
-  it('reviews only UR 1.2 and UR 2.0 deployments, all from the pinned Uniswap list', () => {
+  it('reviews only UR 1.2, 2.0 and 2.1.2 deployments, all from the pinned Uniswap list', () => {
     expect(UNIVERSAL_ROUTER_PROVENANCE).toContain('a9c574f6caf1d6f1b51facd3fe32dec7c4df392c')
     expect(REVIEWED_UNIVERSAL_ROUTERS.map((r) => `${r.chainId}:${r.address}`)).toEqual([
       '8453:0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad',
       '8453:0x6ff5693b99212da76ad316178a184ab56d299b43',
+      '8453:0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40',
       '1:0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad',
       '1:0x66a9893cc07d91d95644aedd05d03f95e1dba8af',
+      '1:0x23617e59a5925b2a4bf75d73ff6711cd0b29de85',
       '42161:0x5e325eda8064b456f4781070c0738d849c824258',
       '42161:0xa51afafe0263b40edaef0df8781ea9aa03e381a3',
+      '42161:0x2d01411773c8c24805306e89a41f7855c3c4fe65',
     ])
-    for (const r of REVIEWED_UNIVERSAL_ROUTERS) expect(r.source).toMatch(/UniversalRouterV(1_2_V2Support|2)$/)
+    for (const r of REVIEWED_UNIVERSAL_ROUTERS) expect(r.source).toMatch(/UniversalRouterV(1_2_V2Support|2|2_1_2)$/)
     expect(findReviewedUniversalRouter(8453, '0x6fF5693b99212Da76ad316178A184AB56D299b43')).toBeDefined()
   })
 })

@@ -71,9 +71,9 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(68)
-    expect(body.entries.filter((entry: any) => entry.family === 'evm')).toHaveLength(41)
-    expect(body.entries.filter((entry: any) => entry.protocol === 'Uniswap')).toHaveLength(6)
+    expect(body.entries).toHaveLength(71)
+    expect(body.entries.filter((entry: any) => entry.family === 'evm')).toHaveLength(44)
+    expect(body.entries.filter((entry: any) => entry.protocol === 'Uniswap')).toHaveLength(9)
     expect(body.entries.filter((entry: any) => entry.protocol === 'ERC-20')).toHaveLength(33)
     expect(body.entries.filter((entry: any) => entry.family === 'solana')).toHaveLength(27)
     for (const entry of body.entries) {
@@ -212,8 +212,10 @@ describe('ClearSign Worker public surface', () => {
     expect(ok.status).toBe(503)
     expect(await ok.json()).toMatchObject({ classification: 'UNAVAILABLE', entry: 'eip155:8453:0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad:uniswap-ur' })
     expect((await post('/v1/evm/swap', { ...shape, selector: '0x24856bc3', tokens: [USDC] })).status).toBe(503)
+    // UR 2.1.2, the router the Uniswap app sends to, is reviewed.
+    expect((await post('/v1/evm/swap', { ...shape, contract: '0xd6145b2D3F379919E8CdEda7B97e37c4b2Ca9c40', tokens: [USDC] })).status).toBe(503)
     for (const bad of [
-      { ...shape, contract: '0xd6145b2D3F379919E8CdEda7B97e37c4b2Ca9c40', tokens: [USDC] }, // UR 2.1.2: not reviewed
+      { ...shape, contract: '0xfdf682f51fe81aa4898f0ae2163d8a55c127fbc7', tokens: [USDC] }, // UR 2.1.1: not reviewed
       { ...shape, chainId: 42161, tokens: [USDC] }, // the UR 1.2 address is not the Arbitrum one
       { ...shape, selector: '0x095ea7b3', tokens: [USDC] },
       { ...shape, tokens: ['0x41b481c3d2e3960f8f312212adfeecf6ce7c35ef'] }, // unreviewed token
