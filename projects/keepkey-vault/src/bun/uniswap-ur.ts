@@ -13,8 +13,9 @@
 
 export const UR_EXECUTE = '0x3593564c'
 export const UR_EXECUTE_NO_DEADLINE = '0x24856bc3'
-/** Firmware: the whole call must sit in the first EthereumSignTx chunk. */
-export const UR_MAX_CALLDATA = 1024
+/** Firmware SIGNED_METADATA_UR_MAX_CALLDATA: a longer call is held and
+ * reviewed after its last byte (token -> ETH is 1,028-1,178 B on Base). */
+export const UR_MAX_CALLDATA = 1280
 export const UR_MAX_STEPS = 6
 
 export type UrKind =
@@ -209,10 +210,12 @@ export function urSummarize(steps: UrStep[], router: string, value: bigint): UrS
     amountIn: 0n, amountOut: exactIn ? swap.limit! : swap.amount, recipientIsSender: false, recipient: '',
   }
   if (wrap) {
-    // ETH in: the router wraps msg.value and pays from its own balance.
-    if (!exactIn || swap.payerIsUser || value === 0n || !isRouter(wrap.recipient) ||
+    // ETH in: the router wraps msg.value and pays from its own balance. Exact
+    // out spends at most its limit, which may not exceed what was sent.
+    if (swap.payerIsUser || value === 0n || !isRouter(wrap.recipient) ||
         (wrap.amount !== value && wrap.amount !== CONTRACT_BALANCE) ||
-        (swap.amount !== value && swap.amount !== CONTRACT_BALANCE)) return null
+        (exactIn && swap.amount !== value && swap.amount !== CONTRACT_BALANCE) ||
+        (!exactIn && swap.limit! > value)) return null
     out.inIsEth = true
     out.amountIn = value
   } else {
@@ -225,8 +228,11 @@ export function urSummarize(steps: UrStep[], router: string, value: bigint): UrS
   }
 
   if (!isRouter(swap.recipient)) {
-    // Delivered by the swap itself: nothing may follow.
-    if (fee || final) return null
+    // Delivered by the swap itself. Only an exact-out ETH swap may follow it,
+    // unwrapping the unspent ETH back to the same recipient.
+    if (fee) return null
+    if (final && !(out.inIsEth && !exactIn && final.kind === 'UNWRAP_WETH' &&
+                   final.recipient === swap.recipient)) return null
     out.recipientIsSender = isConstant(swap.recipient, MSG_SENDER)
     out.recipient = swap.recipient!
     return out
@@ -242,6 +248,8 @@ export function urSummarize(steps: UrStep[], router: string, value: bigint): UrS
     if (exactIn) out.amountOut = final.amount
   }
   if (isRouter(final.recipient)) return null
+  // Apps put the floor on the final step and leave the swap's limit at 0.
+  if (exactIn && !fee && final.amount > out.amountOut) out.amountOut = final.amount
   out.outIsEth = final.kind === 'UNWRAP_WETH'
   out.recipientIsSender = isConstant(final.recipient, MSG_SENDER)
   out.recipient = final.recipient!

@@ -77,7 +77,7 @@ function txValue(raw: unknown): bigint | undefined {
 /**
  * Attach a certified 0x07 Uniswap swap entry when `to` is a reviewed Universal
  * Router on 7.16+ and the calldata pre-checks as a shape the device decodes
- * (<= 1024 bytes, supported command sequence) whose every named token is
+ * (<= UR_MAX_CALLDATA bytes, supported command sequence) whose every named token is
  * reviewed. The device refuses an incomplete entry with no fallback, so
  * anything short of that returns false (the AdvancedMode path).
  */
