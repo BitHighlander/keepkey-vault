@@ -27,8 +27,8 @@ a real user journey).
   2026-12-31) → delegate `a9531b9d` on the ClearSign worker.
 - Formats on the device (7.16): v2 and 0x05 schemas (device-decoded),
   0x06 names, KKSOLSC1 Solana schemas. v1 per-transaction descriptions in
-  the certified envelope: **code**, firmware commit pending owner
-  confirmation (D-009). The 0x07 Uniswap decoder is removed (D-008).
+  the certified envelope: **code** (firmware `b59c909c0`, D-009); the
+  ClearSign route that serves them is not built yet. The 0x07 Uniswap decoder is removed (D-008).
 - Live service: `https://keepkey-clearsign.bithighlander.workers.dev`
   (`projects/keepkey-vault/clearsign-worker`). Deploy only from a pushed
   commit (`make clearsign-worker-deploy`).

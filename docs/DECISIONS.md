@@ -76,7 +76,7 @@ On-device Uniswap Universal Router decoder (metadata 0x07,
 app shape (clean-up sweeps, split routes, V4) needed new firmware, and 7.16
 had no flash left. Code kept in firmware history at `5c6b81c04`.
 
-**D-009** · 2026-10-04 · ACTIVE (firmware change pending owner confirmation)
+**D-009** · 2026-10-04 · ACTIVE (owner-confirmed; firmware `b59c909c0`)
 Dapp descriptions are authored off-device by the ClearSign service and
 streamed to the device; the device does not grow a decoder per dapp.
 - Remove the 0x07 decoder (done: firmware `8bfa4ca16`).
