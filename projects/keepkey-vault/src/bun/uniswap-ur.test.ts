@@ -61,21 +61,25 @@ describe('Uniswap UR pre-check against real Base swaps (firmware vectors)', () =
     }
   })
 
-  it('every app-shaped swap that fits the first chunk pre-checks OK with the firmware token set', () => {
+  it('every app-shaped single-swap call within UR_MAX_CALLDATA pre-checks OK with the firmware token set', () => {
     let permits = 0
     let wraps = 0
     for (const v of appShaped) {
       const pre = urPrecheck(v.router, v.calldata, BigInt(`0x${v.value}`))
-      if (v.calldata.length / 2 > UR_MAX_CALLDATA) {
-        // The device needs the whole call in the first 1024-byte chunk.
+      const swaps = v.steps.filter((s) => s.kind.includes('_SWAP_'))
+      if (v.calldata.length / 2 > UR_MAX_CALLDATA || swaps.length !== 1) {
+        // Past the firmware's buffer, or a split route: refused by design.
         expect(urDecode(Buffer.from(v.calldata, 'hex')), v.tx).not.toBeNull()
         expect(pre, v.tx).toBeNull()
         continue
       }
       expect(pre, v.tx).not.toBeNull()
-      const swap = v.steps.find((s) => s.kind.includes('_SWAP_'))!
+      const swap = swaps[0]
       const wrap = hasKind(v, 'WRAP_ETH')
-      const unwrap = hasKind(v, 'UNWRAP_WETH')
+      const last = v.steps[v.steps.length - 1]
+      // An unwrap after an exact-out ETH swap refunds the change; the output is the token.
+      const refund = wrap && swap.kind.endsWith('EXACT_OUT') && last.kind === 'UNWRAP_WETH'
+      const unwrap = hasKind(v, 'UNWRAP_WETH') && !refund
       const want = new Set([...(wrap ? [] : [swap.tokenIn]), ...(unwrap ? [] : [swap.tokenOut])].map((a) => `0x${a}`))
       expect(new Set(pre!.tokens)).toEqual(want)
       expect(pre!.summary.outIsEth).toBe(unwrap)
@@ -86,7 +90,10 @@ describe('Uniswap UR pre-check against real Base swaps (firmware vectors)', () =
         wraps++
       } else if (swap.kind.endsWith('EXACT_IN')) {
         expect(pre!.summary.amountIn).toBe(BigInt(`0x${swap.amount}`))
-        if (!hasKind(v, 'PAY_PORTION')) expect(pre!.summary.amountOut).toBe(BigInt(`0x${swap.limit}`))
+        // Apps put the floor on the final unwrap/sweep: the larger minimum counts.
+        const finalMin = last.kind === 'UNWRAP_WETH' || last.kind === 'SWEEP' ? BigInt(`0x${last.amount}`) : 0n
+        const limit = BigInt(`0x${swap.limit}`)
+        if (!hasKind(v, 'PAY_PORTION')) expect(pre!.summary.amountOut).toBe(finalMin > limit ? finalMin : limit)
       }
       if (hasKind(v, 'PERMIT2_PERMIT')) permits++
     }
