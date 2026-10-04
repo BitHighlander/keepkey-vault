@@ -28,6 +28,10 @@ stored as secrets so provisioning is atomic and consistent across deployments.
   spender. A pinned schema whose address differs from the calldata does not
   match on the device, and a failed certified claim is refused, not
   downgraded.
+- Uniswap swaps (`POST /v1/evm/swap`) send `chainId`, the router, the
+  selector, and the token addresses the device review will name. They send
+  no amounts, recipients, or calldata. Token addresses do reveal which pair
+  is being swapped; that is the price of a certified token identity.
 - Solana sends the unsigned transaction and, optionally, a reviewed catalog
   id. Without one, the service finds the single catalog entry whose program,
   discriminator, and exact instruction length match, and certifies it only
@@ -40,18 +44,64 @@ stored as secrets so provisioning is atomic and consistent across deployments.
   mint is eligible; otherwise KeepKey shows the raw amount and full mint. Seeds, private keys, PINs,
   passphrases, and device signatures never leave KeepKey.
 
-## Not covered yet
+## Uniswap swap entries: `POST /v1/evm/swap`
 
-- Uniswap swaps (Universal Router `execute`) are not certified. Firmware no
-  longer decodes the Universal Router, and 7.16 refuses a certified decoder
-  entry (inner version 0x07), so the service offers none and a swap stays on
-  the AdvancedMode path. Planned: certified per-transaction descriptions.
-  The Permit2 approve entry and the Universal Router names (`/v1/evm/name`)
-  are unaffected.
+A separate route, not an extension of `/v1/evm/schema`: the entry is keyed by
+a token set rather than a calldata length, and its inner version (0x07) is a
+firmware decoder, not an argument schema.
+
+Request:
+
+```json
+{ "chainId": 8453, "contract": "<router>", "selector": "0x3593564c", "tokens": ["<token>", "..."] }
+```
+
+- `contract`: a reviewed Universal Router on that chain
+  (`REVIEWED_UNIVERSAL_ROUTERS`: UR 1.2, UR 2.0 and UR 2.1.2 on Base, Ethereum and
+  Arbitrum, from Uniswap's `deploy-addresses`).
+- `selector`: `0x3593564c` (`execute(bytes,bytes[],uint256)`) or `0x24856bc3`
+  (`execute(bytes,bytes[])`). It is signed into the entry.
+- `tokens`: 1 to 4 distinct addresses, every one in `REVIEWED_EVM_TOKENS` for
+  that exact chain. They are matched by address only, never by symbol. Send
+  every token the device names: the input token (unless ETH is wrapped from
+  msg.value), the output token (unless unwrapped to ETH), and the Permit2
+  token. The device refuses an entry that lacks one, with no blind fallback.
+
+Responses:
+
+- `400`: `tokens` is not an array of 0x addresses, or the JSON is invalid.
+- `422 {classification: "OPAQUE"}`: the router or selector is not reviewed,
+  or a token is not reviewed, is repeated, or there are 0 or more than 4.
+- `503 {classification: "UNAVAILABLE", entry}`: the chain has no valid
+  certificate, or the delegate key is not provisioned.
+- `200`:
+  ```json
+  { "success": true, "classification": "VERIFIED", "version": 7,
+    "entry": "eip155:<chain>:<router>:uniswap-ur",
+    "signedPayload": "0x03…", "keyId": 128, "fingerprint": "a9531b9d", "alias": "…",
+    "chainId": 8453, "contract": "<router>", "selector": "0x3593564c",
+    "method": "execute", "decoder": 1, "title": "Uniswap",
+    "tokens": [{ "address": "…", "symbol": "USDC", "decimals": 6 }],
+    "provenance": { "source": "<Uniswap deploy-addresses URL>", "entry": "base.json UniversalRouterV1_2_V2Support" } }
+  ```
+
+`signedPayload` is `0x03 | certificate (139) | body | r s v (65)`. The body is
+`0x07 | chain_id u32 | router 20 | selector 4 | u16 len "execute" | 0x01
+(UNISWAP_UR) | u8 len "Uniswap" | u8 n | n × (address 20, decimals u8, u8 len
+symbol) | 0x01 VERIFIED | u32 0 | 0x80`. Desktop rebuilds the body from its
+own reviewed table and refuses a response whose body differs.
+
+Desktop asks only after its own pre-check, a port of the firmware decoder
+(`src/bun/uniswap-ur.ts`): the call is to a reviewed router, the calldata is
+at most 1024 bytes, and it decodes to `[PERMIT2_PERMIT | WRAP_ETH] -> one V2
+or V3 swap -> [PAY_PORTION] -> [SWEEP | UNWRAP_WETH]`. Otherwise the call
+stays on the AdvancedMode path.
 
 `GET /v1/catalog` lists, for every EVM entry, its `title`, `template`, and
-the `screens` KeepKey shows, in device order. `EXPECTED-SCREENS.md` has the
-same screens for owner review.
+the `screens` KeepKey shows, in device order. Uniswap swap entries (one per
+router) give the screens with `{in}`/`{out}` placeholders, an `exactOut`
+variant, and a `when` on the conditional Recipient, Allowance and Fee
+screens. `EXPECTED-SCREENS.md` has the same screens for owner review.
 
 The Worker writes no transaction database. Cloudflare's platform-level
 request and security telemetry remains governed by the account configuration.

@@ -13,6 +13,16 @@ import {
 import {
   buildCertifiedEvmEnvelope,
   buildCertifiedEvmNameEnvelope,
+  buildCertifiedEvmDecoderEnvelope,
+  EVM_DECODER_UNISWAP_UR,
+  expectedUniswapScreens,
+  findReviewedUniversalRouter,
+  REVIEWED_UNIVERSAL_ROUTERS,
+  reviewedSwapTokens,
+  UR_MAX_TOKENS,
+  UR_METHOD,
+  UR_SELECTORS,
+  UR_TITLE,
   findEvmNameRecord,
   UNIVERSAL_ROUTER_PROVENANCE,
   CERTIFIED_EVM_CATALOG,
@@ -112,6 +122,8 @@ function reviewedTokenEntries(): EvmSchemaSpec[] {
   })
 }
 
+const uniswapEntryId = (chainId: number, router: string) => `eip155:${chainId}:${router.toLowerCase()}:uniswap-ur`
+
 const isPinnedSpender = (spec: EvmSchemaSpec) => spec.args.some((arg) => arg.format === EVM_ARG_ADDRESS_PINNED)
 const evmEntryId = (spec: EvmSchemaSpec) =>
   `eip155:${spec.chainId}:${spec.contract}:${spec.selector}${isPinnedSpender(spec) ? ':permit2' : ''}`
@@ -136,9 +148,33 @@ function reviewedCatalog() {
     // What the device shows, in order (signed_metadata_build_intent_review).
     screens: expectedEvmScreens(spec) || [],
     ...(spec.intent ? {} : {
-      screensNote: 'No intent. Firmware 7.16 parses inner versions 0x01, 0x02, 0x05 and 0x06 only; this 0x04 decoder schema cannot verify on 7.16, and a certified envelope carrying it is refused, not downgraded.',
+      screensNote: 'No intent. Firmware 7.16 parses inner versions 0x01, 0x02, 0x05, 0x06 and 0x07 only; this 0x04 decoder schema cannot verify on 7.16, and a certified envelope carrying it is refused, not downgraded.',
     }),
     provenance: spec.provenance || { protocol: PROVENANCE.protocol, security: PROVENANCE.protocolSecurity },
+  }))
+  // One entry per reviewed router; the request names the selector and tokens.
+  const swaps = REVIEWED_UNIVERSAL_ROUTERS.map((router) => ({
+    id: uniswapEntryId(router.chainId, router.address),
+    family: 'evm',
+    network: EVM_NETWORKS[router.chainId] || `EVM ${router.chainId}`,
+    protocol: 'Uniswap',
+    maintainedBy: 'Uniswap Labs',
+    action: 'Swap tokens through the Uniswap Universal Router',
+    method: UR_METHOD,
+    contract: router.address,
+    selectors: [...UR_SELECTORS],
+    calldataLength: { max: 1024, note: 'whole call in the first signing chunk' },
+    decoder: { id: EVM_DECODER_UNISWAP_UR, name: 'Uniswap Universal Router', innerVersion: 7 },
+    title: UR_TITLE,
+    supportedShape: '[PERMIT2_PERMIT | WRAP_ETH] -> one of V3_SWAP_EXACT_IN/OUT, V2_SWAP_EXACT_IN/OUT -> [PAY_PORTION] -> [SWEEP | UNWRAP_WETH]; no allow-revert flags; a permit must name this router as spender',
+    tokens: 'every token the review names (input unless ETH, output unless ETH, Permit2 token) must be a reviewed token on this chain; 1-4 per entry',
+    fieldsShownByKeepKey: ['Input amount', 'Output limit', 'Recipient', 'Permit2 allowance', 'Fee'],
+    screens: expectedUniswapScreens(router.chainId, router.address),
+    provenance: {
+      protocol: 'https://github.com/Uniswap/universal-router',
+      deployment: `${UNIVERSAL_ROUTER_PROVENANCE} (${router.source})`,
+      tokenList: 'https://tokens.uniswap.org',
+    },
   }))
   const solana = Object.entries(CERTIFIED_SOLANA_CATALOG).map(([key, spec]) => ({
     id: `solana:${key}`,
@@ -157,7 +193,7 @@ function reviewedCatalog() {
     ],
     provenance: spec.provenance || { protocol: PROVENANCE.protocol, security: PROVENANCE.protocolSecurity },
   }))
-  return [...evm, ...solana]
+  return [...evm, ...swaps, ...solana]
 }
 
 function provisioning(env: Env) {
@@ -241,6 +277,7 @@ async function publicStatus(env: Env, origin: string) {
       status: `${origin}/v1/status`,
       catalog: `${origin}/v1/catalog`,
       evmSchema: `${origin}/v1/evm/schema`,
+      evmSwap: `${origin}/v1/evm/swap`,
       solanaCertify: `${origin}/v1/solana/certify`,
     },
     scopes: {
@@ -261,6 +298,7 @@ async function publicStatus(env: Env, origin: string) {
     privacy: {
       applicationStorage: false,
       ethereumRequest: ['chainId', 'contract', 'selector', 'calldataLength', 'spender (ERC-20 approve only, optional)'],
+      ethereumSwapRequest: ['chainId', 'router', 'selector', 'token addresses the device review names (Uniswap swap only)'],
       ethereumNote: 'For an ERC-20 approve, the spender address may be sent so the service can return the matching description (Uniswap Permit2 or a generic approval). No amount or other argument is sent.',
       solanaRequest: ['unsigned transaction', 'reviewed catalog id (optional)'],
       note: 'Solana lookup-table certification sends the unsigned transaction to this service so it can resolve and bind the exact accounts. No seed, private key, PIN, passphrase, or device signature is sent.',
@@ -370,6 +408,39 @@ export default {
         return json({ success: true, classification: 'VERIFIED', version: 3, entry: evmEntryId(spec), ...signed, method: spec.method, ...(isPinnedSpender(spec) ? { spender: PERMIT2_ADDRESS } : {}), chainId: spec.chainId, contract: spec.contract, selector: spec.selector, expectedCalldataLength: spec.expectedCalldataLength, decoder: spec.decoder, provenance: spec.provenance || PROVENANCE })
       } catch {
         return json({ error: 'certified Ethereum schema could not be produced' }, 500)
+      }
+    }
+
+    if (request.method === 'POST' && url.pathname === '/v1/evm/swap') {
+      let body: any
+      try { body = await readJson(request) } catch (error: any) {
+        return json({ error: error.message }, error.message === 'request too large' ? 413 : 400)
+      }
+      const tokens = body?.tokens
+      if (!Array.isArray(tokens) || !tokens.every((t: unknown) => typeof t === 'string' && /^0x[0-9a-fA-F]{40}$/.test(t))) {
+        return json({ error: 'tokens must be an array of 20-byte 0x addresses' }, 400)
+      }
+      const chainId = Number(body?.chainId)
+      const router = findReviewedUniversalRouter(chainId, String(body?.contract || ''))
+      const selector = String(body?.selector || '').toLowerCase()
+      if (!router || !(UR_SELECTORS as readonly string[]).includes(selector)) {
+        return json({ classification: 'OPAQUE', error: 'router or selector is not a reviewed Universal Router execute()' }, 422)
+      }
+      const identities = reviewedSwapTokens(chainId, tokens)
+      if (!identities) {
+        return json({ classification: 'OPAQUE', error: `tokens must be 1-${UR_MAX_TOKENS} distinct reviewed tokens on chain ${chainId}` }, 422)
+      }
+      const entry = uniswapEntryId(chainId, router.address)
+      const state = provisioning(env)
+      const certificate = evmCertificateHex(env, chainId)
+      if (!state.evmChains.includes(chainId) || !certificate || !state.privateKeyValid || !env.CLEARSIGN_DELEGATE_PRIVATE_KEY) {
+        return json({ classification: 'UNAVAILABLE', entry, error: `certified signing is not provisioned for chain ${chainId}` }, 503)
+      }
+      try {
+        const signed = buildCertifiedEvmDecoderEnvelope(chainId, router.address, selector, identities, certificate, env.CLEARSIGN_DELEGATE_PRIVATE_KEY)
+        return json({ success: true, classification: 'VERIFIED', version: 7, entry, ...signed, chainId, contract: router.address, selector, method: UR_METHOD, decoder: EVM_DECODER_UNISWAP_UR, title: UR_TITLE, tokens: identities, provenance: { source: UNIVERSAL_ROUTER_PROVENANCE, entry: router.source } })
+      } catch {
+        return json({ error: 'certified swap entry could not be produced' }, 500)
       }
     }
 

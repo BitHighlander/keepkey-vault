@@ -71,12 +71,13 @@ describe('ClearSign Worker public surface', () => {
     const response = await fetchWorker('/v1/catalog')
     const body = await response.json() as any
     expect(response.status).toBe(200)
-    expect(body.entries).toHaveLength(62)
-    expect(body.entries.filter((entry: any) => entry.family === 'evm')).toHaveLength(35)
+    expect(body.entries).toHaveLength(71)
+    expect(body.entries.filter((entry: any) => entry.family === 'evm')).toHaveLength(44)
+    expect(body.entries.filter((entry: any) => entry.protocol === 'Uniswap')).toHaveLength(9)
     expect(body.entries.filter((entry: any) => entry.protocol === 'ERC-20')).toHaveLength(33)
     expect(body.entries.filter((entry: any) => entry.family === 'solana')).toHaveLength(27)
     for (const entry of body.entries) {
-      expect(['Relay', 'Portals', 'Pump', 'SoltoshiDICE', 'ERC-20']).toContain(entry.protocol)
+      expect(['Relay', 'Portals', 'Pump', 'SoltoshiDICE', 'ERC-20', 'Uniswap']).toContain(entry.protocol)
       expect(entry.provenance.protocol).toMatch(/^https:\/\//)
     }
     const join = body.entries.find((entry: any) => entry.id === 'solana:soltoshidiceBlackjackJoin')
@@ -176,13 +177,62 @@ describe('ClearSign Worker public surface', () => {
     expect((await response.json() as any).classification).toBe('UNAVAILABLE')
   })
 
-  it('offers no Uniswap swap (0x07 decoder) entry: firmware 7.16 refuses it', async () => {
+  it('lists one Uniswap swap entry per reviewed router, with the device review', async () => {
     const body = await (await fetchWorker('/v1/catalog')).json() as any
-    expect(body.entries.filter((e: any) => String(e.id).endsWith(':uniswap-ur') || e.decoder?.innerVersion === 7)).toEqual([])
+    const router = '0x6ff5693b99212da76ad316178a184ab56d299b43'
+    const entry = body.entries.find((e: any) => e.id === `eip155:8453:${router}:uniswap-ur`)
+    expect(entry).toMatchObject({ family: 'evm', protocol: 'Uniswap', network: 'Base', method: 'execute', contract: router, selectors: ['0x3593564c', '0x24856bc3'] })
+    expect(entry.decoder).toMatchObject({ id: 1, innerVersion: 7 })
+    expect(entry.provenance.deployment).toContain('base.json UniversalRouterV2')
+    expect(entry.screens.map((s: any) => s.title)).toEqual(['Uniswap', 'Limits', 'Limits', 'Recipient', 'Allowance', 'Fee', 'Contract', 'KeepKey ClearSign'])
+    expect(entry.screens[0]).toMatchObject({ body: 'Swap {in} for at least {out}', exactOut: 'Swap at most {in} for {out}' })
+    expect(entry.screens[6].body).toBe('execute\n0x6fF5693b99212Da76ad316178A184AB56D299b43')
+    for (const s of entry.screens.filter((s: any) => ['Recipient', 'Allowance', 'Fee'].includes(s.title))) expect(s.when).toBeTruthy()
     const status = await (await fetchWorker('/v1/status')).json() as any
-    expect(status.endpoints.evmSwap).toBeUndefined()
-    const swap = await post('/v1/evm/swap', { chainId: 8453, contract: '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD', selector: '0x3593564c', tokens: ['0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'] })
-    expect(swap.status).toBe(404)
+    expect(status.endpoints.evmSwap).toBe('https://clearsign.example/v1/evm/swap')
+  })
+
+  it('EXPECTED-SCREENS.md states every Uniswap swap screen the catalog publishes', async () => {
+    const doc = await Bun.file(new URL('../EXPECTED-SCREENS.md', import.meta.url)).text()
+    const body = await (await fetchWorker('/v1/catalog')).json() as any
+    const entry = body.entries.find((e: any) => e.id === 'eip155:8453:0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad:uniswap-ur')
+    for (const screen of entry.screens) {
+      for (const text of [screen.body, screen.exactOut, screen.unlimited].filter(Boolean)) {
+        for (const line of text.split('\n')) expect(doc).toContain(line)
+      }
+    }
+  })
+
+  it('certifies a Uniswap swap only for a reviewed router, selector, and reviewed tokens', async () => {
+    const shape = { chainId: 8453, contract: '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD', selector: '0x3593564c' }
+    const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+    const WETH = '0x4200000000000000000000000000000000000006'
+    // Exact reviewed shape: refused only for lack of the chain's certificate.
+    const ok = await post('/v1/evm/swap', { ...shape, tokens: [USDC, WETH] })
+    expect(ok.status).toBe(503)
+    expect(await ok.json()).toMatchObject({ classification: 'UNAVAILABLE', entry: 'eip155:8453:0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad:uniswap-ur' })
+    expect((await post('/v1/evm/swap', { ...shape, selector: '0x24856bc3', tokens: [USDC] })).status).toBe(503)
+    // UR 2.1.2, the router the Uniswap app sends to, is reviewed.
+    expect((await post('/v1/evm/swap', { ...shape, contract: '0xd6145b2D3F379919E8CdEda7B97e37c4b2Ca9c40', tokens: [USDC] })).status).toBe(503)
+    for (const bad of [
+      { ...shape, contract: '0xfdf682f51fe81aa4898f0ae2163d8a55c127fbc7', tokens: [USDC] }, // UR 2.1.1: not reviewed
+      { ...shape, chainId: 42161, tokens: [USDC] }, // the UR 1.2 address is not the Arbitrum one
+      { ...shape, selector: '0x095ea7b3', tokens: [USDC] },
+      { ...shape, tokens: ['0x41b481c3d2e3960f8f312212adfeecf6ce7c35ef'] }, // unreviewed token
+      { ...shape, tokens: [USDC, USDC] },
+      { ...shape, tokens: [] },
+      { ...shape, tokens: [USDC, WETH, '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22'] },
+    ]) {
+      const response = await post('/v1/evm/swap', bad)
+      expect(response.status).toBe(422)
+      expect((await response.json() as any).classification).toBe('OPAQUE')
+    }
+    for (const tokens of [undefined, 'x', ['0x1234'], [42]]) {
+      expect((await post('/v1/evm/swap', { ...shape, tokens })).status).toBe(400)
+    }
+    // A malformed certificate map provisions nothing: still 503, never a signature.
+    const env = { CLEARSIGN_EVM_CERTIFICATES_JSON: JSON.stringify({ 8453: 'not-a-certificate' }) }
+    expect((await post('/v1/evm/swap', { ...shape, tokens: [USDC] }, env)).status).toBe(503)
   })
 
   it('names only reviewed Universal Router deployments, and signs nothing unprovisioned', async () => {
