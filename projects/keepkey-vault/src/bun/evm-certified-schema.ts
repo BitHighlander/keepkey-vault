@@ -598,17 +598,21 @@ export const UR_MAX_TOKENS = 4
  * Universal Routers whose execute() the device decodes (firmware uniswap_ur.c).
  * Addresses verbatim from Uniswap's deploy-addresses at the pinned commit in
  * UNIVERSAL_ROUTER_PROVENANCE (re-fetched 2026-10-03: unchanged on main).
- * Only the two generations the firmware vectors and command layout were checked
- * against: UR 1.2 (V2 support) and UR 2.0 (the v4 router; its V4_SWAP 0x10 is
- * not decoded, so v4-pool routes stay on the blind path).
+ * Only the generations the firmware vectors and command layout were checked
+ * against: UR 1.2 (V2 support), UR 2.0 and UR 2.1.2 (the v4 routers; V4_SWAP
+ * 0x10 is not decoded, so v4-pool routes stay on the blind path). UR 2.1.2 is
+ * the router the Uniswap app sends to; its vectors are real Base calls.
  */
 export const REVIEWED_UNIVERSAL_ROUTERS: EvmNameRecord[] = [
   { chainId: 8453, address: '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', name: 'Uniswap Universal Router', source: 'base.json UniversalRouterV1_2_V2Support' },
   { chainId: 8453, address: '0x6ff5693b99212da76ad316178a184ab56d299b43', name: 'Uniswap Universal Router', source: 'base.json UniversalRouterV2' },
+  { chainId: 8453, address: '0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40', name: 'Uniswap Universal Router', source: 'base.json UniversalRouterV2_1_2' },
   { chainId: 1, address: '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', name: 'Uniswap Universal Router', source: 'mainnet.json UniversalRouterV1_2_V2Support' },
   { chainId: 1, address: '0x66a9893cc07d91d95644aedd05d03f95e1dba8af', name: 'Uniswap Universal Router', source: 'mainnet.json UniversalRouterV2' },
+  { chainId: 1, address: '0x23617e59a5925b2a4bf75d73ff6711cd0b29de85', name: 'Uniswap Universal Router', source: 'mainnet.json UniversalRouterV2_1_2' },
   { chainId: 42161, address: '0x5e325eda8064b456f4781070c0738d849c824258', name: 'Uniswap Universal Router', source: 'arbitrum.json UniversalRouterV1_2_V2Support' },
   { chainId: 42161, address: '0xa51afafe0263b40edaef0df8781ea9aa03e381a3', name: 'Uniswap Universal Router', source: 'arbitrum.json UniversalRouterV2' },
+  { chainId: 42161, address: '0x2d01411773c8c24805306e89a41f7855c3c4fe65', name: 'Uniswap Universal Router', source: 'arbitrum.json UniversalRouterV2_1_2' },
 ]
 
 export function findReviewedUniversalRouter(chainId: number | undefined, router: string | undefined): EvmNameRecord | undefined {

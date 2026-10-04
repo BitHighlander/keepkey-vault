@@ -57,7 +57,7 @@ Request:
 ```
 
 - `contract`: a reviewed Universal Router on that chain
-  (`REVIEWED_UNIVERSAL_ROUTERS`: UR 1.2 and UR 2.0 on Base, Ethereum and
+  (`REVIEWED_UNIVERSAL_ROUTERS`: UR 1.2, UR 2.0 and UR 2.1.2 on Base, Ethereum and
   Arbitrum, from Uniswap's `deploy-addresses`).
 - `selector`: `0x3593564c` (`execute(bytes,bytes[],uint256)`) or `0x24856bc3`
   (`execute(bytes,bytes[])`). It is signed into the entry.
