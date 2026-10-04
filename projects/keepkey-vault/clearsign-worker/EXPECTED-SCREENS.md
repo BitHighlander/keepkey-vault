@@ -136,74 +136,13 @@ Example, Base USDC:
 | 4 | Recipient | 0x909Ef6B32DfDc12CA86aA710b54c991af3C5F82E |
 | 5 | KeepKey ClearSign | Described by KeepKey Alpha 716 a9531b9d / certified by KeepKey (A1) |
 
-## 4. Uniswap swap (Universal Router `execute`, inner version 0x07)
+## 4. Uniswap swap: not certified
 
-Catalog id: `eip155:<chain>:<router>:uniswap-ur`, one per reviewed router.
-Requested through `POST /v1/evm/swap`. The entry is a firmware *decoder*, not
-a template: the device decodes the swap from the calldata it signs
-(`ur_decode` / `ur_summarize` in `lib/firmware/uniswap_ur.c`) and the entry
-supplies only the router, the selector, the title `Uniswap`, and the identity
-(symbol, decimals) of every token the review names. Screens come from
-`signed_metadata_build_ur_review`.
-
-Applies only when:
-- the call is to the entry's router on the entry's chain, with the entry's
-  selector (`0x3593564c` execute with deadline, or `0x24856bc3` without);
-- the whole calldata fits the first signing chunk (1024 bytes);
-- the commands are `[PERMIT2_PERMIT | WRAP_ETH] -> one of V3_SWAP_EXACT_IN,
-  V3_SWAP_EXACT_OUT, V2_SWAP_EXACT_IN, V2_SWAP_EXACT_OUT -> [PAY_PORTION] ->
-  [SWEEP | UNWRAP_WETH]`, with no allow-revert flag, and a permit names this
-  router as spender;
-- the entry carries an identity for the input token (unless ETH is wrapped
-  from msg.value), the output token (unless unwrapped to ETH), and the
-  Permit2 token. A missing identity is refused, not downgraded.
-
-`{in}` and `{out}` are `<amount> <SYM>`, at full precision (`ETH` when the
-router wraps msg.value or unwraps the output).
-
-| # | Title | Body | When |
-|---|---|---|---|
-| 1 | Uniswap | Swap {in} for at least {out} | exact input |
-| 1 | Uniswap | Swap at most {in} for {out} | exact output |
-| 2 | Limits | You spend / {in} | exact input |
-| 2 | Limits | You spend at most / {in} | exact output |
-| 3 | Limits | You receive at least / {out} | exact input |
-| 3 | Limits | You receive / {out} | exact output |
-| 4 | Recipient | Output goes to / {recipient, full EIP-55} | output not to the sender |
-| 5 | Allowance | This router may spend up to {amount} until YYYY-MM-DD UTC | Permit2 permit |
-| 5 (unlimited) | Allowance | This router may spend up to UNLIMITED {SYM} until YYYY-MM-DD UTC | uint160 max permit |
-| 6 | Fee | x.xx% of the output to / {fee recipient, full EIP-55} | PAY_PORTION |
-| 7 | Contract | execute / {router, full EIP-55} | always |
-| 8 | KeepKey ClearSign | Described by KeepKey Alpha 716 a9531b9d / certified by KeepKey (A1) | always |
-
-With a fee, the exact-input floor on screens 1 and 3 is the final step's
-minimum (what the user receives after the fee), not the swap's.
-
-Example, real Base call `0xd873988f...` (firmware unit test
-`UniswapSwapReviewsWhoWhatLimitsFromCalldata`; TOKA is the test's stand-in
-identity, it is not a reviewed token):
-
-| # | Title | Body |
-|---|---|---|
-| 1 | Uniswap | Swap 366.279323182464682886 TOKA for at least 17.41144 USDC |
-| 2 | Limits | You spend / 366.279323182464682886 TOKA |
-| 3 | Limits | You receive at least / 17.41144 USDC |
-| 4 | Allowance | This router may spend up to UNLIMITED TOKA until 2026-11-02 UTC |
-| 5 | Contract | execute / 0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD |
-| 6 | KeepKey ClearSign | Described by <alias> <fp8> / certified by KeepKey |
-
-Reviewed routers (Uniswap `deploy-addresses` at commit `a9c574f6`):
-
-| Network | Deployment | Router |
-|---|---|---|
-| Base | UniversalRouterV1_2_V2Support | `0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD` |
-| Base | UniversalRouterV2 | `0x6fF5693b99212Da76ad316178A184AB56D299b43` |
-| Ethereum | UniversalRouterV1_2_V2Support | `0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD` |
-| Ethereum | UniversalRouterV2 | `0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af` |
-| Arbitrum | UniversalRouterV1_2_V2Support | `0x5E325eDA8064b456f4781070C0738d849c824258` |
-| Arbitrum | UniversalRouterV2 | `0xA51afAFe0263b40EdaEf0Df8781eA9aa03E381a3` |
-
-No Ethereum token is reviewed yet, so every Ethereum swap request is 422 today.
+There is no certified Uniswap swap entry. Firmware no longer decodes the
+Universal Router (owner decision 2026-10-04), and 7.16 refuses a certified
+decoder entry (inner version 0x07). A Universal Router `execute` call gets no
+certified description and stays on the AdvancedMode path. Planned: certified
+per-transaction descriptions.
 
 ## Tokens covered (each gets entries 1, 2 and 3)
 
@@ -242,7 +181,7 @@ For each token, the screens differ from the Base USDC example only in:
     `0.007988 ETH` is taken from the firmware doc and is approximate.
 - **Portals swap (Ethereum, inner version 0x04).**
   - It has no intent, so WHO, WHAT, WHY and LIMIT are not stated.
-  - Firmware 7.16 parses inner versions 0x01, 0x02, 0x05, 0x06 and 0x07 only (see
+  - Firmware 7.16 parses inner versions 0x01, 0x02, 0x05 and 0x06 only (see
     `parse_metadata_binary`). This live entry therefore cannot verify on
     7.16, and its catalog `screens` is empty.
   - The failure is worse than "not verified". A certified (0x03) envelope
