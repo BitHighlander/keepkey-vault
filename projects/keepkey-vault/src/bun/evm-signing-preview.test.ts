@@ -188,20 +188,113 @@ describe('Solana sign-message signer check', () => {
   })
 })
 
-describe('Uniswap Universal Router: no certified entry', () => {
-  // Firmware no longer decodes the Universal Router (owner decision 2026-10-04;
-  // 7.16 refuses inner version 0x07), so execute() gets no certified payload
-  // and follows the ordinary rule: AdvancedMode.
-  test('execute() on a Base Universal Router on 7.16: AdvancedMode, nothing attached, no ClearSign request', async () => {
-    const urls: string[] = []
-    globalThis.fetch = (async (url: any) => {
-      urls.push(String(url))
-      return new Response('{}', { status: 404 })
-    }) as unknown as typeof fetch
-    const s = info()
-    await applyEvmTxPreview(s, '0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40', '0x3593564c' + word('60') + word('a0') + word('ffffffff'), 8453, '7.16.0')
+describe('certified Uniswap swap (0x07) attach', () => {
+  const header = require('node:fs').readFileSync(new URL('../../__tests__/fixtures/uniswap/uniswap_ur_vectors.h', import.meta.url), 'utf8') as string
+  const vectors = [...header.matchAll(/\{"(0x[0-9a-f]{64})", "([0-9a-f]{40})", "([0-9a-f]{64})", "([0-9a-f]+)", \{(.*?)\}\},?\n/g)]
+    .map((m) => ({ tx: m[1], router: `0x${m[2]}`, value: BigInt(`0x${m[3]}`), data: `0x${m[4]}`, steps: m[5] }))
+  const { urPrecheck } = require('./uniswap-ur')
+  const { buildEvmDecoderBody, reviewedSwapTokens, REVIEWED_EVM_TOKENS } = require('./evm-certified-schema')
+  const appShaped = (v: any) => v.steps.includes('PERMIT2_PERMIT') || v.steps.includes('WRAP_ETH')
+  const reviewed = (v: any) => {
+    const pre = urPrecheck(v.router, v.data, v.value)
+    return pre && pre.tokens.every((t: string) => REVIEWED_EVM_TOKENS[`8453:${t}`]) ? pre : null
+  }
+  // Searched at test time; never hard-coded to one sample.
+  const fullyReviewed = vectors.filter((v) => appShaped(v) && reviewed(v))
+  const appSwap = fullyReviewed[0]
+  const ethSwap = fullyReviewed.find((v) => v.steps.includes('WRAP_ETH'))
+  const unreviewedToken = vectors.find((v) => appShaped(v) && urPrecheck(v.router, v.data, v.value) && !reviewed(v))!
+  const CERT = 'cc'.repeat(139)
+
+  /** A worker that signs nothing: it returns the body Desktop expects (or a tampered one). */
+  function swapService(seen: any[], tamper?: (tokens: any[]) => any[]) {
+    globalThis.fetch = (async (url: any, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body))
+      seen.push({ url: String(url), body })
+      let tokens = reviewedSwapTokens(body.chainId, body.tokens)
+      if (tamper) tokens = tamper(tokens)
+      const inner = buildEvmDecoderBody(body.chainId, body.contract, body.selector, tokens).toString('hex')
+      return new Response(JSON.stringify({
+        success: true, classification: 'VERIFIED', version: 7, keyId: 0x80, chainId: body.chainId,
+        entry: `eip155:${body.chainId}:${body.contract}:uniswap-ur`, contract: body.contract, selector: body.selector,
+        method: 'execute', signedPayload: `0x03${CERT}${inner}${'ee'.repeat(65)}`, tokens,
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+    return seen
+  }
+  const swapInfo = (value: bigint): SigningRequestInfo => ({ ...info(), value: `0x${value.toString(16)}` })
+
+  test('fixtures: the real Base sample holds an app-shaped swap whose tokens are all reviewed', () => {
+    if (!appSwap) {
+      throw new Error('uniswap_ur_vectors.h has no app-shaped (PERMIT2_PERMIT/WRAP_ETH) swap whose tokens are all in REVIEWED_EVM_TOKENS for 8453; pin one in scripts/uniswap/gen_ur_vectors.py ALWAYS')
+    }
+    expect(unreviewedToken).toBeDefined()
+  })
+
+  test('7.16 + reviewed router + reviewed tokens: attaches 0x03 envelope, no AdvancedMode, sends only addresses', async () => {
+    const seen = swapService([])
+    const s = swapInfo(appSwap.value)
+    await applyEvmTxPreview(s, appSwap.router, appSwap.data, 8453, '7.16.0')
+    expect(s.needsBlindSigning).toBe(false)
+    expect(s.calldataDecoded?.insightKeyId).toBe(0x80)
+    const blob = Buffer.from(s.calldataDecoded!.signedInsightBlob!, 'base64')
+    expect(blob[0]).toBe(0x03)
+    expect(blob[140]).toBe(0x07)
+    expect(seen).toHaveLength(1)
+    expect(seen[0].url).toEndWith('/v1/evm/swap')
+    expect(Object.keys(seen[0].body).sort()).toEqual(['chainId', 'contract', 'selector', 'tokens'])
+    expect(seen[0].body.selector).toBe('0x3593564c')
+    expect(seen[0].body.tokens).toEqual(urPrecheck(appSwap.router, appSwap.data, 0n).tokens)
+  })
+
+  // Runs only when the sample holds a reviewed ETH-in swap; msg.value handling
+  // is otherwise covered by uniswap-ur.test.ts and the ETH-beside-token case below.
+  test.if(!!ethSwap)('ETH-in swap: msg.value is read from the request; a different value attaches nothing', async () => {
+    const seen = swapService([])
+    const s = swapInfo(ethSwap.value)
+    await applyEvmTxPreview(s, ethSwap.router, ethSwap.data, 8453, '7.16.0')
+    expect(s.needsBlindSigning).toBe(false)
+    const s2 = swapInfo(ethSwap.value + 1n)
+    await applyEvmTxPreview(s2, ethSwap.router, ethSwap.data, 8453, '7.16.0')
+    expect(s2.needsBlindSigning).toBe(true)
+    expect(seen).toHaveLength(1)
+  })
+
+  test('no request, AdvancedMode: 7.15, unreviewed token, unreviewed router, V4 shape, ETH beside a token swap', async () => {
+    const seen = swapService([])
+    const v4 = header.slice(header.indexOf('v4_rejected()')).match(/"(3593564c[0-9a-f]+)"/)![1]
+    const cases: [string, string, bigint, string][] = [
+      [appSwap.router, appSwap.data, 0n, '7.15.0'],
+      [unreviewedToken.router, unreviewedToken.data, 0n, '7.16.0'],
+      ['0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40', appSwap.data, 0n, '7.16.0'],
+      [appSwap.router, `0x${v4}`, 0n, '7.16.0'],
+      [appSwap.router, appSwap.data, 5n, '7.16.0'],
+    ]
+    for (const [to, data, value, fw] of cases) {
+      const s = swapInfo(value)
+      await applyEvmTxPreview(s, to, data, 8453, fw)
+      expect(s.needsBlindSigning).toBe(true)
+      expect(s.calldataDecoded?.signedInsightBlob).toBeUndefined()
+    }
+    expect(seen).toHaveLength(0)
+  })
+
+  test('a service body naming other token identities is refused, never attached', async () => {
+    swapService([], (tokens) => [...tokens].reverse())
+    const s = swapInfo(0n)
+    await applyEvmTxPreview(s, appSwap.router, appSwap.data, 8453, '7.16.0')
     expect(s.needsBlindSigning).toBe(true)
     expect(s.calldataDecoded?.signedInsightBlob).toBeUndefined()
-    expect(urls.filter((u) => u.includes('/v1/evm/'))).toEqual([])
+  })
+
+  test('service 503 / down: AdvancedMode, never throws', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ classification: 'UNAVAILABLE' }), { status: 503 })) as unknown as typeof fetch
+    const s = swapInfo(0n)
+    await applyEvmTxPreview(s, appSwap.router, appSwap.data, 8453, '7.16.0')
+    expect(s.needsBlindSigning).toBe(true)
+    globalThis.fetch = (async () => { throw new Error('ECONNREFUSED') }) as unknown as typeof fetch
+    const s2 = swapInfo(0n)
+    await applyEvmTxPreview(s2, appSwap.router, appSwap.data, 8453, '7.16.0')
+    expect(s2.needsBlindSigning).toBe(true)
   })
 })

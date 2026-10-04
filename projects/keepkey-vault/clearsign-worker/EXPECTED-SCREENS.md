@@ -136,13 +136,95 @@ Example, Base USDC:
 | 4 | Recipient | 0x909Ef6B32DfDc12CA86aA710b54c991af3C5F82E |
 | 5 | KeepKey ClearSign | Described by KeepKey Alpha 716 a9531b9d / certified by KeepKey (A1) |
 
-## 4. Uniswap swap: not certified
+## 4. Uniswap swap (Universal Router `execute`, inner version 0x07)
 
-There is no certified Uniswap swap entry. Firmware no longer decodes the
-Universal Router (owner decision 2026-10-04), and 7.16 refuses a certified
-decoder entry (inner version 0x07). A Universal Router `execute` call gets no
-certified description and stays on the AdvancedMode path. Planned: certified
-per-transaction descriptions.
+Catalog id: `eip155:<chain>:<router>:uniswap-ur`, one per reviewed router.
+Requested through `POST /v1/evm/swap`. The entry is a firmware *decoder*, not
+a template: the device decodes the swap from the calldata it signs
+(`ur_decode` / `ur_summarize` in `lib/firmware/uniswap_ur.c`) and the entry
+supplies only the router, the selector, the title `Uniswap`, and the identity
+(symbol, decimals) of every token the review names. Screens come from
+`signed_metadata_build_ur_review`.
+
+Applies only when:
+- the call is to the entry's router on the entry's chain, with the entry's
+  selector (`0x3593564c` execute with deadline, or `0x24856bc3` without);
+- the calldata is at most 1472 bytes (a call longer than the first signing
+  chunk is held and decoded after its last byte);
+- the commands, at most 4, are `[PERMIT2_PERMIT | WRAP_ETH] -> one of
+  V3_SWAP_EXACT_IN, V3_SWAP_EXACT_OUT, V2_SWAP_EXACT_IN, V2_SWAP_EXACT_OUT ->
+  [PAY_PORTION] -> [SWEEP | UNWRAP_WETH] -> [clean-up]`, with no allow-revert
+  flag, and a permit names this router as spender;
+- a split route is two exact-in swaps of the same pair, with the same
+  recipient and payer; a second swap of a different pair is refused;
+- a clean-up is one trailing `UNWRAP_WETH`, or `SWEEP` of ETH (token address
+  0), returning leftovers to the recipient the review names, and nowhere
+  else;
+- the entry carries an identity for the input token (unless ETH is wrapped
+  from msg.value), the output token (unless unwrapped to ETH), and the
+  Permit2 token. A missing identity is refused, not downgraded.
+
+`{in}` and `{out}` are `<amount> <SYM>`, at full precision (`ETH` when the
+router wraps msg.value or unwraps the output).
+
+| # | Title | Body | When |
+|---|---|---|---|
+| 1 | Uniswap | Swap {in} for at least {out} | exact input |
+| 1 | Uniswap | Swap at most {in} for {out} | exact output |
+| 2 | Limits | You spend / {in} | exact input |
+| 2 | Limits | You spend at most / {in} | exact output |
+| 3 | Limits | You receive at least / {out} | exact input |
+| 3 | Limits | You receive / {out} | exact output |
+| 4 | Recipient | Output goes to / {recipient, full EIP-55} | output not to the sender |
+| 5 | Allowance | This router may spend up to {amount} until YYYY-MM-DD UTC | Permit2 permit |
+| 5 (unlimited) | Allowance | This router may spend up to UNLIMITED {SYM} until YYYY-MM-DD UTC | uint160 max permit |
+| 6 | Fee | x.xx% of the output to / {fee recipient, full EIP-55} | PAY_PORTION |
+| 7 | Contract | execute / {router, full EIP-55} | always |
+| 8 | KeepKey ClearSign | Described by KeepKey Alpha 716 a9531b9d / certified by KeepKey (A1) | always |
+
+With a fee, the exact-input floor on screens 1 and 3 is the final step's
+minimum (what the user receives after the fee), not the swap's. Without a fee
+it is the larger of the swap minimum and the final step's minimum (apps often
+leave the swap's at 0).
+
+A split route shows the same screens with totals: {in} is the sum of both
+swaps' inputs, and {out} the sum of their minimums (each swap enforces its
+own). A clean-up step has no screen of its own: it returns only ETH, and only
+to the recipient already shown (screen 4, or the sender).
+
+The entry is static: router, selector, title and token identities only,
+nothing from a particular transaction. Per owner decision D-018 (2026-10-04,
+no live signing) these entries are planned to be signed offline as a fixed
+set; today the Worker still signs one with the delegate key on request.
+
+Example, real Base call `0xd873988f...` (firmware unit test
+`UniswapSwapReviewsWhoWhatLimitsFromCalldata`; TOKA is the test's stand-in
+identity, it is not a reviewed token):
+
+| # | Title | Body |
+|---|---|---|
+| 1 | Uniswap | Swap 366.279323182464682886 TOKA for at least 17.41144 USDC |
+| 2 | Limits | You spend / 366.279323182464682886 TOKA |
+| 3 | Limits | You receive at least / 17.41144 USDC |
+| 4 | Allowance | This router may spend up to UNLIMITED TOKA until 2026-11-02 UTC |
+| 5 | Contract | execute / 0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD |
+| 6 | KeepKey ClearSign | Described by <alias> <fp8> / certified by KeepKey |
+
+Reviewed routers (Uniswap `deploy-addresses` at commit `a9c574f6`):
+
+| Network | Deployment | Router |
+|---|---|---|
+| Base | UniversalRouterV1_2_V2Support | `0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD` |
+| Base | UniversalRouterV2 | `0x6fF5693b99212Da76ad316178A184AB56D299b43` |
+| Base | UniversalRouterV2_1_2 (the Uniswap app's router) | `0xd6145b2D3F379919E8CdEda7B97e37c4b2Ca9c40` |
+| Ethereum | UniversalRouterV1_2_V2Support | `0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD` |
+| Ethereum | UniversalRouterV2 | `0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af` |
+| Ethereum | UniversalRouterV2_1_2 | `0x23617e59A5925b2A4Bf75d73ff6711cD0b29De85` |
+| Arbitrum | UniversalRouterV1_2_V2Support | `0x5E325eDA8064b456f4781070C0738d849c824258` |
+| Arbitrum | UniversalRouterV2 | `0xA51afAFe0263b40EdaEf0Df8781eA9aa03E381a3` |
+| Arbitrum | UniversalRouterV2_1_2 | `0x2d01411773c8C24805306E89A41F7855C3c4Fe65` |
+
+No Ethereum token is reviewed yet, so every Ethereum swap request is 422 today.
 
 ## Tokens covered (each gets entries 1, 2 and 3)
 
@@ -181,7 +263,7 @@ For each token, the screens differ from the Base USDC example only in:
     `0.007988 ETH` is taken from the firmware doc and is approximate.
 - **Portals swap (Ethereum, inner version 0x04).**
   - It has no intent, so WHO, WHAT, WHY and LIMIT are not stated.
-  - Firmware 7.16 parses inner versions 0x01, 0x02, 0x05 and 0x06 only (see
+  - Firmware 7.16 parses inner versions 0x01, 0x02, 0x05, 0x06 and 0x07 only (see
     `parse_metadata_binary`). This live entry therefore cannot verify on
     7.16, and its catalog `screens` is empty.
   - The failure is worse than "not verified". A certified (0x03) envelope
