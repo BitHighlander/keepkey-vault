@@ -20,23 +20,24 @@ a real user journey).
 
 ## ClearSign
 
-- Model (D-009): the ClearSign service authors descriptions off-device; the
-  device verifies and shows them. No per-dapp decoders in firmware.
+- Model (D-018): no live signing. Recipes, names, token identities and
+  Uniswap decoder entries are signed offline and served as static files;
+  the device decodes the values. Desktop shows a richer host-side preview
+  as advice.
 - Trust chain (D-004): offline root on a KeepKey → per-chain delegate
   certificate (Ethereum, Solana, Base 8453, Arbitrum 42161; expiry
   2026-12-31) → delegate `a9531b9d` on the ClearSign worker.
 - Formats on the device (7.16): v2 and 0x05 schemas (device-decoded),
-  0x06 names, KKSOLSC1 Solana schemas. v1 per-transaction descriptions in
-  the certified envelope: **code** (firmware `b59c909c0`, D-009); the
-  ClearSign route that serves them is not built yet. The 0x07 Uniswap decoder is removed (D-008).
+  0x06 names, KKSOLSC1 Solana schemas. 0x07 Uniswap decoder: being restored
+  with clean-up and split routes (D-018). Per-transaction v1 stays out of
+  the certified tier.
 - Live service: `https://keepkey-clearsign.bithighlander.workers.dev`
   (`projects/keepkey-vault/clearsign-worker`). Deploy only from a pushed
   commit (`make clearsign-worker-deploy`).
-- Next: move the certified per-transaction route from
-  keepkey-clearsign-server `14ad811` into this worker, with its full
-  Universal Router decoder.
-- Do not re-propose: persisting signers to flash (D-003); a device decoder
-  per dapp (D-008); per-transaction descriptions as new work (D-001).
+- Next: offline ceremony signing of the catalog; delegate key off
+  Cloudflare (D-018).
+- Do not re-propose: persisting signers to flash (D-003); an online
+  per-transaction signer for the certified tier (D-018).
 
 ## Firmware size and memory (7.16 test line)
 
@@ -63,7 +64,7 @@ a real user journey).
 |---|---|---|
 | Uniswap on Base: approve to Permit2 | verified 2026-10-03 | certified approve, no AdvancedMode |
 | Uniswap on Base: Permit2 signature | verified 2026-10-03 | after hdwallet fix `401068f4` |
-| Uniswap on Base: swap | blocked | waits on D-009 (certified per-transaction route) |
+| Uniswap on Base: swap | blocked | waits on the restored decoder (D-018) |
 | Pump.fun buy/sell (PumpSwap) | verified 2026-10-02 | |
 | Relay ETH ⇄ Solana | verified 2026-07-28 | |
 | PIN unlock after idle | verified 2026-10-03 | D-011 |

@@ -70,13 +70,13 @@ its expected screens reviewed first (`clearsign-worker/EXPECTED-SCREENS.md`).
 A refusal with no AdvancedMode path is a bug. Never ask a user to enable
 AdvancedMode as a workaround for a missing clear-sign entry.
 
-**D-008** · 2026-10-03 · SUPERSEDED by D-009
+**D-008** · 2026-10-03 · SUPERSEDED by D-009, reinstated by D-018
 On-device Uniswap Universal Router decoder (metadata 0x07,
 `uniswap_ur.c`). Built without reference to D-001/D-004/D-005. Each new
 app shape (clean-up sweeps, split routes, V4) needed new firmware, and 7.16
 had no flash left. Code kept in firmware history at `5c6b81c04`.
 
-**D-009** · 2026-10-04 · ACTIVE (owner-confirmed; firmware `b59c909c0`)
+**D-009** · 2026-10-04 · SUPERSEDED by D-018 (was owner-confirmed; firmware `b59c909c0`, reverted)
 Dapp descriptions are authored off-device by the ClearSign service and
 streamed to the device; the device does not grow a decoder per dapp.
 - Remove the 0x07 decoder (done: firmware `8bfa4ca16`).
@@ -93,6 +93,29 @@ streamed to the device; the device does not grow a decoder per dapp.
   `14ad811` moves into the canonical ClearSign worker, using its full
   Universal Router decoder (incl. V4); anything not fully explained is
   declined (422 OPAQUE).
+
+**D-018** · 2026-10-04 · ACTIVE · no live signing
+Owner decision, after the trust analysis of D-009: no online key decides
+what the device shows.
+1. Per-transaction descriptions stay out of the certified tier (revert
+   `b59c909c0`; the `e44e4999d` gate is back).
+2. A CAL-like program: recipes (v2/0x05), names (0x06), token identities and
+   Uniswap decoder entries are signed offline in a ceremony and published as
+   static files. The delegate key comes off Cloudflare; the service only
+   serves pre-signed entries.
+3. The on-device Uniswap Universal Router decoder (0x07) is restored, with
+   the clean-up step (leftover ETH back to the shown recipient) and split
+   routes (two swaps of the same pair). About 94% of the Uniswap app's swaps
+   on Base. V4 stays on the AdvancedMode path; a streaming V4 decoder is a
+   separate later project.
+4. KeepKey Desktop gets a full host-side Uniswap preview (all shapes incl.
+   V4, token lookups, simulated balance changes). It is advice, labelled as
+   checked on this computer; the device screen is the final word.
+Why: with per-transaction text a stolen delegate key, a bad deploy or a
+decoder bug makes the device show false amounts; with device decoding they
+can only mislabel. Ledger and Trezor both keep the device deriving the
+values (docs/research/hw-wallet-comparison-20261004.md).
+Do not re-propose: an online per-transaction signer for the certified tier.
 
 ## Signing policy
 
