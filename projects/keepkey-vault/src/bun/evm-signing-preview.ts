@@ -7,9 +7,7 @@
  */
 import type { SigningRequestInfo } from '../shared/types'
 import { decodeCalldata, firmwareClearSigns } from './calldata-decoder'
-import { findCertifiedEvmSchema, findCertifiedUniswapSwap } from './evm-schema-registry'
-import { findReviewedUniversalRouter } from './evm-certified-schema'
-import { urPrecheck } from './uniswap-ur'
+import { findCertifiedEvmSchema } from './evm-schema-registry'
 import { supportsCertifiedClearSign } from './solana-certified-policy'
 
 /** A chain id as dapps send it (number, "8453", "0x2105") → positive integer, else undefined. */
@@ -65,57 +63,6 @@ export async function attachCertifiedEvmSchema(
   return true
 }
 
-/** msg.value as the request carries it (hex, decimal, number); undefined if unreadable. */
-function txValue(raw: unknown): bigint | undefined {
-  if (raw == null || raw === '') return 0n
-  const s = String(raw).trim()
-  if (s === '0x') return 0n
-  if (!/^(0x[0-9a-fA-F]+|[0-9]+)$/.test(s)) return undefined
-  return BigInt(s)
-}
-
-/**
- * Attach a certified 0x07 Uniswap swap entry when `to` is a reviewed Universal
- * Router on 7.16+ and the calldata pre-checks as a shape the device decodes
- * (<= UR_MAX_CALLDATA bytes, supported command sequence) whose every named token is
- * reviewed. The device refuses an incomplete entry with no fallback, so
- * anything short of that returns false (the AdvancedMode path).
- */
-export async function attachCertifiedUniswapSwap(
-  signingInfo: SigningRequestInfo,
-  chainId: number | undefined,
-  to: string,
-  data: string,
-  firmwareVersion: string | undefined,
-  tag = '[REST]',
-): Promise<boolean> {
-  if (!supportsCertifiedClearSign(firmwareVersion) || !chainId || !findReviewedUniversalRouter(chainId, to)) return false
-  const value = txValue(signingInfo.value)
-  const plan = value === undefined ? null : urPrecheck(to, data, value)
-  if (!plan) {
-    console.log(`${tag} Uniswap clear-sign: calldata is not a shape the device decodes — not attaching`)
-    return false
-  }
-  let entry
-  try {
-    entry = await findCertifiedUniswapSwap(chainId, to, plan.selector, plan.tokens)
-  } catch (e: any) {
-    console.warn(`${tag} Uniswap clear-sign: certified swap lookup failed (${e?.message || e}) — falling back`)
-    return false
-  }
-  if (!entry) return false
-  signingInfo.calldataDecoded = {
-    ...(signingInfo.calldataDecoded ?? {
-      dappName: 'Uniswap', contractName: to, method: entry.method,
-      selector: plan.selector, fields: [], source: 'none',
-    }),
-    signedInsightBlob: Buffer.from(entry.signedPayload.replace(/^0x/i, ''), 'hex').toString('base64'),
-    insightKeyId: entry.keyId,
-  }
-  console.log(`${tag} Uniswap clear-sign: certified swap entry attached (keyId=0x${entry.keyId.toString(16)}, chain ${chainId}, tokens ${plan.tokens.join(',')})`)
-  return true
-}
-
 /**
  * Decode calldata for the overlay and set deviceClearSigns / needsBlindSigning.
  * `callerMetadata` is a runtime-signer blob a REST caller supplied directly.
@@ -150,8 +97,7 @@ export async function applyEvmTxPreview(
   } else if (signingInfo.deviceClearSigns) {
     // Firmware decodes it natively — no metadata, no AdvancedMode.
     signingInfo.needsBlindSigning = false
-  } else if (await attachCertifiedEvmSchema(signingInfo, chainId, to, data, firmwareVersion, tag) ||
-             await attachCertifiedUniswapSwap(signingInfo, chainId, to, data, firmwareVersion, tag)) {
+  } else if (await attachCertifiedEvmSchema(signingInfo, chainId, to, data, firmwareVersion, tag)) {
     signingInfo.needsBlindSigning = false
   } else {
     // Keyed off the device's own allowlist, NOT whether our decoder recognized

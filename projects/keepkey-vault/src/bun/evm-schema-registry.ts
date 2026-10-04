@@ -17,15 +17,11 @@
 import registry from './evm-schemas-local.json'
 import { DEFAULT_CLEARSIGN_SERVICE_URL } from './solana-certified-registry'
 import {
-  buildEvmDecoderBody,
   CERTIFIED_METADATA_KEY_ID,
   ERC20_APPROVE,
   EVM_ARG_ADDRESS_PINNED,
   findCertifiedEvmSchemaSpec,
-  findReviewedUniversalRouter,
   isCertifiedEvmMetadata,
-  reviewedSwapTokens,
-  UR_METHOD,
   type EvmSchemaSpec,
 } from './evm-certified-schema'
 
@@ -154,68 +150,6 @@ export async function findCertifiedEvmSchema(
     signedPayload: result.signedPayload,
     expectedCalldataLength: spec.expectedCalldataLength,
     source: 'certified-service',
-  }
-}
-
-const serviceBase = () => String(process.env.CLEARSIGN_SERVICE_URL || DEFAULT_CLEARSIGN_SERVICE_URL).trim().replace(/\/+$/, '')
-
-/**
- * Fetch a certified 0x07 Uniswap swap entry for (router, selector) naming
- * exactly `tokens`. Undefined (no request) unless the router and every token
- * are reviewed locally; undefined on 422. Only the router, selector and token
- * addresses leave the host: no amounts, recipients or calldata. The returned
- * body must be byte-identical to the one built here from the same reviewed
- * table, so the service cannot substitute a token identity.
- */
-export async function findCertifiedUniswapSwap(
-  chainId: number,
-  router: string,
-  selector: string,
-  tokens: string[],
-): Promise<Pick<SignedEvmSchema, 'method' | 'keyId' | 'signedPayload'> | undefined> {
-  const reviewed = findReviewedUniversalRouter(chainId, router)
-  const identities = reviewedSwapTokens(chainId, tokens)
-  if (!reviewed || !identities) return undefined
-  const expectedBody = buildEvmDecoderBody(chainId, reviewed.address, selector, identities)
-  let response: Response
-  try {
-    response = await fetch(`${serviceBase()}/v1/evm/swap`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chainId, contract: reviewed.address, selector, tokens: identities.map((t) => t.address) }),
-      signal: AbortSignal.timeout(3_000),
-    })
-  } catch (error: any) {
-    throw new Error(`ClearSign verification service is unavailable: ${error?.message || 'connection failed'}`)
-  }
-  let result: any
-  try {
-    result = await response.json()
-  } catch {
-    throw new Error(`ClearSign verification service returned HTTP ${response.status} without valid JSON`)
-  }
-  if (!response.ok) {
-    if (response.status === 422) return undefined
-    throw new Error(`ClearSign verification service returned HTTP ${response.status}: ${result?.error || 'request failed'}`)
-  }
-  if (!isCertifiedEvmMetadata({ signedPayload: result?.signedPayload, keyId: result?.keyId })) {
-    throw new Error('ClearSign verification service returned a non-certified payload')
-  }
-  // 0x03 | certificate(139) | body | r,s,v(65)
-  const payload = Buffer.from(String(result.signedPayload).replace(/^0x/i, ''), 'hex')
-  if (
-    result?.classification !== 'VERIFIED' ||
-    result?.chainId !== chainId ||
-    String(result?.entry || '').toLowerCase() !== `eip155:${chainId}:${reviewed.address}:uniswap-ur` ||
-    payload.length !== 1 + 139 + expectedBody.length + 65 ||
-    !payload.subarray(140, 140 + expectedBody.length).equals(expectedBody)
-  ) {
-    throw new Error('ClearSign verification service response does not match the requested swap entry')
-  }
-  return {
-    method: UR_METHOD,
-    keyId: CERTIFIED_METADATA_KEY_ID,
-    signedPayload: result.signedPayload,
   }
 }
 
