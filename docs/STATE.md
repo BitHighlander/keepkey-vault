@@ -41,10 +41,18 @@ a real user journey).
   (`lib/firmware/erc7730_*.c`, compiler `keepkeylib/erc7730_compiler.py`).
   Certified programs still require AdvancedMode (`fsm_msg_ethereum.h:1120`,
   `:1210`), a bug against D-007. Extend it; do not design a new decoder.
-- Uniswap V4 (D-019, D-021): make the 0x07 decoder streaming (buffer
-  removed, RAM freed), then add V4 (SWAP_EXACT_IN/OUT + SETTLE/TAKE/
-  TAKE_PORTION, hooks shown). Measured: 74% of Base router calls decodable
-  today, 26% contain V4, ~99% target. In progress.
+- Uniswap V4 (D-019, D-021): **code** on fork branch `feat/716-ur-streaming`
+  (`51f85368e`, off `162bc884f`). Streaming decoder, 1,472 B buffer removed;
+  V4 SWAP_EXACT_IN/OUT + SETTLE/TAKE/TAKE_PORTION, every hook shown, hookData
+  refused, V4 accepted only for UR 2.1.2 `0xd614…9c40` (layout verified from
+  the deployed source; UR 2.0's V4 layout differs). `ur_summarize` is now a
+  token-flow check (identical reviews for all 969 previously reviewed calls;
+  fixes an unwrap-minimum unit defect). 990/1,000 sample calls reviewed (was
+  740). Flash 636,860 B, RAM reserve 17,336 B; 976 unit tests pass (same 7
+  base failures). Not yet wired (Desktop REST + emulator) or verified on
+  hardware. Needs: human review of the token-flow rules; vault parity
+  (Desktop V4 preview, worker 0x07 entry for 0xd614 on 8453 with paid +
+  delivered tokens, <= 4 tokens).
 - 7.17 (D-020): extend the ERC-7730 interpreter (embedded calldata,
   command streams, constraints and summaries); then decide whether the
   Universal Router moves to descriptors.
