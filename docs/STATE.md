@@ -2,7 +2,8 @@
 
 What is true now, per subsystem, and what not to re-propose. Decisions and
 their history are in `docs/DECISIONS.md`; update both when anything changes.
-Last updated 2026-10-04.
+Where the code lives and what comes next: `docs/HANDOFF-2026-10-04.md`.
+Last updated 2026-10-04 (end of day).
 
 Status words: **code** (written) · **wired** (reachable from the real entry
 point) · **deployed** (live or flashed) · **verified** (passed on hardware in
@@ -36,8 +37,13 @@ a real user journey).
   commit (`make clearsign-worker-deploy`).
 - Next: offline ceremony signing of the catalog; delegate key off
   Cloudflare (D-018).
+- Generic engine: the on-device ERC-7730 interpreter already on 7.16
+  (`lib/firmware/erc7730_*.c`, compiler `keepkeylib/erc7730_compiler.py`).
+  Certified programs still require AdvancedMode (`fsm_msg_ethereum.h:1120`,
+  `:1210`), a bug against D-007. Extend it; do not design a new decoder.
 - Do not re-propose: persisting signers to flash (D-003); an online
-  per-transaction signer for the certified tier (D-018).
+  per-transaction signer for the certified tier (D-018); a new generic
+  decoder (the ERC-7730 interpreter exists).
 
 ## Firmware size and memory (7.16 test line)
 
