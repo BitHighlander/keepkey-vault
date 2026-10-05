@@ -59,3 +59,33 @@ Upstream `develop` = `fc1e93746`, an ancestor of the block base.
 - 08:xx W4 Copilot rounds 1–3 DONE (audits/copilot-triage.md). Heads: b1 e81d450ac (13,695), b2 a74b0ee45 (8,003), b3 137e720a9 (11,162), b4 25fb5d715 (7,588), b5 f296f90a5 (6,041), b6 2a95886a0 (568). No PR has CHANGES_REQUESTED; every comment answered. Latest reviews: #953 5413464798, #954 5413905347, #955 5413882429, #956 5413893058, #957 5414294231, #958 5414274078 (one Minor open, 4183813705 — being fixed). Real fixes: DebugLinkState own buffer; FlashDump refusal on debug channel; Solana derived CU default, v0 header invariants, null raw; Zcash non-canonical transparent_digest refused, pallas gate honours #if, whole-session handler test, legacy action sighash refused, ironwood_digest refused on v5; Lookup Accounts page needs ≥1 loaded account.
   OWNER: (O-1) Ironwood in 7.15? Candidate doc + pinned pyk say yes; device-protocol proto comment says 7.15 rejects (stale RC18 text) and SRS-7.15 omits it → fix text at re-pin. (O-2) Hive account_create signs with owner key — pinned pyk requires it (sponsor attestation); Copilot says Hive needs active authority → confirm on-chain semantics. (O-3) Solana ALT index bound + exact LUT count deferred: pinned pyk TestSolanaLutAttestation fixture uses an out-of-range index → fix fixture at re-pin (P-1), then land the bound.
   Note on O-2: in Steem/Hive `verify_authority`, a required active authority is also satisfied by the account's owner authority (`check_authority(id) || check_authority(get_owner(id))`), so owner-signed account_create should be valid on-chain; Copilot's claim looks like a false positive. Confirm with one testnet/mainnet broadcast before release.
+
+## Morning receipt (W5) — 2026-10-05
+
+Upstream-shaped 7.15 stack on the fork (draft PRs, NOT merged, nothing sent upstream). Base b0 = `release/715-stack-up-b0` = keepkey/keepkey-firmware#475 head `e476580a0`.
+
+| Block | Fork PR | Head | Changed lines | Audit | Remediation re-audit | Copilot (latest review) | CI (full mode) |
+|---|---|---|---|---|---|---|---|
+| b0 = #475 | — | e476580a0 | 21,042 (>20k) | NOT ACCEPTED (size; b0-001..005 fixed in b1) | — | — | green |
+| b1 core+CI | #953 | e81d450ac | 13,695 | fixed | verified ×2 | 5413464798, 0 open | green except report gate: Q-1 + Q-2 |
+| b2 EVM | #954 | a74b0ee45 | 8,003 | fixed | verified ×2 | 5413905347, 0 open | ALL GREEN |
+| b3 ERC-7730 | #955 | 137e720a9 | 11,162 | fixed | verified ×2 | 5413882429, 0 open | ALL GREEN |
+| b4 chains | #956 | 25fb5d715 | 7,588 | fixed | verified ×2 | 5413893058, 0 open | ALL GREEN |
+| b5 Zcash | #957 | f296f90a5 | 6,041 | fixed | verified ×2 | 5414294231, 0 open | green except report gate: Q-2 |
+| b6 gaps | #958 | eccbd7327 | 590 | fixed | verified ×2 | 5414384445, 0 unanswered | green except report gate: Q-2 |
+
+No review is CHANGES_REQUESTED; every Copilot comment has a fix SHA or evidence reply. Evidence: claude scratchpad `audits/{b0-7143-base,b1-core-ci,b2-evm+b6-gaps,b3-erc7730,b4-chains+b5-zcash,remediation-verify,copilot-triage,copilot-fixes-verify}.md`. Open Info only: R715-003 (emulator built twice in CI), R715-101 (refused FlashDump = empty dump), R715-102 (native test fixed UDP 11045), R715-103 (CHECK_* failures don't clear preload, harmless), b6-012 (`solana_lut_accounts_preimage` duplicates `solana_message_slice`, Copilot "previously missed" note).
+
+### Decisions needed (in order)
+1. **P-1** — fast-forward python-keepkey #197 to `c6babad` (fork `caps/715-716-split-20261005`; 7.15 token table byte-identical, 7.15/7.16 behaviour gated). Then re-pin b1–b6 (gitlink only) and rerun CI. At the same time fix the `TestSolanaLutAttestation` fixture (O-3) so the ALT index bound can land.
+2. **Q-1** — upstream has no capability ledger → b1's waiver gate can't bootstrap. Option A: a tiny "accept ledger" PR upstream before b1 (as fork #952). Option B: gate rule for a ledger-less base.
+3. **Q-2** — `test_candidate_can_narrow_immutable_ledger` reads the real PR base (non-hermetic, audit b1-007). Approve the fixed-authority mock fix (blocked for me by the safety check). Clears b1/b5/b6 and F-A #947.
+4. **#475 over 20k** — split per b0 report option A (7.14.2 hardening ~10.3k / 7.14.3 product ~10.7k / CI reconcile) or record an exception.
+5. **Size exceptions** — every block > 5k authored-line target; record exceptions or split.
+6. **O-1** Ironwood in 7.15 (pinned pyk says yes; fix stale device-protocol/SRS text). **O-2** Hive account_create owner key (likely valid: owner satisfies active; confirm by broadcast). b1-009 dice threshold; b2-002 7.15 refuses unlimited approve (D-010 is 7.16); Hive scope b45-008/009.
+
+### After decisions → upstream SOP
+Re-pin → CI green on every head → owner human review → open upstream PRs one at a time in order b0(-split), [ledger PR], b1…b6, each with its receipt.
+
+### 7.16 carry-overs
+F-A #947 waits on Q-2. Port b5's Zcash "Amount" fix and the Copilot Zcash/Solana fixes to develop/7.16. Vault feature-clearsign follow-ups `fd4f3ab95` (Shared approval wording needs re-signing).
