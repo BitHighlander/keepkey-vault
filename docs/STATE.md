@@ -103,10 +103,10 @@ after each merge (SOP: one PR at a time, CI green, pins = #197/#112 heads).
 
 | ID | Work | Owner | Status |
 |---|---|---|---|
-| F-A | D-018 Uniswap decoder restore (`feat/716-uniswap-clearsign-20261003`, 12 commits) | Claude | PR to open |
-| F-B | Streaming decoder + V4 (`feat/716-ur-streaming`, +5 on F-A) | Claude | PR to open after F-A |
-| F-C | D-007: certified ERC-7730 programs sign without AdvancedMode (`fsm_msg_ethereum.h:1120`, `:1210`) | Claude | to do |
-| F-D | EIP-712 permits: UNLIMITED at >= 2^255; EIP-2612/DAI unlimited allowed with a warning; PermitSingle token names from signed identities (Base/Arbitrum) | Claude | to do |
+| F-A | D-018 Uniswap decoder restore (`feat/716-uniswap-clearsign-20261003`, 12 commits) | Claude | PR BitHighlander/keepkey-firmware#947 (lint, cppcheck, builds, unit, btc-only integration green; full integration + report gates failing, to investigate) |
+| F-B | Streaming decoder + V4 (`feat/716-ur-streaming`, +5 on F-A) | Claude | PR #948 (stacked on #947; F-A fixes merged in; 976 unit pass) |
+| F-C | D-007: certified ERC-7730 programs sign without AdvancedMode (`fsm_msg_ethereum.h:1120`, `:1210`) | Claude | PR #950 (stacked on #948): certified tier no longer reads AdvancedMode; 4 gates admit certified; lowest tier of outer/inner wins; 980 unit pass; flash 637,228 B |
+| F-D | EIP-712 permits: UNLIMITED at >= 2^255; EIP-2612/DAI unlimited allowed with a warning; PermitSingle token names from signed identities (Base/Arbitrum) | Claude | PR #949 (stacked on #948): 983 unit pass; flash 638,124 B, RAM reserve 17,152 B; 2 python-keepkey emulator tests need updating (pin #197, owner OK) |
 | F-E | D-014 stablecoin token table: python-keepkey `3791441` is not in canonical #197 (pinned head builds 351 tokens) | Owner OK (push to canonical PR, D-017) | blocked |
 | V-A | Vault: Permit2 approve wording (not "Uniswap"); USDT0 provenance text; "SIGNED" badge verifies signatures | Claude | to do |
 | V-B | Catalog: ERC-7730 registry compiled + human-reviewed per chain; Across `depositV3` descriptor (after F-C) | Claude + owner review | to do |
