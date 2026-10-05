@@ -89,3 +89,7 @@ Re-pin → CI green on every head → owner human review → open upstream PRs o
 
 ### 7.16 carry-overs
 F-A #947 waits on Q-2. Port b5's Zcash "Amount" fix and the Copilot Zcash/Solana fixes to develop/7.16. Vault feature-clearsign follow-ups `fd4f3ab95` (Shared approval wording needs re-signing).
+
+## 2026-10-05 day — after the morning review
+- #458 (7.14.2) MERGED upstream by the owner → develop 4002ef183. 7.14.3 restaged on it (#959): merge of #475 + develop, then release.yml evidence fix, then owner directive "7.14.3 is bitcoin-only; non-bitcoin goes to 7.15": scope commit A b6cde66a2 + bitcoin-only release commit → b0 230d3e5c2, 8,819 lines (was 21,042). 16 required non-bitcoin adaptations remain (ed25519_sign arg change, .options sizes for new protocol fields, ethereum_signing_isInProgress for the dispatch hook). 7.15 b1 starts with the inverse; b6 tree unchanged. Detail: ~/keepkey-toolchain/audits-715-20261005/7143-bitcoin-scope.md.
+- Owner approved pushing the 7.15 test gates: python-keepkey #197 `reconcile/upstream-sync` fast-forwarded 881dd4ce6 → ba3edb1 (EOS updateauth + Ripple unsupported-memo assertions gated on 7.15.0). P-1 commits (21477c8, c6babad) NOT pushed.
