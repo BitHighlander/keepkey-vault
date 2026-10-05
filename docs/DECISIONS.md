@@ -94,7 +94,7 @@ streamed to the device; the device does not grow a decoder per dapp.
   Universal Router decoder (incl. V4); anything not fully explained is
   declined (422 OPAQUE).
 
-**D-018** · 2026-10-04 · ACTIVE · no live signing
+**D-018** · 2026-10-04 · ACTIVE (item 3's V4 clause amended by D-019) · no live signing
 Owner decision, after the trust analysis of D-009: no online key decides
 what the device shows.
 1. Per-transaction descriptions stay out of the certified tier (revert
@@ -116,6 +116,45 @@ decoder bug makes the device show false amounts; with device decoding they
 can only mislabel. Ledger and Trezor both keep the device deriving the
 values (docs/research/hw-wallet-comparison-20261004.md).
 Do not re-propose: an online per-transaction signer for the certified tier.
+
+**D-019** · 2026-10-04 · ACTIVE · Uniswap V4 in 7.16 through the 0x07 decoder
+Owner decision. Amends D-018 item 3 ("V4 stays on the AdvancedMode path").
+- Add a `V4_SWAP` (0x10) step to the existing on-device Universal Router
+  decoder (`uniswap_ur.c` `decode_step()`): the common action shapes,
+  measured from real Base traffic before coding. The device shows the same
+  guarantees as V2/V3: pay at most X (settle), receive at least Y (take),
+  recipient, native ETH for `address(0)`, and the hooks address when non-zero.
+  Unknown actions fail closed (blind/AdvancedMode path), as unknown V3 shapes do.
+- Within the existing 1,472-byte `ur_calldata` buffer: the decoder already
+  buffers the initial chunk plus streamed chunks and decodes once complete.
+  Calldata above the buffer stays blind; streaming beyond it is the later
+  project D-018 named.
+- Prerequisite: free RAM by sharing the Uniswap buffer (handoff step 6); V4
+  adds parse state, not a buffer. Report flash and RAM.
+Why: small trades route V4. A 3 USDC → ETH swap on Base on 2026-10-04 was
+`V4_SWAP, UNWRAP_WETH` (1,434 bytes of calldata, fits the buffer) while
+300 USDC swaps the same day were V3; D-018's "~94% of swaps" does not hold
+for small trades. V4 hooks do not weaken the shown guarantees: the router
+enforces the settle maximum and take minimum whatever a hook does. Peers:
+Ledger's Uniswap plugin has no V4 commands and does not cover the current
+Base router; Trezor's "select swap functions" (2.11.1) does not document V4.
+Evidence: `unittests/firmware/uniswap_ur.cpp` `V4SwapsAreNotDecoded` (the
+test to invert), `uniswap_ur_vectors.h` `v4_rejected()`, `signed_metadata.c`
+`SIGNED_METADATA_UR_MAX_CALLDATA 1472`.
+
+**D-020** · 2026-10-04 · ACTIVE · 7.17 direction: extend the ERC-7730 interpreter, not a new decoder
+Owner-agreed direction. The generic engine is the on-device ERC-7730
+interpreter (`erc7730_*.c`); 7.16 ships it as is (catalog, AdvancedMode fix
+per D-007, Across `depositV3` descriptor). For 7.17, extend it with:
+embedded calldata (ERC-7730 `calldata` format: multicall, Safe, aggregators),
+a command-stream type (opcode bytes + `bytes[]` inputs, each opcode decoded by
+its own sub-descriptor), and descriptor-level constraints and summaries
+(`value == arg`, sums, recipient-not-signer flags). Then decide from coverage
+numbers whether the Universal Router can move from `0x07` C to descriptors.
+Why: ERC-7730 cannot express command streams, and Uniswap's safety comes from
+cross-step reasoning (net limits across wrap/swap/unwrap/sweep, router-held
+balances, split routes), which a field-by-field descriptor cannot show today.
+Do not re-propose: a separate new generic decoder.
 
 ## Signing policy
 

@@ -3,7 +3,7 @@
 What is true now, per subsystem, and what not to re-propose. Decisions and
 their history are in `docs/DECISIONS.md`; update both when anything changes.
 Where the code lives and what comes next: `docs/HANDOFF-2026-10-04.md`.
-Last updated 2026-10-04 (end of day).
+Last updated 2026-10-04 (evening: D-019, D-020, 7.16 EVM scope).
 
 Status words: **code** (written) · **wired** (reachable from the real entry
 point) · **deployed** (live or flashed) · **verified** (passed on hardware in
@@ -41,9 +41,15 @@ a real user journey).
   (`lib/firmware/erc7730_*.c`, compiler `keepkeylib/erc7730_compiler.py`).
   Certified programs still require AdvancedMode (`fsm_msg_ethereum.h:1120`,
   `:1210`), a bug against D-007. Extend it; do not design a new decoder.
+- Uniswap V4 (D-019): add the common V4 shapes to the 0x07 decoder in 7.16,
+  within the 1,472-byte buffer; above it stays blind. Not started: first
+  measure real Base V4 shapes, and free RAM by sharing the buffer.
+- 7.17 (D-020): extend the ERC-7730 interpreter (embedded calldata,
+  command streams, constraints and summaries); then decide whether the
+  Universal Router moves to descriptors.
 - Do not re-propose: persisting signers to flash (D-003); an online
   per-transaction signer for the certified tier (D-018); a new generic
-  decoder (the ERC-7730 interpreter exists).
+  decoder (the ERC-7730 interpreter exists; extend it, D-020).
 
 ## Firmware size and memory (7.16 test line)
 
@@ -56,6 +62,30 @@ a real user journey).
   tests require (D-014).
 - Do not re-propose: `nano.specs` (no `%lld`); removing the ed25519 base
   table; merging the AES implementations.
+
+## 7.16 EVM release target (owner-agreed 2026-10-04)
+
+Bar: the common EVM actions on the major chains sign without blind signing
+and without AdvancedMode for anything we support.
+
+| # | Area | Scope | State |
+|---|---|---|---|
+| 1 | One rule (D-007) | certified ERC-7730 programs sign without AdvancedMode (`fsm_msg_ethereum.h:1120`, `:1210`) | bug, to fix |
+| 2 | Uniswap | 0x07: V2/V3 + clean-up + split routes; V4 common shapes (D-019) | V4 to build |
+| 3 | Tokens | ERC-20 transfer/approve from signed token identities; "unlimited" at >= 2^255 | threshold fix |
+| 4 | Permits | Permit2 approve wording (not "Uniswap"); PermitSingle token names on Base/Arbitrum; EIP-2612/DAI unlimited allowed with a warning | Ledger-comparison fixes |
+| 5 | Catalog | ERC-7730 registry compiled + human-reviewed per chain; Across `depositV3` descriptor | pipeline exists |
+| 6 | Names | 0x06 records: Permit2, Universal Routers, Across SpokePools | extend entries |
+| 7 | Trust | catalog signed offline, delegate key off Cloudflare (D-018 item 2) | gates the release |
+
+Chains: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche
+(+ Unichain if traffic justifies). Mostly certificate scopes and catalog
+entries, not firmware; confirm chain names/symbols per chain.
+Next (7.17): streaming V4 above the buffer, UniswapX and Permit2 batch
+descriptors, long-tail chains, the D-020 interpreter extensions.
+Gates: every journey verified on hardware through Desktop; flash and RAM
+per change (limit 655,321 B); release hygiene from the handoff; land through
+the block SOP on the fork.
 
 ## Releases and branches
 
@@ -70,7 +100,8 @@ a real user journey).
 |---|---|---|
 | Uniswap on Base: approve to Permit2 | verified 2026-10-03 | certified approve, no AdvancedMode |
 | Uniswap on Base: Permit2 signature | verified 2026-10-03 | after hdwallet fix `401068f4` |
-| Uniswap on Base: swap | blocked | waits on the restored decoder (D-018) |
+| Uniswap on Base: swap (V2/V3) | blocked | waits on the restored decoder (D-018); 162bc884f flashed 2026-10-04, hardware run pending |
+| Uniswap on Base: swap (V4) | code needed | small trades route V4 (3 USDC on 2026-10-04: `V4_SWAP, UNWRAP_WETH`), blind until D-019 lands |
 | Pump.fun buy/sell (PumpSwap) | verified 2026-10-02 | |
 | Relay ETH ⇄ Solana | verified 2026-07-28 | |
 | PIN unlock after idle | verified 2026-10-03 | D-011 |
