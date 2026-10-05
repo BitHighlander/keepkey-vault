@@ -39,3 +39,6 @@ Upstream `develop` = `fc1e93746`, an ancestor of the block base.
 - W5 morning receipt: per-unit scorecard + open decisions.
 
 ## Log
+- 00:xx W3 audits launched (5 agents: b0/#475, b1, b2+b6, b3, b4+b5) -> scratchpad/audits/*.md.
+- 00:xx W1 launched: pyk fork branch caps/715-716-split-20261005 (token profile default = pre-D-014 table; 7.16 opts in via --profile priority-only; 7.15 refusal tests restored under requires_firmware_below("7.16.0"); 7.16 tests version+capability gated).
+- 00:xx W2: fork base branch release/715-stack-up-b0 = upstream #475 head e476580a0 (CI runs PRs into release/715-stack-*). Open question Q-1: upstream develop/#475 have no capability ledger, so b1's upstream PR would fail generate-test-report's waiver-authority gate ("candidate adds waivers absent from immutable authority") unless the ledger is accepted first (like fork #952) or the gate bootstraps when the base has no ledger.
