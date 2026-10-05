@@ -3,7 +3,7 @@
 What is true now, per subsystem, and what not to re-propose. Decisions and
 their history are in `docs/DECISIONS.md`; update both when anything changes.
 Where the code lives and what comes next: `docs/HANDOFF-2026-10-04.md`.
-Last updated 2026-10-04 (evening: D-019, D-020, 7.16 EVM scope).
+Last updated 2026-10-05 (D-022 release train, 7.16 completion board).
 
 Status words: **code** (written) · **wired** (reachable from the real entry
 point) · **deployed** (live or flashed) · **verified** (passed on hardware in
@@ -95,6 +95,30 @@ descriptors, long-tail chains, the D-020 interpreter extensions.
 Gates: every journey verified on hardware through Desktop; flash and RAM
 per change (limit 655,321 B); release hygiene from the handoff; land through
 the block SOP on the fork.
+
+## 7.16 completion board (D-022: finish on the fork first)
+
+Firmware PRs into fork `develop`, in this order; cut `release/7.16.0-rcN`
+after each merge (SOP: one PR at a time, CI green, pins = #197/#112 heads).
+
+| ID | Work | Owner | Status |
+|---|---|---|---|
+| F-A | D-018 Uniswap decoder restore (`feat/716-uniswap-clearsign-20261003`, 12 commits) | Claude | PR to open |
+| F-B | Streaming decoder + V4 (`feat/716-ur-streaming`, +5 on F-A) | Claude | PR to open after F-A |
+| F-C | D-007: certified ERC-7730 programs sign without AdvancedMode (`fsm_msg_ethereum.h:1120`, `:1210`) | Claude | to do |
+| F-D | EIP-712 permits: UNLIMITED at >= 2^255; EIP-2612/DAI unlimited allowed with a warning; PermitSingle token names from signed identities (Base/Arbitrum) | Claude | to do |
+| F-E | D-014 stablecoin token table: python-keepkey `3791441` is not in canonical #197 (pinned head builds 351 tokens) | Owner OK (push to canonical PR, D-017) | blocked |
+| V-A | Vault: Permit2 approve wording (not "Uniswap"); USDT0 provenance text; "SIGNED" badge verifies signatures | Claude | to do |
+| V-B | Catalog: ERC-7730 registry compiled + human-reviewed per chain; Across `depositV3` descriptor (after F-C) | Claude + owner review | to do |
+| V-C | Chain certificates: Optimism, Polygon, BNB, Avalanche (+ Unichain?) | Owner (ceremony) | to do |
+| T-A | Offline catalog signing; delegate key off Cloudflare (D-018 item 2) | Owner (ceremony) + Claude (tooling) | to do |
+| Q-A | Emulator runs through Desktop REST for every journey | Claude | to do |
+| Q-B | Hardware journeys re-run on a CI-built RC image (not local test-key builds) | Owner + Claude | after F-D |
+| Q-C | Human review of the token-flow `ur_summarize` | Owner | to do |
+| H-A | Hygiene: hdwallet PR for the EIP-712 decode fix (`401068f4`); #465 `TransportTimeoutError`; PIN-failure wipe decision; #860 timer | mixed | open |
+
+Then (D-022 item 2): upstream 7.15 only, in <= 20k-line blocks, each
+Copilot-clean before human review.
 
 ## Releases and branches
 

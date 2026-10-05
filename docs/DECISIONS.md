@@ -218,6 +218,21 @@ Zcash Orchard stays in the default firmware image (`KK_ZCASH_PRIVACY` on).
 
 ## Process
 
+**D-022** · 2026-10-05 · ACTIVE · release train: finish 7.16 on the fork, upstream 7.15 in reviewed blocks
+Owner decision.
+1. Finish ALL 7.16 work on the fork first (SOP order: singular PRs into fork
+   `develop`, CI green, `release/7.16.0-rcN` cut after each merge), so the
+   whole stack is proven before anything goes upstream.
+2. Then upstream only 7.15 (the next audit and signing flow), not 7.16.
+3. Upstream PRs are blocks of at most 20,000 changed lines, and each must
+   get a Copilot review with no changes requested before it is offered for
+   human review.
+Why: users are on 7.14.1 (2026-06-05); 7.14.x patches, 7.15 (rc29,
+2026-08-13) and 7.16 were all stacked on the same upstream review gate
+(python-keepkey #197, device-protocol #112). Proving 7.16 end to end on the
+fork first gives confidence in the full stack; small, pre-reviewed blocks
+keep upstream review in days, not weeks.
+
 **D-016** · 2026-10-04 · ACTIVE
 `docs/STATE.md` and this file are the single source of truth. Every session
 reads them before designing and updates them when a decision changes. A
