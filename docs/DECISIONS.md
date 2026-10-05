@@ -117,7 +117,7 @@ can only mislabel. Ledger and Trezor both keep the device deriving the
 values (docs/research/hw-wallet-comparison-20261004.md).
 Do not re-propose: an online per-transaction signer for the certified tier.
 
-**D-019** · 2026-10-04 · ACTIVE · Uniswap V4 in 7.16 through the 0x07 decoder
+**D-019** · 2026-10-04 · ACTIVE (buffer clause amended by D-021) · Uniswap V4 in 7.16 through the 0x07 decoder
 Owner decision. Amends D-018 item 3 ("V4 stays on the AdvancedMode path").
 - Add a `V4_SWAP` (0x10) step to the existing on-device Universal Router
   decoder (`uniswap_ur.c` `decode_step()`): the common action shapes,
@@ -141,6 +141,28 @@ Base router; Trezor's "select swap functions" (2.11.1) does not document V4.
 Evidence: `unittests/firmware/uniswap_ur.cpp` `V4SwapsAreNotDecoded` (the
 test to invert), `uniswap_ur_vectors.h` `v4_rejected()`, `signed_metadata.c`
 `SIGNED_METADATA_UR_MAX_CALLDATA 1472`.
+
+**D-021** · 2026-10-04 · ACTIVE · the Universal Router decoder streams; the 1,472-byte buffer goes
+Owner decision, from measured traffic. Amends D-019's "within the buffer".
+1,000 recent calls to the Base router the Uniswap app uses (`0xd614…9c40`,
+UR 2.1.2, all callers): 740 decodable today (V2/V3 subset), 256 contain
+`V4_SWAP` (118 fit the 1,472 B buffer, 138 do not; V4 calldata median
+1,658 B, p90 2,330 B, max 5,754 B), 4 other unsupported. V4 actions: 265 of
+276 swap commands are `SWAP_EXACT_IN > SETTLE > TAKE` or
+`SETTLE > SWAP_EXACT_IN > TAKE` (multi-hop exact-in even for one pool;
+SETTLE/TAKE, not the _ALL variants); 9 exact-out, 2 with TAKE_PORTION.
+50 of 256 touch a non-zero hooks address. Mixed V3+V4 routes are common.
+- Rewrite `uniswap_ur.c` as a streaming decoder on the ERC-7730 interpreter's
+  ABI stream primitives (`erc7730_abi_stream.c`): commands are parsed as the
+  calldata chunks arrive; equivalence with today's decoder on every existing
+  vector is required before anything new is added. Then remove the static
+  `ur_calldata[1472]` buffer (this is also the RAM fix the handoff asked for).
+- Then add V4: SWAP_EXACT_IN / SWAP_EXACT_OUT with SETTLE / TAKE /
+  TAKE_PORTION, hooks shown, combined with the split-route and clean-up
+  logic. Unknown actions still fail closed.
+Target: ~99% of swaps on this router decodable (vs 74% today, 86% with a
+buffer-bound V4 step). Evidence and reproduction: the classifier and sample
+saved with the vector tooling (`scripts/uniswap/`).
 
 **D-020** · 2026-10-04 · ACTIVE · 7.17 direction: extend the ERC-7730 interpreter, not a new decoder
 Owner-agreed direction. The generic engine is the on-device ERC-7730

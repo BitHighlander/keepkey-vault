@@ -41,9 +41,10 @@ a real user journey).
   (`lib/firmware/erc7730_*.c`, compiler `keepkeylib/erc7730_compiler.py`).
   Certified programs still require AdvancedMode (`fsm_msg_ethereum.h:1120`,
   `:1210`), a bug against D-007. Extend it; do not design a new decoder.
-- Uniswap V4 (D-019): add the common V4 shapes to the 0x07 decoder in 7.16,
-  within the 1,472-byte buffer; above it stays blind. Not started: first
-  measure real Base V4 shapes, and free RAM by sharing the buffer.
+- Uniswap V4 (D-019, D-021): make the 0x07 decoder streaming (buffer
+  removed, RAM freed), then add V4 (SWAP_EXACT_IN/OUT + SETTLE/TAKE/
+  TAKE_PORTION, hooks shown). Measured: 74% of Base router calls decodable
+  today, 26% contain V4, ~99% target. In progress.
 - 7.17 (D-020): extend the ERC-7730 interpreter (embedded calldata,
   command streams, constraints and summaries); then decide whether the
   Universal Router moves to descriptors.
@@ -71,7 +72,7 @@ and without AdvancedMode for anything we support.
 | # | Area | Scope | State |
 |---|---|---|---|
 | 1 | One rule (D-007) | certified ERC-7730 programs sign without AdvancedMode (`fsm_msg_ethereum.h:1120`, `:1210`) | bug, to fix |
-| 2 | Uniswap | 0x07: V2/V3 + clean-up + split routes; V4 common shapes (D-019) | V4 to build |
+| 2 | Uniswap | 0x07 streaming decoder: V2/V3 + clean-up + split routes + V4 (D-019, D-021), ~99% of Base router calls | in progress |
 | 3 | Tokens | ERC-20 transfer/approve from signed token identities; "unlimited" at >= 2^255 | threshold fix |
 | 4 | Permits | Permit2 approve wording (not "Uniswap"); PermitSingle token names on Base/Arbitrum; EIP-2612/DAI unlimited allowed with a warning | Ledger-comparison fixes |
 | 5 | Catalog | ERC-7730 registry compiled + human-reviewed per chain; Across `depositV3` descriptor | pipeline exists |
