@@ -110,7 +110,7 @@ the block SOP on the fork.
 | Uniswap on Base: approve to Permit2 | verified 2026-10-03 | certified approve, no AdvancedMode |
 | Uniswap on Base: Permit2 signature | verified 2026-10-03 | after hdwallet fix `401068f4` |
 | Uniswap on Base: swap (V2/V3) | blocked | waits on the restored decoder (D-018); 162bc884f flashed 2026-10-04, hardware run pending |
-| Uniswap on Base: swap (V4) | verified 2026-10-04 | test image `51f85368e` (sha256 `3be740a7…9125`), Desktop `1128801d0`, AdvancedMode off: 3 USDC → 0.0011005 ETH, `V4_SWAP, UNWRAP_WETH`, 1,434 B, tx `0xb16ef655e2fa943ff9d60e33b15af9d7824b4dd8a13c0c285c080340a2572f77` (Base block 52190719). Not yet: emulator run through Desktop REST, a V3 regression swap on this image, a hooked pool |
+| Uniswap on Base: swap (V4) | verified 2026-10-04 | test image `51f85368e` (sha256 `3be740a7…9125`), Desktop `1128801d0`, AdvancedMode off: 3 USDC → 0.0011005 ETH, `V4_SWAP, UNWRAP_WETH`, 1,434 B, tx `0xb16ef655e2fa943ff9d60e33b15af9d7824b4dd8a13c0c285c080340a2572f77` (Base block 52190719). V3 regression on the same image verified: 100 USDC → ETH, `V3_SWAP_EXACT_IN, UNWRAP_WETH`, tx `0x72fbbafa2d79fd3bf1e93e75883c56d7ce96aad142382e0f0481fdaa1bc14b51`. Not yet: emulator run through Desktop REST, a hooked pool |
 | Pump.fun buy/sell (PumpSwap) | verified 2026-10-02 | |
 | Relay ETH ⇄ Solana | verified 2026-07-28 | |
 | PIN unlock after idle | verified 2026-10-03 | D-011 |
