@@ -106,7 +106,7 @@ F-A #947 waits on Q-2. Port b5's Zcash "Amount" fix and the Copilot Zcash/Solana
 
 ## 2026-10-06 morning hand-off (agent-1) — 7.14.3/7.15 stack ready for human review
 
-Heads (fork BitHighlander/keepkey-firmware, PRs #959, #953-#958): b0 f7a0e8943, b1 bd4f6ff45, b2 cdf89a6fb, b3 0f7437647, b4 63b72833c, b5 bc29b3a2a, b6 e0bb7aafd. Pins: python-keepkey #197 6f1e6f1 everywhere (its own CI green); device-protocol #112 24f38d8 (b0 keeps 27d3fa1f6, an ancestor on #112, because 7.14.3 cannot build the 7.15 messages).
+Heads (fork BitHighlander/keepkey-firmware, PRs #959, #953-#958), ALL CI GREEN, 0 unresolved Copilot threads: b0 f4539d502, b1 3acded05d, b2 a9ccba205, b3 562be608b, b4 a332bb754, b5 9a9767d1a, b6 b10cc5fb3. (b0 also got 7.15's range-scoped secret scan, #544, after the broad docs allowance was dropped.) Pins: python-keepkey #197 6f1e6f1 everywhere (its own CI green); device-protocol #112 24f38d8 (b0 keeps 27d3fa1f6, an ancestor on #112, because 7.14.3 cannot build the 7.15 messages).
 
 Copilot: 5 rounds; rounds 3-5 only on PRs with findings. After round 5 there are 0 unresolved threads on all seven PRs. #953/#955/#956/#958 clean since round 3; #954 clean since round 4; #959/#957 findings from round 5 fixed and answered, not re-reviewed (owner approved 2 extra rounds; both used). One refutation resolved by me after a 3rd repeat: Pallas gate `code_only()` multi-line comment (clang + gcc prove the example cannot compile).
 
