@@ -6,12 +6,14 @@ import type { VaultIdentity } from '../shared/vault-identity'
  * drafts: an undeployed vault cannot slip into certification under that alias. */
 export function certifiableAddressBookEntries(
   vaults: AddressBookEntry[],
-  contacts: AddressBookEntry[]
+  contacts: AddressBookEntry[],
+  allChains = false,
 ): AddressBookEntry[] {
   const allVaultIds = new Set(vaults.map((e) => `${e.networkId}:${e.address.toLowerCase()}`))
   const eligible = vaults
-    .filter((e) => e.vault?.type === 'safe' && e.vault.receiveEnabled)
-    .map((e) => ({ ...e, label: e.vault!.certificationLabel }))
+    .filter((e) => e.vault?.receiveEnabled && (e.vault.type === 'safe' || allChains))
+    .map((e) => ({ ...e, label: e.vault!.certificationLabel ||
+      ('Bitcoin Vault ' + e.vault!.name.replace(/[^\x20-\x7e]|%/g, '').trim().replace(/ +/g, ' ')).slice(0, 24).trim() }))
   return [
     ...eligible,
     ...contacts.filter((e) => !allVaultIds.has(`${e.networkId}:${e.address.toLowerCase()}`)),
