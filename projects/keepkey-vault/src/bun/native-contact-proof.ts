@@ -34,7 +34,12 @@ function solanaRecipients(p: any): string[] {
   }
   if (!parsed) try { parsed = parseSolanaMessage(solanaMessageSlice(raw, parseSolanaTx(raw))) } catch { return [] }
   const owners = p?.tokenRecipientOwners ?? p?.tokenRecipientOwner ?? []
-  if (Array.isArray(owners) && owners.length) return owners.map(rawBytes).filter((b: Buffer | undefined) => b?.length === 32).map((b: Buffer) => bs58.encode(b))
+  if (Array.isArray(owners) && owners.length) return owners.map((owner: unknown) => {
+    if (typeof owner === 'string') {
+      try { const key = Buffer.from(bs58.decode(owner)); if (key.length === 32) return key } catch { /* hex/base64 below */ }
+    }
+    return rawBytes(owner)
+  }).filter((b: Buffer | undefined) => b?.length === 32).map((b: Buffer) => bs58.encode(b))
   const keys = parsed.staticAccounts, recipients: string[] = []
   for (const ix of parsed.instructions) {
     const program = keys[ix.programIdIndex]
@@ -84,6 +89,17 @@ export function nativeContactProof(cert: AddressBookCertification | undefined, p
   const bytes: Buffer[] = []
   const p: any = Array.isArray(params) ? params[0] : params
   let recipients: string[] | undefined
+  if (method === 'rippleSignTx') {
+    const payment = p?.payment
+    const tag = payment?.destinationTag ?? payment?.destination_tag
+    const number = typeof tag === 'string' && /^[0-9]{1,10}$/.test(tag) ? Number(tag) : tag
+    // hdwallet supplies decimal strings. A tag belongs to the recipient:
+    // never choose a bare-address proof ahead of a matching routed contact.
+    recipients = typeof payment?.destination !== 'string' ? [] : tag === undefined
+      ? [payment.destination]
+      : Number.isInteger(number) && number >= 0 && number <= 0xffffffff
+        ? [`${payment.destination}?dt=${number}`] : []
+  }
   if (method === 'solanaSignTx') recipients = solanaRecipients(p)
   if (method === 'tronSignTx') {
     try { recipients = [decodeTronTransfer(rawBytes(p?.rawTx)?.toString('hex') || '').to] } catch { recipients = [] }

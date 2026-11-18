@@ -4,6 +4,7 @@ import { buildCertificationRequest, contactAddress, contactsFromEntries, CONTACT
 import { installNativeContactProof, nativeContactProof } from './native-contact-proof'
 import bs58 from 'bs58'
 import { decodeTexAddress, p2pkhScript } from './txbuilder/zcash-tex'
+import { rippleSignTx as sdkRippleSignTx } from '@keepkey/hdwallet-keepkey/dist/ripple'
 
 function certificate(network = 'cosmos:cosmoshub-4', address = 'cosmos1CaseSensitive', label = 'Alice'): AddressBookCertification {
   const contacts = [{ network, destinationType: CONTACT_DESTINATION.ADDRESS_TEXT,
@@ -35,6 +36,22 @@ describe('all-chain contact encoding', () => {
     expect(nativeContactProof(cert, [{ to_address: 'cosmos1casesensitive' }], 'cosmosSignTx')).toBeUndefined()
     expect(nativeContactProof(cert, [{ toAddress: 'cosmos1CaseSensitive' }], 'tonSignTx')).toBeUndefined()
   })
+  test('uses hdwallet string XRP tags, distinguishes zero from absence, and prefers the routed recipient', () => {
+    const network = 'ripple:4109c6f2045fc7eff4cde8f9905d19c2', address = 'rBKz5MC2iXdoS3XgnNSYmF69K1Yo4NS3Ws'
+    const bare = certificate(network, address, 'Bare'), routed = certificate(network, `${address}?dt=42`, 'Routed')
+    const contacts = [...bare.contacts, ...routed.contacts]
+    const cert = { ...bare, contacts, root: buildCertificationRequest(contacts, 1).root.toString('hex') }
+    const proof = nativeContactProof(cert, [{ payment: { destination: address, destinationTag: '42' } }], 'rippleSignTx')
+    expect(proof).toBeDefined()
+    expect(Buffer.from(proof!, 'hex').includes(Buffer.from(`${address}?dt=42`))).toBe(true)
+    expect(nativeContactProof(bare, [{ payment: { destination: address, destinationTag: '42' } }], 'rippleSignTx')).toBeUndefined()
+    expect(nativeContactProof(routed, [{ payment: { destination: address, destinationTag: '43' } }], 'rippleSignTx')).toBeUndefined()
+    const zero = certificate(network, `${address}?dt=0`)
+    for (const tag of ['0', '000', 0]) expect(nativeContactProof(zero, [{ payment: { destination: address, destinationTag: tag } }], 'rippleSignTx')).toBeDefined()
+    expect(nativeContactProof(zero, [{ payment: { destination: address } }], 'rippleSignTx')).toBeUndefined()
+    for (const tag of ['42junk', '-1', '4294967296', -1]) expect(nativeContactProof(cert, [{ payment: { destination: address, destinationTag: tag } }], 'rippleSignTx')).toBeUndefined()
+    expect(nativeContactProof(bare, [{ payment: { destination: address } }], 'rippleSignTx')).toBeDefined()
+  })
   test('selects the signed Solana recipient rather than a certified payer or arbitrary raw key', () => {
     const payer = Buffer.alloc(32, 0x11), recipient = Buffer.alloc(32, 0x22)
     const network = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
@@ -58,6 +75,17 @@ describe('all-chain contact encoding', () => {
       Buffer.from([1]), Buffer.alloc(32, 0x44), Buffer.from([1, 0, 0])])
     const cert = certificate('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', bs58.encode(destination))
     expect(nativeContactProof(cert, [{ rawTx: raw, lutAccounts: [destination] }], 'solanaSignTx')).toBeUndefined()
+  })
+  test('accepts both SDK public-key forms for a Solana owner hint without trusting it as a device match', () => {
+    const payer = Buffer.alloc(32, 0x11), owner = Buffer.alloc(32, 0x22)
+    const data = Buffer.alloc(12); data.writeUInt32LE(2); data.writeBigUInt64LE(1000n, 4)
+    const raw = Buffer.concat([Buffer.from([0, 1, 0, 1, 3]), payer, owner, Buffer.alloc(32),
+      Buffer.alloc(32, 0xbb), Buffer.from([1, 2, 2, 0, 1, 12]), data])
+    const cert = certificate('solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', bs58.encode(owner))
+    for (const key of [owner, bs58.encode(owner), owner.toString('hex'), owner.toString('base64')]) {
+      expect(nativeContactProof(cert, [{ rawTx: raw, tokenRecipientOwners: [key] }], 'solanaSignTx')).toBeDefined()
+    }
+    expect(nativeContactProof(cert, [{ rawTx: raw, tokenRecipientOwners: [Buffer.alloc(32, 0x33)] }], 'solanaSignTx')).toBeUndefined()
   })
   test('matches transparent PCZT scripts while preserving TEX routing semantics', () => {
     const address = 'tex1s2rt77ggv6q989lr49rkgzmh5slsksa9khdgte'
@@ -101,6 +129,36 @@ function walletFixture(classification = 1) {
 }
 
 describe('proof delivery shares the signer lock', () => {
+  test('delivers a string-tag proof through the real hdwallet Ripple adapter', async () => {
+    const address = 'rBKz5MC2iXdoS3XgnNSYmF69K1Yo4NS3Ws', calls: number[] = []
+    let held = false
+    const transport: any = {
+      lockDuring: async (action: () => Promise<any>) => {
+        expect(held).toBe(false); held = true
+        try { return await action() } finally { held = false }
+      },
+      call: async (type: number, message: any, options: any) => {
+        expect(held).toBe(true); expect(options.omitLock).toBe(true); calls.push(type)
+        if (type === Messages.MessageType.MESSAGETYPE_ETHEREUMTXMETADATA) {
+          expect(Buffer.from(message.getSignedPayload_asU8()).includes(Buffer.from(`${address}?dt=42`))).toBe(true)
+          return { message_enum: Messages.MessageType.MESSAGETYPE_ETHEREUMMETADATAACK,
+            message: { classification: 1, displaySummary: 'Contact verified' } }
+        }
+        expect(message.getPayment().getDestination()).toBe(address)
+        expect(message.getPayment().hasDestinationTag()).toBe(true)
+        expect(message.getPayment().getDestinationTag()).toBe(42)
+        return { message_enum: Messages.MessageType.MESSAGETYPE_RIPPLESIGNEDTX,
+          proto: { getSerializedTx_asB64: () => 'AA==', getSignature_asB64: () => 'AQ==' } }
+      },
+    }
+    const wallet = { transport, rippleSignTx: (params: any) => sdkRippleSignTx(transport, params) }
+    installNativeContactProof(wallet, () => ({ enabled: true, passphrase: false, capabilities: [32],
+      certificate: certificate('ripple:4109c6f2045fc7eff4cde8f9905d19c2', `${address}?dt=42`) }))
+    await wallet.rippleSignTx({ addressNList: [], sequence: '1', lastLedgerSequence: '2',
+      payment: { amount: '1000', destination: address, destinationTag: '42' },
+      tx: { value: { fee: { amount: [{ amount: '12' }] }, msg: [] } } })
+    expect(calls).toEqual([Messages.MessageType.MESSAGETYPE_ETHEREUMTXMETADATA, Messages.MessageType.MESSAGETYPE_RIPPLESIGNTX])
+  })
   for (const eligible of [true, false]) test(eligible ? 'injects directly before signing inside the existing lock' : 'keeps old firmware working without a preload', async () => {
     const { wallet, calls } = walletFixture()
     installNativeContactProof(wallet, () => ({ enabled: true, passphrase: false, capabilities: eligible ? [32] : [27], certificate: certificate() }))
