@@ -5,6 +5,7 @@ import { installNativeContactProof, nativeContactProof } from './native-contact-
 import bs58 from 'bs58'
 import { decodeTexAddress, p2pkhScript } from './txbuilder/zcash-tex'
 import { rippleSignTx as sdkRippleSignTx } from '@keepkey/hdwallet-keepkey/dist/ripple'
+import { Address as TonAddress } from '@ton/core'
 
 function certificate(network = 'cosmos:cosmoshub-4', address = 'cosmos1CaseSensitive', label = 'Alice'): AddressBookCertification {
   const contacts = [{ network, destinationType: CONTACT_DESTINATION.ADDRESS_TEXT,
@@ -129,6 +130,29 @@ function walletFixture(classification = 1) {
 }
 
 describe('proof delivery shares the signer lock', () => {
+  test('adapts raw TON destinations and omitted workchains without changing signed data or caller objects', async () => {
+    const transport = { call: async () => undefined }
+    const wallet = { transport, tonSignTx: async (params: any) => params }
+    installNativeContactProof(wallet, () => ({ enabled: false, passphrase: false, capabilities: [32] }))
+    for (const workchain of [0, -1]) {
+      const raw = `${workchain}:${'AA'.repeat(32)}`
+      const input = { toAddress: raw, rawTx: '11'.repeat(32), amount: '1000000000', bounce: false, memo: 'rent' }
+      const output = await wallet.tonSignTx(input)
+      expect(TonAddress.parseFriendly(output.toAddress).address.toRawString()).toBe(raw.toLowerCase())
+      expect(TonAddress.parseFriendly(output.toAddress).isTestOnly).toBe(false)
+      expect(output.workchain).toBe(workchain)
+      expect(output.rawTx).toBe(input.rawTx)
+      expect(output.amount).toBe(input.amount)
+      expect(output.memo).toBe(input.memo)
+      expect(input.toAddress).toBe(raw)
+      expect('workchain' in input).toBe(false)
+      const claimed = await wallet.tonSignTx({ ...input, workchain: workchain === 0 ? -1 : 0 })
+      expect(claimed.workchain).toBe(workchain === 0 ? -1 : 0)
+    }
+    const testnet = TonAddress.parseRaw(`0:${'aa'.repeat(32)}`).toString({ testOnly: true })
+    const invalid = { toAddress: testnet, rawTx: '11'.repeat(32) }
+    expect(await wallet.tonSignTx(invalid)).toBe(invalid)
+  })
   test('delivers a string-tag proof through the real hdwallet Ripple adapter', async () => {
     const address = 'rBKz5MC2iXdoS3XgnNSYmF69K1Yo4NS3Ws', calls: number[] = []
     let held = false

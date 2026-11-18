@@ -3,6 +3,7 @@ import * as Messages from '@keepkey/device-protocol/lib/messages_pb'
 import { EthereumTxMetadata } from '@keepkey/device-protocol/lib/messages-ethereum_pb'
 import bs58 from 'bs58'
 import bs58check from 'bs58check'
+import { Address as TonAddress } from '@ton/core'
 import { parseSolanaMessage, parseSolanaTx, solanaMessageSlice } from './solana-tx'
 import { decodeTronTransfer } from './tron-preview'
 import { decodeTexAddress, p2pkhScript } from './txbuilder/zcash-tex'
@@ -24,6 +25,22 @@ const states = new WeakMap<object, () => ContactState>()
 
 const rawBytes = (value: unknown): Buffer | undefined => value instanceof Uint8Array ? Buffer.from(value)
   : typeof value === 'string' ? Buffer.from(value.replace(/^0x/, ''), /^(?:0x)?(?:[0-9a-fA-F]{2})+$/.test(value) ? 'hex' : 'base64') : undefined
+
+function tonSignerParams(params: any): any {
+  if (typeof params?.toAddress !== 'string') return params
+  try {
+    const raw = canonicalContactAddress('ton:-239', params.toAddress)
+    const workchain = raw.startsWith('-1:') ? -1 : 0
+    // The wire contract expects a friendly address. Desktop also accepts raw
+    // addresses; changing presentation leaves the exact signed account/hash
+    // intact. Keep an explicit workchain claim for the device to verify.
+    return { ...params,
+      toAddress: /^(0|-1):/.test(params.toAddress)
+        ? TonAddress.parseRaw(raw).toString({ bounceable: params.bounce !== false, testOnly: false }) : params.toAddress,
+      ...(params.workchain === undefined ? { workchain } : {}),
+    }
+  } catch { return params } // malformed/testnet inputs must still be refused
+}
 
 function solanaRecipients(p: any): string[] {
   const raw = rawBytes(p?.rawTx)
@@ -205,7 +222,9 @@ export function installNativeContactProof(wallet: any, state: () => ContactState
       const current = states.get(wallet)!()
       const proof = current.enabled && !current.passphrase && current.capabilities?.includes(ALL_CHAIN_CONTACT_CAPABILITY)
         ? nativeContactProof(current.certificate, args, name) : undefined
-      return context.run({ proof }, () => original(...args))
+      const signingArgs = name === 'tonSignTx' && current.capabilities?.includes(ALL_CHAIN_CONTACT_CAPABILITY)
+        ? [tonSignerParams(args[0]), ...args.slice(1)] : args
+      return context.run({ proof }, () => original(...signingArgs))
     }
   }
 }
